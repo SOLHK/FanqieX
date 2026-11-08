@@ -35,4 +35,4 @@ Also execute remaining commands in archive `REPRODUCE.txt`. Tests previously pas
 
 ## Important limitation of this GitHub checkpoint
 
-This commit saves handoff and archive pointers, **not the complete archive's bytes**, because the GitHub write interface currently cannot directly consume the archived source file from ChatGPT Library. On a writable development environment, download/materialize the archive, restore all folders, commit source/build/tests onto this branch, and verify the result. Do not claim source code has been fully uploaded or a 1.5.9 binary exists.
+The development branch **already contains** the original 1.5.8 source/build/test tree (`repair158/`, `audit158/`, `baseline/`, `docs/`), uploaded at commit `c4cbc0c6e19030fbfafc40793bc6d4b38547b1f5`. Four sampled source-file Git Blob SHA-1 hashes match the recovered archive. The full ZIP still holds historical outputs, disassemblies and reports not all present on GitHub; use the Library archive if those are needed. **The interrupted 1.5.9 draft was not persisted; no finished 1.5.9 binary exists.**
