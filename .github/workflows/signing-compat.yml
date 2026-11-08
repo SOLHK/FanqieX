@@ -1,0 +1,81 @@
+name: FanqieX signing compatibility
+on:
+  push:
+    branches: [test, 'work/signing-compat-*']
+  pull_request:
+    branches: [test]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signing-compat-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  packages-and-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Synthetic parser and malformed-input tests
+        run: python3 -m unittest discover -s tests -p test_signing_compat.py -v
+      - name: Audit actual release and package twice
+        run: |
+          python3 scripts/signing_compat.py package dist/1.6.2/FanqieX-1.6.2.dylib --output build/signing-a
+          python3 scripts/signing_compat.py package dist/1.6.2/FanqieX-1.6.2.dylib --output build/signing-b
+          diff -qr build/signing-a build/signing-b
+          dpkg-deb --extract build/signing-a/FanqieX-1.6.2-1.deb build/unpacked
+          cmp dist/1.6.2/FanqieX-1.6.2.dylib build/unpacked/Library/MobileSubstrate/DynamicLibraries/FanqieX-1.6.2.dylib
+          cd build/signing-a
+          sha256sum -c SHA256SUMS.txt
+          sha256sum -c BUNDLE_SHA256SUMS.txt
+      - name: Real plugin in synthetic host injection layouts
+        run: |
+          python3 - <<'PY'
+          import sys, tempfile, zipfile, plistlib
+          from pathlib import Path
+          sys.path.insert(0, 'tests')
+          from test_signing_compat import c, fixture
+          plugin = Path('dist/1.6.2/' + c.NAME).read_bytes()
+          for rel, load, rp in [
+              (c.NAME, '@executable_path/' + c.NAME, None),
+              ('Frameworks/' + c.NAME, '@loader_path/Frameworks/' + c.NAME, None),
+              ('Frameworks/' + c.NAME, '@rpath/' + c.NAME, '@executable_path/Frameworks'),
+              ('Dylibs/' + c.NAME, '@rpath/' + c.NAME, '@loader_path/Dylibs')]:
+              with tempfile.TemporaryDirectory() as folder:
+                  path = Path(folder) / 'test.ipa'
+                  with zipfile.ZipFile(path, 'w') as z:
+                      z.writestr('Payload/Test.app/Info.plist', plistlib.dumps({'CFBundleExecutable': 'Test'}))
+                      z.writestr('Payload/Test.app/Test', fixture(host=True, load=load, rpath=rp))
+                      z.writestr('Payload/Test.app/' + rel, plugin)
+                  print(rel, load, c.audit_ipa(path))
+          PY
+      - name: Upload reproducible signing bundle (not device-certified)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FanqieX-1.6.2-signing-r1
+          path: build/signing-a/
+          if-no-files-found: error
+          retention-days: 30
+  apple-resign:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Apple ad-hoc re-signing preserves executable patch segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          original=dist/1.6.2/FanqieX-1.6.2.dylib
+          mkdir -p build/resign/App.app/Frameworks build/resign/App.app/Dylibs
+          for relative in FanqieX-1.6.2.dylib Frameworks/FanqieX-1.6.2.dylib Dylibs/renamed-by-signer.dylib; do
+            target="build/resign/App.app/$relative"
+            cp "$original" "$target"
+            codesign --remove-signature "$target"
+            codesign --force --sign - --timestamp=none "$target"
+            codesign --verify --strict --verbose=2 "$target"
+            python3 scripts/signing_compat.py compare-resigned "$original" "$target"
+          done
