@@ -1,0 +1,131 @@
+{
+  "passed": true,
+  "candidate_sha256": "2da6826d63d5e05ec6c2f20d3375d58186474490c9c92dc09c2cc734529560b1",
+  "candidate_size": 139792,
+  "two_builds_identical": true,
+  "device_tested": false,
+  "source_manifest_sha256": "e3f9368f24ee8873ee3b606a5320c02a36c405b6f7a0fb74224e6f03d65ebd55",
+  "source_file_count": 76,
+  "steps": [
+    {
+      "name": "build",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.441,
+      "log": "logs/build.log"
+    },
+    {
+      "name": "rebuild",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.455,
+      "log": "logs/rebuild.log"
+    },
+    {
+      "name": "extension-layout-selftest",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.064,
+      "log": "logs/extension-layout-selftest.log"
+    },
+    {
+      "name": "independent-binary",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.086,
+      "log": "logs/independent-binary.log"
+    },
+    {
+      "name": "independent-faults",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.845,
+      "log": "logs/independent-faults.log"
+    },
+    {
+      "name": "native-surface",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 8.271,
+      "log": "logs/native-surface.log"
+    },
+    {
+      "name": "glass-interaction",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 1.329,
+      "log": "logs/glass-interaction.log"
+    },
+    {
+      "name": "integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.974,
+      "log": "logs/integration.log"
+    },
+    {
+      "name": "diagnostic-dedup",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 33.184,
+      "log": "logs/diagnostic-dedup.log"
+    },
+    {
+      "name": "legacy-execution",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 28.879,
+      "log": "logs/legacy-execution.log"
+    },
+    {
+      "name": "material-transitions160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.078,
+      "log": "logs/material-transitions160.log"
+    },
+    {
+      "name": "feed-viewport",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 5.696,
+      "log": "logs/feed-viewport.log"
+    },
+    {
+      "name": "feed-integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 12.556,
+      "log": "logs/feed-integration.log"
+    },
+    {
+      "name": "feed-realistic159",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 18.283,
+      "log": "logs/feed-realistic159.log"
+    },
+    {
+      "name": "first-frame160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 4.354,
+      "log": "logs/first-frame160.log"
+    },
+    {
+      "name": "reader-diagnostics160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.772,
+      "log": "logs/reader-diagnostics160.log"
+    },
+    {
+      "name": "reader-native160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 8.82,
+      "log": "logs/reader-native160.log"
+    }
+  ],
+  "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models"
+}

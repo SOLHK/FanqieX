@@ -60,6 +60,9 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     report = {'passed': False, 'device_tested': False,
               'native_host_app_tested': False, 'platform': platform.platform(),
+              'repair_dir': args.repair_dir,
+              'assembly_target': 'arm64-apple-ios15.0.1',
+              'sdk_typecheck_target': 'arm64-apple-ios27.2',
               'github_sha': os.environ.get('GITHUB_SHA'),
               'github_run_id': os.environ.get('GITHUB_RUN_ID'),
               'scope': 'Xcode assembly of the actual plugin and SDK type checking'}
@@ -83,6 +86,8 @@ def main():
         report['public_glass_api_typecheck'] = True
         sys.path.insert(0, str(ROOT / args.repair_dir))
         builder = importlib.import_module('build_plugin')
+        report['plugin_version'] = builder.VERSION
+        report['fixed_original_image_preserved'] = True
         builder.assemble_object = assemble
         builder.disassemble = disassemble
         candidate = output / ('FanqieAdBlock-' + builder.VERSION + '.dylib')

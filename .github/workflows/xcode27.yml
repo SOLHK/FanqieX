@@ -29,7 +29,7 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair159 --expect-candidate dist/1.5.9/FanqieAdBlock-1.5.9.dylib
+        run: python3 scripts/build_xcode27.py --repair-dir repair160 --expect-candidate dist/1.6.0/FanqieAdBlock-1.6.0.dylib
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

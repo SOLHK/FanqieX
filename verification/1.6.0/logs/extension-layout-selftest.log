@@ -1,0 +1,138 @@
+{
+  "passed": true,
+  "fixture_only": "NOP/RET bytes are never executed",
+  "valid_layouts": [
+    {
+      "passed": true,
+      "candidate_sha256": "6def0e7beb54015476a82cea3dd69aad4b0284c0ce04608366d8a3e4f5885f5a",
+      "extension_capacity": 16384,
+      "file_bytes": 106768,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 105792,
+        "size": 976,
+        "pages": 26,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "4440ce5bc84224f85801b8b0d11f0aa0f32d1861"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "4e08c4d64c5a57c2b6f31a3e8635e4b7f0216b381432d737423b80a702ed8191",
+      "extension_capacity": 32768,
+      "file_bytes": 123280,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 122176,
+        "size": 1104,
+        "pages": 30,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "3c7239d9a1146c33ab0121ab382e37598a0d2922"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "8eda7c84cac264775200137da46afd39285895f8aec3e56163b9d49cc69bb09a",
+      "extension_capacity": 49152,
+      "file_bytes": 139792,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 138560,
+        "size": 1232,
+        "pages": 34,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "053340fb5bde42c1c3670cece81b3edc62b6a0e6"
+      },
+      "device_tested": false
+    }
+  ],
+  "negative_controls": [
+    {
+      "case": "new_rx_code_not_signed",
+      "rejected": true,
+      "rehashed": false,
+      "reason": "signed page 20"
+    },
+    {
+      "case": "chained_segment_count_not_updated",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "starts segment count"
+    },
+    {
+      "case": "new_segment_is_writable",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "patch permissions/map"
+    },
+    {
+      "case": "old_pointer_slot_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "original mapped bytes"
+    },
+    {
+      "case": "old_code_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "original mapped bytes"
+    },
+    {
+      "case": "original_import_table_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "LINKEDIT payload changed"
+    },
+    {
+      "case": "original_indirect_symbol_offset_not_moved",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "dysymtab relocation"
+    },
+    {
+      "case": "signature_code_slots_too_small",
+      "rejected": true,
+      "rehashed": false,
+      "reason": "CodeDirectory length/count"
+    },
+    {
+      "case": "already_extended",
+      "rejected": true,
+      "reason": "Input already extended or has unfamiliar segments"
+    },
+    {
+      "case": "unaligned_payload",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "payload_over_capacity",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "unsupported_capacity",
+      "rejected": true,
+      "reason": "Extension capacity must be 0x4000, 0x8000 or 0xc000"
+    },
+    {
+      "case": "occupied_header_padding",
+      "rejected": true,
+      "reason": "No unused header padding for one segment load command"
+    },
+    {
+      "case": "encrypted_input",
+      "rejected": true,
+      "reason": "Unsupported encryption range or nonzero cryptid"
+    }
+  ],
+  "device_tested": false
+}

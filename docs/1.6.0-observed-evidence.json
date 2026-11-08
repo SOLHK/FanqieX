@@ -1,0 +1,98 @@
+{
+  "schema": "fanqiex.user-observed160.v1",
+  "plugin_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "source": "Sanitized fields from the user-provided 1.5.9 exports; raw logs are not published",
+  "runtime": "iOS 27.3",
+  "bar": {
+    "window_size": [
+      440,
+      956
+    ],
+    "settled_frame": [
+      0,
+      882,
+      440,
+      74
+    ],
+    "native_effect": "UIGlassEffect",
+    "style": 1,
+    "interactive": true
+  },
+  "first_display": {
+    "initial_unsettled_bar_frame": [
+      -220,
+      -37,
+      440,
+      74
+    ],
+    "bookshelf_before": {
+      "frame": [
+        0,
+        106,
+        440,
+        784
+      ],
+      "bottomInset": 0,
+      "observerInstalled": false,
+      "reason": "invalid-inset-baseline-or-content"
+    },
+    "bookshelf_after": {
+      "height": 850,
+      "bottomInset": 123,
+      "observerInstalled": true
+    },
+    "profile_before": {
+      "height": 776,
+      "bottomInset": 0,
+      "reason": "invalid-inset-baseline-or-content"
+    },
+    "profile_after": {
+      "height": 850,
+      "bottomInset": 131
+    },
+    "scope": "Snapshots establish delayed ownership/geometry; not exact onscreen flash duration"
+  },
+  "reader": {
+    "controlClass": "UIButton",
+    "iconClass": "UIImageView",
+    "iconParentClass": "UIButton",
+    "iconFrame": [
+      0,
+      0,
+      24,
+      24
+    ],
+    "iconBounds": [
+      0,
+      0,
+      24,
+      24
+    ],
+    "imageScale": 3,
+    "imageOrientation": 0,
+    "readerBackReason": 18,
+    "reasonMeaning": "unsupported bitmap row calibration",
+    "shift": [
+      0,
+      0
+    ],
+    "recordedPluginLayoutMs": [
+      20.434458,
+      1.146833
+    ],
+    "visitedViews": [
+      9,
+      9
+    ],
+    "budgetExhausted": [
+      false,
+      false
+    ],
+    "scope": "Top reader post-layout timing only; no touch/action/menu end-to-end latency was recorded"
+  },
+  "screenshots": {
+    "backArrowOffset": "Visible arrow center is about 6pt left of circular backing center; circle center is visually estimated",
+    "bottomControls": "Catalog/night/settings glass covers the icon only; adapted-theatre and listen have no matching native surface"
+  },
+  "new_candidate_device_tested": false
+}

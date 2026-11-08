@@ -1,0 +1,602 @@
+{
+  "passed": true,
+  "candidate_sha256": "2da6826d63d5e05ec6c2f20d3375d58186474490c9c92dc09c2cc734529560b1",
+  "device_tested": false,
+  "scope": "Executed ARM64; modeled public UIKit/Foundation boundary; not rendering or tap latency",
+  "cases": [
+    {
+      "name": "managed_button_state_refresh",
+      "passed": true,
+      "details": {
+        "managed_identity_checked": true,
+        "ordinary_states": 8,
+        "host_state_change_preserved": true
+      }
+    },
+    {
+      "name": "native_back_reason18",
+      "passed": true,
+      "details": {
+        "getter": "image",
+        "slide": "0x0",
+        "native_symbol_requests": 1,
+        "core_image_calls": 0,
+        "hit_bounds": [
+          0,
+          0,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "name": "native_back_button_getter",
+      "passed": true,
+      "details": {
+        "getter": "button",
+        "slide": "0x0",
+        "native_symbol_requests": 1,
+        "core_image_calls": 0,
+        "hit_bounds": [
+          0,
+          0,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "name": "native_back_no_getter",
+      "passed": true,
+      "details": {
+        "getter": "none",
+        "slide": "0x0",
+        "native_symbol_requests": 1,
+        "core_image_calls": 0,
+        "hit_bounds": [
+          0,
+          0,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "name": "native_back_aslr",
+      "passed": true,
+      "details": {
+        "getter": "image",
+        "slide": "0x100000000",
+        "native_symbol_requests": 1,
+        "core_image_calls": 0,
+        "hit_bounds": [
+          0,
+          0,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "name": "independent_property_restore",
+      "passed": true,
+      "details": [
+        {
+          "host_image_changed": true,
+          "host_mode_changed": false
+        },
+        {
+          "host_image_changed": false,
+          "host_mode_changed": true
+        },
+        {
+          "host_image_changed": true,
+          "host_mode_changed": true
+        }
+      ]
+    },
+    {
+      "name": "native_unavailable_and_allocation_failures",
+      "passed": true,
+      "details": [
+        {
+          "symbol_available": false
+        },
+        {
+          "symbol_available": true,
+          "symbol_nil": true
+        },
+        {
+          "symbol_available": true,
+          "snapshot_fail_at": 1
+        },
+        {
+          "symbol_available": true,
+          "snapshot_fail_at": 2
+        },
+        {
+          "symbol_available": true,
+          "weak_fail_at": 1
+        },
+        {
+          "symbol_available": true,
+          "weak_fail_at": 2
+        },
+        {
+          "symbol_available": true,
+          "weak_fail_at": 3
+        }
+      ]
+    },
+    {
+      "name": "more_hit_bounds",
+      "passed": true,
+      "details": {
+        "material": [
+          0.0,
+          10.0,
+          24.0,
+          24.0
+        ],
+        "host_hit_bounds": [
+          0,
+          0,
+          24,
+          44
+        ]
+      }
+    },
+    {
+      "name": "complete_bottom_captions",
+      "passed": true,
+      "details": {
+        "frames": [
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            10.0,
+            0.0,
+            80.0,
+            70.0
+          ]
+        ],
+        "nested_icon_button": false,
+        "host_frames_and_actions_unchanged": true
+      }
+    },
+    {
+      "name": "nested_bottom_icon_controls",
+      "passed": true,
+      "details": {
+        "frames": [
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            10.0,
+            0.0,
+            80.0,
+            70.0
+          ]
+        ],
+        "nested_icon_button": true,
+        "host_frames_and_actions_unchanged": true
+      }
+    },
+    {
+      "name": "listen_style_and_restore",
+      "passed": true,
+      "details": {
+        "frame": [
+          1.0,
+          1.0,
+          54.0,
+          54.0
+        ],
+        "background_restored": true
+      }
+    },
+    {
+      "name": "four_real_tail_branches",
+      "passed": true,
+      "details": [
+        {
+          "owner": "FQReaderSaasNavigationView",
+          "original_calls": 1,
+          "instruction_count": 21219,
+          "reader_log_count": 1
+        },
+        {
+          "owner": "SSReaderMenuView",
+          "original_calls": 1,
+          "instruction_count": 21219,
+          "reader_log_count": 1
+        },
+        {
+          "owner": "FQReaderSaaSBottomToolView",
+          "original_calls": 1,
+          "instruction_count": 21218,
+          "reader_log_count": 1
+        },
+        {
+          "owner": "FQReaderBottomButtonContainerView",
+          "original_calls": 1,
+          "instruction_count": 21218,
+          "reader_log_count": 1
+        }
+      ]
+    },
+    {
+      "name": "premount_menu_attachment",
+      "passed": true,
+      "details": {
+        "premount_then_attach_styles": true,
+        "detach_restores": true
+      }
+    },
+    {
+      "name": "scope_exclusions",
+      "passed": true,
+      "details": {
+        "excluded_control_types": 4,
+        "scroll_content_untouched": true
+      }
+    },
+    {
+      "name": "standalone_nil_getter_cleanup",
+      "passed": true,
+      "details": {
+        "nil_getter_restores": true,
+        "standalone_hit_frame_preserved": true
+      }
+    },
+    {
+      "name": "visibility_and_real_resize",
+      "passed": true,
+      "details": {
+        "hidden_surface_removed": true,
+        "resize_updates": {
+          "cornerConfiguration": 1,
+          "setAccessibilityElementsHidden:": 0,
+          "setAutoresizingMask:": 0,
+          "setCenter:": 0,
+          "setContentMode:": 0,
+          "setFrame": 1,
+          "setHidden": 0,
+          "setImage:": 0,
+          "setUserInteractionEnabled:": 0
+        }
+      }
+    },
+    {
+      "name": "listen_caption_reuse_epochs",
+      "passed": true,
+      "details": {
+        "replaced_caption_restored": true,
+        "moved_caption_epoch_preserved": true
+      }
+    },
+    {
+      "name": "listen_orphan_owner",
+      "passed": true,
+      "details": {
+        "zeroing_weak_owner_recovery": true
+      }
+    },
+    {
+      "name": "negative159_reason18",
+      "passed": true,
+      "details": {
+        "reasons": [
+          18
+        ],
+        "core_image_context_requests": 1
+      }
+    },
+    {
+      "name": "negative159_more_outside_hit_area",
+      "passed": true,
+      "details": {
+        "material": [
+          -6.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "host_hit_bounds": [
+          0,
+          0,
+          24,
+          44
+        ]
+      }
+    },
+    {
+      "name": "negative159_unobserved_menu_tails",
+      "passed": true,
+      "details": [
+        {
+          "owner": "FQReaderSaasNavigationView",
+          "original_calls": 1,
+          "instruction_count": 17564,
+          "reader_log_count": 1
+        },
+        {
+          "owner": "SSReaderMenuView",
+          "original_calls": 1,
+          "instruction_count": 8500,
+          "reader_log_count": 0
+        },
+        {
+          "owner": "FQReaderSaaSBottomToolView",
+          "original_calls": 1,
+          "instruction_count": 8483,
+          "reader_log_count": 0
+        },
+        {
+          "owner": "FQReaderBottomButtonContainerView",
+          "original_calls": 1,
+          "instruction_count": 8483,
+          "reader_log_count": 0
+        }
+      ]
+    },
+    {
+      "name": "retained_stable_control",
+      "passed": true,
+      "details": {
+        "cornerConfiguration": 0,
+        "setAccessibilityElementsHidden:": 0,
+        "setAutoresizingMask:": 0,
+        "setCenter:": 0,
+        "setContentMode:": 0,
+        "setFrame": 0,
+        "setHidden": 0,
+        "setImage:": 0,
+        "setUserInteractionEnabled:": 0
+      }
+    },
+    {
+      "name": "retained_stable_glyph",
+      "passed": true,
+      "details": {
+        "cornerConfiguration": 0,
+        "setAccessibilityElementsHidden:": 0,
+        "setAutoresizingMask:": 0,
+        "setCenter:": 0,
+        "setContentMode:": 0,
+        "setFrame": 0,
+        "setHidden": 0,
+        "setImage:": 0,
+        "setUserInteractionEnabled:": 0
+      }
+    },
+    {
+      "name": "retained_reentrant",
+      "passed": true,
+      "details": {
+        "panel_nested_instructions": 16
+      }
+    },
+    {
+      "name": "retained_panel_budget_and_original",
+      "passed": true,
+      "details": {
+        "visited": 64,
+        "original_layout_calls_per_pass": 1,
+        "record": {
+          "event": "reader_layout",
+          "data": {
+            "readerPluginLayoutMs": 0.0,
+            "readerVisitedViews": 64,
+            "readerTraversalBudgetExhausted": 1,
+            "readerOwnerClass": "FQReaderSaasNavigationView"
+          },
+          "timestamp": 1700000000.0,
+          "pluginVersion": "1.6.0",
+          "sequence": 2
+        }
+      }
+    },
+    {
+      "name": "retained_detach_and_epoch",
+      "passed": true,
+      "details": {
+        "scoped_window_lifecycle": true,
+        "ownership_epoch_preserved": true
+      }
+    },
+    {
+      "name": "retained_monotonic_log",
+      "passed": true,
+      "details": {
+        "sample_count": 2,
+        "fixture_elapsed_ms": 20.0
+      }
+    },
+    {
+      "name": "shelf_edit",
+      "passed": true,
+      "details": {
+        "frame": [
+          -8.0,
+          0.0,
+          48.0,
+          32.0
+        ],
+        "horizontal_text_padding": 10,
+        "vertical_text_padding": 6,
+        "instructions": 3633
+      }
+    },
+    {
+      "name": "shelf_filter",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          0.0,
+          69.0,
+          32.0
+        ],
+        "instructions": 4387
+      }
+    },
+    {
+      "name": "shelf_reading_time",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          -2.0,
+          156.0,
+          32.0
+        ],
+        "instructions": 4219
+      }
+    },
+    {
+      "name": "shelf_larger_font",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          5.0,
+          52.0,
+          34.0
+        ],
+        "instructions": 3633
+      }
+    },
+    {
+      "name": "shelf_clipped_text",
+      "passed": true,
+      "details": {
+        "no_material_when_padding_impossible": true,
+        "instructions": 2449
+      }
+    },
+    {
+      "name": "nonfinite_geometry",
+      "passed": true,
+      "details": {
+        "cases": [
+          {
+            "where": "control",
+            "value": "nan",
+            "instructions": 1054
+          },
+          {
+            "where": "control",
+            "value": "inf",
+            "instructions": 1054
+          },
+          {
+            "where": "image",
+            "value": "nan",
+            "instructions": 2050
+          },
+          {
+            "where": "image",
+            "value": "-inf",
+            "instructions": 2050
+          }
+        ]
+      }
+    },
+    {
+      "name": "out_of_scope_original",
+      "passed": true,
+      "details": {
+        "original_trampoline_executed": true,
+        "frame": [
+          0.0,
+          0.0,
+          44.0,
+          44.0
+        ],
+        "instructions": 2139
+      }
+    },
+    {
+      "name": "one_material_per_control",
+      "passed": true,
+      "details": {
+        "one_shared_material": true,
+        "instructions": 9747
+      }
+    },
+    {
+      "name": "unknown_glyph_selector",
+      "passed": true,
+      "details": {
+        "frame": [
+          12.0,
+          6.0,
+          32.0,
+          32.0
+        ],
+        "instructions": 387
+      }
+    },
+    {
+      "name": "story_standalone_artwork",
+      "passed": true,
+      "details": {
+        "frame": [
+          3.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "slide": "0x0",
+        "instructions": 2581
+      }
+    },
+    {
+      "name": "own_clipping_boundary",
+      "passed": true,
+      "details": {
+        "frame": [
+          0.0,
+          0.0,
+          24.0,
+          24.0
+        ],
+        "instructions": 5584
+      }
+    }
+  ],
+  "executed_instructions": 1054639
+}

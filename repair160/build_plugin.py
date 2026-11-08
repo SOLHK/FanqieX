@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Rebuild 1.6.0 over the unchanged pinned 1.5.6 original image.
+The reconstruction input 1.5.8, user-tested predecessor 1.5.9 and original base
+are hash checked. The 1.6.0 repair sources continue 1.5.9 and replace the whole
+extension in a clean rebuild; no second extension is stacked on an old patch.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import struct
+import uuid
+from macho_tools import assemble_object, sections, macho_commands, disassemble
+from extend_macho import extend, verify_extension, verify_signature
+
+UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354'
+SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
+PREVIOUS_SHA = 'e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810'
+VERSION, ENCODED = '1.6.0', 0x10600
+BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
+NAMES = ['ratio','layout','installer','repair','strings','end','version','reserved',
+ 'frame','background','restore','edge_update','edge_restore','find','round','sync',
+ 'eligible','visible','message','install_method','busy_key','scroll_key','edge_key',
+ 'hidden_key','parent_key','selected_key','sync_original','restore_original',
+ 'proxy_frame','material_update','material_reset','settings_boot','ui_install',
+ 'ui_export','ui_present','diagnostic_init','diagnostic_enqueue','diagnostic_tick',
+ 'diagnostic_maintenance','diagnostic_observe','diagnostic_snapshot',
+ 'diagnostic_snapshot_all','diagnostic_heartbeat','describe_view','describe_children',
+ 'string','number','dict_set','uint','now','settings_trampoline','signature_key',
+ 'bars_key','ui_busy_key','ui_sender_key','code_end','window','find_record',
+ 'capture_edge','restore_removed','extension','extension_code_end','extension_strings','extension_end']
+EXT_NAMES = ['update','restore','native_update','native_restore','same_bottom_rect',
+ 'safe_tree','monitor_start','poll','snapshot','interaction_update','interaction_restore',
+ 'pan','should_begin','style_control','style_glyph','code_end','strings','end',
+ 'native_key','monitor_key','owner_key','timer_key','tick_key','rejected_key',
+ 'reserved24','reserved25','reserved26','reserved27']
+SITES = [(0x41d8,'installer',True),(0x4704,'settings_boot',False),
+ (0x4cbc,'ui_install',True),(0x5b94,'ratio',False),(0x60b8,'sync',False),
+ (0x6c84,'frame',True),(0x6ce8,'proxy_frame',True),(0x6db4,'restore',False)]
+
+def need(cond, why):
+ if not cond: raise ValueError(why)
+
+def branch(pc, target, link=False):
+ n = target-pc
+ need(n % 4 == 0 and -(1<<27) <= n < (1<<27), 'ARM64 branch range')
+ return struct.pack('<I',(0x94000000 if link else 0x14000000)|((n//4)&0x3ffffff))
+
+def compose_assembly(path):
+ path=Path(path); text=path.read_text()
+ for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
+                       ('EXTENSION',['native_surface.s','native_guard.s','glass_interaction.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s'])]:
+  code=[]; data=[]
+  for filename in files:
+   parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
+   need(len(parts)==2, 'Component boundary: '+filename)
+   code.append(parts[0]); data.append(parts[1])
+  for kind, values in [('CODE',code),('DATA',data)]:
+   marker='// @'+group+'_'+kind
+   need(text.count(marker)==1,'Composition marker: '+marker)
+   text=text.replace(marker,'\n'.join(values))
+ return text
+
+def directory(data, version):
+ d=dict(zip(NAMES,struct.unpack_from('<64I',data)))
+ need(d['version']==version and d['reserved']==0,'Repair version')
+ need(256 <= d['ratio'] < d['code_end'] <= CODE_LIMIT-BASE,'Main code bounds')
+ need(d['strings']==DATA_BASE-BASE and d['strings']<d['end']<=DATA_LIMIT-BASE,'Main data bounds')
+ for name in NAMES[:4]+NAMES[8:20]+NAMES[26:51]+NAMES[56:60]:
+  need(256<=d[name]<d['code_end'] and d[name]%4==0,'Code entry '+name)
+ for name in NAMES[20:26]+NAMES[51:55]:
+  need(d['strings']<=d[name]<d['end'],'Data entry '+name)
+ if version==0x10506:
+  need(all(d[n]==0 for n in NAMES[60:]),'Unexpected existing extension')
+ else:
+  need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+0xc000,'Extension bounds')
+ return d
+
+def build(source_path, output_path):
+ source_path=Path(source_path); output_path=Path(output_path)
+ need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
+ uploaded=source_path.read_bytes()
+ need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
+ need(verify_signature(uploaded)['page_hashes_valid'],'Uploaded 1.5.8 page hashes')
+ previous_path=Path(__file__).resolve().parents[1]/'dist'/'1.5.9'/'FanqieAdBlock-1.5.9.dylib'
+ previous=previous_path.read_bytes()
+ need(hashlib.sha256(previous).hexdigest()==PREVIOUS_SHA,'Exact user-tested 1.5.9 required')
+ need(verify_signature(previous)['page_hashes_valid'],'User-tested 1.5.9 page hashes')
+ base_path=Path(__file__).resolve().parents[1]/'baseline'/'FanqieAdBlock-1.5.6.dylib'
+ source=base_path.read_bytes()
+ need(len(source)==90256 and hashlib.sha256(source).hexdigest()==SOURCE_SHA,'Exact uploaded 1.5.6 required')
+ original_signature=verify_signature(source)
+ need(original_signature['page_hashes_valid'],'Original signature page hashes')
+ old=directory(source[BASE:BASE+256],0x10506)
+ for a,b in [(BASE+old['code_end'],CODE_LIMIT),(BASE+old['end'],DATA_LIMIT)]:
+  need(not any(source[a:b]),'Occupied original padding')
+ for a,b in [(BASE,CODE_LIMIT),(DATA_BASE,DATA_LIMIT)]:
+  for s in sections(source): need(max(a,s['offset'])>=min(b,s['offset']+s['size']),'Padding overlaps original section')
+ for a,v in {0x4b34:'1f2003d5',0x6798:'02008052',0x681c:'1f2003d5',0x6c28:'e003271e',0x6c40:'e003679e',0x6cd0:'1f2003d5'}.items():
+  need(source[a:a+4]==bytes.fromhex(v),'Missing earlier fix '+hex(a))
+ assembly=compose_assembly(Path(__file__).with_name('floating_bar_160.s'))
+ obj=assemble_object(assembly); ss=[s for s in sections(obj) if s['name']=='__text']
+ need(len(ss)==1 and ss[0]['reloc_count']==0,'Unresolved assembler relocation')
+ s=ss[0]; payload=obj[s['offset']:s['offset']+s['size']]
+ d=directory(payload,ENCODED); off=d['extension']
+ need(payload[off:off+8]==b'FQ160EXT' and struct.unpack_from('<II',payload,off+8)==(ENCODED,32),'Extension header')
+ e=dict(zip(EXT_NAMES,struct.unpack_from('<28I',payload,off+16)))
+ need((e['code_end'],e['strings'],e['end'])==(d['extension_code_end'],d['extension_strings'],d['extension_end']),'Extension directory agreement')
+ need(len(payload)==e['end'],'Assembled span')
+ for n in EXT_NAMES[:15]: need(off+128<=e[n]<e['code_end'] and e[n]%4==0,'Extension code '+n)
+ for n in EXT_NAMES[18:24]: need(e['strings']<=e[n]<e['end'],'Extension data '+n)
+ need(all(e[n]==0 for n in EXT_NAMES[24:]),'Extension reserved fields')
+ for a,b in [(d['code_end'],d['strings']),(d['end'],d['extension'])]: need(not any(payload[a:b]),'Nonzero gap')
+ data=bytearray(source); changes=[]
+ def replace(a,expected,value,reason):
+  need(len(expected)==len(value) and data[a:a+len(value)]==expected,'Patch precondition '+hex(a))
+  data[a:a+len(value)]=value
+  changes.append({'offset':hex(a),'size':len(value),'reason':reason,
+    'old_sha256':hashlib.sha256(expected).hexdigest(),'new_sha256':hashlib.sha256(value).hexdigest()})
+ stop=BASE+max(old['code_end'],d['code_end'])
+ replace(BASE,source[BASE:stop],payload[:d['code_end']].ljust(stop-BASE,b'\0'),'Rebuild main repair with extension calls')
+ stop=BASE+max(old['end'],d['end'])
+ replace(DATA_BASE,source[DATA_BASE:stop],payload[d['strings']:d['end']].ljust(stop-DATA_BASE,b'\0'),'Rebuild constants')
+ for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
+ marker=b'FQ160RDR'
+ need(payload.count(marker)==1,'One reader fix entry table')
+ reader_at=payload.index(marker)
+ reader_names=['reader_panel','walk','back_prepare','back_restore','image_alignment','layout_observe','finish',
+  'control_busy_key','busy_key','owner_back_key','back_owned_key','back_original_key','back_mode_key','last_log_key',
+  'settle_control']
+ reader_offsets=struct.unpack_from('<15I',payload,reader_at+8)
+ reader_entries=dict(zip(reader_names,reader_offsets))
+ for name in reader_names[:7]+reader_names[14:]:
+  need(off+128<=reader_entries[name]<e['code_end'] and reader_entries[name]%4==0,'Reader code '+name)
+ for name in reader_names[7:14]:
+  need(e['strings']<=reader_entries[name]<e['end'],'Reader data '+name)
+ reader_tail_sites=[(0x5d50,0x746c),(0x5da0,0x746c),(0x5dec,0x75d4),(0x5e38,0x75d4)]
+ for site,original_target in reader_tail_sites:
+  replace(site,branch(site,original_target),branch(site,BASE+reader_entries['reader_panel']),
+   'Replace reader navigation/menu/bottom recursive tail with bounded reader panel')
+ for a,n,v in [(0x7848,'style_control','f44fbea9'),(0x7ac4,'style_glyph','eb2bba6d')]:
+  replace(a,bytes.fromhex(v),branch(a,BASE+e[n]),'Scoped '+n+' with original trampoline')
+ replace(0x568,struct.pack('<I',0x10506),struct.pack('<I',ENCODED),'Dylib version')
+ replace(0x585,b'1.5.6',VERSION.encode(),'Install name')
+ replace(0xec84,'1.5.6'.encode('utf-16le'),VERSION.encode('utf-16le'),'Settings version')
+ uu=[o for c,o,n in macho_commands(source) if c==0x1b]; need(len(uu)==1,'One UUID')
+ extension=payload[off:e['end']]
+ ident=bytearray(hashlib.sha256(bytes(data[:original_signature['signature_offset']])+extension).digest()[:16])
+ ident[6]=(ident[6]&15)|0x50; ident[8]=(ident[8]&63)|0x80
+ replace(uu[0]+8,source[uu[0]+8:uu[0]+24],bytes(ident),'Deterministic UUID')
+ allowed=set()
+ for change in changes:
+  a=int(change['offset'],16); allowed.update(range(a,a+change['size']))
+ need(not any(a!=b and i not in allowed for i,(a,b) in enumerate(zip(source,data))),'Unexpected edit before extension')
+ capacity=((len(extension)+0x3fff)//0x4000)*0x4000
+ need(capacity<=0xc000,'Extension exceeds reviewed 48 KiB capacity')
+ out=extend(bytes(data),extension,capacity=capacity,identifier='FanqieAdBlock-'+VERSION+'.dylib')
+ layout=verify_extension(bytes(data),out,extension); sig=verify_signature(out)
+ # Compare actual original sections against the user's 1.5.8, independent
+ # of the 1.5.6 reconstruction. Only explicitly reviewed entry branches and
+ # the displayed version string may differ; ad handling and host UUID gate
+ # cannot be silently reverted during the clean rebuild.
+ original_allowed=set(range(0xec84,0xec84+10))
+ for a,n,link in SITES:
+  original_allowed.update(range(a,a+4))
+ for a in (0x7848,0x7ac4,0x5d50,0x5da0,0x5dec,0x5e38):
+  original_allowed.update(range(a,a+4))
+ original_checked=0
+ for sec in sections(uploaded):
+  a=sec['offset']; b=a+sec['size']
+  need(b<=0x14000,'Unexpected original section outside fixed image')
+  need(not any(uploaded[i]!=out[i] and i not in original_allowed for i in range(a,b)),
+       'Unexpected change relative to uploaded 1.5.8 in original section '+sec['name'])
+  need(not any(previous[i]!=out[i] and i not in original_allowed for i in range(a,b)),
+       'Unexpected change relative to user-tested 1.5.9 in original section '+sec['name'])
+  original_checked += b-a
+ need(sig['page_hashes_valid'],'Candidate page hashes')
+ need(hashlib.sha256(source_path.read_bytes()).hexdigest()==UPLOADED_SHA,'Input changed')
+ report={'version':VERSION,'source_version':'1.5.9','source_sha256':PREVIOUS_SHA,
+  'reconstruction_input_version':'1.5.8','reconstruction_input_sha256':UPLOADED_SHA,
+  'rebuild_base_sha256':SOURCE_SHA,
+  'candidate_sha256':hashlib.sha256(out).hexdigest(),'size_bytes':len(out),
+  'changes':changes,'signature':sig,'extension_layout':layout,'uuid':str(uuid.UUID(bytes=bytes(ident))),
+  'main_directory':{k:(v+BASE if k not in ('version','reserved') else v) for k,v in d.items()},
+  'extension_directory':{k:(v+BASE if v else 0) for k,v in e.items()},
+  'reader_directory':{k:v+BASE for k,v in reader_entries.items()},
+  'original_unchanged':True,'original_sections_compared_to_uploaded_bytes':original_checked,'device_ui_tested':False,
+  'limits':['Original plugin/host sources unavailable; repair sources are provided.',
+   'No iPhone, native UIKit renderer, simulator or dyld load executed.',
+   'Ad-hoc page hashes do not establish device signing/injection acceptance.',
+   'Normal IPA re-signing is still required.',
+   'Unknown/controller/scroll content in native wrapper prevents suppression.',
+   'Selected fill, native moving glass and reader alignment have not been visually checked on a device.',
+   'Removed repeat-layout mutations are instruction-tested; real touch-to-action latency remains unmeasured.',
+   'Diagnostics observe bounded plugin state; pending writes are not crash durable.']}
+ output_path.parent.mkdir(parents=True,exist_ok=True)
+ output_path.write_bytes(out)
+ output_path.with_suffix('.validation.json').write_text(json.dumps(report,indent=2)+'\n')
+ output_path.with_suffix('.preextend').write_bytes(data)
+ output_path.with_suffix('.extension.bin').write_bytes(extension)
+ output_path.with_suffix('.composed.s').write_text(assembly)
+ output_path.with_suffix('.patch-disassembly.txt').write_text('\n'.join(disassemble(payload[d['ratio']:d['code_end']],BASE+d['ratio']))+'\nEXTENSION:\n'+'\n'.join(disassemble(payload[off+128:e['code_end']],EXT_BASE+128))+'\n')
+ return report
+
+if __name__=='__main__':
+ p=argparse.ArgumentParser(description=__doc__); p.add_argument('source'); p.add_argument('output'); a=p.parse_args()
+ r=build(a.source,a.output)
+ print(json.dumps({k:r[k] for k in ('version','candidate_sha256','size_bytes','device_ui_tested')},indent=2))
