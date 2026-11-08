@@ -40,7 +40,7 @@ class Runtime(ViewRuntime):
                    ('NSError','NSObject'),('NSLock','NSObject'),('NSOperationQueue','NSObject'),
                    ('NSInvocationOperation','NSObject'),('NSTimer','NSObject'),('NSFileManager','NSObject'),
                    ('NSPropertyListSerialization','NSObject'),('NSJSONSerialization','NSObject'),
-                   ('NSUUID','NSObject'),('UIVisualEffect','NSObject'),('UIGlassEffect','UIVisualEffect'),
+                   ('NSUUID','NSObject'),('NSRunLoop','NSObject'),('UIVisualEffect','NSObject'),('UIGlassEffect','UIVisualEffect'),
                    ('UICornerConfiguration','NSObject'),('UIViewController','NSObject'),
                    ('UITableViewController','UIViewController'),('UINavigationController','UIViewController'),
                    ('UIActivityViewController','UIViewController'),('UIAlertController','UIViewController'),
@@ -285,6 +285,11 @@ class Runtime(ViewRuntime):
                 result = self.obj(cls,'date',value=self.now)
             elif cls == 'NSThread' and name == 'isMainThread':
                 result = int(self.thread == 'main')
+            elif cls == 'NSRunLoop' and name == 'mainRunLoop':
+                result = getattr(self,'main_runloop',0)
+                if not result:
+                    result=self.obj('NSRunLoop','main_runloop',timers=[])
+                    self.main_runloop=result
             elif cls == 'NSProcessInfo' and name == 'processInfo':
                 result = self.PROCESS
             elif cls == 'NSUserDefaults' and name == 'standardUserDefaults':
@@ -415,6 +420,10 @@ class Runtime(ViewRuntime):
                 st['locked'] = False; self.event('unlock',receiver,thread=self.thread)
             elif name == 'setMaxConcurrentOperationCount:':
                 st['concurrency'] = a[2]
+            elif name == 'addTimer:forMode:':
+                require(self.string_value(a[3])=='kCFRunLoopCommonModes','Diagnostics timer participates in common run-loop modes')
+                st['timers'].append((a[2],self.string_value(a[3])))
+                self.event('add_common_timer',receiver,timer=a[2])
             elif name == 'initWithTarget:selector:object:':
                 require(a[2] in self.objects and a[3] in self.selector_names,'Operation target/selector ABI')
                 st.update(target=a[2],selector=a[3],argument=a[4]); result = receiver

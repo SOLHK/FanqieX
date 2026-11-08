@@ -70,6 +70,8 @@ def export(cpu, runtime, directory):
 
 def bounded_pending(data):
     cpu, runtime, directory, logger = make(data)
+    require(any(e['event']=='add_common_timer' for e in runtime.events),
+            'Hourly maintenance continues in common run-loop modes')
     for index in range(2048):
         cpu.run(directory['diagnostic_enqueue'], runtime.record(runtime.now, 'burst', index=index))
     pending = associated(runtime, logger, directory, 'pending_key')
@@ -189,6 +191,9 @@ def exports_and_disk_errors(data):
     require(payload is None and 'Eight' in failure['error'] and old_path.read_bytes() == old_bytes,
             'A full export directory preserves existing share files and reports capacity')
     os.utime(old_path, (runtime.now - 3601, runtime.now - 3601))
+    cpu.run(directory['diagnostic_maintenance'])
+    runtime.drain_operations(cpu)
+    require(not old_path.exists(), 'Maintenance removes expired exports without a new export request')
     _, payload, new_path = export(cpu, runtime, directory)
     require(payload is not None and not old_path.exists() and new_path.exists(),
             'Expired export is cleaned before a new immutable file is written')

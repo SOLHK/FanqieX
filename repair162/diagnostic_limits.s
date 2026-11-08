@@ -396,6 +396,11 @@ LDLimitsPersistReturn:
 // than the one-hour retention window. At most eight live JSON exports may
 // coexist; a new request receives an explicit error if those slots are busy.
 LDLimitsExports:
+    mov w2, #0
+    b LDLimitsExportsCommon
+LDLimitsCleanupExports:
+    mov w2, #1
+LDLimitsExportsCommon:
     stp x29, x30, [sp, #-128]!
     mov x29, sp
     stp x19, x20, [sp, #16]
@@ -406,6 +411,7 @@ LDLimitsExports:
     stp d8, d9, [sp, #96]
     mov x19, x0
     mov x20, x1
+    mov w28, w2
     adr x0, LDfilemanager_class
     bl Lpatch + (0xa5b0 - PATCH_BASE)
     GET x0, LDdefault_manager
@@ -464,6 +470,7 @@ LDLimitsExportsKeep:
     add x25, x25, #1
     b LDLimitsExportsLoop
 LDLimitsExportsCount:
+    cbnz w28, LDLimitsExportsYes
     cmp x25, #8
     b.lo LDLimitsExportsYes
     mov x0, x19
@@ -517,6 +524,46 @@ LDLimitsCommandDone:
     ldp x29, x30, [sp], #48
     ret
 
+LDLimitsCleanup:
+    stp x29, x30, [sp, #-32]!
+    mov x29, sp
+    stp x19, x20, [sp, #16]
+    mov x19, x0
+    adr x0, LDfilemanager_class
+    bl Lpatch + (0xa5b0 - PATCH_BASE)
+    GET x0, LDdefault_manager
+    GET x0, LDtemporary_dir
+    mov x20, x0
+    adr x0, LDexport_dir_name
+    bl Lstr
+    mov x2, x0
+    GET x20, LDappend_component
+    mov x1, x0
+    mov x0, x19
+    bl LDLimitsCleanupExports
+    ldp x19, x20, [sp, #16]
+    ldp x29, x30, [sp], #32
+    ret
+
+LDLimitsTimer:
+    stp x29, x30, [sp, #-32]!
+    mov x29, sp
+    stp x19, x20, [sp, #16]
+    AGET x0, LDtimer_key
+    mov x19, x0
+    adr x0, LDLimitsRunLoop
+    adr x1, LDLimitsMainLoop
+    bl Lfactory
+    mov x20, x0
+    adr x0, LDLimitsCommonModes
+    bl Lstr
+    mov x3, x0
+    mov x2, x19
+    GET x20, LDLimitsAddTimer
+    ldp x19, x20, [sp, #16]
+    ldp x29, x30, [sp], #32
+    ret
+
 // @COMPONENT_DATA
 .p2align 2
 LDLimitsTable:
@@ -534,6 +581,10 @@ LDLimitsScheduledKey: .byte 0
 LDLimitsDroppedKey: .byte 0
 LDLimitsLossKey: .byte 0
 LDLimitsLastCommandKey: .byte 0
+LDLimitsRunLoop: .asciz "NSRunLoop"
+LDLimitsMainLoop: .asciz "mainRunLoop"
+LDLimitsCommonModes: .asciz "kCFRunLoopCommonModes"
+LDLimitsAddTimer: .asciz "addTimer:forMode:"
 LDLimitsSessionField: .asciz "sessionId"
 LDLimitsCorrelationField: .asciz "correlationId"
 LDLimitsDroppedField: .asciz "droppedRecords"

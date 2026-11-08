@@ -172,6 +172,10 @@ LDstart_timer:
     scvtf d0, w8
     GET x20, LDscheduled_timer
     ASET x19, LDtimer_key, x0, 1
+    .if FQ_VERSION == 0x10604
+    mov x0, x19
+    bl LDLimitsTimer
+    .endif
 LDtimer_done:
     ldp x21, x22, [sp, #32]
     ldp x19, x20, [sp, #16]
@@ -821,7 +825,15 @@ LDprocess:
     LDGET x20, LDexport_target
     cbnz x0, LDprocess_export
     LDGET x20, LDmaintenance_field
+    .if FQ_VERSION == 0x10604
+    cbz x0, LDprocess_append
+    mov x0, x19
+    bl LDLimitsCleanup
+    b LDprocess_dirty
+LDprocess_append:
+    .else
     cbnz x0, LDprocess_dirty
+    .endif
     AGET x19, LDentries_key
     mov x2, x20
     GET x0, LDadd_object
