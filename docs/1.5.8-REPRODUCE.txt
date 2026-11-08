@@ -1,0 +1,75 @@
+FanqieAdBlock 1.5.8 修复工程重建与验证
+
+环境
+  Linux x86_64、Python 3.12 标准库、/lib/x86_64-linux-gnu/libLLVM.so.19.1。
+  本次实际运行环境已具备这些组件；不需要原始App源码或Apple SDK。
+  LLVM通过C API组装arm64-apple-ios15.0.1目标。该目标声明不是低版本iOS
+  原生液态玻璃可用性的承诺；相关API仍由插件运行时可用性检查决定。
+  下列命令应在解压后的 FanqieAdBlock-1.5.8-repair-kit 目录执行。
+
+固定输入
+  baseline/FanqieAdBlock-1.5.7.dylib
+  SHA256 6031d37a2d4e41038338eb0d5730bb6f30833fb0c3499bf4f5b781a88a64a7a1
+
+  baseline/FanqieAdBlock-1.5.6.dylib
+  SHA256 918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4
+
+  重建先校验用户提供的1.5.7及原1.5.6基线，再把完整修复源码一次组装，
+  替换原扩展段；不会向1.5.7叠加另一个同名扩展段。
+  最终将55096字节原始节区与真实1.5.7比较，只允许已列明的入口分支
+  和版本文本变化，保留原广告处理及宿主UUID检查。
+
+重建
+  python3 repair158/build_plugin.py baseline/FanqieAdBlock-1.5.7.dylib output158/FanqieAdBlock-1.5.8.dylib
+
+  期望SHA256：
+  55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354
+
+结构及代码签名页校验
+  python3 repair158/audit_extend.py output158/FanqieAdBlock-1.5.8.preextend output158/FanqieAdBlock-1.5.8.dylib --extension output158/FanqieAdBlock-1.5.8.extension.bin
+
+运行行为回归
+  python3 audit158/test_feed_viewport.py output158/FanqieAdBlock-1.5.8.dylib --report output158/feed-audit.json
+
+  python3 audit158/test_reader_fastpath.py --candidate output158/FanqieAdBlock-1.5.8.dylib --validation output158/FanqieAdBlock-1.5.8.validation.json --baseline157 baseline/FanqieAdBlock-1.5.7.dylib --baseline-validation baseline/FanqieAdBlock-1.5.7.validation.json --report output158/reader-audit.json
+
+  python3 audit158/test_glass_interaction.py output158/FanqieAdBlock-1.5.8.dylib --output output158/interaction-audit.json
+
+  python3 audit158/test_native_surface.py output158/FanqieAdBlock-1.5.8.dylib --report output158/native-audit.json
+
+  python3 audit158/test_integration.py output158/FanqieAdBlock-1.5.8.dylib --output output158/integration-audit.json
+
+  python3 audit158/test_feed_integration.py output158/FanqieAdBlock-1.5.8.dylib --report output158/feed-integration-audit.json
+
+  python3 audit158/test_diagnostic_dedup.py output158/FanqieAdBlock-1.5.8.dylib --baseline baseline/FanqieAdBlock-1.5.7.dylib --output output158/diagnostic-dedup-report.json
+
+  python3 audit158/execution_audit.py output158/FanqieAdBlock-1.5.8.dylib
+  最后一项写入 audit158/execution-audit.json。
+
+测试范围
+  测试执行真正输出的ARM64机器指令，并检查寄存器保存及栈ABI。
+  UIKit、Foundation和宿主原方法通过明确的边界模型提供。
+  测试没有重新用Python实现补丁决策来代替执行候选代码。
+  交互专项测试有明确的模块隔离；两个完整集成测试不拦截修复入口。
+  阅读和诊断负对照执行真实1.5.7字节，重现旧版重复布局及重复日志。
+
+  这些测试不能证明UIKit真实合成、真实宿主全部视图层级、iOS动态加载、
+  签名注入接受或端到端触摸延迟。每份JSON报告包含自己的限制。
+  列表导出日志未包含全部中间容器类型，模型覆盖常见全宽容器与自定义容器；
+  补丁对遮罩、变换、小容器、非目标类等情况不擅自改布局。
+
+工程内容
+  repair158/：汇编组件、构建及Mach-O验证工具。
+  audit158/：ARM64解释执行器、显式平台边界和行为回归。
+  baseline/：固定原始输入及阅读负对照所需的1.5.7构建报告。
+  output158/：最终插件、完整组装文件、中间数据和最终验证报告。
+  SHA256SUMS.txt：本工程各文件校验值（不包含该校验清单自身）。
+
+  test_control_geometry.py 是被新版阅读回归导入的既有场景集合；
+  对1.5.8请使用 test_reader_fastpath.py，它提供新增公开API的边界模型。
+  没有包含已经失效的旧版 patch_plugin.py 和 structure_audit.py。
+
+参考
+  Apple WWDC25 — Meet Liquid Glass
+  https://developer.apple.com/videos/play/wwdc2025/219/
+  用作选中状态采用填充层、交互中使用玻璃的设计参考；不是本插件实测证据。
