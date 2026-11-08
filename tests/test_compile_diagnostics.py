@@ -1,6 +1,10 @@
 """Check the compiler boundary used to embed the runtime diagnostics module."""
 import hashlib
+import os
 from pathlib import Path
+import platform
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -11,6 +15,15 @@ from compile_diagnostics import compile_component, normalize_assembly
 
 
 class DiagnosticsCompilerTests(unittest.TestCase):
+    def test_runtime_declarations_pass_strict_builtin_checks(self):
+        configured=os.environ.get('FQ_NATIVE_CLANG')
+        compiler=([configured] if configured else ['xcrun','--sdk','iphoneos','clang']
+                  if platform.system()=='Darwin' else [shutil.which('clang-19') or 'clang'])
+        result=subprocess.run([*compiler,'-target','arm64-apple-ios27.2','-fno-objc-arc',
+                               '-fno-objc-exceptions','-Wall','-Wextra','-Werror','-fsyntax-only',
+                               str(ROOT/'native'/'FanqieXDiagnostics.m')],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_source_and_generated_component_are_current(self):
         source = ROOT / 'native' / 'FanqieXDiagnostics.m'
         compiled = compile_component(source)

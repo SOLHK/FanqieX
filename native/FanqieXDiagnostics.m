@@ -7,8 +7,13 @@ typedef void (*Imp)(void);
 typedef unsigned long U;
 typedef long I;
 typedef signed char B;
-extern void objc_msgSend(void);
-extern Obj objc_getClass(const char *);
+// A message dispatch entry has no single C prototype. Each call below casts
+// it to the selector's exact ABI. Link aliases avoid redeclaring Clang's
+// special runtime builtins with this freestanding bridge's opaque C types.
+extern void FQDMessage(void) __asm__("_objc_msgSend");
+extern Obj FQDLookupClass(const char *) __asm__("_objc_getClass");
+#define objc_msgSend FQDMessage
+#define objc_getClass FQDLookupClass
 extern Sel sel_registerName(const char *);
 extern Obj object_getClass(Obj);
 extern Method class_getInstanceMethod(Obj, Sel);
