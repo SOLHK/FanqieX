@@ -21,7 +21,7 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3"), default="1.6.2")
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
     good = audit(baseline, data, expected_version=args.expected_version)
@@ -100,10 +100,19 @@ def main():
     case("stale_settings_version", lambda blob: blob.__setitem__(0xEC84 + 8, ord("8")), "version_consistency")
     case("stale_shared_runtime_version", lambda blob: blob.__setitem__(runtime_version + 4, ord("8")),
          "version_consistency")
-    reserved_word = 25 if args.expected_version == "1.6.3" else 24
+    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27}[args.expected_version]
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
-    if args.expected_version == "1.6.3":
+    if args.expected_version in ("1.6.3", "1.6.4"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
+    if args.expected_version == "1.6.4":
+        case("unaligned_startup_installer", u32(0x14010 + 25 * 4, 1), "repair_directories")
+        startup_branch = unpack("<I", data, 0x4650)[0]
+        case("wrong_startup_installer_target", u32(0x4650, startup_branch + 1), "instruction_addresses")
+        case("unreviewed_startup_adjacent_edit", flip(0x4654), "original_sections")
+        case("unaligned_tabbar_spacing", u32(0x14010 + 26 * 4, 1), "repair_directories")
+        tabbar_branch = unpack("<I", data, 0x6568)[0]
+        case("wrong_tabbar_spacing_target", u32(0x6568, tabbar_branch + 1), "instruction_addresses")
+        case("unreviewed_tabbar_adjacent_edit", flip(0x656C), "original_sections")
     gap_start = 0x800 + tables["main"]["end"]
     require(gap_start < 0x14000, "Expected main constants reserve for padding fault")
     case("occupied_reserved_data_gap", u32(gap_start, 1), "repair_directories")

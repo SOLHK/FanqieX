@@ -42,7 +42,7 @@ def source_manifest():
     Generated reports and caches are deliberately outside this inventory.
     """
     paths = []
-    for directory in ("repair159", "repair160", "repair161", "repair162", "audit160", "audit161", "audit162", "scripts", "native", ".github/workflows"):
+    for directory in ("repair159", "repair160", "repair161", "repair162", "audit160", "audit161", "audit162", "scripts", "tests", "native", ".github/workflows"):
         paths.extend(path for path in (ROOT / directory).rglob("*")
                      if path.is_file() and path.suffix in (".py", ".s", ".m", ".yml"))
     paths.extend(path for path in (ROOT / "baseline").iterdir() if path.is_file())
@@ -59,7 +59,7 @@ def source_manifest():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
-    parser.add_argument("--version", choices=("1.6.2", "1.6.3"), default="1.6.2")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     args = parser.parse_args()
@@ -185,9 +185,22 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
-        if args.version == "1.6.3":
+        if args.version in ("1.6.3", "1.6.4"):
             run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
                 "--report", output / "hook-ownership163-audit.json"])
+        if args.version == "1.6.4":
+            run("ad-decisions164", ["audit162/test_ad_decisions164.py", candidate,
+                "--report", output / "ad-decisions164-audit.json"])
+            run("startup-popup164", ["audit162/test_startup_popup164.py", candidate,
+                "--report", output / "startup-popup164-audit.json"])
+            run("tabbar-spacing164", ["audit162/test_tabbar_spacing164.py", candidate,
+                "--baseline", ROOT / "dist/1.6.3/FanqieX-1.6.3.dylib",
+                "--report", output / "tabbar-spacing164-audit.json"])
+            run("native-diagnostics164", ["audit162/test_native_diagnostics164.py", "--candidate", candidate,
+                "--report", output / "native-diagnostics164-audit.json"])
+            run("diagnostic-limits164", ["audit162/test_diagnostic_limits164.py", candidate,
+                "--report", output / "diagnostic-limits164-audit.json"])
+            run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

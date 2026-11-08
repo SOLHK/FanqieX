@@ -25,7 +25,14 @@ class HookRuntime(Runtime):
     def handle(self, cpu, pc):
         entry = pc - self.slide
         receiver, selector = cpu.x[:2]
-        if pc == self.HOST_IMP:
+        marker=self.data.find(b'FQ164DIA')
+        decision=struct.unpack_from('<I',self.data,marker+16)[0]+0x800 if marker>=0 else -1
+        native_install=struct.unpack_from('<I',self.data,marker+8)[0]+0x800 if marker>=0 else -1
+        if entry in (decision,native_install):
+            # Decision serialization is exercised by the diagnostic suite.
+            # This fixture retains real trampoline and original host behavior.
+            result=0
+        elif pc == self.HOST_IMP:
             result = 1
         elif pc == self.SUPERCLASS_IMP and receiver in self.unknown_superclasses:
             result = 0
@@ -111,7 +118,10 @@ def check_comment_rules(data, slide, mode):
             if mode == 'owned':
                 require(method == original, 'Existing own Method is reused')
             replacement = rt.methods[method]['imp']
-            require(replacement == slide + 0x48d0, 'Target uses the original ad-filter replacement')
+            if struct.unpack_from('<I',data,0x818)[0] != 0x10604:
+                require(replacement == slide + 0x48d0, 'Target uses the original ad-filter replacement')
+            else:
+                require(replacement >= slide+0x14080, 'Target uses a scoped diagnostic rule trampoline')
             require(cpu.run(replacement - slide, args=(owner, selector))['result'] == 0,
                     'The target ad remains blocked')
             require(cpu.run(rt.HOST_IMP - slide, args=(other, selector))['result'] == 1,

@@ -15,9 +15,11 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
-    parser.add_argument('--output', type=Path, default=ROOT / 'dist' / VERSION)
+    parser.add_argument('--output', type=Path)
     args = parser.parse_args()
+    version=args.version
     source = args.verification_dir.resolve()
     summary = json.loads((source / 'ci-summary.json').read_text())
     if not summary.get('passed') or not summary.get('source_files_unchanged_during_verification'):
@@ -27,13 +29,13 @@ def main():
         raise SystemExit('Verification source manifest changed after verification')
     if source_manifest() != json.loads(manifest_bytes):
         raise SystemExit('Build/test sources changed after verification; verify the current tree again')
-    binary_name = f'FanqieX-{VERSION}.dylib'
+    binary_name = f'FanqieX-{version}.dylib'
     binary = (source / binary_name).read_bytes()
     digest = hashlib.sha256(binary).hexdigest()
     if digest != summary['candidate_sha256']:
         raise SystemExit('Candidate changed after verification')
-    output = args.output.resolve()
-    report_dir = ROOT / 'verification' / VERSION
+    output = (args.output or ROOT/'dist'/version).resolve()
+    report_dir = ROOT / 'verification' / version
     for target in (output, report_dir):
         if target.exists() and any(target.iterdir()):
             raise SystemExit(f'Packaging requires an empty generated destination: {target}')
@@ -43,7 +45,7 @@ def main():
             raise SystemExit(f'Report belongs to a different candidate: {path.name}')
     output.mkdir(parents=True, exist_ok=True)
     (output / binary_name).write_bytes(binary)
-    readme = f'''FanqieX {VERSION}
+    readme = f'''FanqieX {version}
 
 使用现有 IPA 注入和重签名流程替换旧插件；同一个宿主只加载一份 FanqieX。
 请先移除原来以 FanqieAdBlock 命名的旧库，再注入本版本，避免新旧插件同时加载。
@@ -76,7 +78,26 @@ SHA-256: {digest}
     verification['scope'] = summary['scope']
     (output / 'VERIFICATION.json').write_text(
         json.dumps(verification, ensure_ascii=False, indent=2) + '\n')
-    zip_name = f'FanqieX-{VERSION}.zip'
+    if version=='1.6.4':
+        readme=f'''FanqieX {version}
+
+使用现有 IPA 注入和重签名流程替换旧插件，同一宿主只加载一份 FanqieX。
+本文件是 ARM64 动态库。先移除旧库，再注入并重签名。
+
+本版增加冷启动首页非标广告规则，继承开屏广告开关。
+底栏左右留白结合 Safe Area 对称调整，继续使用现有 UIKit 玻璃和原生选择控件。
+设置页提供增强诊断开关和 JSON 导出。评论、请求、模型及实际规则调用记录匿名关联标识。
+诊断保留最近一小时，队列、保留记录、文件和导出容量均有上限，丢失与写入失败在导出中标记。
+
+源码、实际覆盖范围和真机验收步骤见 docs/REPAIR_1.6.4.md。
+本包的离线验证执行真实 ARM64 指令和明确的宿主边界模型。
+京东素材是否消失、评论保护、玻璃材质、触控与 iOS 性能仍需真机验收。
+
+SHA-256 {digest}
+大小 {len(binary)} bytes
+'''
+    (output / 'README_zh-CN.txt').write_text(readme)
+    zip_name = f'FanqieX-{version}.zip'
     with zipfile.ZipFile(output / zip_name, 'w', compression=zipfile.ZIP_DEFLATED,
                          compresslevel=9) as archive:
         for name in (binary_name, 'README_zh-CN.txt', 'VERIFICATION.json'):
@@ -95,7 +116,7 @@ SHA-256: {digest}
         shutil.copy2(path, report_dir / path.name)
     shutil.copy2(source / 'SHA256SUMS.txt', report_dir / 'SHA256SUMS.txt')
     shutil.copytree(source / 'logs', report_dir / 'logs', dirs_exist_ok=True)
-    print(json.dumps({'version': VERSION, 'candidate_sha256': digest,
+    print(json.dumps({'version': version, 'candidate_sha256': digest,
                       'zip_sha256': zip_digest, 'size_bytes': len(binary),
                       'steps': len(summary['steps']), 'device_tested': False}, indent=2))
 

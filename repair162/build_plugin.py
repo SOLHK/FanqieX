@@ -17,7 +17,7 @@ UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354
 SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
 PREVIOUS_SHA = '8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e'
 VERSION, ENCODED = '1.6.2', 0x10602
-RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603}
+RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604}
 PRODUCT_NAME = 'FanqieX'
 BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
 NAMES = ['ratio','layout','installer','repair','strings','end','version','reserved',
@@ -51,14 +51,20 @@ def branch(pc, target, link=False):
 def compose_assembly(path, version=VERSION):
  path=Path(path); text=f'.set FQ_VERSION, {RELEASES[version]:#x}\n'+path.read_text()
  extension=['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s']
- if version == '1.6.3':
+ if version != VERSION:
   extension.append('hook_ownership.s')
+ if version == '1.6.4':
+  extension.extend(('startup_popup.s', 'tabbar_spacing.s', 'diagnostic_limits.s', 'ad_decisions.s'))
  for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
                        ('EXTENSION',extension)]:
   code=[]; data=[]
   for filename in files:
    parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2, 'Component boundary: '+filename)
+   code.append(parts[0]); data.append(parts[1])
+  if group == 'EXTENSION' and version == '1.6.4':
+   parts=(path.parents[1]/'native'/'FanqieXDiagnostics.s').read_text().split('// @COMPONENT_DATA')
+   need(len(parts)==2,'Native diagnostic component boundary')
    code.append(parts[0]); data.append(parts[1])
   for kind, values in [('CODE',code),('DATA',data)]:
    marker='// @'+group+'_'+kind
@@ -78,13 +84,15 @@ def directory(data, version):
  if version==0x10506:
   need(all(d[n]==0 for n in NAMES[60:]),'Unexpected existing extension')
  else:
-  need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+0x10000,'Extension bounds')
+  capacity_limit=0x20000 if version==0x10604 else 0x10000
+  need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+capacity_limit,'Extension bounds')
  return d
 
 def build(source_path, output_path, *, version=VERSION):
  source_path=Path(source_path); output_path=Path(output_path)
  encoded=RELEASES[version]
- isolated=version == '1.6.3'
+ isolated=version != VERSION
+ profile164=version == '1.6.4'
  need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
  uploaded=source_path.read_bytes()
  need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
@@ -119,7 +127,14 @@ def build(source_path, output_path, *, version=VERSION):
  if isolated:
   hook=e['reserved24']
   need(off+128<=hook<e['code_end'] and hook%4==0,'Hook ownership entry bounds')
- need(all(e[n]==0 for n in EXT_NAMES[25 if isolated else 24:]),'Extension reserved fields')
+ if profile164:
+  popup=e['reserved25']
+  need(off+128<=popup<e['code_end'] and popup%4==0,'Startup popup installer entry bounds')
+  tabbar=e['reserved26']
+  need(off+128<=tabbar<e['code_end'] and tabbar%4==0,'Tab bar spacing entry bounds')
+  ad_install=e['reserved27']
+  need(off+128<=ad_install<e['code_end'] and ad_install%4==0,'Ad diagnostic installer entry bounds')
+ need(all(e[n]==0 for n in EXT_NAMES[28 if profile164 else 24+isolated:]),'Extension reserved fields')
  for a,b in [(d['code_end'],d['strings']),(d['end'],d['extension'])]: need(not any(payload[a:b]),'Nonzero gap')
  data=bytearray(source); changes=[]
  def replace(a,expected,value,reason):
@@ -134,6 +149,10 @@ def build(source_path, output_path, *, version=VERSION):
  for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
  if isolated:
   replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
+ if profile164:
+  replace(0x4650,bytes.fromhex('fa67bba9'),branch(0x4650,BASE+popup),'Install startup popup rule')
+  replace(0x6568,bytes.fromhex('0010651e'),branch(0x6568,BASE+tabbar),'Set symmetric tab bar safe area margins')
+  replace(0x46d8,branch(0x46d8,0xa580,True),branch(0x46d8,BASE+ad_install,True),'Record executed ad decisions')
  marker=b'FQ162RDR'
  need(payload.count(marker)==1,'One reader fix entry table')
  reader_at=payload.index(marker)
@@ -176,7 +195,9 @@ def build(source_path, output_path, *, version=VERSION):
   a=int(change['offset'],16); allowed.update(range(a,a+change['size']))
  need(not any(a!=b and i not in allowed for i,(a,b) in enumerate(zip(source,data))),'Unexpected edit before extension')
  capacity=((len(extension)+0x3fff)//0x4000)*0x4000
- need(capacity<=0x10000,'Extension exceeds reviewed 64 KiB capacity')
+ if profile164 and capacity>0x10000:
+  capacity=0x20000
+ need(capacity<=(0x20000 if profile164 else 0x10000),'Extension exceeds reviewed release capacity')
  out=extend(bytes(data),extension,capacity=capacity,identifier=PRODUCT_NAME+'-'+version+'.dylib')
  layout=verify_extension(bytes(data),out,extension); sig=verify_signature(out)
  # Compare actual original sections against the user's 1.5.8, independent
@@ -191,6 +212,10 @@ def build(source_path, output_path, *, version=VERSION):
   original_allowed.update(range(a,a+4))
  if isolated:
   original_allowed.update(range(0x4878,0x487c))
+ if profile164:
+  original_allowed.update(range(0x4650,0x4654))
+  original_allowed.update(range(0x6568,0x656c))
+  original_allowed.update(range(0x46d8,0x46dc))
  original_checked=0
  for sec in sections(uploaded):
   a=sec['offset']; b=a+sec['size']

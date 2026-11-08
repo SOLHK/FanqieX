@@ -328,7 +328,7 @@ def extend(input_bytes: bytes, extension_bytes: bytes, *, capacity: int | None =
     cmds, segs, old_signature = _validate_source(data)
     if capacity is None:
         capacity = align(max(len(extension), 1), PAGE)
-    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE), "Extension capacity must be 0x4000, 0x8000, 0xc000 or 0x10000")
+    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE), "Unsupported reviewed extension capacity")
     need(0 < len(extension) <= capacity and len(extension) % 4 == 0,
          "Extension must contain aligned ARM64 bytes within capacity")
     if identifier is None:
@@ -415,7 +415,7 @@ def verify_extension(input_bytes: bytes, output_bytes: bytes,
          "Unexpected output segment order")
     extension = new_segs[2]
     capacity = extension["filesize"]
-    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE) and
+    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE) and
          extension["vmaddr"] == extension["fileoff"] == EXT_BASE and
          extension["vmsize"] == capacity and extension["initprot"] == extension["maxprot"] == 5 and
          extension["nsects"] == extension["flags"] == 0,

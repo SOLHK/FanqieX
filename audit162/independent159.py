@@ -53,6 +53,12 @@ PATCH_SITES = (
     (0x60B8, "sync", False), (0x6C84, "frame", True),
     (0x6CE8, "proxy_frame", True), (0x6DB4, "restore", False),
 )
+MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4")
+EXTENSION_PATCH_SITES = {
+    "1.6.3": ((0x4878, "reserved24", False),),
+    "1.6.4": ((0x4878, "reserved24", False), (0x4650, "reserved25", False),
+              (0x6568, "reserved26", False), (0x46d8, "reserved27", True)),
+}
 ALLOWED_SECTION_BYTES = {
     address for start in [item[0] for item in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     for address in range(start, start + 4)
@@ -179,7 +185,7 @@ def check_layout(old: Image, new: Image) -> dict:
     patch = new.segment("__FQPATCH")
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
     require(patch["vmsize"] == patch["filesize"] and
-            patch["vmsize"] in (0x4000, 0x8000, 0xC000, 0x10000), "Extension capacity must be 16, 32, 48 or 64 KiB")
+            patch["vmsize"] in (0x4000, 0x8000, 0xC000, 0x10000, 0x20000), "Unsupported reviewed extension capacity")
     require((patch["maxprot"], patch["initprot"], patch["nsects"], patch["flags"]) == (5, 5, 0, 0),
             "Extension must be RX, sectionless, and have no flags")
     link = new.segment("__LINKEDIT")
@@ -207,7 +213,8 @@ def check_layout(old: Image, new: Image) -> dict:
 
 
 def check_sections(old: Image, new: Image, version: str) -> dict:
-    allowed = ALLOWED_SECTION_BYTES | (set(range(0x4878, 0x487C)) if version == "1.6.3" else set())
+    extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
+    allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
     changed = []
     for section in old.sections:
         start, size = section["offset"], section["size"]
@@ -230,7 +237,7 @@ def check_sections(old: Image, new: Image, version: str) -> dict:
                 f"Earlier fix changed at {address:#x}")
     return {"compared_sections": len(old.sections), "changed_original_section_bytes": len(changed),
             "allowed_code_sites": [hex(item[0]) for item in PATCH_SITES] + ["0x5d50", "0x5da0", "0x5dec", "0x5e38", "0x649c", "0x7848", "0x7ac4"]
-            + (["0x4878"] if version == "1.6.3" else []),
+            + [hex(pc) for pc in extra_sites],
             "allowed_utf16_version_range": ["0xec84", "0xec8e"]}
 
 
@@ -258,7 +265,7 @@ def read_tables(image: Image, version: str) -> dict:
     require(main["extension"] + 128 < main["extension_code_end"] <= main["extension_strings"] <
             main["extension_end"] <= EXT - BASE + image.segment("__FQPATCH")["filesize"],
             "Extension bounds invalid")
-    modern_reader = version in ("1.6.2", "1.6.3")
+    modern_reader = version in MODERN_LAYOUT_VERSIONS
     version_bytes = b"162" if modern_reader else version.replace(".", "").encode("ascii")
     require(data[EXT:EXT + 8] == b"FQ" + version_bytes + b"EXT", "Extension marker/version mismatch")
     encoded, words = unpack("<2I", data, EXT + 8)
@@ -272,12 +279,12 @@ def read_tables(image: Image, version: str) -> dict:
                 f"Invalid extension entry {name}")
     for name in EXT_NAMES[18:24]:
         require(extension["strings"] <= extension[name] < extension["end"], f"Invalid extension key {name}")
-    isolated = version == "1.6.3"
-    if isolated:
-        hook = extension["reserved24"]
-        require(EXT + 128 - BASE <= hook < extension["code_end"] and hook % 4 == 0,
-                "Invalid hook ownership entry")
-    require(all(extension[name] == 0 for name in EXT_NAMES[25 if isolated else 24:]),
+    extension_sites = EXTENSION_PATCH_SITES.get(version, ())
+    for pc, name, _ in extension_sites:
+        entry = extension[name]
+        require(EXT + 128 - BASE <= entry < extension["code_end"] and entry % 4 == 0,
+                f"Invalid extension entry for patch site {pc:#x}")
+    require(all(extension[name] == 0 for name in EXT_NAMES[24 + len(extension_sites):]),
             "Nonzero extension reserved word")
     reader_marker = b"FQ" + version_bytes + b"RDR"
     require(data.count(reader_marker) == 1, "Reader entry table absent or duplicated")
@@ -338,8 +345,8 @@ def check_instructions(image: Image, tables: dict) -> dict:
     addresses = [pc for first, end in tables["code_ranges"] for pc in range(first, end, 4)]
     addresses += [entry[0] for entry in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     version = tables["expected_version"]
-    if version == "1.6.3":
-        addresses.append(0x4878)
+    extension_sites = EXTENSION_PATCH_SITES.get(version, ())
+    addresses += [pc for pc, _, _ in extension_sites]
     for pc in addresses:
         word = unpack("<I", image.data, image.vm_file(pc, 4))[0]
         require(word != 0, f"Zero instruction in repair code at {pc:#x}")
@@ -360,7 +367,7 @@ def check_instructions(image: Image, tables: dict) -> dict:
             branches.append({"pc": pc, "target": target, "kind": kind})
     expected_sites = [(pc, BASE + tables["main"][name], link) for pc, name, link in PATCH_SITES]
     expected_sites.append((0x5D50, BASE + tables["reader"]["reader_panel"], False))
-    if version in ("1.6.2", "1.6.3"):
+    if version in MODERN_LAYOUT_VERSIONS:
         expected_sites += [(pc, BASE + tables["reader"]["reader_panel"], False)
                            for pc in (0x5DA0, 0x5DEC, 0x5E38)]
     else:
@@ -371,12 +378,11 @@ def check_instructions(image: Image, tables: dict) -> dict:
                            (0x5E38, 0x75D4, False)]
     expected_sites += [(0x7848, BASE + tables["extension"]["style_control"], False),
                        (0x7AC4, BASE + tables["extension"]["style_glyph"], False)]
-    if version == "1.6.3":
-        expected_sites.append((0x4878, BASE + tables["extension"]["reserved24"], False))
+    expected_sites += [(pc, BASE + tables["extension"][name], link) for pc, name, link in extension_sites]
     for pc, target, linked in expected_sites:
         require(direct_instruction(unpack("<I", image.data, pc)[0], pc) ==
                 ("BL" if linked else "B", target), f"Wrong patched branch target at {pc:#x}")
-    expected_style = 0x52800002 if version in ("1.6.2", "1.6.3") else 0x52800022
+    expected_style = 0x52800002 if version in MODERN_LAYOUT_VERSIONS else 0x52800022
     require(unpack("<I", image.data, 0x649C)[0] == expected_style,
             "Initial proxy glass style must match the versioned Regular/Clear contract")
     return {"instruction_words_checked": len(addresses), "direct_reference_counts": counts,

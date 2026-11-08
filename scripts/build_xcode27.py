@@ -53,7 +53,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161', 'repair162'),
                         default='repair162')
-    parser.add_argument('--version', choices=('1.6.2', '1.6.3'),
+    parser.add_argument('--version', choices=('1.6.2', '1.6.3', '1.6.4'),
                         help='Choose a release profile for repair162')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
@@ -86,6 +86,12 @@ def main():
                         '-fmodules', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                         str(ROOT / 'native' / 'PublicGlassAPI.m')], check=True)
         report['public_glass_api_typecheck'] = True
+        if args.version == '1.6.4':
+            subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
+                            'arm64-apple-ios27.2', '-isysroot', sdk, '-fno-objc-arc',
+                            '-fno-objc-exceptions', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
+                            str(ROOT / 'native' / 'FanqieXDiagnostics.m')], check=True)
+            report['diagnostic_source_typecheck'] = True
         sys.path.insert(0, str(ROOT / args.repair_dir))
         builder = importlib.import_module('build_plugin')
         if args.version and args.repair_dir != 'repair162':

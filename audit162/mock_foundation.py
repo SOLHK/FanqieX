@@ -364,6 +364,8 @@ class Runtime(ViewRuntime):
                 fp = (float(st['value']),)
             elif name == 'unsignedLongLongValue':
                 result = int(st['value'])
+            elif name == 'length' and cls in ('NSString', 'NSData'):
+                result = len(st['value'])
             elif name == 'operatingSystemVersionString':
                 result = self.text_object('iOS 26.0 (mock platform boundary)')
             elif name == 'traitCollection':
@@ -429,6 +431,40 @@ class Runtime(ViewRuntime):
             elif name == 'fileExistsAtPath:':
                 require(self.thread == 'worker','File existence on worker')
                 result = int(Path(self.string_value(a[2])).exists())
+            elif name == 'attributesOfItemAtPath:error:':
+                require(self.thread == 'worker', 'File metadata read on worker')
+                try:
+                    metadata = Path(self.string_value(a[2])).stat()
+                    result = self.dict_pointer({
+                        'NSFileSize': self.box(metadata.st_size),
+                        'NSFileModificationDate': self.obj('NSDate', 'file_date', value=metadata.st_mtime),
+                    })
+                    self.event('file_attributes', receiver, size=metadata.st_size)
+                except OSError as error:
+                    self.error(cpu, a[3], str(error))
+            elif name == 'contentsOfDirectoryAtURL:includingPropertiesForKeys:options:error:':
+                require(self.thread == 'worker', 'Directory enumeration on worker')
+                require(a[3] == 0 and a[4] == 4, 'No prefetched keys and skip hidden files')
+                try:
+                    paths = [path for path in Path(self.string_value(a[2])).iterdir()
+                             if not path.name.startswith('.')]
+                    result = self.obj('NSArray', 'directory_contents',
+                                      items=[self.url(path) for path in paths])
+                except OSError as error:
+                    self.error(cpu, a[5], str(error))
+            elif name == 'lastPathComponent':
+                result = self.text_object(Path(st['value']).name)
+            elif name == 'hasSuffix:':
+                result = int(st['value'].endswith(self.string_value(a[2])))
+            elif name == 'removeItemAtURL:error:':
+                require(self.thread == 'worker', 'Expired export cleanup on worker')
+                try:
+                    path = Path(self.string_value(a[2]))
+                    path.unlink()
+                    result = 1
+                    self.event('remove_file', receiver, path=str(path))
+                except OSError as error:
+                    self.error(cpu, a[3], str(error))
             elif name == 'createDirectoryAtURL:withIntermediateDirectories:attributes:error:':
                 require(self.thread == 'worker','Directory creation on worker')
                 require(a[3] == 1 and a[4] == 0,'Directory creation x3/x4 ABI')

@@ -993,12 +993,18 @@ Lextension:
     .long LXtimer_key - Lpatch
     .long LXtick_key - Lpatch
     .long LXrejected_key - Lpatch
-    .if FQ_VERSION == 0x10603
+    .if FQ_VERSION >= 0x10603
     .long LHookOwned - Lpatch
     .else
     .long 0
     .endif
+    .if FQ_VERSION == 0x10604
+    .long LStartupPopupInstall - Lpatch
+    .long LTabBarSpacing - Lpatch
+    .long LAdInstall164 - Lpatch
+    .else
     .long 0,0,0
+    .endif
     .p2align 2
 // @EXTENSION_CODE
 LXcode_end:

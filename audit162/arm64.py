@@ -20,7 +20,7 @@ def require(test, detail):
 
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
-    require(version in (0x10602, 0x10603), 'Expected a 1.6.2 or 1.6.3 release candidate')
+    require(version in (0x10602, 0x10603, 0x10604), 'Expected a 1.6.2–1.6.4 release candidate')
     return f'1.6.{version & 0xff}'
 
 
@@ -278,6 +278,29 @@ class CPU:
             value = self.shift(self.r((op >> 5) & 31, width=width), mode,
                                self.r((op >> 16) & 31) & (width-1), width)
             self.w(op & 31, value, width=width); return
+        if op & 0x7fe00000 == 0x1b000000:  # MADD / MSUB (includes MUL)
+            width = 64 if op >> 31 else 32
+            product = self.r((op >> 5) & 31,width=width)*self.r((op >> 16) & 31,width=width)
+            addend = self.r((op >> 10) & 31,width=width)
+            value = addend-product if op & 0x8000 else addend+product
+            self.w(op & 31,value,width=width); return
+        if op & 0x7f800000 == 0x13000000:  # SBFM (signed extend / ASR / SBFX)
+            width = 64 if op >> 31 else 32
+            immr, imms = (op >> 16) & 63, (op >> 10) & 63
+            require(immr < width and imms < width, 'Valid signed bitfield range')
+            source = self.r((op >> 5) & 31, width=width)
+            if imms >= immr:
+                count = imms-immr+1
+                value = (source >> immr) & ((1 << count)-1)
+                if value & (1 << (count-1)):
+                    value -= 1 << count
+            else:
+                count = imms+1
+                value = source & ((1 << count)-1)
+                if value & (1 << (count-1)):
+                    value -= 1 << count
+                value <<= width-immr
+            self.w(op & 31, value, width=width); return
         if op & 0x7f800000 == 0x53000000:  # UBFM (UBFX / LSL / LSR)
             width = 64 if op >> 31 else 32
             immr, imms = (op >> 16) & 63, (op >> 10) & 63
@@ -287,6 +310,14 @@ class CPU:
             else:
                 value = (source & ((1 << (imms+1))-1)) << (width-immr)
             self.w(op & 31, value, width=width); return
+        if op & 0x7f800000 == 0x13000000:  # SBFM (SBFX / ASR / SXTB / SXTH / SXTW)
+            width = 64 if op >> 31 else 32
+            immr, imms = (op >> 16) & 63, (op >> 10) & 63
+            require(bool(op & (1 << 22)) == (width == 64) and immr <= imms < width,
+                    'Canonical signed bitfield extract')
+            length = imms - immr + 1
+            value = (self.r((op >> 5) & 31, width=width) >> immr) & ((1 << length) - 1)
+            self.w(op & 31, sx(value, length), width=width); return
         if op & 0xff20fc00 == 0x4e201c00:  # ORR vector / MOV.16B
             self.v[op & 31] = self.v[(op >> 5) & 31] | self.v[(op >> 16) & 31]; return
         if op & 0x3a000000 == 0x28000000:  # LDP / STP integer or SIMD
