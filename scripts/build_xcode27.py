@@ -51,8 +51,8 @@ def disassemble(data, address=0):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161'),
-                        default='repair161')
+    parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161', 'repair162'),
+                        default='repair162')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
     args = parser.parse_args()
@@ -90,7 +90,7 @@ def main():
         report['fixed_original_image_preserved'] = True
         builder.assemble_object = assemble
         builder.disassemble = disassemble
-        candidate = output / ('FanqieAdBlock-' + builder.VERSION + '.dylib')
+        candidate = output / (getattr(builder, 'PRODUCT_NAME', 'FanqieAdBlock') + '-' + builder.VERSION + '.dylib')
         baseline = ROOT / 'baseline' / 'FanqieAdBlock-1.5.8.dylib'
         first = builder.build(baseline, candidate)
         second_path = output / 'rebuild' / candidate.name

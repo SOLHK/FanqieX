@@ -1,6 +1,7 @@
 // SDK contract for the public APIs invoked by the ARM64 repair.
 // Type checking this file does not claim that the host application was run.
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 
 _Static_assert(UIGlassEffectStyleRegular == 0,
                "The main navigation capsule uses the readable regular variant");
@@ -44,17 +45,61 @@ UIVisualEffectView *FQMakePublicGlassSurface(CGRect frame) {
     return surface;
 }
 
-// One public native selection control owns its track, thumb and gestures.
-// No custom glass, background image or private subview is added around it.
-UISegmentedControl *FQMakeNativeSelection(NSArray<NSString *> *titles, CGRect frame,
+// One Regular surface remains present in both native and fallback modes.
+// The native selector lives in its contentView. Existing icon/title buttons
+// are presentation-only siblings above it, preserving actual font rendering.
+UISegmentedControl *FQMakeNativeSelection(NSArray<NSString *> *titles,
+                                        UIVisualEffectView *surface,
                                         NSInteger selected, id target, SEL action) {
     UISegmentedControl *selection = [[UISegmentedControl alloc] initWithItems:titles];
-    selection.frame = frame;
+    selection.frame = surface.contentView.bounds;
     selection.momentary = NO;
     selection.apportionsSegmentWidthsByContent = NO;
+    selection.backgroundColor = UIColor.clearColor;
+    selection.tintColor = UIColor.labelColor;
+    selection.selectedSegmentTintColor = UIColor.secondarySystemFillColor;
+    NSDictionary<NSAttributedStringKey, id> *attributes = @{
+        NSForegroundColorAttributeName: UIColor.clearColor
+    };
+    for (UIControlState state = 0; state < 8; state++) {
+        [selection setTitleTextAttributes:attributes forState:state];
+    }
     selection.selectedSegmentIndex = selected;
     [selection addTarget:target action:action forControlEvents:UIControlEventValueChanged];
+    surface.userInteractionEnabled = YES;
+    surface.contentView.userInteractionEnabled = YES;
+    [surface.contentView insertSubview:selection atIndex:0];
     return selection;
+}
+
+// Production records and conditionally restores these properties on teardown.
+void FQPresentOriginalButtonAboveNativeSelection(UIButton *button) {
+    button.backgroundColor = UIColor.clearColor;
+    button.userInteractionEnabled = NO;
+    button.accessibilityElementsHidden = YES;
+    button.isAccessibilityElement = NO;
+}
+
+// Shelf decoration is fully configured before its first live attachment.
+// No mask, cornerRadius override, or geometry change is applied to the host.
+UIVisualEffectView *FQAttachShelfGlass(UIView *host, CGRect frame) {
+    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+    effect.interactive = YES;
+    UIVisualEffectView *surface = [[UIVisualEffectView alloc] initWithEffect:effect];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    surface.frame = frame;
+    surface.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
+    surface.autoresizingMask = UIViewAutoresizingNone;
+    surface.opaque = NO;
+    surface.backgroundColor = UIColor.clearColor;
+    surface.contentView.backgroundColor = UIColor.clearColor;
+    surface.userInteractionEnabled = NO;
+    surface.accessibilityElementsHidden = YES;
+    surface.isAccessibilityElement = NO;
+    [host insertSubview:surface atIndex:0];
+    [CATransaction commit];
+    return surface;
 }
 
 void FQRestoreNativeSelection(UISegmentedControl *selection, id target, SEL action) {
@@ -67,7 +112,7 @@ BOOL FQNativeSelectionIsTracking(UISegmentedControl *selection) {
 }
 
 // Reader navigation controls deliberately receive no replacement symbol,
-// geometry adjustment or glass decoration in 1.6.1.
+// geometry adjustment or glass decoration in 1.6.2.
 
 void FQSetListenForeground(UILabel *label) {
     label.textColor = UIColor.labelColor;

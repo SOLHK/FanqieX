@@ -1,0 +1,182 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "steps": [
+    {
+      "name": "build",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.504,
+      "log": "logs/build.log"
+    },
+    {
+      "name": "rebuild",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.475,
+      "log": "logs/rebuild.log"
+    },
+    {
+      "name": "extension-layout-selftest",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.092,
+      "log": "logs/extension-layout-selftest.log"
+    },
+    {
+      "name": "independent-binary",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.08,
+      "log": "logs/independent-binary.log"
+    },
+    {
+      "name": "independent-faults",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.942,
+      "log": "logs/independent-faults.log"
+    },
+    {
+      "name": "native-surface",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 8.771,
+      "log": "logs/native-surface.log"
+    },
+    {
+      "name": "glass-interaction",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.436,
+      "log": "logs/glass-interaction.log"
+    },
+    {
+      "name": "integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 3.15,
+      "log": "logs/integration.log"
+    },
+    {
+      "name": "diagnostic-dedup",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 34.906,
+      "log": "logs/diagnostic-dedup.log"
+    },
+    {
+      "name": "legacy-execution",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 29.796,
+      "log": "logs/legacy-execution.log"
+    },
+    {
+      "name": "material-transitions160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.094,
+      "log": "logs/material-transitions160.log"
+    },
+    {
+      "name": "feed-viewport",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 5.486,
+      "log": "logs/feed-viewport.log"
+    },
+    {
+      "name": "feed-integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 12.247,
+      "log": "logs/feed-integration.log"
+    },
+    {
+      "name": "feed-realistic159",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 19.517,
+      "log": "logs/feed-realistic159.log"
+    },
+    {
+      "name": "first-frame160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 4.334,
+      "log": "logs/first-frame160.log"
+    },
+    {
+      "name": "reader-diagnostics160",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.531,
+      "log": "logs/reader-diagnostics160.log"
+    },
+    {
+      "name": "reader-original162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 7.057,
+      "log": "logs/reader-original162.log"
+    },
+    {
+      "name": "shelf-first-frame162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.49,
+      "log": "logs/shelf-first-frame162.log"
+    },
+    {
+      "name": "glass-readability162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.378,
+      "log": "logs/glass-readability162.log"
+    },
+    {
+      "name": "interaction-diagnostics162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.982,
+      "log": "logs/interaction-diagnostics162.log"
+    },
+    {
+      "name": "native-selection162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 6.84,
+      "log": "logs/native-selection162.log"
+    },
+    {
+      "name": "native-readability162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 5.478,
+      "log": "logs/native-readability162.log"
+    },
+    {
+      "name": "native-orchestration162",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 12.82,
+      "log": "logs/native-orchestration162.log"
+    }
+  ],
+  "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models",
+  "source_manifest_sha256": "87b5cc9c09530c65e3319eb758b1b06b84a8c74af1e1f6d0ad2418e9b5f9a8ef",
+  "source_file_count": 194,
+  "llvm": {
+    "version": "19.1.7",
+    "library_sha256": "3523f50f635d2a1ea47518a392451f2854b92823ceaf1345fb806099dd1a3b8a"
+  },
+  "git_head_at_start": "9e09670b498affb253b98d55d975fb0dc6696404",
+  "git_working_tree_clean_at_start": false,
+  "candidate_sha256": "8784d9d4a065d2bff4dc9f602e503a80bc41c877937d02ebb019e1dbfb0a9a01",
+  "candidate_size": 156304,
+  "two_builds_identical": true,
+  "source_files_unchanged_during_verification": true
+}

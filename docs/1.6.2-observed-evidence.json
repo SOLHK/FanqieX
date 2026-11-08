@@ -1,0 +1,24 @@
+{
+  "version": "1.6.2",
+  "product_name": "FanqieX",
+  "base_commit": "9e09670b498affb253b98d55d975fb0dc6696404",
+  "current_images": ["IMG_2829.jpeg", "IMG_2828.jpeg"],
+  "reference_image": "IMG_2824.jpeg (previous user-provided App Store reference)",
+  "image_observations": [
+    "Bottom navigation text overlaps book artwork with little visible material separation.",
+    "The selected bottom item is an opaque white capsule.",
+    "Red annotations identify reading-duration, edit and filter controls in the bookshelf header."
+  ],
+  "user_reported_not_measured": [
+    "A rectangular header-control mask appears briefly on cold launch or return from reading."
+  ],
+  "verified_source_findings": [
+    "1.6.1 LMmaterial_update clears the proxy effect whenever a native selection control is active.",
+    "1.6.1 creates a default title-only UISegmentedControl without a selected tint and hides original buttons.",
+    "The legacy small-material constructor inserts at 0x7568 before assigning final frame at 0x75b0."
+  ],
+  "privacy": "Full user screenshots, book text and raw personal logs are not included in this repository evidence record.",
+  "native_host_execution_performed": false,
+  "gpu_refraction_tested": false,
+  "device_tested": false
+}

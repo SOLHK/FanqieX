@@ -2,74 +2,82 @@
 
 番茄小说去广告与液态玻璃插件修补工程。
 
-## 当前交付：1.6.1
+## 当前交付：FanqieX 1.6.2
 
-**1.6.1 已通过冻结源码下的全部 21 个离线发布验证步骤；设备验收仍未完成。**
-交付分支为 `test`。该分支每次推送同时执行 Linux 完整回归与真实 Xcode 27.2 构建，
-两边都必须与仓库中的交付插件逐字节一致。具体提交的云端状态以
-[GitHub Actions](https://github.com/SOLHK/FanqieX/actions?query=branch%3Atest) 为准。
+**1.6.2 已通过冻结源码下全部 23 项本地发布验证，两次重建的插件逐字节一致。**
+交付分支为 `test`；同一提交的云端完整回归与真实 Xcode 27.2 / iOS 27.2 SDK
+构建结果见 [GitHub Actions](https://github.com/SOLHK/FanqieX/actions?query=branch%3Atest)。
+设备视觉验收尚未完成。
 
-- [下载 FanqieAdBlock-1.6.1.dylib](dist/1.6.1/FanqieAdBlock-1.6.1.dylib)
-- [下载 ZIP 包](dist/1.6.1/FanqieAdBlock-1.6.1.zip)（同一插件、安装说明和验证摘要）
-- [SHA-256 校验值](dist/1.6.1/SHA256SUMS.txt)
-- [修复依据与边界](docs/REPAIR_1.6.1.md) · [去标识的现场证据](docs/1.6.1-observed-evidence.json)
-- [验证摘要](verification/1.6.1/ci-summary.json) · [设备观察点](docs/DEVICE_ACCEPTANCE_161.md)
+- [下载 FanqieX-1.6.2.zip](dist/1.6.2/FanqieX-1.6.2.zip)（插件、安装说明和验证摘要）
+- [下载 FanqieX-1.6.2.dylib](dist/1.6.2/FanqieX-1.6.2.dylib)
+- [SHA-256 校验值](dist/1.6.2/SHA256SUMS.txt)
+- [代码依据与边界](docs/REPAIR_1.6.2.md) · [去标识现场证据](docs/1.6.2-observed-evidence.json)
+- [23 项验证摘要](verification/1.6.2/ci-summary.json) · [设备观察点](docs/DEVICE_ACCEPTANCE_162.md)
 
 插件大小：156,304 字节。SHA-256：
 
 ```text
-8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e
+8784d9d4a065d2bff4dc9f602e503a80bc41c877937d02ebb019e1dbfb0a9a01
 ```
 
-使用原有 IPA 注入与重签名流程替换旧插件，一个宿主进程只加载一份 FanqieAdBlock。
-`.dylib` 不能直接点击当作独立 iOS 应用安装。
+使用原有 IPA 注入和重签名流程替换旧插件。**先移除旧版，再注入本版本，
+同一宿主只加载一份插件。** 新文件统一使用 FanqieX 名称，历史交付文件名保持不变。
+`.dylib` 不能作为独立 iOS 应用直接安装。
 
 ## 本次修改
 
-| 反馈 | 本次代码处理 |
+| 反馈 | 代码处理 |
 | --- | --- |
-| 阅读页顶部玻璃按钮太小，要求恢复原样 | 返回、下载、评论、搜索、更多退出插件的玻璃与图标改造，恢复由宿主管理原图、尺寸和布局 |
-| 主底栏过透，背景影响读字 | 主路径改用一个公开的系统 `UISegmentedControl`，由系统统一管理底色与选中状态；兼容回退采用单 Regular 玻璃和普通选中底色 |
-| 底栏滑动缺少系统玻璃交互 | 主路径移除旧自定义 pan 和镜片，使用原生控件的触摸与选择行为；周期维护尊重 `isTracking`，不抢写拖动预览 |
-| 从未选中项开始滑动可能切错页 | 用已发布 1.6.0 指令复现旧偏移错误，修正兼容路径的起拖位置；原生和兼容路径都走原宿主选页入口 |
+| 底栏几乎全透明 | 删除原生选择器安装后清空玻璃的分支，保留一层 Regular 磨砂底座 |
+| 选中项纯白 | 使用动态语义灰色选中底，原生选择器放入玻璃内容容器 |
+| 文字与交互 | 保留原按钮文字与内容，统一由原生控件处理点击、拖动和选择语义；退出时恢复原状态 |
+| 书架时长、编辑、筛选闪矩形 | 未挂入页面前完成最终尺寸和原生胶囊形状；背景清理、插入与更新放在同一禁用隐式动画事务中 |
+| 名称和版本 | 交付文件、内部安装标识、签名标识、设置页统一 FanqieX；版本、运行和导出诊断统一 1.6.2 |
 
-阅读顶栏恢复 29 组、原生桥接 10 组、完整原生编排 5 组，以及独立故障注入 27 项均已通过。
-完整编排执行实际 Lrepair、周期监控、原始选页和退出清理，覆盖淡入时兼容切换、重复事件、
-宿主拒绝或重定向选择、target 生命周期和寄存器保护。保留首帧、信息流、诊断与最近一小时
-导出的回归；原去广告代码和宿主 UUID 检查由独立二进制范围审计保护。
+保留 1.6.1 的阅读顶部原始控件。旧设置键和诊断持久目录继续兼容，保存已有用户设置
+与近期日志。实际旧基线的底栏为文字按钮；本版保留已有内容，不声称已补回宿主图标。
 
-**尚未在用户 iPhone 上验证最终可读性、GPU 折射、触感和注入。** 宿主 SDK 与兼容模式
-可能影响系统控件外观；插件不会伪造宿主 SDK 或全局设计模式。兼容回退的普通选中底色
-不提供独立光学折射。不能将离线机器码测试或 Xcode 编译等同于 App Store 外观的真机验收。
+## 验证
+
+新增书架首帧检查 11 组（20 个具体场景），覆盖四个真实布局入口、冷启动与阅读返回、
+环境动画、同步重入、零尺寸、材质复用与失败回滚。固定 1.6.1 负对照复现旧发布顺序。
+底栏原生选择 10 组、完整编排 5 组、本轮可读性负对照 4 组，以及保留阅读控件 29 组均通过。
+另保留独立 Mach-O 审计、27 项故障注入、信息流覆盖、诊断及最近一小时导出回归。
+
+**尚未在用户 iPhone 上验证最终材质浓度、GPU 折射、闪动时长、触感和注入。**
+离线测试执行真实 ARM64 指令，UIKit / Foundation / Core Animation 边界采用显式模型。
+Xcode 构建检查实际插件与公开 API 类型，不运行宿主 App，不能替代设备视觉验收。
+本次修复未新增全局设计模式覆盖；宿主 SDK、系统与既有外观设置仍可能影响原生控件外观。
 
 ## 复现
 
-Linux：Python 3 与 LLVM 19 共享库可用时，选择一个全新的输出目录：
+Linux（Python 3 与 LLVM 19 共享库）：
 
 ```bash
-python3 scripts/verify161.py --output build/verify161-fresh --expect-candidate dist/1.6.1/FanqieAdBlock-1.6.1.dylib
+python3 scripts/verify162.py --output build/verify162-fresh \
+  --expect-candidate dist/1.6.2/FanqieX-1.6.2.dylib
 ```
 
-macOS：选择正式 Xcode 27.2 后，执行真实 Apple 工具链构建：
+macOS（真实 Xcode 27.2 / iOS 27.2 SDK）：
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer python3 scripts/build_xcode27.py --repair-dir repair161 --expect-candidate dist/1.6.1/FanqieAdBlock-1.6.1.dylib
+DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
+python3 scripts/build_xcode27.py --repair-dir repair162 \
+  --expect-candidate dist/1.6.2/FanqieX-1.6.2.dylib
 ```
 
-Xcode 脚本硬性检查 Xcode 27.2 / iOS 27.2 SDK，用 `xcrun clang` 汇编实际插件两次，
-核对产物与上述插件字节一致，并用当前 SDK 类型检查公开 UIKit API。
-`native/PublicGlassAPI.m` 是接口契约检查，不是宿主运行测试。
-
-本工程基于固定 SHA-256 的原始插件二进制，提供可重建的 ARM64 修补源码、构建脚本和
-验证模型，不包含宿主 App 或原插件完整源代码。不会把固定二进制修补冒充完整 App 重编译。
+两种构建都重建两次并比对交付插件的字节；源码冻结清单可检测验证期间的修改。
+本工程基于固定 SHA-256 的原始二进制提供可重建的 ARM64 修补源码，不包含
+宿主 App 或原插件完整源码，不将二进制修补称为宿主 App 完整重编译。
 
 ## 目录
 
-- `repair161/`：1.6.1 修补源码、构建器与 Mach-O 工具。
-- `audit161/`：独立结构审计、真实机器码执行及 UIKit/Foundation 边界模型；发布入口为 `scripts/verify161.py`。
-- `native/`：使用 iOS 27.2 SDK 检查的公开 API 契约。
+- `repair162/`：当前 ARM64 修补源码、构建器与 Mach-O 工具。
+- `audit162/`：二进制审计、实际指令执行与明确的 UIKit / Foundation 边界模型。
+- `native/`：公开 UIKit / Core Animation API 契约。
 - `scripts/`：Linux 验证、Xcode 构建与冻结候选打包入口。
-- `dist/1.6.1/`：当前插件、ZIP、摘要与校验值。
-- `verification/1.6.1/`：本次实际本地结果、冻结源文件清单和命令日志；云端结果保存在对应 Actions 运行中。
-- `repair158/`、`repair159/`、`repair160/`、历史 `audit*` 与 `baseline/`：历史重建和回归对照。
-- `docs/`：修复依据、诊断说明和设备验收清单。
+- `dist/1.6.2/`：交付 ZIP、插件、摘要与校验值。
+- `verification/1.6.2/`：本地实际验证结果、冻结清单与命令日志。
+- 历史 `repair*`、`audit*`、`dist/`、`verification/`、`baseline/`：此前重建、交付与负对照。
+- `docs/`：修复依据与设备观察点。
