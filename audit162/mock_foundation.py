@@ -279,6 +279,9 @@ class Runtime(ViewRuntime):
                 result = self.box(cpu.fp(0))
             elif cls == 'NSNumber' and name == 'numberWithUnsignedLongLong:':
                 result = self.box(a[2])
+            elif cls == 'NSNumber' and name == 'numberWithLongLong:':
+                value=a[2] if a[2] < (1 << 63) else a[2]-(1 << 64)
+                result=self.box(value)
             elif cls == 'NSNull' and name == 'null':
                 result = self.NULL
             elif cls == 'NSDate' and name == 'date':

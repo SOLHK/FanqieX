@@ -267,6 +267,16 @@ def bubble_cycle(data, labels, count, slide):
             'Original binding and model mutation complete')
     require(sum(name == 'setIdeaCount:' for _, name, _, _ in rt.original_calls) == 1,
             'Host count setter executes exactly once')
+    recreated = rt.obj('FQCParagraphEntranceViewModel', 'recreated_model', ideaCount=count,
+                       ideaOriginCount=count, chapterId=rt.text_object(PRIVATE+'_chapter'),
+                       paragraphId=rt.text_object(PRIVATE+'_paragraph'), isFromCache=1)
+    send(cpu,rt,bubble,'setModel:',recreated)
+    rebound=journal(cpu,rt,data)
+    bindings=[row['data']['afterInput'] for row in rebound if row['event']=='commentBubbleBind']
+    require(bindings[0]['modelId'] != bindings[-1]['modelId'] and
+            bindings[0]['chapterId']==bindings[-1]['chapterId'] and
+            bindings[0]['paragraphId']==bindings[-1]['paragraphId'],
+            'A recreated model with copied IDs remains linked to the same anonymous paragraph')
     return {'starting_count': count, 'slide': hex(slide), 'events': len(chain),
             'count_before': count, 'count_after': 0, 'privacy_sentinel_absent': True}
 
