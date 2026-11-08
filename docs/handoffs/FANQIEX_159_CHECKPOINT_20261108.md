@@ -1,3 +1,5 @@
+> **2026-11-08 最终交接补充：本开发分支已上传 repair158/、audit158/、baseline/ 和 docs/ 的完整 1.5.8 可重建源工程（上传提交 c4cbc0c6e19030fbfafc40793bc6d4b38547b1f5；已抽样与恢复归档 Git Blob 校验一致）。需要的 1.5.8 汇编/构建脚本可以直接从 GitHub 读取。尚未保存的仅是中断前未落盘的 1.5.9 修改，不能当作已上传。**
+
 # FanqieX — 1.5.9 修复接续交接（2026-11-08 15:51 CST）
 
 > 状态：**仅保存检查点与交接，尚未完成 1.5.9 编译/实机验收。请勿将本分支标记为已修复。**
@@ -54,7 +56,7 @@
 
 ## 5. 直接续接实施路径
 
-1. 在新窗口确认本分支 HEAD 和现有文件；从上述 Library `1.5.8-repair-kit.zip` 恢复全工程，完整保留 `repair158/`、`audit158/`、`baseline/`。不要丢掉固定基线和重建校验。
+1. 在新窗口确认本分支 HEAD 和现有文件。GitHub 已含 `repair158/`、`audit158/`、`baseline/` 及 `docs/` 的固定 1.5.8 源代码和历史基线；优先直接从本分支继续。如需历史完整输出、报告与逐字节归档，才从 ChatGPT Library 中的 `1.5.8-repair-kit.zip` 恢复。不要覆盖固定基线和重建校验。
 2. 从 1.5.8 的 `repair158/feed_viewport.s` 出发，重做并检查浮点比较修复、动态子类/多级容器覆盖；真实日志记录包括 `scroll class`、`frame`、`bounds`、`parent/superview chain`、`skip reason`、`post-fix frame`；避免把应用其他列表误识别为目标。
 3. 阅读返回按钮以**可见绘制区域**而非 `UIImageView.frame` 外框居中。覆盖直接 `UIButton.imageView`、嵌套 UIImageView、不同渲染模式；避免连续 layout 叠加位移；保留点击区域/交互，不阻塞主线程。
 4. 添加旧版本 1.5.8 必失败的新负对照，至少包括浮点尾差、嵌套滚动容器、动态子类、滑动到最底、反复切页、关闭插件恢复、箭头重复布局、RTL/缩放等。关键测试必须执行候选 ARM64 指令，而非只运行重新编写的 Python 逻辑。
