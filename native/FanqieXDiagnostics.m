@@ -371,6 +371,7 @@ static B SendAction(Obj self,Sel cmd,Sel action,Obj target,Obj sender,Obj event)
         if (pending<64) Put(State(),"watchdogs",Num(pending+1)); V0(lock,"unlock");
         Obj observer=At(State(),"observer");
         if (pending<64) ((void(*)(Obj,Sel,Sel,Obj,double))objc_msgSend)(observer,sel_registerName("performSelector:withObject:afterDelay:"),sel_registerName("fqx164_actionTimeout:"),token,2.0);
+        else { Obj skipped=Dict(); Put(skipped,"result",Text("watchdogCapacityReached")); Emit("uiActionObservationSkipped","UIApplication",sender,context,skipped); }
         V0(token,"release");
     }
     return result;
@@ -414,7 +415,7 @@ void FQDSettings(Obj controller) {
     Obj allocated=O0(objc_getClass("UIBarButtonItem"),"alloc");
     Obj item=((Obj(*)(Obj,Sel,Obj,I,Obj,Sel))objc_msgSend)(allocated,sel_registerName("initWithTitle:style:target:action:"),Text(Enhanced() ? "增强诊断开" : "增强诊断关"),0,controller,sel_registerName("fqx164_diagnosticMode:"));
     if (item) {
-        Obj items[2]; items[0]=item; items[1]=done;
+        Obj items[2]; items[0]=done ? done : item; items[1]=item;
         Obj array=((Obj(*)(Obj,Sel,Obj *,U))objc_msgSend)(objc_getClass("NSArray"),sel_registerName("arrayWithObjects:count:"),items,done ? 2 : 1);
         V1(nav,"setRightBarButtonItems:",array); V0(item,"release");
     }

@@ -286,6 +286,7 @@ class CPU:
             self.w(op & 31,value,width=width); return
         if op & 0x7f800000 == 0x13000000:  # SBFM (signed extend / ASR / SBFX)
             width = 64 if op >> 31 else 32
+            require(bool(op & (1 << 22)) == (width == 64), 'Signed bitfield N follows register width')
             immr, imms = (op >> 16) & 63, (op >> 10) & 63
             require(immr < width and imms < width, 'Valid signed bitfield range')
             source = self.r((op >> 5) & 31, width=width)

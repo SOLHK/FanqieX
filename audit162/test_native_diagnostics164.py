@@ -400,13 +400,31 @@ def exceptions_and_navigation(data,labels,slide):
     return {'slide':hex(slide),'exception_original_forwarded':True,'navigation_result_preserved':True}
 
 
+def settings_mode(data,labels,slide):
+    cpu,rt=make(data,labels,slide)
+    nav=rt.obj('UINavigationItem','nav')
+    done=rt.obj('UIBarButtonItem','original_done')
+    rt.objects[nav].state['right']=done
+    controller=rt.obj('SSSettingViewController','settings',navigationItem=nav)
+    cpu.run(labels['LFQD_FQDSettings'],args=(controller,))
+    items=rt.objects[rt.objects[nav].state['rightItems']].state['items']
+    require(items[0]==done and len(items)==2,'Enhanced mode control preserves the original rightmost close item')
+    mode=items[1]
+    for expected in (1,0):
+        send(cpu,rt,controller,'fqx164_diagnosticMode:',mode)
+        require(rt.objects[rt.DEFAULTS].state['values']['FanqieX.EnhancedDiagnostics.1']==expected,'Enhanced mode changes only through the user action')
+    rows=journal(cpu,rt,data)
+    require([r['data']['enhanced'] for r in rows if r['event']=='diagnosticModeChanged']==[1,0],'Mode changes are exported')
+    return {'slide':hex(slide),'opt_in_toggle':True,'close_item_preserved':True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candidate', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix('.composed.s'), ['LFQD_FQDInstall'])
+    labels = labels_for(data, args.candidate.with_suffix('.composed.s'), ['LFQD_FQDInstall','LFQD_FQDSettings'])
     cases = [signed_instruction_controls()]
     for slide in (0, 0x180000000):
         cases.append({'installation': installation(data, labels, slide)})
@@ -416,6 +434,7 @@ def main():
         cases.append({'ordered_requests':ordered_requests(data,labels,slide)})
         cases.append({'enhanced_actions':enhanced_actions(data,labels,slide)})
         cases.append({'exceptions_navigation':exceptions_and_navigation(data,labels,slide)})
+        cases.append({'settings':settings_mode(data,labels,slide)})
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'cases': cases, 'device_tested': False, 'native_transport_executed': False,
               'scope': 'Actual compiled ARM64 diagnostics with explicit host and Foundation boundaries'}

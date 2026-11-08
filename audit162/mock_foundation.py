@@ -81,6 +81,8 @@ class Runtime(ViewRuntime):
 
     def responds(self,receiver,name):
         cls = self.class_names[self.objects[receiver].cls]
+        if name == 'rightBarButtonItem':
+            return self.is_kind(receiver,self.classes['UINavigationItem'])
         if name in ('doubleValue','unsignedLongLongValue'):
             return cls == 'NSNumber'
         if name in ('effect','setEffect:','setCornerConfiguration:'):
@@ -287,6 +289,10 @@ class Runtime(ViewRuntime):
                 result = self.PROCESS
             elif cls == 'NSUserDefaults' and name == 'standardUserDefaults':
                 result = self.DEFAULTS
+            elif cls == 'NSArray' and name == 'arrayWithObjects:count:':
+                values=[cpu.read(a[2]+8*i,8) for i in range(a[3])]
+                require(all(v in self.objects for v in values), 'NSArray pointer/count ABI uses live objects')
+                result=self.obj('NSArray','pointer_array',items=values)
             elif cls == 'NSHashTable' and name == 'weakObjectsHashTable':
                 result = self.obj(cls,'weak_tracked_bars',items=[])
             elif cls == 'NSData' and name == 'dataWithBytes:length:':
@@ -342,6 +348,10 @@ class Runtime(ViewRuntime):
                 result = self.box(st['values'][key]) if cls == 'NSUserDefaults' and key in st['values'] else st.get('items',{}).get(key,0)
             elif name == 'integerForKey:':
                 result = st['values'].get(self.string_value(a[2]),0)
+            elif name == 'boolForKey:':
+                result=int(bool(st['values'].get(self.string_value(a[2]),False)))
+            elif name == 'setBool:forKey:':
+                st['values'][self.string_value(a[3])]=bool(a[2])
             elif name == 'addObject:':
                 require(a[2] != 0,'Array/hash cannot append nil')
                 if cls != 'NSHashTable' or a[2] not in st['items']:
@@ -494,6 +504,12 @@ class Runtime(ViewRuntime):
                 result = st.get(name,0)
             elif name in ('setLeftBarButtonItem:','setRightBarButtonItem:'):
                 st['left' if name.startswith('setLeft') else 'right'] = a[2]
+            elif name == 'rightBarButtonItem':
+                result=st.get('right',0)
+            elif name == 'setRightBarButtonItems:':
+                st['rightItems']=a[2]
+                values=self.objects[a[2]].state['items']
+                st['right']=values[0] if values else 0
             elif name == 'setEnabled:':
                 st['enabled'] = bool(a[2])
             elif name == 'initWithActivityItems:applicationActivities:':
