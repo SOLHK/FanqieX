@@ -10,7 +10,7 @@ import hashlib
 import json
 import struct
 
-from arm64 import CPU, bits, require
+from arm64 import CPU, bits, release_version, require
 from legacy_runtime import Runtime
 from new_scenarios import run_all as run_retained_scenarios
 from regressions156 import records, run_all as run_156_regressions
@@ -32,7 +32,8 @@ NAMES = ['ratio','layout','installer','repair','strings','end','version','reserv
 
 def directory(data):
     words = struct.unpack_from('<64I',data,0x800)
-    require(words[6] in (0x10505,0x10506,0x10508,0x10509,0x10600,0x10602) and words[7] == 0, 'Known 1.5.5/1.5.6 payload directory')
+    require(words[6] in (0x10505,0x10506,0x10508,0x10509,0x10600,0x10602,0x10603) and words[7] == 0,
+            'Known payload directory')
     require(all(not p or 0x100 <= p < words[55] or words[4] <= p < words[5] for p in words[57:60]), 'Additional entries stay inside code/data payload')
     require(0x100 <= words[0] < words[55] <= 0x3800 and words[4] == 0x11100 and words[4] < words[5] <= 0x13800, 'Split payload bounds')
     return {name:value+0x800 for name,value in zip(NAMES,words)}
@@ -354,7 +355,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     d = directory(data)
-    require(struct.unpack_from('<I',data,0x800+6*4)[0] == 0x10602,'Final candidate is version 1.6.0')
+    release_version(data)
     report = {'candidate':str(args.candidate.resolve()), 'sha256':hashlib.sha256(data).hexdigest(),
               'shadow':shadow_block(data), 'geometry':geometry(data,args.geometry_entry or d['frame']),
               'native_background_lifecycle':lifecycle(data,d), 'cache_changes':cache_changes(data,d),

@@ -19,17 +19,8 @@ class Runtime(ViewRuntime):
     WINDOW_IMP = 0x33000400
     VIEW_LOAD_IMP = 0x33000500
 
-    def _class(self,name,parent=None):
-        p = super()._class(name,parent)
-        meta = 0x38000000+len(self.metaclasses)*0x100
-        self.metaclasses[p] = meta
-        self.class_names[meta] = name+'(meta)'
-        self.own[meta] = {}
-        self.parents[meta] = self.metaclasses.get(self.classes.get(parent,0),0)
-        return p
-
     def __init__(self,data,slide=0,disk_root=None,**options):
-        self.metaclasses = {}; self.dynamic_classes = set(); self.initialized = set()
+        self.dynamic_classes = set(); self.initialized = set()
         self.thread = 'main'; self.now = 1700000000.0
         self.main_jobs = []; self.queued_operations = []; self.callbacks = []
         self.fail_read = False; self.fail_write = False; self.fail_directory = False
@@ -228,10 +219,6 @@ class Runtime(ViewRuntime):
             return self.finish(cpu,cls)
         if p == 0xa610:
             return self.finish(cpu)
-        if p == 0xa664 and a[0] in self.metaclasses:
-            return self.finish(cpu,self.metaclasses[a[0]])
-        if p == 0xa604:
-            return self.finish(cpu,self.get_method(self.metaclasses[a[0]],a[1]))
         if p == 0xa5b0 and self.string(a[0]) in self.missing_classes:
             return self.finish(cpu)
         if pc in (self.WINDOW_IMP,self.VIEW_LOAD_IMP):

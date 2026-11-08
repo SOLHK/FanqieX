@@ -53,6 +53,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161', 'repair162'),
                         default='repair162')
+    parser.add_argument('--version', choices=('1.6.2', '1.6.3'),
+                        help='Choose a release profile for repair162')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
     args = parser.parse_args()
@@ -86,15 +88,19 @@ def main():
         report['public_glass_api_typecheck'] = True
         sys.path.insert(0, str(ROOT / args.repair_dir))
         builder = importlib.import_module('build_plugin')
-        report['plugin_version'] = builder.VERSION
+        if args.version and args.repair_dir != 'repair162':
+            raise ValueError('--version requires repair162')
+        version = args.version or builder.VERSION
+        build_options = {'version': args.version} if args.version else {}
+        report['plugin_version'] = version
         report['fixed_original_image_preserved'] = True
         builder.assemble_object = assemble
         builder.disassemble = disassemble
-        candidate = output / (getattr(builder, 'PRODUCT_NAME', 'FanqieAdBlock') + '-' + builder.VERSION + '.dylib')
+        candidate = output / (getattr(builder, 'PRODUCT_NAME', 'FanqieAdBlock') + '-' + version + '.dylib')
         baseline = ROOT / 'baseline' / 'FanqieAdBlock-1.5.8.dylib'
-        first = builder.build(baseline, candidate)
+        first = builder.build(baseline, candidate, **build_options)
         second_path = output / 'rebuild' / candidate.name
-        builder.build(baseline, second_path)
+        builder.build(baseline, second_path, **build_options)
         if candidate.read_bytes() != second_path.read_bytes():
             raise RuntimeError('Two Xcode builds produced different bytes')
         report.update(candidate_sha256=first['candidate_sha256'],

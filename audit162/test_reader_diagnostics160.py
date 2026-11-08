@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import traceback
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from reader_diagnostics_runtime import ReaderDiagnosticsRuntime
 from test_feed_viewport import labels_for
 
@@ -119,7 +119,8 @@ def normal_pairs(data, entries):
                 geometry['readerControlRuntimeClass'] == 'UIButton', 'Exact runtime classes recorded')
         require('not host action or presentation timing' in
                 logged[-1]['data']['readerTouchObservationScope'], 'Scope is explicit in each record')
-        require(all(r['pluginVersion'] == '1.6.2' for r in logged), 'Existing versioned queue envelope is used')
+        version = release_version(data)
+        require(all(r['pluginVersion'] == version for r in logged), 'Existing versioned queue envelope is used')
         require(sum(e['event'] == 'host_action' for e in rt.events) == 1,
                 'Original host action executes once')
         rt.fire(cpu, control, 64)

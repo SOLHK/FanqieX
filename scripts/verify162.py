@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild 1.6.2 twice and verify the exact resulting bytes on Linux.
+"""Rebuild FanqieX twice and verify the exact resulting bytes on Linux.
 
 Run from any directory. No third-party Python packages are needed. The assembly
 builder requires the LLVM 19 shared library; the independent binary audit does
@@ -59,6 +59,7 @@ def source_manifest():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     args = parser.parse_args()
@@ -68,7 +69,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     logs = output / "logs"
     logs.mkdir(exist_ok=True)
-    summary = {"passed": False, "device_tested": False, "python": sys.version.split()[0],
+    summary = {"passed": False, "version": args.version, "device_tested": False, "python": sys.version.split()[0],
                "platform": platform.platform(), "steps": [], "scope":
                "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models"}
 
@@ -117,13 +118,13 @@ def main():
             summary["git_working_tree_clean_at_start"] = (
                 status.returncode == 0 and not status.stdout.strip())
         save()
-        candidate = output / "FanqieX-1.6.2.dylib"
+        candidate = output / f"FanqieX-{args.version}.dylib"
         rebuilt = output / "rebuild" / candidate.name
         baseline = ROOT / "baseline" / "FanqieAdBlock-1.5.8.dylib"
         baseline157 = ROOT / "baseline" / "FanqieAdBlock-1.5.7.dylib"
         validation = candidate.with_suffix(".validation.json")
-        run("build", ["repair162/build_plugin.py", baseline, candidate])
-        run("rebuild", ["repair162/build_plugin.py", baseline, rebuilt])
+        run("build", ["repair162/build_plugin.py", baseline, candidate, "--version", args.version])
+        run("rebuild", ["repair162/build_plugin.py", baseline, rebuilt, "--version", args.version])
         if candidate.read_bytes() != rebuilt.read_bytes():
             raise RuntimeError("Two clean builds produced different bytes")
         summary["candidate_sha256"] = digest(candidate)
@@ -137,9 +138,11 @@ def main():
         run("extension-layout-selftest", ["repair162/audit_extend.py",
             ROOT / "baseline" / "FanqieAdBlock-1.5.6.dylib", "--selftest"])
         run("independent-binary", ["audit162/independent159.py", "--baseline", baseline,
-            "--candidate", candidate, "--report", output / "independent-audit.json"])
+            "--candidate", candidate, "--expected-version", args.version,
+            "--report", output / "independent-audit.json"])
         run("independent-faults", ["audit162/test_independent_faults.py", candidate,
-            "--baseline", baseline, "--report", output / "independent-fault-tests.json"])
+            "--baseline", baseline, "--expected-version", args.version,
+            "--report", output / "independent-fault-tests.json"])
         run("native-surface", ["audit162/test_native_surface.py", candidate,
             "--report", output / "native-audit.json"])
         run("glass-interaction", ["audit162/test_glass_interaction.py", candidate,
@@ -182,6 +185,9 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
+        if args.version == "1.6.3":
+            run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
+                "--report", output / "hook-ownership163-audit.json"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

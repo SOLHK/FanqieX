@@ -18,6 +18,12 @@ def require(test, detail):
         raise AssertionError(detail)
 
 
+def release_version(data):
+    version = struct.unpack_from('<I', data, 0x818)[0]
+    require(version in (0x10602, 0x10603), 'Expected a 1.6.2 or 1.6.3 release candidate')
+    return f'1.6.{version & 0xff}'
+
+
 def sx(value, bits):
     return value - (1 << bits) if value & (1 << (bits - 1)) else value
 

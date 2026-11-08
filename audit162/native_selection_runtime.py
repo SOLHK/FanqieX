@@ -18,12 +18,14 @@ NAMES = ('update', 'restore', 'has_native', 'value_changed', 'control_key',
 
 def native_entries(data):
     binary_version = struct.unpack_from('<I', data, 0x800 + 6 * 4)[0]
-    require(binary_version in (0x10601, 0x10602), 'Known native selection binary')
-    marker = b'FQ161SEG' if binary_version == 0x10601 else b'FQ162SEG'
+    layouts = {0x10601: (b'FQ161SEG', 0x10601), 0x10602: (b'FQ162SEG', 0x10602),
+               0x10603: (b'FQ162SEG', 0x10602)}
+    require(binary_version in layouts, 'Known native selection binary')
+    marker, layout_version = layouts[binary_version]
     require(data.count(marker) == 1, 'One immutable native selection directory')
     at = data.index(marker)
     version, count = struct.unpack_from('<2I', data, at + 8)
-    require(version == binary_version and count == len(NAMES), 'Versioned native selection directory')
+    require(version == layout_version and count == len(NAMES), 'Versioned native selection directory')
     values = struct.unpack_from('<' + str(count) + 'I', data, at + 16)
     result = dict(zip(NAMES, values))
     words = struct.unpack_from('<64I', data, 0x800)

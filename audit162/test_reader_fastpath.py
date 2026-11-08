@@ -11,7 +11,7 @@ from pathlib import Path
 import struct
 import traceback
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from reader_runtime import ReaderRuntime
 import test_control_geometry as geometry
 
@@ -266,7 +266,7 @@ def panel_budget_and_original(data, validation):
     records = log_records(rt)
     require(len(records) == 1, 'One initial reader diagnostic is enqueued')
     record = records[0]
-    require(record['pluginVersion'] == '1.6.2' and isinstance(record['timestamp'], float),
+    require(record['pluginVersion'] == release_version(data) and isinstance(record['timestamp'], float),
             'Reader diagnostic uses the versioned timestamped event envelope')
     require(record['data']['readerVisitedViews'] == 64 and record['data']['readerTraversalBudgetExhausted'] == 1,
             'The one total traversal budget is enforced and reported')

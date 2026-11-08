@@ -12,7 +12,7 @@ Lpatch:
     .long Lrepair - Lpatch
     .long Lstrings - Lpatch
     .long Lend - Lpatch
-    .long 0x00010602
+    .long FQ_VERSION
     .long 0
     .long Lbutton_frame - Lpatch
     .long Lbackground - Lpatch
@@ -967,7 +967,7 @@ Lend:
     .org EXT_BASE - PATCH_BASE
 Lextension:
     .ascii "FQ162EXT"
-    .long 0x10602
+    .long FQ_VERSION
     .long 32
     .long LXupdate - Lpatch
     .long LXrestore - Lpatch
@@ -993,7 +993,12 @@ Lextension:
     .long LXtimer_key - Lpatch
     .long LXtick_key - Lpatch
     .long LXrejected_key - Lpatch
-    .long 0,0,0,0
+    .if FQ_VERSION == 0x10603
+    .long LHookOwned - Lpatch
+    .else
+    .long 0
+    .endif
+    .long 0,0,0
     .p2align 2
 // @EXTENSION_CODE
 LXcode_end:

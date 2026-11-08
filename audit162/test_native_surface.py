@@ -42,7 +42,7 @@ def labels_for(data, composed):
     section = text[0]
     payload = obj[section['offset']:section['offset'] + section['size']]
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] == 0x10602, 'Exact 1.6.0 payload directory')
+    require(words[6] in (0x10602, 0x10603), 'Known native surface payload directory')
     for start, stop in ((0x800, 0x800 + words[55]),
                         (0x800 + words[4], 0x800 + words[5]),
                         (0x800 + words[60], 0x800 + words[63])):

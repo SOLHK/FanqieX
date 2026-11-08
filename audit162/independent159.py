@@ -206,20 +206,21 @@ def check_layout(old: Image, new: Image) -> dict:
             "linkedit_fileoff": link["fileoff"], "writable_executable_segments": 0}
 
 
-def check_sections(old: Image, new: Image) -> dict:
+def check_sections(old: Image, new: Image, version: str) -> dict:
+    allowed = ALLOWED_SECTION_BYTES | (set(range(0x4878, 0x487C)) if version == "1.6.3" else set())
     changed = []
     for section in old.sections:
         start, size = section["offset"], section["size"]
         changes = [start + i for i, (a, b) in enumerate(zip(
             old.data[start:start + size], new.data[start:start + size])) if a != b]
-        unexpected = [address for address in changes if address not in ALLOWED_SECTION_BYTES]
+        unexpected = [address for address in changes if address not in allowed]
         require(not unexpected, f"Unreviewed original section edits: {[hex(a) for a in unexpected[:8]]}")
         changed.extend(changes)
     # Also protect original gaps, not merely named sections. Header and the two
     # dedicated repair padding regions are checked separately.
     excluded = set(range(0, BASE)) | set(range(BASE, 0x4000)) | set(range(0x11900, EXT))
     unexpected = [i for i in range(EXT) if old.data[i] != new.data[i] and
-                  i not in excluded and i not in ALLOWED_SECTION_BYTES]
+                  i not in excluded and i not in allowed]
     require(not unexpected, "Unexpected edit in original non-payload bytes")
     for address, expected in {
         0x4B34: "1f2003d5", 0x6798: "02008052", 0x681C: "1f2003d5",
@@ -228,7 +229,8 @@ def check_sections(old: Image, new: Image) -> dict:
         require(new.data[address:address + 4] == bytes.fromhex(expected),
                 f"Earlier fix changed at {address:#x}")
     return {"compared_sections": len(old.sections), "changed_original_section_bytes": len(changed),
-            "allowed_code_sites": [hex(item[0]) for item in PATCH_SITES] + ["0x5d50", "0x5da0", "0x5dec", "0x5e38", "0x649c", "0x7848", "0x7ac4"],
+            "allowed_code_sites": [hex(item[0]) for item in PATCH_SITES] + ["0x5d50", "0x5da0", "0x5dec", "0x5e38", "0x649c", "0x7848", "0x7ac4"]
+            + (["0x4878"] if version == "1.6.3" else []),
             "allowed_utf16_version_range": ["0xec84", "0xec8e"]}
 
 
@@ -256,7 +258,8 @@ def read_tables(image: Image, version: str) -> dict:
     require(main["extension"] + 128 < main["extension_code_end"] <= main["extension_strings"] <
             main["extension_end"] <= EXT - BASE + image.segment("__FQPATCH")["filesize"],
             "Extension bounds invalid")
-    version_bytes = version.replace(".", "").encode("ascii")
+    modern_reader = version in ("1.6.2", "1.6.3")
+    version_bytes = b"162" if modern_reader else version.replace(".", "").encode("ascii")
     require(data[EXT:EXT + 8] == b"FQ" + version_bytes + b"EXT", "Extension marker/version mismatch")
     encoded, words = unpack("<2I", data, EXT + 8)
     require(words == 32, "Extension directory length changed")
@@ -269,16 +272,22 @@ def read_tables(image: Image, version: str) -> dict:
                 f"Invalid extension entry {name}")
     for name in EXT_NAMES[18:24]:
         require(extension["strings"] <= extension[name] < extension["end"], f"Invalid extension key {name}")
-    require(all(extension[name] == 0 for name in EXT_NAMES[24:]), "Nonzero extension reserved word")
+    isolated = version == "1.6.3"
+    if isolated:
+        hook = extension["reserved24"]
+        require(EXT + 128 - BASE <= hook < extension["code_end"] and hook % 4 == 0,
+                "Invalid hook ownership entry")
+    require(all(extension[name] == 0 for name in EXT_NAMES[25 if isolated else 24:]),
+            "Nonzero extension reserved word")
     reader_marker = b"FQ" + version_bytes + b"RDR"
     require(data.count(reader_marker) == 1, "Reader entry table absent or duplicated")
     reader_at = data.index(reader_marker)
-    reader_names = READER_NAMES + (["settle_control"] if version == "1.6.2" else [])
+    reader_names = READER_NAMES + (["settle_control"] if modern_reader else [])
     reader_size = 8 + len(reader_names) * 4
     require(BASE + extension["strings"] <= reader_at and reader_at + reader_size <= BASE + extension["end"],
             "Reader table outside extension data")
     reader = dict(zip(reader_names, unpack("<" + str(len(reader_names)) + "I", data, reader_at + 8)))
-    reader_code = READER_NAMES[:7] + (["settle_control"] if version == "1.6.2" else [])
+    reader_code = READER_NAMES[:7] + (["settle_control"] if modern_reader else [])
     for name in reader_code:
         require(EXT + 128 - BASE <= reader[name] < extension["code_end"] and reader[name] % 4 == 0,
                 f"Invalid reader entry {name}")
@@ -328,6 +337,9 @@ def check_instructions(image: Image, tables: dict) -> dict:
     # entry instruction in the original text. The original code is byte-checked.
     addresses = [pc for first, end in tables["code_ranges"] for pc in range(first, end, 4)]
     addresses += [entry[0] for entry in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
+    version = tables["expected_version"]
+    if version == "1.6.3":
+        addresses.append(0x4878)
     for pc in addresses:
         word = unpack("<I", image.data, image.vm_file(pc, 4))[0]
         require(word != 0, f"Zero instruction in repair code at {pc:#x}")
@@ -348,7 +360,7 @@ def check_instructions(image: Image, tables: dict) -> dict:
             branches.append({"pc": pc, "target": target, "kind": kind})
     expected_sites = [(pc, BASE + tables["main"][name], link) for pc, name, link in PATCH_SITES]
     expected_sites.append((0x5D50, BASE + tables["reader"]["reader_panel"], False))
-    if tables["expected_version"] == "1.6.2":
+    if version in ("1.6.2", "1.6.3"):
         expected_sites += [(pc, BASE + tables["reader"]["reader_panel"], False)
                            for pc in (0x5DA0, 0x5DEC, 0x5E38)]
     else:
@@ -359,10 +371,12 @@ def check_instructions(image: Image, tables: dict) -> dict:
                            (0x5E38, 0x75D4, False)]
     expected_sites += [(0x7848, BASE + tables["extension"]["style_control"], False),
                        (0x7AC4, BASE + tables["extension"]["style_glyph"], False)]
+    if version == "1.6.3":
+        expected_sites.append((0x4878, BASE + tables["extension"]["reserved24"], False))
     for pc, target, linked in expected_sites:
         require(direct_instruction(unpack("<I", image.data, pc)[0], pc) ==
                 ("BL" if linked else "B", target), f"Wrong patched branch target at {pc:#x}")
-    expected_style = 0x52800002 if tables["expected_version"] == "1.6.2" else 0x52800022
+    expected_style = 0x52800002 if version in ("1.6.2", "1.6.3") else 0x52800022
     require(unpack("<I", image.data, 0x649C)[0] == expected_style,
             "Initial proxy glass style must match the versioned Regular/Clear contract")
     return {"instruction_words_checked": len(addresses), "direct_reference_counts": counts,
@@ -616,7 +630,7 @@ def audit(baseline: bytes, candidate: bytes, expected_version: str = "1.6.2") ->
         return report
     report["checks"]["parse"] = {"passed": True}
     run("layout", lambda: check_layout(old, new))
-    run("original_sections", lambda: check_sections(old, new))
+    run("original_sections", lambda: check_sections(old, new, expected_version))
     run("load_commands", lambda: check_commands(old, new, expected_version))
     run("linkedit_and_chained_fixups", lambda: check_linkedit(old, new))
     signature = run("code_signature", lambda: read_signature(new))

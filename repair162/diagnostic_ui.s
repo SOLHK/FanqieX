@@ -1070,7 +1070,12 @@ LSeffect: .asciz "effect"
 LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
-LSversion: .asciz "1.6.2"
+LSversion:
+    .if FQ_VERSION == 0x10603
+    .asciz "1.6.3"
+    .else
+    .asciz "1.6.2"
+    .endif
 LSk_id: .asciz "viewId"
 LSk_class: .asciz "class"
 LSk_frame: .asciz "frame"

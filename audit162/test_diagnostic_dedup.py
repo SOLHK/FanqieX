@@ -18,7 +18,7 @@ from pathlib import Path
 import plistlib
 import struct
 
-from arm64 import CPU, bits, require
+from arm64 import CPU, bits, release_version, require
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,10 +37,11 @@ ENTRY_INDEX = {
 
 def entries(data):
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] in (0x10507, 0x10508, 0x10509, 0x10602), 'Pinned 1.5.7/1.5.8/1.5.9/1.6.0 directory')
+    require(words[6] in (0x10507, 0x10508, 0x10509, 0x10602, 0x10603),
+            'Known diagnostic payload directory')
     result = {name: 0x800+words[index] for name, index in ENTRY_INDEX.items()}
     result['version'] = words[6]
-    if words[6] in (0x10508, 0x10509, 0x10602):
+    if words[6] in (0x10508, 0x10509, 0x10602, 0x10603):
         marker = b'FQ158DIA'
         require(data.count(marker) == 1, 'One semantic diagnostic directory')
         at = data.index(marker)
@@ -252,8 +253,8 @@ def version_regression(candidate, baseline158):
             'Old actual instructions reproduce the mixed runtime/export versions in the supplied log')
     require(old['event_version'] != old['export_version'],
             'The old 1.5.8 binary must fail event/export version consistency')
-    require(new['event_version'] == new['export_version'] == '1.6.2',
-            'Both actual new snapshot and export metadata identify 1.6.0')
+    require(new['event_version'] == new['export_version'] == release_version(candidate),
+            'Both actual new snapshot and export metadata identify the candidate')
     return {'passed': True, 'old_1_5_8': old, 'current_candidate': new,
             'old_158_sha256': hashlib.sha256(baseline158).hexdigest(),
             'old_consistency_failed': True, 'new_consistency_passed': True}
@@ -261,6 +262,7 @@ def version_regression(candidate, baseline158):
 
 def upgrade_history_and_delayed_export(candidate, baseline157, baseline158):
     """Separate logger processes share only their real retained file bytes."""
+    candidate_version = release_version(candidate)
     c157, r157, d157 = make(baseline157)
     observe(c157, r157, d157, 0.)
     flush(c157, r157)
@@ -292,8 +294,8 @@ def upgrade_history_and_delayed_export(candidate, baseline157, baseline158):
     flush(c, r)
     before = journal(r)
     require(before[:3] == previous and
-            [row['pluginVersion'] for row in before] == ['1.5.7', '1.5.8', '1.5.9', '1.6.2'],
-            'Restart into 1.6.0 preserves every old event version and adds its own version')
+            [row['pluginVersion'] for row in before] == ['1.5.7', '1.5.8', '1.5.9', candidate_version],
+            'Restart into the current candidate preserves every old event version and adds its own version')
     request_time = r.now
     target = queue_export(c, r, d)
     r.now += 1200.
@@ -304,7 +306,7 @@ def upgrade_history_and_delayed_export(candidate, baseline157, baseline158):
             'A delayed worker uses the fixed export request window, not its later wall clock')
     require(exported['entries'] == before and journal(r) == before,
             'The inclusive one-hour boundary and all retained history survive the delayed export')
-    require(exported['pluginVersion'] == '1.6.2' and exported['storageError'] == 'none',
+    require(exported['pluginVersion'] == candidate_version and exported['storageError'] == 'none',
             'Current export metadata does not overwrite old event provenance or claim a storage error')
     c.run(d['diagnostic_maintenance'])
     r.drain_operations(c)
@@ -312,7 +314,7 @@ def upgrade_history_and_delayed_export(candidate, baseline157, baseline158):
             'A later maintenance command prunes only the now-expired 1.5.7 event')
     return {'passed': True, 'independent_logger_processes': 4,
             'historical_versions_preserved': ['1.5.7', '1.5.8', '1.5.9'],
-            'current_event_and_export_version': '1.6.2',
+            'current_event_and_export_version': candidate_version,
             'worker_delay_seconds': 1200, 'inclusive_boundary_preserved': True,
             'exported_record_count': exported['recordCount'],
             'post_maintenance_versions': [row['pluginVersion'] for row in journal(r)],
@@ -512,6 +514,7 @@ def color_canonicalization(data):
 
 
 def explicit_and_retention(data):
+    candidate_version = release_version(data)
     c, r, d = make(data)
     observe(c, r, d, 0.)
     c.run(d['diagnostic_heartbeat'])
@@ -523,7 +526,7 @@ def explicit_and_retention(data):
     flush(c, r)
     snapshots = journal(r)
     require(len(snapshots) == 3, 'All three actual snapshots are persisted')
-    require(all(row['pluginVersion'] == '1.6.2' for row in snapshots),
+    require(all(row['pluginVersion'] == candidate_version for row in snapshots),
             'Automatic, periodic, and explicit export snapshots all report the current version')
     # Run actual hour-retention queue logic with boundary and older records,
     # then an actual export marker. This is not a replacement Python filter.
@@ -548,7 +551,7 @@ def explicit_and_retention(data):
     require('url' in result and 'error' not in result, 'Actual export produces a file URL')
     export_path = Path(r.string_value(result['url']))
     exported = json.loads(export_path.read_bytes())
-    require(exported['pluginVersion'] == '1.6.2',
+    require(exported['pluginVersion'] == candidate_version,
             'One-hour export envelope identifies the current plugin')
     require(exported['recordCount'] == len(exported['entries']) and
             any(row['event'] == 'exact_hour_boundary' for row in exported['entries']),

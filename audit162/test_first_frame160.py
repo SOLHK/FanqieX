@@ -278,7 +278,8 @@ def main():
     a = p.parse_args()
     data, old = a.candidate.read_bytes(), a.baseline.read_bytes()
     require(hashlib.sha256(old).hexdigest() == OLD_SHA, 'Negative baseline is uploaded 1.5.9')
-    require(struct.unpack_from('<I', data, 0x818)[0] == 0x10602, 'Candidate is 1.6.0')
+    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10602, 0x10603),
+            'Known first-frame candidate version')
     # Baseline composition belongs to the baseline builder. Import it by its
     # explicit path under a unique module name: the candidate builder may
     # already occupy sys.modules['build_plugin'] and add components absent in

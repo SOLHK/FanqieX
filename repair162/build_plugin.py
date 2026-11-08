@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild FanqieX 1.6.2 over the unchanged pinned 1.5.6 original image.
+"""Rebuild FanqieX over the unchanged pinned 1.5.6 original image.
 The reconstruction input 1.5.8, user-tested predecessor 1.6.1 and original base
 are hash checked. The 1.6.2 repair sources continue 1.6.1 and replace the whole
 extension in a clean rebuild; no second extension is stacked on an old patch.
@@ -17,6 +17,7 @@ UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354
 SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
 PREVIOUS_SHA = '8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e'
 VERSION, ENCODED = '1.6.2', 0x10602
+RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603}
 PRODUCT_NAME = 'FanqieX'
 BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
 NAMES = ['ratio','layout','installer','repair','strings','end','version','reserved',
@@ -47,10 +48,13 @@ def branch(pc, target, link=False):
  need(n % 4 == 0 and -(1<<27) <= n < (1<<27), 'ARM64 branch range')
  return struct.pack('<I',(0x94000000 if link else 0x14000000)|((n//4)&0x3ffffff))
 
-def compose_assembly(path):
- path=Path(path); text=path.read_text()
+def compose_assembly(path, version=VERSION):
+ path=Path(path); text=f'.set FQ_VERSION, {RELEASES[version]:#x}\n'+path.read_text()
+ extension=['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s']
+ if version == '1.6.3':
+  extension.append('hook_ownership.s')
  for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
-                       ('EXTENSION',['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s'])]:
+                       ('EXTENSION',extension)]:
   code=[]; data=[]
   for filename in files:
    parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
@@ -77,8 +81,10 @@ def directory(data, version):
   need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+0x10000,'Extension bounds')
  return d
 
-def build(source_path, output_path):
+def build(source_path, output_path, *, version=VERSION):
  source_path=Path(source_path); output_path=Path(output_path)
+ encoded=RELEASES[version]
+ isolated=version == '1.6.3'
  need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
  uploaded=source_path.read_bytes()
  need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
@@ -99,18 +105,21 @@ def build(source_path, output_path):
   for s in sections(source): need(max(a,s['offset'])>=min(b,s['offset']+s['size']),'Padding overlaps original section')
  for a,v in {0x4b34:'1f2003d5',0x6798:'02008052',0x681c:'1f2003d5',0x6c28:'e003271e',0x6c40:'e003679e',0x6cd0:'1f2003d5'}.items():
   need(source[a:a+4]==bytes.fromhex(v),'Missing earlier fix '+hex(a))
- assembly=compose_assembly(Path(__file__).with_name('floating_bar_162.s'))
+ assembly=compose_assembly(Path(__file__).with_name('floating_bar_162.s'), version)
  obj=assemble_object(assembly); ss=[s for s in sections(obj) if s['name']=='__text']
  need(len(ss)==1 and ss[0]['reloc_count']==0,'Unresolved assembler relocation')
  s=ss[0]; payload=obj[s['offset']:s['offset']+s['size']]
- d=directory(payload,ENCODED); off=d['extension']
- need(payload[off:off+8]==b'FQ162EXT' and struct.unpack_from('<II',payload,off+8)==(ENCODED,32),'Extension header')
+ d=directory(payload,encoded); off=d['extension']
+ need(payload[off:off+8]==b'FQ162EXT' and struct.unpack_from('<II',payload,off+8)==(encoded,32),'Extension header')
  e=dict(zip(EXT_NAMES,struct.unpack_from('<28I',payload,off+16)))
  need((e['code_end'],e['strings'],e['end'])==(d['extension_code_end'],d['extension_strings'],d['extension_end']),'Extension directory agreement')
  need(len(payload)==e['end'],'Assembled span')
  for n in EXT_NAMES[:15]: need(off+128<=e[n]<e['code_end'] and e[n]%4==0,'Extension code '+n)
  for n in EXT_NAMES[18:24]: need(e['strings']<=e[n]<e['end'],'Extension data '+n)
- need(all(e[n]==0 for n in EXT_NAMES[24:]),'Extension reserved fields')
+ if isolated:
+  hook=e['reserved24']
+  need(off+128<=hook<e['code_end'] and hook%4==0,'Hook ownership entry bounds')
+ need(all(e[n]==0 for n in EXT_NAMES[25 if isolated else 24:]),'Extension reserved fields')
  for a,b in [(d['code_end'],d['strings']),(d['end'],d['extension'])]: need(not any(payload[a:b]),'Nonzero gap')
  data=bytearray(source); changes=[]
  def replace(a,expected,value,reason):
@@ -123,6 +132,8 @@ def build(source_path, output_path):
  stop=BASE+max(old['end'],d['end'])
  replace(DATA_BASE,source[DATA_BASE:stop],payload[d['strings']:d['end']].ljust(stop-DATA_BASE,b'\0'),'Rebuild constants')
  for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
+ if isolated:
+  replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
  marker=b'FQ162RDR'
  need(payload.count(marker)==1,'One reader fix entry table')
  reader_at=payload.index(marker)
@@ -145,16 +156,16 @@ def build(source_path, output_path):
  # Its first material must also be Regular if native selection is unavailable.
  replace(0x649c,bytes.fromhex('22008052'),bytes.fromhex('02008052'),
   'Initial proxy factory uses Regular glass rather than Clear')
- replace(0x568,struct.pack('<I',0x10506),struct.pack('<I',ENCODED),'Dylib version')
+ replace(0x568,struct.pack('<I',0x10506),struct.pack('<I',encoded),'Dylib version')
  # The shorter product name fits the existing LC_ID_DYLIB command. Preserve
  # command size/order and zero all spare bytes; no load-command movement.
  old_install=source[0x570:0x598]
  need(old_install.split(b'\0',1)[0]==b'@rpath/FanqieAdBlock-1.5.6.dylib',
       'Exact original install name')
- new_install=('@rpath/'+PRODUCT_NAME+'-'+VERSION+'.dylib').encode()+b'\0'
+ new_install=('@rpath/'+PRODUCT_NAME+'-'+version+'.dylib').encode()+b'\0'
  need(len(new_install)<=len(old_install),'Install name fits existing command')
  replace(0x570,old_install,new_install.ljust(len(old_install),b'\0'),'FanqieX install name')
- replace(0xec84,'1.5.6'.encode('utf-16le'),VERSION.encode('utf-16le'),'Settings version')
+ replace(0xec84,'1.5.6'.encode('utf-16le'),version.encode('utf-16le'),'Settings version')
  uu=[o for c,o,n in macho_commands(source) if c==0x1b]; need(len(uu)==1,'One UUID')
  extension=payload[off:e['end']]
  ident=bytearray(hashlib.sha256(bytes(data[:original_signature['signature_offset']])+extension).digest()[:16])
@@ -166,7 +177,7 @@ def build(source_path, output_path):
  need(not any(a!=b and i not in allowed for i,(a,b) in enumerate(zip(source,data))),'Unexpected edit before extension')
  capacity=((len(extension)+0x3fff)//0x4000)*0x4000
  need(capacity<=0x10000,'Extension exceeds reviewed 64 KiB capacity')
- out=extend(bytes(data),extension,capacity=capacity,identifier=PRODUCT_NAME+'-'+VERSION+'.dylib')
+ out=extend(bytes(data),extension,capacity=capacity,identifier=PRODUCT_NAME+'-'+version+'.dylib')
  layout=verify_extension(bytes(data),out,extension); sig=verify_signature(out)
  # Compare actual original sections against the user's 1.5.8, independent
  # of the 1.5.6 reconstruction. Only explicitly reviewed entry branches, the
@@ -178,6 +189,8 @@ def build(source_path, output_path):
   original_allowed.update(range(a,a+4))
  for a in (0x7848,0x7ac4,0x5d50,0x5da0,0x5dec,0x5e38,0x649c):
   original_allowed.update(range(a,a+4))
+ if isolated:
+  original_allowed.update(range(0x4878,0x487c))
  original_checked=0
  for sec in sections(uploaded):
   a=sec['offset']; b=a+sec['size']
@@ -189,7 +202,7 @@ def build(source_path, output_path):
   original_checked += b-a
  need(sig['page_hashes_valid'],'Candidate page hashes')
  need(hashlib.sha256(source_path.read_bytes()).hexdigest()==UPLOADED_SHA,'Input changed')
- report={'product_name':PRODUCT_NAME,'version':VERSION,'source_version':'1.6.1','source_sha256':PREVIOUS_SHA,
+ report={'product_name':PRODUCT_NAME,'version':version,'source_version':'1.6.1','source_sha256':PREVIOUS_SHA,
   'reconstruction_input_version':'1.5.8','reconstruction_input_sha256':UPLOADED_SHA,
   'rebuild_base_sha256':SOURCE_SHA,
   'candidate_sha256':hashlib.sha256(out).hexdigest(),'size_bytes':len(out),
@@ -216,6 +229,7 @@ def build(source_path, output_path):
  return report
 
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__); p.add_argument('source'); p.add_argument('output'); a=p.parse_args()
- r=build(a.source,a.output)
+ p=argparse.ArgumentParser(description=__doc__); p.add_argument('source'); p.add_argument('output')
+ p.add_argument('--version',choices=RELEASES,default=VERSION); a=p.parse_args()
+ r=build(a.source,a.output,version=a.version)
  print(json.dumps({k:r[k] for k in ('version','candidate_sha256','size_bytes','device_ui_tested')},indent=2))

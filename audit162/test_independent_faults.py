@@ -21,12 +21,13 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
-    good = audit(baseline, data)
+    good = audit(baseline, data, expected_version=args.expected_version)
     require(good["passed"], "Positive control must pass before mutation tests")
     image = Image(data)
-    tables = read_tables(image, "1.6.2")
+    tables = read_tables(image, args.expected_version)
     signature = read_signature(image)
     cd = signature["directory_offset"]
     rows = []
@@ -42,7 +43,7 @@ def main():
         mutate(mutated)
         if resign:
             rehash(mutated)
-        result = audit(baseline, bytes(mutated))
+        result = audit(baseline, bytes(mutated), expected_version=args.expected_version)
         check = result["checks"].get(expected_check)
         require(not result["passed"] and check and not check["passed"],
                 f"Fault escaped its gate: {name}, expected {expected_check}")
@@ -94,12 +95,15 @@ def main():
          "code_signature", resign=False)
     identifier_start = cd + 88
     case("stale_signature_version", lambda blob: blob.__setitem__(
-        slice(identifier_start, identifier_start + len(b"FanqieX-1.6.2.dylib")),
+        slice(identifier_start, identifier_start + len(f"FanqieX-{args.expected_version}.dylib")),
         b"FanqieX-1.5.8.dylib"), "version_consistency", resign=False)
     case("stale_settings_version", lambda blob: blob.__setitem__(0xEC84 + 8, ord("8")), "version_consistency")
     case("stale_shared_runtime_version", lambda blob: blob.__setitem__(runtime_version + 4, ord("8")),
          "version_consistency")
-    case("nonzero_extension_reserved_word", u32(0x14010 + 24 * 4, 1), "repair_directories")
+    reserved_word = 25 if args.expected_version == "1.6.3" else 24
+    case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
+    if args.expected_version == "1.6.3":
+        case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
     gap_start = 0x800 + tables["main"]["end"]
     require(gap_start < 0x14000, "Expected main constants reserve for padding fault")
     case("occupied_reserved_data_gap", u32(gap_start, 1), "repair_directories")

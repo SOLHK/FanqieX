@@ -14,7 +14,7 @@ from pathlib import Path
 import struct
 import traceback
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from interaction_runtime import Runtime as InteractionRuntime, read_entries
 
 
@@ -31,7 +31,7 @@ def diagnostic_entries(data):
     version, count, entry, began, ended, cancelled = struct.unpack_from('<6I', data, at + 8)
     require(version == 0x10602 and count == 4, 'Versioned diagnostic directory')
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] == 0x10602, 'This suite is for the actual 1.6.2 candidate')
+    release_version(data)
     extension, end = 0x800 + words[60], 0x800 + words[63]
     extension_code_end = 0x800 + words[61]
     require(extension + 128 <= entry < extension_code_end and entry % 4 == 0,
@@ -151,8 +151,8 @@ def owned_associations(rt, controller):
             if key[0] in (rt.PROXY, controller)}
 
 
-def inspect_record(record):
-    require(record['event'] == 'glassInteraction' and record['pluginVersion'] == '1.6.2',
+def inspect_record(record, data):
+    require(record['event'] == 'glassInteraction' and record['pluginVersion'] == release_version(data),
             'The existing versioned diagnostic queue envelope is reused')
     require(set(record['data']) == FIELD_NAMES, 'Only the five bounded diagnostic fields are present')
     encoded = json.dumps(record, ensure_ascii=False, allow_nan=False)
@@ -167,7 +167,7 @@ def transitions_and_nonmutation(data):
         cpu, rt, diag, lens, controller = make(data, slide)
         baseline, associations = frozen_ui(rt), owned_associations(rt, controller)
         call(cpu, rt, diag, 'began')
-        first = inspect_record(records(rt)[-1])
+        first = inspect_record(records(rt)[-1], data)
         require(first['phase'] == 'began' and first['glassSelectionDragging'] == 1,
                 'Began records the actual owned drag state')
         require(first['glassSelectionFingerOffsetX'] == 17.25 and first['candidateIndex'] is None,
@@ -177,7 +177,7 @@ def transitions_and_nonmutation(data):
                 first['glassSelectionLens']['effectInteractive'] == 1,
                 'One current lens is described using the existing public metadata helper')
         call(cpu, rt, diag, 'ended', rt.buttons[3])
-        ended = inspect_record(records(rt)[-1])
+        ended = inspect_record(records(rt)[-1], data)
         require(ended['phase'] == 'ended' and ended['candidateIndex'] == 3,
                 'Ended records the candidate identity as an array index')
         require(frozen_ui(rt) == baseline and owned_associations(rt, controller) == associations,
@@ -187,7 +187,7 @@ def transitions_and_nonmutation(data):
         rt.associations.pop((controller, rt.key('offset')))
         cleared = owned_associations(rt, controller)
         call(cpu, rt, diag, 'cancelled')
-        cancelled = inspect_record(records(rt)[-1])
+        cancelled = inspect_record(records(rt)[-1], data)
         require(cancelled['phase'] == 'cancelled' and cancelled['glassSelectionDragging'] == 0 and
                 cancelled['glassSelectionFingerOffsetX'] is None and cancelled['candidateIndex'] is None,
                 'Cleared cancellation state is represented accurately as false/null')
@@ -230,7 +230,7 @@ def bounded_candidate_lookup(data):
             candidate = buttons[-1]
             expected = 7 if scenario == 'eight' else None
         call(cpu, rt, diag, 'ended', candidate)
-        row = inspect_record(records(rt)[-1])
+        row = inspect_record(records(rt)[-1], data)
         require(row['candidateIndex'] == expected, 'Bounded identity lookup: ' + scenario)
         count = sum(receiver == rt.buttons_array and name == 'objectAtIndex:'
                     for receiver, name in rt.messages)
@@ -258,7 +258,7 @@ def missing_and_nonfinite_state(data):
         else:
             rt.associations.pop((rt.PROXY, rt.key('lens')))
         call(cpu, rt, diag, 'cancelled')
-        row = inspect_record(records(rt)[-1])
+        row = inspect_record(records(rt)[-1], data)
         if scenario != 'lens_missing':
             require(row['glassSelectionFingerOffsetX'] is None,
                     'Missing/nonfinite offset is JSON null: ' + scenario)

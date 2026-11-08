@@ -21,6 +21,7 @@ class Runtime:
     LAYOUT_IMP = 0x33000100
     RATIO_IMP = 0x33000200
     BACKGROUND_IMP = 0x33000300
+    SUPERCLASS_IMP = 0x33000a00
 
     def __init__(self, data, slide=0, active=True, attached=True,
                  inherited=False, class_exists=True, ratio_alias=True,
@@ -28,6 +29,7 @@ class Runtime:
         self.data, self.slide = data, slide
         self.events, self.calls = [], 0
         self.objects, self.classes, self.class_names, self.parents = {}, {}, {}, {}
+        self.metaclasses = {}
         self.methods, self.own, self.associations, self.ivar_ids = {}, {}, {}, {}
         self.selectors, self.selector_names, self.strings = {}, {}, {}
         self.layout_mutator = None
@@ -38,7 +40,8 @@ class Runtime:
         self.edge_supported = edge_supported
         self.class_exists = class_exists
         self.rebase_pointers = {}
-        self._class('NSObject')
+        root = self._class('NSObject')
+        self._add(self.metaclasses[root], 'superclass', self.SUPERCLASS_IMP, '#16@0:8')
         for name, parent in [('UIView','NSObject'), ('UIWindow','UIView'),
                              ('UIScrollView','UIView'), ('SSTabBar','UIView'),
                              ('UIButton','UIView'), ('UILabel','UIView'),
@@ -94,6 +97,11 @@ class Runtime:
         self.classes[name] = pointer; self.class_names[pointer] = name
         self.parents[pointer] = self.classes.get(parent,0)
         self.own[pointer] = {}
+        meta = 0x38000000+len(self.metaclasses)*0x100
+        self.metaclasses[pointer] = meta
+        self.class_names[meta] = name+'(meta)'
+        self.own[meta] = {}
+        self.parents[meta] = self.metaclasses.get(self.parents[pointer],0)
         return pointer
 
     def obj(self, cls, name, **state):
@@ -247,8 +255,13 @@ class Runtime:
             result = self.classes.get(name,0)
             if name == 'SSTabBar' and not self.class_exists:
                 result = 0
-        elif p in (0xa5f8, 0xa604):
+        elif pc == self.SUPERCLASS_IMP:
+            require(a[1] == self.sel('superclass'), 'Original superclass selector')
+            result = self.parents[a[0]]
+        elif p == 0xa5f8:
             result = self.get_method(a[0],a[1]) if a[0] else 0
+        elif p == 0xa604:
+            result = self.get_method(self.metaclasses.get(a[0],0),a[1])
         elif p == 0xa598:
             result = self.methods[a[0]]['imp'] if a[0] else 0
         elif p == 0xa5ec:
@@ -283,14 +296,21 @@ class Runtime:
             name = next(name for (_,name),pointer in self.ivar_ids.items() if pointer == a[1])
             result = self.objects[a[0]].state.get(name,0)
         elif p == 0xa664:
-            result = self.objects[a[0]].cls if a[0] else 0
+            if a[0] in self.metaclasses:
+                result = self.metaclasses[a[0]]
+            elif a[0]:
+                result = self.objects[a[0]].cls
         elif p == 0xa5d4:
             receiver, selector = a[:2]
             name = self.selector_names.get(selector)
             require(name is not None, 'Known selector for objc_msgSend')
             if not receiver:
                 fp_result = (0.0,0.0,0.0,0.0)
-            elif receiver in self.class_names:
+            elif receiver in self.metaclasses:
+                method = self.get_method(self.metaclasses[receiver], selector) if self.dispatch_methods else 0
+                if method:
+                    cpu.pc = self.methods[method]['imp']
+                    return True
                 cls = self.class_names[receiver]
                 if cls == 'UIColor' and name in ('clearColor','secondarySystemFillColor','systemBackgroundColor','labelColor'):
                     result = self.color(name)
