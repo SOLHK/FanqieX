@@ -1,0 +1,133 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "steps": [
+    {
+      "name": "build",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.355,
+      "log": "logs/build.log"
+    },
+    {
+      "name": "rebuild",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.378,
+      "log": "logs/rebuild.log"
+    },
+    {
+      "name": "extension-layout-selftest",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.056,
+      "log": "logs/extension-layout-selftest.log"
+    },
+    {
+      "name": "independent-binary",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.071,
+      "log": "logs/independent-binary.log"
+    },
+    {
+      "name": "independent-faults",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.679,
+      "log": "logs/independent-faults.log"
+    },
+    {
+      "name": "native-surface",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 8.225,
+      "log": "logs/native-surface.log"
+    },
+    {
+      "name": "glass-interaction",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 1.374,
+      "log": "logs/glass-interaction.log"
+    },
+    {
+      "name": "integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 3.004,
+      "log": "logs/integration.log"
+    },
+    {
+      "name": "diagnostic-dedup",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 33.834,
+      "log": "logs/diagnostic-dedup.log"
+    },
+    {
+      "name": "legacy-execution",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 29.836,
+      "log": "logs/legacy-execution.log"
+    },
+    {
+      "name": "feed-viewport",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 5.29,
+      "log": "logs/feed-viewport.log"
+    },
+    {
+      "name": "feed-integration",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 11.457,
+      "log": "logs/feed-integration.log"
+    },
+    {
+      "name": "feed-realistic159",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 18.018,
+      "log": "logs/feed-realistic159.log"
+    },
+    {
+      "name": "control-geometry",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.611,
+      "log": "logs/control-geometry.log"
+    },
+    {
+      "name": "reader-fastpath",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 3.199,
+      "log": "logs/reader-fastpath.log"
+    },
+    {
+      "name": "reader-alignment159",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 33.079,
+      "log": "logs/reader-alignment159.log"
+    }
+  ],
+  "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models",
+  "source_manifest_sha256": "5d50747afd3ba7b43131678768f89eeead2e1e817438fd57a41b47fce7a7a16f",
+  "source_file_count": 46,
+  "llvm": {
+    "version": "19.1.7",
+    "library_sha256": "3523f50f635d2a1ea47518a392451f2854b92823ceaf1345fb806099dd1a3b8a"
+  },
+  "git_head_at_start": "a812989150311311cb715cf801b90d61885c9f1c",
+  "git_working_tree_clean_at_start": false,
+  "candidate_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "candidate_size": 139792,
+  "two_builds_identical": true,
+  "source_files_unchanged_during_verification": true
+}

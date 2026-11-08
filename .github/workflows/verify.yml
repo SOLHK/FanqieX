@@ -1,0 +1,54 @@
+name: Verify FanqieAdBlock 1.5.9
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify159-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install the LLVM 19 shared library
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libllvm19 python3
+
+      - name: Rebuild twice and verify the exact bytes
+        run: python3 scripts/verify159.py --expect-candidate dist/1.5.9/FanqieAdBlock-1.5.9.dylib
+
+      - name: Upload verification reports and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verification-reports-${{ github.sha }}
+          path: |
+            build/ci159/*.json
+            build/ci159/logs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload the verified plugin
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: FanqieAdBlock-1.5.9-${{ github.sha }}
+          path: |
+            build/ci159/FanqieAdBlock-1.5.9.dylib
+            build/ci159/SHA256SUMS.txt
+            build/ci159/ci-summary.json
+          if-no-files-found: error
+          retention-days: 30

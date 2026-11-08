@@ -1,0 +1,401 @@
+{
+  "passed": true,
+  "candidate_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "cases": [
+    {
+      "name": "stable_control",
+      "passed": true,
+      "details": {
+        "cornerConfiguration": 0,
+        "setAccessibilityElementsHidden:": 0,
+        "setAutoresizingMask:": 0,
+        "setCenter:": 0,
+        "setContentMode:": 0,
+        "setFrame": 0,
+        "setHidden": 0,
+        "setImage:": 0,
+        "setUserInteractionEnabled:": 0
+      }
+    },
+    {
+      "name": "stable_glyph",
+      "passed": true,
+      "details": {
+        "cornerConfiguration": 0,
+        "setAccessibilityElementsHidden:": 0,
+        "setAutoresizingMask:": 0,
+        "setCenter:": 0,
+        "setContentMode:": 0,
+        "setFrame": 0,
+        "setHidden": 0,
+        "setImage:": 0,
+        "setUserInteractionEnabled:": 0
+      }
+    },
+    {
+      "name": "real_resize",
+      "passed": true,
+      "details": {
+        "cornerConfiguration": 1,
+        "setAccessibilityElementsHidden:": 0,
+        "setAutoresizingMask:": 0,
+        "setCenter:": 0,
+        "setContentMode:": 0,
+        "setFrame": 1,
+        "setHidden": 0,
+        "setImage:": 0,
+        "setUserInteractionEnabled:": 0
+      }
+    },
+    {
+      "name": "reentrant_layout",
+      "passed": true,
+      "details": {
+        "panel_nested_instructions": 16
+      }
+    },
+    {
+      "name": "known_back_pixels_and_disable",
+      "passed": true,
+      "details": {
+        "slide": "0x0",
+        "pixel_reads": 1,
+        "back_frame": [
+          4.0,
+          4.0,
+          36.0,
+          36.0
+        ]
+      }
+    },
+    {
+      "name": "known_back_ASLR",
+      "passed": true,
+      "details": {
+        "slide": "0x100000000",
+        "pixel_reads": 1,
+        "back_frame": [
+          4.0,
+          4.0,
+          36.0,
+          36.0
+        ]
+      }
+    },
+    {
+      "name": "host_replacement_and_exact_scope",
+      "passed": true,
+      "details": {
+        "host_image_preserved": true,
+        "non_fq_owner_preserved": true
+      }
+    },
+    {
+      "name": "alignment_metadata_and_missing_api",
+      "passed": true,
+      "details": {
+        "alignment_aware_frame": [
+          -2.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "missing_api_preserves_host": true
+      }
+    },
+    {
+      "name": "standalone_back_and_nil_getter_cleanup",
+      "passed": true,
+      "details": {
+        "standalone_disabled_cleanup": true,
+        "nil_getter_cleanup": true
+      }
+    },
+    {
+      "name": "bounded_panel_and_original_callback",
+      "passed": true,
+      "details": {
+        "visited": 64,
+        "original_layout_calls_per_pass": 1,
+        "record": {
+          "event": "reader_layout",
+          "data": {
+            "readerPluginLayoutMs": 0.0,
+            "readerVisitedViews": 64,
+            "readerTraversalBudgetExhausted": 1
+          },
+          "timestamp": 1700000000.0,
+          "pluginVersion": "1.5.9",
+          "sequence": 3
+        }
+      }
+    },
+    {
+      "name": "detached_reader_and_owner_epochs",
+      "passed": true,
+      "details": {
+        "scoped_window_lifecycle": true,
+        "ownership_epoch_preserved": true
+      }
+    },
+    {
+      "name": "monotonic_coalesced_diagnostic",
+      "passed": true,
+      "details": {
+        "sample_count": 2,
+        "fixture_elapsed_ms": 20.0
+      }
+    },
+    {
+      "name": "prior_reader_circle",
+      "passed": true,
+      "details": {
+        "frame": [
+          4.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "slide": "0x0",
+        "instructions": 12959
+      }
+    },
+    {
+      "name": "prior_reader_left_aligned_image",
+      "passed": true,
+      "details": {
+        "frame": [
+          -13.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "host_image_frame_preserved": true,
+        "instructions": 9047
+      }
+    },
+    {
+      "name": "prior_edit_text_pill",
+      "passed": true,
+      "details": {
+        "frame": [
+          -8.0,
+          0.0,
+          48.0,
+          32.0
+        ],
+        "horizontal_text_padding": 10,
+        "vertical_text_padding": 6,
+        "instructions": 2067
+      }
+    },
+    {
+      "name": "prior_filter_icon_and_text",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          0.0,
+          69.0,
+          32.0
+        ],
+        "instructions": 2653
+      }
+    },
+    {
+      "name": "prior_reading_time_pill",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          -2.0,
+          156.0,
+          32.0
+        ],
+        "instructions": 2597
+      }
+    },
+    {
+      "name": "prior_larger_font_metrics",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          5.0,
+          52.0,
+          34.0
+        ],
+        "instructions": 2067
+      }
+    },
+    {
+      "name": "prior_own_clip_circle",
+      "passed": true,
+      "details": {
+        "frame": [
+          0.0,
+          0.0,
+          24.0,
+          24.0
+        ],
+        "instructions": 8936
+      }
+    },
+    {
+      "name": "prior_own_clip_insufficient_title_padding",
+      "passed": true,
+      "details": {
+        "no_material_when_padding_impossible": true,
+        "instructions": 1553
+      }
+    },
+    {
+      "name": "prior_hidden_control_and_glyph",
+      "passed": true,
+      "details": {
+        "hidden_control_and_glyph_recovery": true,
+        "instructions": 15102
+      }
+    },
+    {
+      "name": "prior_nonfinite_geometry",
+      "passed": true,
+      "details": {
+        "cases": [
+          {
+            "where": "control",
+            "value": "nan",
+            "instructions": 759
+          },
+          {
+            "where": "control",
+            "value": "inf",
+            "instructions": 759
+          },
+          {
+            "where": "image",
+            "value": "nan",
+            "instructions": 1754
+          },
+          {
+            "where": "image",
+            "value": "-inf",
+            "instructions": 1754
+          }
+        ]
+      }
+    },
+    {
+      "name": "prior_outside_scope_fallback",
+      "passed": true,
+      "details": {
+        "original_trampoline_executed": true,
+        "frame": [
+          0.0,
+          0.0,
+          44.0,
+          44.0
+        ],
+        "instructions": 1340
+      }
+    },
+    {
+      "name": "prior_standalone_glyph",
+      "passed": true,
+      "details": {
+        "frame": [
+          3.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "slide": "0x0",
+        "instructions": 1995
+      }
+    },
+    {
+      "name": "prior_glyph_control_duplicate_prevention",
+      "passed": true,
+      "details": {
+        "one_shared_material": true,
+        "instructions": 5514
+      }
+    },
+    {
+      "name": "prior_unknown_selector_fallback",
+      "passed": true,
+      "details": {
+        "frame": [
+          12.0,
+          6.0,
+          32.0,
+          32.0
+        ],
+        "instructions": 386
+      }
+    },
+    {
+      "name": "prior_reader_ASLR",
+      "passed": true,
+      "details": {
+        "frame": [
+          4.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "slide": "0x100000000",
+        "instructions": 12959
+      }
+    },
+    {
+      "name": "prior_glyph_ASLR",
+      "passed": true,
+      "details": {
+        "frame": [
+          3.0,
+          4.0,
+          36.0,
+          36.0
+        ],
+        "slide": "0x100000000",
+        "instructions": 1995
+      }
+    }
+  ],
+  "scope": "Actual AArch64 execution with explicit public UIKit/Foundation fixtures",
+  "device_tested": false,
+  "limits": [
+    "No device UIKit rendering, touch dispatch latency, Core Animation timing, or actual host class hierarchy is simulated.",
+    "Pixel correction is limited to a leading FQ single-icon control or a confirmed standalone getter; separate alignment tests cover unknown getters, actual RGBA padding, and child layout ordering.",
+    "The 20ms diagnostic case is an injected clock fixture, not a measured performance result."
+  ],
+  "baseline157": {
+    "sha256": "6031d37a2d4e41038338eb0d5730bb6f30833fb0c3499bf4f5b781a88a64a7a1",
+    "ten_stable_control_layouts": {
+      "cornerConfiguration": 10,
+      "setAccessibilityElementsHidden:": 0,
+      "setAutoresizingMask:": 10,
+      "setCenter:": 0,
+      "setContentMode:": 0,
+      "setFrame": 0,
+      "setHidden": 10,
+      "setImage:": 0,
+      "setUserInteractionEnabled:": 0
+    },
+    "ten_stable_glyph_layouts": {
+      "cornerConfiguration": 10,
+      "setAccessibilityElementsHidden:": 0,
+      "setAutoresizingMask:": 10,
+      "setCenter:": 0,
+      "setContentMode:": 0,
+      "setFrame": 20,
+      "setHidden": 10,
+      "setImage:": 0,
+      "setUserInteractionEnabled:": 0
+    }
+  },
+  "case_count": 28,
+  "instructions": 504284,
+  "abi_checks": "Each execution preserves x18, x19-x29, d8-d15, aligned and balanced SP."
+}

@@ -1,0 +1,184 @@
+{
+  "scope": "Selected geometry values only; no account, device identifiers, reading content, or raw private log included.",
+  "recordCountsByVersion": {
+    "1.5.7": 899,
+    "1.5.8": 53
+  },
+  "exportedTopLevelVersion": "1.5.7",
+  "currentSessionEventVersion": "1.5.8",
+  "observedGeometry": [
+    {
+      "sequence": 37,
+      "selectedIndex": 3,
+      "barFrame": [
+        0,
+        882,
+        440,
+        74
+      ],
+      "managedScrolls": [
+        {
+          "class": "FQFeedListCollectionView",
+          "frame": [
+            0,
+            106,
+            440,
+            850
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            850
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        },
+        {
+          "class": "FQFeedListCollectionView",
+          "frame": [
+            0,
+            0,
+            440,
+            776
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            776
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        }
+      ]
+    },
+    {
+      "sequence": 39,
+      "selectedIndex": 3,
+      "barFrame": [
+        0,
+        882,
+        440,
+        74
+      ],
+      "managedScrolls": [
+        {
+          "class": "FQFeedListCollectionView",
+          "frame": [
+            0,
+            106,
+            440,
+            850
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            850
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        },
+        {
+          "class": "FQFeedListCollectionView",
+          "frame": [
+            0,
+            0,
+            440,
+            776
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            775.9999999999998
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        }
+      ]
+    },
+    {
+      "sequence": 43,
+      "selectedIndex": 2,
+      "barFrame": [
+        0,
+        882,
+        440,
+        74
+      ],
+      "managedScrolls": [
+        {
+          "class": "UICollectionView",
+          "frame": [
+            0,
+            0,
+            440,
+            858
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            857.9999999999999
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        },
+        {
+          "class": "FQFeedListCollectionView",
+          "frame": [
+            0,
+            0,
+            440,
+            784
+          ],
+          "windowRect": [
+            0,
+            106,
+            440,
+            784.0000000000005
+          ],
+          "bottomEdgeHidden": 1,
+          "backgroundColor": "UIExtendedGrayColorSpace 0 0",
+          "layerBackgroundColor": "UIExtendedGrayColorSpace 0 0"
+        }
+      ]
+    }
+  ],
+  "readerScreenshotMeasurement": {
+    "imageSizePixels": [
+      1320,
+      2868
+    ],
+    "darkPixelThresholdPerChannel": 60,
+    "sampleRegionPixels": [
+      35,
+      210,
+      122,
+      292
+    ],
+    "backArrowDarkPixelBoundingBoxInclusive": [
+      50,
+      226,
+      77,
+      275
+    ],
+    "horizontalArrowCenterPixels": 63.5,
+    "visuallyEstimatedGlassHorizontalCenterPixels": 83.5,
+    "horizontalMismatchPixelsApprox": 20.0
+  },
+  "inferences": [
+    "The inner feed ends 66 or 74 points above the window bottom when its top is 106 points.",
+    "Exact floating-point equality rejects the recorded coordinate-conversion values in the prior ARM64 path.",
+    "Runtime subclasses and intermediate clipping containers are defensive test cases; their presence on the device is not established by this log.",
+    "The screenshot alone does not identify the actual UIImage contents, imageView class, or available back-view getter."
+  ],
+  "deviceValidationOf159": false
+}

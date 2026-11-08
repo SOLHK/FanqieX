@@ -1,0 +1,721 @@
+{
+  "passed": true,
+  "candidate_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "device_ui_tested": false,
+  "boundary": "Public Objective-C fixtures supply RGBA bytes; production ARM64 scans alpha and computes/restores center.",
+  "limitations": [
+    "No actual iPhone, UIKit renderer, GPU, host class tree, or touch delivery is emulated.",
+    "Only CGImage-backed, nonanimated, nonresizable images at most 256 pixels on either axis are measured.",
+    "The bounding envelope measures nontransparent pixels, not colour contrast inside an opaque rectangular bitmap.",
+    "First CoreImage initialization and real-device visual acceptance remain unmeasured.",
+    "layoutIfNeeded settles pending UIKit descendants; arbitrary later explicit host relayout can still overwrite a correction."
+  ],
+  "negative_controls": [
+    {
+      "getter": "none",
+      "offset_pt": -6.666666666666668,
+      "symbol_requests": 0
+    },
+    {
+      "getter": "button",
+      "offset_pt": -6.666666666666668,
+      "symbol_requests": 0
+    },
+    {
+      "getter": "none",
+      "case": "vertical_alpha_padding",
+      "offset_pt": [
+        0.0,
+        -8.0
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "all_entry_paths",
+      "passed": true,
+      "detail": [
+        {
+          "getter": "none",
+          "slide": "0x0",
+          "center": [
+            28.666666666666668,
+            22.0
+          ],
+          "pixel_reads": 1
+        },
+        {
+          "getter": "image",
+          "slide": "0x0",
+          "center": [
+            28.666666666666668,
+            22.0
+          ],
+          "pixel_reads": 1
+        },
+        {
+          "getter": "button",
+          "slide": "0x0",
+          "center": [
+            28.666666666666668,
+            22.0
+          ],
+          "pixel_reads": 1
+        },
+        {
+          "getter": "none",
+          "slide": "0x100000000",
+          "center": [
+            28.666666666666668,
+            22.0
+          ],
+          "pixel_reads": 1
+        }
+      ]
+    },
+    {
+      "name": "stable_and_host_resets",
+      "passed": true,
+      "detail": {
+        "stable_frames": 10,
+        "host_reset_frames": 10,
+        "pixel_reads_total": 1
+      }
+    },
+    {
+      "name": "host_image_replacement",
+      "passed": true,
+      "detail": {
+        "distinct_image_reads": 2,
+        "context_count": 1,
+        "new_glass_frame": [
+          6.0,
+          4.0,
+          36.0,
+          36.0
+        ]
+      }
+    },
+    {
+      "name": "disable_and_host_wins",
+      "passed": true,
+      "detail": {
+        "owned_center_restored": true,
+        "host_changed_center_preserved": true
+      }
+    },
+    {
+      "name": "detach_and_owner_epoch",
+      "passed": true,
+      "detail": {
+        "detachment_restored": true,
+        "old_reader_cannot_revoke_new_epoch": true
+      }
+    },
+    {
+      "name": "excluded_topologies",
+      "passed": true,
+      "detail": [
+        "right",
+        "text",
+        "two_images",
+        "interactive",
+        "scale",
+        "rotation",
+        "other_scope",
+        "foreign_getter"
+      ]
+    },
+    {
+      "name": "unsupported_images",
+      "passed": true,
+      "detail": [
+        {
+          "case": "no_cg",
+          "reason": 1,
+          "pixel_reads": 0
+        },
+        {
+          "case": "invalid_orientation",
+          "reason": 2,
+          "pixel_reads": 0
+        },
+        {
+          "case": "large",
+          "reason": 3,
+          "pixel_reads": 0
+        },
+        {
+          "case": "missing_coreimage",
+          "reason": 4,
+          "pixel_reads": 0
+        },
+        {
+          "case": "nil_context",
+          "reason": 5,
+          "pixel_reads": 0
+        },
+        {
+          "case": "transparent",
+          "reason": 7,
+          "pixel_reads": 1
+        },
+        {
+          "case": "below_threshold",
+          "reason": 7,
+          "pixel_reads": 1
+        },
+        {
+          "case": "cap_insets",
+          "reason": 13,
+          "pixel_reads": 0
+        },
+        {
+          "case": "animation",
+          "reason": 14,
+          "pixel_reads": 0
+        },
+        {
+          "case": "highlighted",
+          "reason": 15,
+          "pixel_reads": 0
+        },
+        {
+          "case": "cropped",
+          "reason": 16,
+          "pixel_reads": 0
+        },
+        {
+          "case": "calibration_missing",
+          "reason": 18,
+          "pixel_reads": 0
+        },
+        {
+          "case": "calibration_corrupt",
+          "reason": 18,
+          "pixel_reads": 0
+        },
+        {
+          "case": "orientation_unavailable",
+          "reason": 2,
+          "pixel_reads": 0
+        }
+      ]
+    },
+    {
+      "name": "bounded_scan_and_framework_load",
+      "passed": true,
+      "detail": {
+        "raster_size": [
+          256,
+          256
+        ],
+        "buffer_bytes": 262144,
+        "threshold": 16,
+        "framework_loads": 1,
+        "pixel_reads": 1,
+        "calibration_reads": 1
+      }
+    },
+    {
+      "name": "standalone_gesture_image",
+      "passed": true,
+      "detail": {
+        "host_frame_preserved": true,
+        "glass_center_x": 21.333333333333332
+      }
+    },
+    {
+      "name": "allocation_failures",
+      "passed": true,
+      "detail": [
+        {
+          "allocation": "snapshot",
+          "failure_at": 1
+        },
+        {
+          "allocation": "snapshot",
+          "failure_at": 2
+        },
+        {
+          "allocation": "weak",
+          "failure_at": 1
+        },
+        {
+          "allocation": "weak",
+          "failure_at": 2
+        },
+        {
+          "allocation": "weak",
+          "failure_at": 3
+        }
+      ]
+    },
+    {
+      "name": "changed_shift_diagnostic",
+      "passed": true,
+      "detail": {
+        "records": 2,
+        "new_shift": 5.0
+      }
+    },
+    {
+      "name": "fractional_rounding_no_drift",
+      "passed": true,
+      "detail": {
+        "rounded_layouts": 20,
+        "tolerance_pt": 1e-06,
+        "no_accumulation": true
+      }
+    },
+    {
+      "name": "hidden_and_control_transfer",
+      "passed": true,
+      "detail": {
+        "hidden_control_and_ancestor_restore": true,
+        "stale_control_cannot_revoke_new_owner": true
+      }
+    },
+    {
+      "name": "pending_child_layout_order",
+      "passed": true,
+      "detail": {
+        "nop_negative_callsite": "0x171c4",
+        "negative_post_child_offset_pt": -6.666666666666668,
+        "pending_consumed_before_measurement": true,
+        "synchronous_reentry_preserves_outer_guard": true
+      }
+    },
+    {
+      "name": "two_axis_pixels_and_row_order",
+      "passed": true,
+      "detail": [
+        {
+          "row_order": "top_down",
+          "opaque_y": [
+            0,
+            24
+          ],
+          "shift_pt": [
+            6.0,
+            8.0
+          ],
+          "calibration_reads": 1,
+          "image_reads": 1
+        },
+        {
+          "row_order": "top_down",
+          "opaque_y": [
+            45,
+            72
+          ],
+          "shift_pt": [
+            6.0,
+            -7.5
+          ],
+          "calibration_reads": 1,
+          "image_reads": 1
+        },
+        {
+          "row_order": "bottom_up",
+          "opaque_y": [
+            0,
+            24
+          ],
+          "shift_pt": [
+            6.0,
+            8.0
+          ],
+          "calibration_reads": 1,
+          "image_reads": 1
+        },
+        {
+          "row_order": "bottom_up",
+          "opaque_y": [
+            45,
+            72
+          ],
+          "shift_pt": [
+            6.0,
+            -7.5
+          ],
+          "calibration_reads": 1,
+          "image_reads": 1
+        }
+      ]
+    },
+    {
+      "name": "orientation_scale_and_rtl",
+      "passed": true,
+      "detail": [
+        {
+          "ui_orientation": 0,
+          "rtl": false,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": []
+        },
+        {
+          "ui_orientation": 0,
+          "rtl": true,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": []
+        },
+        {
+          "ui_orientation": 1,
+          "rtl": false,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            3
+          ]
+        },
+        {
+          "ui_orientation": 1,
+          "rtl": true,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            3
+          ]
+        },
+        {
+          "ui_orientation": 2,
+          "rtl": false,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            8
+          ]
+        },
+        {
+          "ui_orientation": 2,
+          "rtl": true,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            8
+          ]
+        },
+        {
+          "ui_orientation": 3,
+          "rtl": false,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            6
+          ]
+        },
+        {
+          "ui_orientation": 3,
+          "rtl": true,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            6
+          ]
+        },
+        {
+          "ui_orientation": 4,
+          "rtl": false,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            2
+          ]
+        },
+        {
+          "ui_orientation": 4,
+          "rtl": true,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            2
+          ]
+        },
+        {
+          "ui_orientation": 5,
+          "rtl": false,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            4
+          ]
+        },
+        {
+          "ui_orientation": 5,
+          "rtl": true,
+          "uiimage_size": [
+            30.0,
+            20.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            4
+          ]
+        },
+        {
+          "ui_orientation": 6,
+          "rtl": false,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            5
+          ]
+        },
+        {
+          "ui_orientation": 6,
+          "rtl": true,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            5
+          ]
+        },
+        {
+          "ui_orientation": 7,
+          "rtl": false,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            7
+          ]
+        },
+        {
+          "ui_orientation": 7,
+          "rtl": true,
+          "uiimage_size": [
+            20.0,
+            30.0
+          ],
+          "scale": 3.0,
+          "exif_calls": [
+            7
+          ]
+        },
+        {
+          "raster_size": [
+            132,
+            132
+          ],
+          "uiimage_size": [
+            44,
+            44
+          ],
+          "scale": 3.0,
+          "accepted": true
+        },
+        {
+          "owner_direction": "RTL",
+          "leading_control_x": 388,
+          "mirrored_pixels_centred": true
+        }
+      ]
+    },
+    {
+      "name": "nested_containers_and_drawing_modes",
+      "passed": true,
+      "detail": [
+        {
+          "depth": 0,
+          "content_mode": 0,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 0,
+          "content_mode": 1,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 0,
+          "content_mode": 4,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 0,
+          "content_mode": 7,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 0,
+          "content_mode": 8,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 1,
+          "content_mode": 0,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 1,
+          "content_mode": 1,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 1,
+          "content_mode": 4,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 1,
+          "content_mode": 7,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 1,
+          "content_mode": 8,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 2,
+          "content_mode": 0,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 2,
+          "content_mode": 1,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 2,
+          "content_mode": 4,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 2,
+          "content_mode": 7,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        },
+        {
+          "depth": 2,
+          "content_mode": 8,
+          "bounds_origin": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clipping_and_restore_transition",
+      "passed": true,
+      "detail": [
+        {
+          "rejected": "clipped_wrapper",
+          "reason": 19
+        },
+        {
+          "rejected": "masked_wrapper",
+          "reason": 19
+        },
+        {
+          "rejected": "masked_image",
+          "reason": 19
+        },
+        {
+          "rejected": "rounded_image",
+          "reason": 19
+        },
+        {
+          "unsupported_image_transition_restores_same_frame": true
+        }
+      ]
+    },
+    {
+      "name": "control_standalone_role_transfer",
+      "passed": true,
+      "detail": {
+        "button_to_standalone_to_button": true,
+        "unsupported_replacement_releases_prior_owner": true
+      }
+    }
+  ],
+  "group_count": 19,
+  "instructions": 6148947,
+  "abi_checks": "Every execution preserves x18/x19-x29, d8-d15 and aligned/balanced SP; native calls poison caller-saved registers."
+}

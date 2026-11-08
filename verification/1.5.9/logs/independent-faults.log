@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "candidate_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "negative_controls": 23,
+  "report": "/workspace/scratch/4b589d6679a4/FanqieX/output159/final/independent-fault-tests.json"
+}

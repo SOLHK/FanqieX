@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
 output159/
+build/
+audit159/execution-audit.json
 .DS_Store

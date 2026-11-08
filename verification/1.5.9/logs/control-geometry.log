@@ -1,0 +1,22 @@
+PASS reader_circle
+PASS reader_left_aligned_image
+PASS edit_text_pill
+PASS filter_icon_and_text
+PASS reading_time_pill
+PASS larger_font_metrics
+PASS own_clip_circle
+PASS own_clip_insufficient_title_padding
+PASS hidden_control_and_glyph
+PASS nonfinite_geometry
+PASS outside_scope_fallback
+PASS standalone_glyph
+PASS glyph_control_duplicate_prevention
+PASS unknown_selector_fallback
+PASS reader_ASLR
+PASS glyph_ASLR
+{
+  "passed": true,
+  "cases": 16,
+  "instructions": 86664,
+  "sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810"
+}
