@@ -133,7 +133,7 @@ def audit(source, candidate, payload=None):
     require([s["raw"] for s in ns[:2]] == [s["raw"] for s in os[:2]], "original segment descriptors")
     patch = ns[2]
     delta = patch["fs"]
-    require(delta in (0x4000, 0x8000, 0xc000, 0x10000), "patch size")
+    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000), "patch size")
     require((patch["vm"], patch["off"], patch["vs"], patch["max"], patch["prot"], patch["ns"], patch["flags"]) ==
             (0x14000, 0x14000, delta, 5, 5, 0, 0), "patch permissions/map")
     for i, seg in enumerate(ns):
@@ -201,7 +201,7 @@ def selftest(source):
     from extend_macho import extend
     payload = bytes.fromhex("1f2003d5c0035fd6")
     reports = []
-    for size in (0x4000, 0x8000, 0xc000, 0x10000):
+    for size in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000):
         candidate = extend(source, payload, capacity=size, identifier="FanqieAdBlock-1.5.7.dylib")
         reports.append(audit(source, candidate, payload))
     # Exercise the fourth page with actual bytes above the former 48 KiB limit.
@@ -255,6 +255,7 @@ def selftest(source):
         ("unsupported_capacity", source, payload, 0x1000),
         ("over_reviewed_capacity", source, payload, 0x14000),
         ("four_page_overflow", source, bytes(0x10004), 0x10000),
+        ("eight_page_overflow", source, bytes(0x20004), 0x20000),
     ]
     occupied = bytearray(source)
     _, cmds, _ = parse(source)
