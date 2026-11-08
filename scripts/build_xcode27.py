@@ -51,8 +51,8 @@ def disassemble(data, address=0):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repair-dir', choices=('repair159', 'repair160'),
-                        default='repair160')
+    parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161'),
+                        default='repair161')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
     args = parser.parse_args()

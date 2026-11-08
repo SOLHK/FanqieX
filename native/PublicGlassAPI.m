@@ -2,8 +2,10 @@
 // Type checking this file does not claim that the host application was run.
 #import <UIKit/UIKit.h>
 
-_Static_assert(UIGlassEffectStyleClear == 1,
-               "The ARM64 factory call encodes native clear glass as style 1");
+_Static_assert(UIGlassEffectStyleRegular == 0,
+               "The main navigation capsule uses the readable regular variant");
+_Static_assert(UIControlEventValueChanged == 4096,
+               "The native selection bridge observes only value changes");
 _Static_assert(UIControlEventTouchDown == 1 && UIControlEventTouchUpInside == 64 &&
                UIControlEventTouchUpOutside == 128 && UIControlEventTouchCancel == 256,
                "Passive observation must subscribe to the exact public touch events");
@@ -28,7 +30,7 @@ void FQRemovePassiveTouchObserver(UIControl *control, id<FQPassiveTouchObserver>
 }
 
 UIVisualEffectView *FQMakePublicGlassSurface(CGRect frame) {
-    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleClear];
+    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
     effect.interactive = YES;
     effect.tintColor = nil;
     UIVisualEffectView *surface = [[UIVisualEffectView alloc] initWithEffect:effect];
@@ -42,17 +44,30 @@ UIVisualEffectView *FQMakePublicGlassSurface(CGRect frame) {
     return surface;
 }
 
-UIImage *FQReaderBackSymbol(void) {
-    UIImageSymbolConfiguration *configuration =
-        [UIImageSymbolConfiguration configurationWithPointSize:20.0];
-    return [UIImage systemImageNamed:@"chevron.backward" withConfiguration:configuration];
+// One public native selection control owns its track, thumb and gestures.
+// No custom glass, background image or private subview is added around it.
+UISegmentedControl *FQMakeNativeSelection(NSArray<NSString *> *titles, CGRect frame,
+                                        NSInteger selected, id target, SEL action) {
+    UISegmentedControl *selection = [[UISegmentedControl alloc] initWithItems:titles];
+    selection.frame = frame;
+    selection.momentary = NO;
+    selection.apportionsSegmentWidthsByContent = NO;
+    selection.selectedSegmentIndex = selected;
+    [selection addTarget:target action:action forControlEvents:UIControlEventValueChanged];
+    return selection;
 }
 
-UIImage *FQUpdateManagedBackState(UIButton *button, UIImage *symbol, UIControlState state) {
-    UIImage *original = [button imageForState:state];
-    [button setImage:symbol forState:state];
-    return original;
+void FQRestoreNativeSelection(UISegmentedControl *selection, id target, SEL action) {
+    [selection removeTarget:target action:action forControlEvents:UIControlEventValueChanged];
+    [selection removeFromSuperview];
 }
+
+BOOL FQNativeSelectionIsTracking(UISegmentedControl *selection) {
+    return selection.isTracking;
+}
+
+// Reader navigation controls deliberately receive no replacement symbol,
+// geometry adjustment or glass decoration in 1.6.1.
 
 void FQSetListenForeground(UILabel *label) {
     label.textColor = UIColor.labelColor;

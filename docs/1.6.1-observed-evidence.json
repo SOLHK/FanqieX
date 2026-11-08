@@ -1,0 +1,43 @@
+{
+  "source": "User-provided 2026-11-08 screenshots and rolling-hour diagnostics; raw files excluded",
+  "files": [
+    {
+      "uploaded_name": "062E9F2B-EA20-40B6-AD0C-FFD416C7E08D.json",
+      "sha256": "f64ff9cbb903015bb57c14c0c505a4f04258cc1be5185c0fde2d44639570cee4",
+      "size_bytes": 2183233
+    },
+    {
+      "uploaded_name": "35063255-B1EF-4441-8384-77B940656ACC.json",
+      "sha256": "29f0fa9a211b339ba0ab896ad0b64a1c634472cb8e2081bd80a05f754e49d787",
+      "size_bytes": 2569676
+    }
+  ],
+  "active_plugin_version": "1.6.0",
+  "observed_system": "Version 27.3 (Build 24C5037i)",
+  "main_material": {
+    "requestedGlassStyle": "Clear (1)",
+    "effectClass": "UIGlassEffect",
+    "alpha": 1
+  },
+  "reader_top_more": {
+    "owner": "FQReaderSaasNavigationView",
+    "bounds_pt": [
+      0,
+      0,
+      24,
+      24
+    ],
+    "material_frame_pt": [
+      0,
+      0,
+      24,
+      24
+    ]
+  },
+  "limits": [
+    "One-hour history includes overlapping 1.5.9 events.",
+    "Idle lens snapshots do not establish drag-time optical behavior.",
+    "Control callback intervals are not menu presentation latency.",
+    "No raw book text, account identifiers or uploaded screenshots are published."
+  ]
+}

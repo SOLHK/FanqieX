@@ -1,0 +1,2 @@
+8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e  FanqieAdBlock-1.6.1.dylib
+29660594b390fb61f2ee88eabc37d0d4835ee2376f1fcb6d44c87606497b715c  FanqieAdBlock-1.6.1.zip
