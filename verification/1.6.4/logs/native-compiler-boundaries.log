@@ -1,0 +1,8 @@
+test_import_call_and_internal_address_are_resolved (test_compile_diagnostics.DiagnosticsCompilerTests.test_import_call_and_internal_address_are_resolved) ... ok
+test_source_and_generated_component_are_current (test_compile_diagnostics.DiagnosticsCompilerTests.test_source_and_generated_component_are_current) ... ok
+test_unsupported_machine_code_dependencies_fail_closed (test_compile_diagnostics.DiagnosticsCompilerTests.test_unsupported_machine_code_dependencies_fail_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.201s
+
+OK

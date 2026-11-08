@@ -1,0 +1,2 @@
+4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb  FanqieX-1.6.4.dylib
+61da5ff04fa95906610e2e7c62fdaecb45a7288e734fa94c7ae1afb046678ec9  FanqieX-1.6.4.zip
