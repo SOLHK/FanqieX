@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "candidate_sha256": "043548e6d6c8dda4ad357c2e61c7724601bba92bb57e507ad3efe5c96b433626",
+  "cases": [
+    {
+      "name": "build_ownership_native_material",
+      "passed": true
+    },
+    {
+      "name": "direction_and_multitouch_gates",
+      "passed": true
+    },
+    {
+      "name": "offset_continuity_maintenance_single_commit",
+      "passed": true
+    },
+    {
+      "name": "physical_centers_rtl_and_extreme_clamping",
+      "passed": true
+    },
+    {
+      "name": "cancelled_failed_no_selection",
+      "passed": true
+    },
+    {
+      "name": "external_selection_wins_synchronous_cancel",
+      "passed": true
+    },
+    {
+      "name": "restore_idempotent_synchronous_cancel",
+      "passed": true
+    },
+    {
+      "name": "nil_reordered_replaced_oversize_arrays",
+      "passed": true
+    },
+    {
+      "name": "visibility_window_nonfinite_fail_closed",
+      "passed": true
+    },
+    {
+      "name": "allocation_failure_non_destructive",
+      "passed": true
+    },
+    {
+      "name": "aslr_nonzero_slide",
+      "passed": true
+    }
+  ],
+  "case_count": 11,
+  "scope": "Actual ARM64 interaction and original click/sync instructions with adversarial caller-saved clobbering, native-call object/gesture model, and outer repair scoped to LIupdate. No UIKit pixels, dyld loading, UIKit hit-testing physics, GPU refraction or device signing test."
+}
+

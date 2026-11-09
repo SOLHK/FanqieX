@@ -1,0 +1,102 @@
+{
+  "passed": true,
+  "candidate_sha256": "043548e6d6c8dda4ad357c2e61c7724601bba92bb57e507ad3efe5c96b433626",
+  "scope": "Actual ARM64 diagnostic helper with explicit UIKit/Foundation boundary fixtures",
+  "device_tested": false,
+  "gpu_refraction_tested": false,
+  "physical_hit_testing_tested": false,
+  "cases": [
+    {
+      "name": "transition_schema_privacy_abi_and_nonmutation",
+      "passed": true,
+      "detail": [
+        {
+          "slide": "0x0",
+          "records": 3,
+          "private_view_messages": 0
+        },
+        {
+          "slide": "0x180000000",
+          "records": 3,
+          "private_view_messages": 0
+        }
+      ]
+    },
+    {
+      "name": "bounded_candidate_identity_lookup",
+      "passed": true,
+      "detail": [
+        {
+          "scenario": "nil",
+          "candidate_index": null,
+          "element_reads": 0
+        },
+        {
+          "scenario": "first",
+          "candidate_index": 0,
+          "element_reads": 1
+        },
+        {
+          "scenario": "last",
+          "candidate_index": 3,
+          "element_reads": 4
+        },
+        {
+          "scenario": "unknown",
+          "candidate_index": null,
+          "element_reads": 4
+        },
+        {
+          "scenario": "reordered",
+          "candidate_index": 3,
+          "element_reads": 4
+        },
+        {
+          "scenario": "empty",
+          "candidate_index": null,
+          "element_reads": 0
+        },
+        {
+          "scenario": "missing",
+          "candidate_index": null,
+          "element_reads": 0
+        },
+        {
+          "scenario": "eight",
+          "candidate_index": 7,
+          "element_reads": 8
+        },
+        {
+          "scenario": "over_limit",
+          "candidate_index": null,
+          "element_reads": 0
+        }
+      ]
+    },
+    {
+      "name": "missing_and_nonfinite_state",
+      "passed": true,
+      "detail": [
+        "offset_missing",
+        "nan",
+        "positive_infinity",
+        "negative_infinity",
+        "controller_missing",
+        "lens_missing"
+      ]
+    },
+    {
+      "name": "rejected_calls_without_UIKit_access",
+      "passed": true,
+      "detail": [
+        "nil_proxy",
+        "nil_phase",
+        "foreign_phase",
+        "off_main"
+      ]
+    }
+  ],
+  "case_groups": 4,
+  "instructions": 153114,
+  "abi_checks": "Every invocation preserves x18/x19-x29, d8-d15 and balanced SP; framework calls poison caller-saved registers."
+}

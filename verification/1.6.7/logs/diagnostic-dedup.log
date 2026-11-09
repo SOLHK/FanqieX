@@ -1,0 +1,176 @@
+{
+  "passed": true,
+  "scope": "Actual supplied ARM64 control flow with public API boundary models; not iOS latency or pixels",
+  "candidate_sha256": "043548e6d6c8dda4ad357c2e61c7724601bba92bb57e507ad3efe5c96b433626",
+  "baseline_sha256": "6031d37a2d4e41038338eb0d5730bb6f30833fb0c3499bf4f5b781a88a64a7a1",
+  "negative_controls": {
+    "bar_color": {
+      "old_1_5_7": {
+        "snapshots": 9,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 621728,
+        "native_boundary_calls": 43574,
+        "color_conversions": 0,
+        "all_snapshot_data_identical": true
+      },
+      "current_candidate": {
+        "snapshots": 1,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
+        "color_conversions": 18,
+        "all_snapshot_data_identical": true
+      }
+    },
+    "parent_color": {
+      "old_1_5_7": {
+        "snapshots": 9,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 621728,
+        "native_boundary_calls": 43574,
+        "color_conversions": 0,
+        "all_snapshot_data_identical": true
+      },
+      "current_candidate": {
+        "snapshots": 1,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
+        "color_conversions": 18,
+        "all_snapshot_data_identical": true
+      }
+    },
+    "effect": {
+      "old_1_5_7": {
+        "snapshots": 9,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 621728,
+        "native_boundary_calls": 43574,
+        "color_conversions": 0,
+        "all_snapshot_data_identical": true
+      },
+      "current_candidate": {
+        "snapshots": 1,
+        "observer_calls": 9,
+        "replacement_objects": 8,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
+        "color_conversions": 18,
+        "all_snapshot_data_identical": true
+      }
+    },
+    "all": {
+      "old_1_5_7": {
+        "snapshots": 9,
+        "observer_calls": 9,
+        "replacement_objects": 24,
+        "instructions": 621728,
+        "native_boundary_calls": 43574,
+        "color_conversions": 0,
+        "all_snapshot_data_identical": true
+      },
+      "current_candidate": {
+        "snapshots": 1,
+        "observer_calls": 9,
+        "replacement_objects": 24,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
+        "color_conversions": 18,
+        "all_snapshot_data_identical": true
+      }
+    }
+  },
+  "runtime_export_version_regression": {
+    "passed": true,
+    "old_1_5_8": {
+      "event_version": "1.5.8",
+      "export_version": "1.5.7",
+      "instructions": 76352,
+      "real_export_json_written": true
+    },
+    "current_candidate": {
+      "event_version": "1.6.7",
+      "export_version": "1.6.7",
+      "instructions": 81243,
+      "real_export_json_written": true
+    },
+    "old_158_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
+    "old_consistency_failed": true,
+    "new_consistency_passed": true
+  },
+  "cross_restart_history_and_delayed_export": {
+    "passed": true,
+    "independent_logger_processes": 4,
+    "historical_versions_preserved": [
+      "1.5.7",
+      "1.5.8",
+      "1.5.9"
+    ],
+    "current_event_and_export_version": "1.6.7",
+    "worker_delay_seconds": 1200,
+    "inclusive_boundary_preserved": true,
+    "exported_record_count": 4.0,
+    "post_maintenance_versions": [
+      "1.5.8",
+      "1.5.9",
+      "1.6.7"
+    ],
+    "instructions": 305959
+  },
+  "semantic_changes": {
+    "passed": true,
+    "real_changes_recorded": 7,
+    "fresh_equal_tint_and_provider_deduplicated": true
+  },
+  "throttling": {
+    "passed": true,
+    "callbacks_at_120hz": 121,
+    "snapshots_in_first_second": 3,
+    "minimum_noncritical_interval_seconds": 0.5,
+    "latest_pending_scroll_captured": true,
+    "unchanged_callbacks_remain_deduplicated": true
+  },
+  "urgent_changes": {
+    "passed": true,
+    "rapid_critical_transitions_recorded": 8,
+    "interval_seconds": 0.01,
+    "selected_index_and_disabled_state_verified": true
+  },
+  "clock_and_guards": {
+    "passed": true,
+    "ASLR_slide": "0x110000000",
+    "wall_clock_independent": true,
+    "off_main_guard": true,
+    "synchronous_reentry_guard": true,
+    "rollback_recovery": true
+  },
+  "color_canonicalization": {
+    "passed": true,
+    "gray_rgb_equivalence": true,
+    "signed_zero_normalized": true,
+    "transparent_rgb_normalized": true,
+    "extended_rgb_preserved": true,
+    "nonfinite_and_unsupported_explicit": true
+  },
+  "explicit_and_retention": {
+    "passed": true,
+    "periodic_unthrottled": true,
+    "export_snapshot_unthrottled": true,
+    "real_export_json_written": true,
+    "inclusive_one_hour_retention": true,
+    "journal_format_unchanged": true
+  },
+  "limits": [
+    "Public effect class, tint and interactivity are observed; private same-class effect internals are not read.",
+    "Nonconvertible/pattern colors have a stable unknown marker; their descriptions remain in periodic/export snapshots.",
+    "Coalesced final changes are captured by a subsequent observer/monitor callback, not a newly scheduled timer.",
+    "Critical selection/visibility/attachment transitions intentionally bypass the 0.5-second noncritical cap.",
+    "No device timing, Core Animation compositing, renderer or dylib injection was executed."
+  ]
+}
+

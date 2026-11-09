@@ -1,0 +1,8 @@
+test_compiler_contract_rejects_external_or_dwarf_unwind (test_native_unwind.NativeUnwindTests.test_compiler_contract_rejects_external_or_dwarf_unwind) ... ok
+test_real_assembler_register_encoding_and_gap_boundaries (test_native_unwind.NativeUnwindTests.test_real_assembler_register_encoding_and_gap_boundaries) ... ok
+test_regular_page_capacity_and_corrupt_index_fail (test_native_unwind.NativeUnwindTests.test_regular_page_capacity_and_corrupt_index_fail) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.043s
+
+OK

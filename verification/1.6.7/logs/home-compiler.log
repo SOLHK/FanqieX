@@ -1,0 +1,6 @@
+test_compiled_component_matches_source (test_home_compiler.HomeCompilerTests.test_compiled_component_matches_source) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.344s
+
+OK
