@@ -64,6 +64,8 @@ def main():
     parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
+    parser.add_argument("--xcode-candidate", type=Path,
+                        help="Use a same-commit Xcode 27.2 candidate for native unwind and runtime audits")
     args = parser.parse_args()
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
@@ -129,9 +131,28 @@ def main():
         run("rebuild", ["repair162/build_plugin.py", baseline, rebuilt, "--version", args.version])
         if candidate.read_bytes() != rebuilt.read_bytes():
             raise RuntimeError("Two clean builds produced different bytes")
-        summary["candidate_sha256"] = digest(candidate)
+        linux_candidate_sha256 = digest(candidate)
+        summary["candidate_sha256"] = linux_candidate_sha256
         summary["candidate_size"] = candidate.stat().st_size
         summary["two_builds_identical"] = True
+        if args.xcode_candidate:
+            xcode_candidate = args.xcode_candidate.resolve()
+            validation_path = xcode_candidate.with_suffix(".validation.json")
+            if not xcode_candidate.is_file() or not validation_path.is_file():
+                raise RuntimeError("The same-commit Xcode candidate and validation report are required")
+            validation_report = json.loads(validation_path.read_text())
+            if validation_report.get("version") != args.version:
+                raise RuntimeError("Xcode validation report version mismatch")
+            if validation_report.get("candidate_sha256") != digest(xcode_candidate):
+                raise RuntimeError("Xcode validation report does not match candidate bytes")
+            if not validation_report.get("native_unwind", {}).get("passed"):
+                raise RuntimeError("Xcode candidate did not pass native unwind validation")
+            summary["linux_candidate_sha256"] = linux_candidate_sha256
+            summary["xcode_validation_sha256"] = digest(validation_path)
+            summary["candidate_source"] = "same-commit Xcode 27.2 validated build"
+            candidate.write_bytes(xcode_candidate.read_bytes())
+            summary["candidate_sha256"] = digest(candidate)
+            summary["candidate_size"] = candidate.stat().st_size
         if args.expect_candidate:
             if candidate.read_bytes() != args.expect_candidate.resolve().read_bytes():
                 raise RuntimeError("Rebuild differs from the supplied delivery candidate")
