@@ -1,0 +1,46 @@
+{
+  "baseline_commit": "c65cc0d5b56debfe2dc8eaf529c275c67dd00006",
+  "host_bundle": "com.dragon.read",
+  "host_build": "7.4.3.33",
+  "host_executable_sha256": "8ddf85f4c490d595109f7a4352ce842e07f66e4802d7da6705610a4050abf271",
+  "methods": [
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "layoutSubviews",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0xd61be14"
+    },
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "implementation_file_offset": "0xd61c2f4"
+    },
+    {
+      "class": "SSBookStoreSearchBarComponent",
+      "selector": "resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "implementation_file_offset": "0xd7797a0"
+    },
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "relayout",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0xa3b8898"
+    },
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "viewDidAppear:",
+      "encoding": "v20@0:8B16",
+      "implementation_file_offset": "0xa401f68"
+    },
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "searchBgView",
+      "encoding": "@16@0:8",
+      "implementation_file_offset": "0xa3b7944"
+    }
+  ],
+  "source": "Local supplied host Mach-O Objective-C metadata; not copied external implementation",
+  "device_tested": false
+}

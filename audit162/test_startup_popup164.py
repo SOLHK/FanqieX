@@ -5,7 +5,7 @@ import json
 import struct
 from pathlib import Path
 
-from arm64 import require
+from arm64 import require, release_version
 from mock_foundation import Runtime as FoundationRuntime
 from test_hook_ownership163 import make_cpu
 
@@ -101,7 +101,7 @@ def check_case(data, slide, mode):
         require(len(decisions) == 1, 'Executing the gate emits one decision event')
         record = decisions[0]
         require(record['timestamp'] == rt.now and record['sequence'] >= 1
-                and record['pluginVersion'] == '1.6.4', 'The versioned diagnostic envelope is populated')
+                and record['pluginVersion'] == release_version(data), 'The versioned diagnostic envelope is populated')
         require(record['data'] == {
             'ruleId': 'homepage_nonstandard_popup',
             'ruleType': 'exactHostSelector',

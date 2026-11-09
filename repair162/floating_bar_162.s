@@ -998,7 +998,7 @@ Lextension:
     .else
     .long 0
     .endif
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     .long LStartupPopupInstall - Lpatch
     .long LTabBarSpacing - Lpatch
     .long LAdInstall164 - Lpatch

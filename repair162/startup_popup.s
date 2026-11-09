@@ -31,6 +31,9 @@ LStartupPopupInstalled:
 LStartupPopupLegacy:
     ldr x0, [sp, #16]
     bl LStartupPopupLegacyBody
+    .if FQ_VERSION >= 0x10605
+    bl LFQH_FQHInstall
+    .endif
     adr x0, LStartupLoadLegacy
     bl LFQD_FQDLoadStage
     ldr x19, [sp, #32]

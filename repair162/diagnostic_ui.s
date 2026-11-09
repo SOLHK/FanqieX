@@ -860,7 +860,7 @@ LUIinstall:
     adr x1, LUset_left_item
     bl Lmessage
     GET x22, Lrelease
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     bl LFQD_FQDSettings
     .endif
@@ -1075,7 +1075,9 @@ LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
 LSversion:
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION == 0x10605
+    .asciz "1.6.5"
+    .elseif FQ_VERSION >= 0x10604
     .asciz "1.6.4"
     .elseif FQ_VERSION == 0x10603
     .asciz "1.6.3"

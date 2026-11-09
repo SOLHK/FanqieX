@@ -53,12 +53,13 @@ PATCH_SITES = (
     (0x60B8, "sync", False), (0x6C84, "frame", True),
     (0x6CE8, "proxy_frame", True), (0x6DB4, "restore", False),
 )
-MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4")
+MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4", "1.6.5")
 EXTENSION_PATCH_SITES = {
     "1.6.3": ((0x4878, "reserved24", False),),
     "1.6.4": ((0x4878, "reserved24", False), (0x4650, "reserved25", False),
               (0x6568, "reserved26", False), (0x46d8, "reserved27", True)),
 }
+EXTENSION_PATCH_SITES["1.6.5"] = EXTENSION_PATCH_SITES["1.6.4"]
 ALLOWED_SECTION_BYTES = {
     address for start in [item[0] for item in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     for address in range(start, start + 4)
@@ -215,8 +216,10 @@ def check_layout(old: Image, new: Image) -> dict:
 def check_sections(old: Image, new: Image, version: str) -> dict:
     extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
     allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
+    if version == "1.6.5":
+        allowed |= set(range(0x4018,0x4020))
     unwind = None
-    if version == '1.6.4':
+    if version in ('1.6.4', '1.6.5'):
         # Allow only a completely validated, compiler-frame-matching replacement
         # of this metadata slot; every original function entry stays identical.
         from unwind_audit import check_native_unwind
@@ -356,6 +359,17 @@ def check_instructions(image: Image, tables: dict) -> dict:
     version = tables["expected_version"]
     extension_sites = EXTENSION_PATCH_SITES.get(version, ())
     addresses += [pc for pc, _, _ in extension_sites]
+    if version == "1.6.5":
+        data=image.data
+        require(data.count(b"FQ165HOM")==1,"One home compatibility entry table")
+        at=data.index(b"FQ165HOM")
+        ext=tables["extension"]
+        require(BASE+ext["strings"]<=at and at+16<=BASE+ext["end"],"Home table inside constants")
+        gate,check=unpack("<II",data,at+8)
+        for pc,entry,kind in ((0x4018,check,"BL"),(0x401c,gate,"B")):
+            require(EXT+128<=BASE+entry<BASE+ext["code_end"],"Home entry inside code")
+            require(direct_instruction(unpack("<I",data,pc)[0],pc)==(kind,BASE+entry),"Constructor routes to checked home entry")
+        addresses += [0x4018,0x401c]
     for pc in addresses:
         word = unpack("<I", image.data, image.vm_file(pc, 4))[0]
         require(word != 0, f"Zero instruction in repair code at {pc:#x}")
@@ -607,6 +621,10 @@ def check_versions(image: Image, version: str, tables: dict, instructions: dict,
             "Cannot establish distinct event/export writes of the shared version")
     dotted = [{"address": match.start(), "value": match.group().decode("ascii")}
               for match in re.finditer(rb"\b\d+\.\d+\.\d+\b", data)]
+    if version == "1.6.5":
+        host=[item for item in dotted if data[item["address"]:item["address"]+9]==b"7.4.3.33\0"]
+        require(len(host)==1,"Exactly one pinned host build identifier")
+        dotted=[item for item in dotted if item not in host]
     require(all(item["value"] == version for item in dotted) and len(dotted) == 3,
             f"Unexpected displayed ASCII version strings: {dotted}")
     return {"version": version, "settings_utf16": version, "runtime_constants": constants,

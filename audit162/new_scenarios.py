@@ -37,7 +37,7 @@ def open_settings(cpu,rt,d,bootstrap=True):
                    if rt.class_names[rt.objects[p].cls] == 'FanqieAdBlockOptionsController')
     # The retained execution fixture adds 0x800 to every directory word,
     # including the numeric version field.
-    if d.get('version') in (0x10602 + 0x800, 0x10603 + 0x800, 0x10604 + 0x800):
+    if d.get('version') in (0x10602 + 0x800, 0x10603 + 0x800, 0x10604 + 0x800, 0x10605 + 0x800):
         require(rt.string_value(rt.objects[options].state.get('title', 0)) == 'FanqieX',
                 'The complete settings opener presents the product as FanqieX')
     nav = rt.objects[rt.objects[options].state['navigationItem']].state

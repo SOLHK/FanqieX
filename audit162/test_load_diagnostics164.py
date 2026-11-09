@@ -13,7 +13,7 @@ import struct
 import tempfile
 import uuid
 
-from arm64 import CPU, require
+from arm64 import CPU, require, release_version
 from mock_foundation import Runtime as FoundationRuntime
 from test_feed_viewport import labels_for
 from test_native_diagnostics164 import Runtime as NativeRuntime
@@ -90,7 +90,7 @@ def load_order(data, labels, slide):
         require(current['stage'] == name and current['complete'] == 0,
                 'Returning from the constructor does not imply a usable first page')
         runtime.now += 0.1
-    require(current['version'] == '1.6.4' and current['hostVersion'] == '7.4.3' and
+    require(current['version'] == release_version(data) and current['hostVersion'] == '7.4.3' and
             current['hostBuild'] == '74301', 'Journal identifies plugin and host build')
     uuid.UUID(current['sessionId'])
     require(current['previousRead'] == 'absent', 'A clean first launch has no previous attempt')
@@ -130,7 +130,7 @@ def restart(data, labels):
         second = saved(second_runtime)
         require(second['sessionId'] != first['sessionId'], 'A new process gets a new load session')
         require(second['previous'] == {'stage': 'diagnosticsInstallBegin', 'complete': 0,
-                                      'time': first['time'], 'version': '1.6.4'},
+                                      'time': first['time'], 'version': release_version(data)},
                 'A restart preserves the last completed checkpoint of an incomplete attempt')
         cpu3, third_runtime = make(data, folder)
         stage(cpu3, third_runtime, labels, data, 'entry')
@@ -182,7 +182,7 @@ def bounds(data, labels):
 
 
 def privacy_and_validation(data, labels):
-    seed = {'version': '1.6.4', 'stage': 'loadFinished', 'complete': 0, 'time': 1234,
+    seed = {'version': release_version(data), 'stage': 'loadFinished', 'complete': 0, 'time': 1234,
             'previous': {'previous': {'Cookie': PRIVATE}}, 'Authorization': PRIVATE,
             'sessionId': PRIVATE, 'osVersion': PRIVATE, 'path': PRIVATE}
     cpu, runtime = make(data)
@@ -232,7 +232,7 @@ def worker_scope(data, labels):
     stage(cpu, runtime, labels, data, 'entry')
     require(any(event['event'] == 'load_storage_directory' and event['directory'] == 9
                 for event in runtime.events), 'The independent boot journal actually selects Documents')
-    bad = runtime.box({'version': '1.6.4', 'event': 'ordinary_diagnostic'}, mutable=True)
+    bad = runtime.box({'version': release_version(data), 'event': 'ordinary_diagnostic'}, mutable=True)
     arguments = [runtime.classes['NSJSONSerialization'],
                  runtime.sel('dataWithJSONObject:options:error:'), bad, 0, 0, 0, 0, 0]
     try:

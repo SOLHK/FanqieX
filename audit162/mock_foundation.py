@@ -11,7 +11,7 @@ import plistlib
 import tempfile
 import uuid
 
-from arm64 import bits, require
+from arm64 import bits, require, release_version
 from mock_uikit import Runtime as ViewRuntime
 
 
@@ -166,7 +166,7 @@ class Runtime(ViewRuntime):
                    'hostVersion', 'hostBuild', 'stages', 'stage', 'time', 'previous',
                    'previousRead', 'writeFailed', 'writeFailure', 'writeErrorCode',
                    'stagesTruncated'}
-        if not value.keys() <= allowed or value.get('version') != '1.6.4':
+        if not value.keys() <= allowed or value.get('version') != release_version(self.data):
             return False
         if (not isinstance(value.get('sessionId'), str) or
                 not isinstance(value.get('stage'), str) or value['stage'] not in self.LOAD_STAGES):

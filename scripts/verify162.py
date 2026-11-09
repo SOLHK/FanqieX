@@ -59,7 +59,7 @@ def source_manifest():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
-    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4"), default="1.6.2")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     args = parser.parse_args()
@@ -185,10 +185,10 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
-        if args.version in ("1.6.3", "1.6.4"):
+        if args.version in ("1.6.3", "1.6.4", "1.6.5"):
             run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
                 "--report", output / "hook-ownership163-audit.json"])
-        if args.version == "1.6.4":
+        if args.version in ("1.6.4", "1.6.5"):
             run("ad-decisions164", ["audit162/test_ad_decisions164.py", candidate,
                 "--report", output / "ad-decisions164-audit.json"])
             run("startup-popup164", ["audit162/test_startup_popup164.py", candidate,
@@ -204,6 +204,10 @@ def main():
                 "--report", output / "load-diagnostics164-audit.json"])
             run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
             run("native-unwind", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_native_unwind.py", "-v"])
+        if args.version == "1.6.5":
+            run("home-glass165", ["audit162/test_home_glass165.py", candidate,
+                "--report", output / "home-glass165.json"])
+            run("home-compiler", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_home_compiler.py", "-v"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

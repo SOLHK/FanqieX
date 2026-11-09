@@ -131,7 +131,7 @@ LDinitialize:
     bl LDnow
     bl Lnumber
     ASET x20, LDstart_key, x0, 1
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x20
     bl LDLimitsSession
     .endif
@@ -172,7 +172,7 @@ LDstart_timer:
     scvtf d0, w8
     GET x20, LDscheduled_timer
     ASET x19, LDtimer_key, x0, 1
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     bl LDLimitsTimer
     .endif
@@ -228,7 +228,7 @@ LDdiag_enqueue:
     AGET x20, LDlock_key
     mov x21, x0
     GET x21, LDlock
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x20
     mov x1, x19
     bl LDLimitsPrepare
@@ -266,7 +266,7 @@ LDenqueue_sequence:
     AGET x20, LDpending_key
     mov x2, x19
     GET x0, LDadd_object
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     AGET x20, LDLimitsScheduledKey
     cmp x0, #0
     cset w24, eq
@@ -274,7 +274,7 @@ LDenqueue_sequence:
     .endif
     GET x21, LDunlock
     GET x19, LDrelease
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     cbz w24, LDenqueue_done
     .endif
     mov x0, x20
@@ -306,7 +306,7 @@ LDschedule:
     mov x4, #0
     GET x20, LDoperation_init
     mov x20, x0
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     cbnz x20, LDLimitsScheduleReady
     mov x0, x19
     bl LDLimitsScheduleFailure
@@ -456,7 +456,7 @@ LDload:
     mov x2, x0
     GET x22, LDexists
     cbz w0, LDload_return
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     mov x1, x21
     bl LDLimitsLoadAllowed
@@ -466,7 +466,7 @@ LDload:
     adr x0, LDdata_class
     bl Lpatch + (0xa5b0 - PATCH_BASE)
     mov x2, x21
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x3, #1 // NSDataReadingMappedIfSafe
     .else
     mov x3, #0
@@ -475,7 +475,7 @@ LDload:
     GET x0, LDread_data
     cbz x0, LDload_io_error
     mov x21, x0
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     mov x1, x21
     bl LDLimitsReadBytes
@@ -514,7 +514,7 @@ LDload:
     cbz w0, LDload_invalid
     mov x2, x21
     GET x20, LDadd_array
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     bl LDLimitsRetained
     .endif
@@ -690,7 +690,7 @@ LDwrite_done:
 
 // Serial-worker only. Atomic persistent envelope, no record-count cap.
 LDpersist:
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     b LDLimitsPersist
     .endif
     stp x29, x30, [sp, #-64]!
@@ -790,7 +790,7 @@ LDdrain_release:
     str x0, [sp, #96]
     b LDdrain_batch
 LDdrain_empty:
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     ASET x19, LDLimitsScheduledKey, xzr, 0
     .endif
     GET x21, LDunlock
@@ -816,7 +816,7 @@ LDprocess:
     LDGET x20, LDtimestamp_field
     GET x0, LDdouble_value
     mov x0, x19
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x1, x20
     bl LDLimitsCommandTime
     .else
@@ -825,7 +825,7 @@ LDprocess:
     LDGET x20, LDexport_target
     cbnz x0, LDprocess_export
     LDGET x20, LDmaintenance_field
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     cbz x0, LDprocess_append
     mov x0, x19
     bl LDLimitsCleanup
@@ -837,7 +837,7 @@ LDprocess_append:
     AGET x19, LDentries_key
     mov x2, x20
     GET x0, LDadd_object
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     bl LDLimitsRetained
     .endif
@@ -920,7 +920,7 @@ LDexport_payload:
     LDSET x26, LDversion_field, x0
     AGET x19, LDstart_key
     LDSET x26, LDsession_start, x0
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     mov x1, x26
     bl LDLimitsExportMetadata
@@ -946,7 +946,7 @@ LDexport_status:
     bl LDjson
     cbz x0, LDexport_failure
     mov x25, x0
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     mov x1, x25
     bl LDLimitsJSONBytes
@@ -962,7 +962,7 @@ LDexport_status:
     mov x2, x0
     GET x21, LDappend_component
     mov x21, x0
-    .if FQ_VERSION == 0x10604
+    .if FQ_VERSION >= 0x10604
     mov x0, x19
     mov x1, x21
     bl LDLimitsExports

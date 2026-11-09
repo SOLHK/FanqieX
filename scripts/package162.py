@@ -15,7 +15,7 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4'), default=VERSION)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
@@ -101,6 +101,9 @@ SHA-256: {digest}
 SHA-256 {digest}
 大小 {len(binary)} bytes
 '''
+    if version=='1.6.5':
+        readme=(ROOT/'docs/REPAIR_1.6.5.md').read_text(encoding='utf-8')
+        readme += f'\n交付 SHA-256: {digest}\n大小: {len(binary)} bytes\n'
     (output / 'README_zh-CN.txt').write_text(readme)
     zip_name = f'FanqieX-{version}.zip'
     with zipfile.ZipFile(output / zip_name, 'w', compression=zipfile.ZIP_DEFLATED,
