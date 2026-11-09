@@ -1,0 +1,275 @@
+{
+  "passed": true,
+  "candidate_sha256": "2a2090e41331ee4f8b11814157f7c4754ff722852312010a5fd82d6d599277b8",
+  "positive_control_passed": true,
+  "negative_controls": 38,
+  "cases": [
+    {
+      "name": "unsigned_instruction_corruption",
+      "expected_rejection": "code_signature",
+      "rejected": true,
+      "page_hashes_recomputed": false,
+      "reason": "Invalid signed page hashes: [20]"
+    },
+    {
+      "name": "wrong_macho_magic",
+      "expected_rejection": "parse",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unexpected Mach-O magic/CPU/subtype/type/flags/reserved"
+    },
+    {
+      "name": "unreviewed_original_text_edit",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unreviewed original section edits: ['0x4010']"
+    },
+    {
+      "name": "initial_material_reverted_to_clear",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Initial proxy glass style must match the versioned Regular/Clear contract"
+    },
+    {
+      "name": "changed_dylib_dependency",
+      "expected_rejection": "load_commands",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Immutable load command changed: 0xc"
+    },
+    {
+      "name": "extension_initial_writable_executable",
+      "expected_rejection": "layout",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Extension must be RX, sectionless, and have no flags"
+    },
+    {
+      "name": "extension_maximum_writable_executable",
+      "expected_rejection": "layout",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Extension must be RX, sectionless, and have no flags"
+    },
+    {
+      "name": "unaligned_extension_capacity",
+      "expected_rejection": "layout",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unsupported reviewed extension capacity"
+    },
+    {
+      "name": "wrong_chained_segment_count",
+      "expected_rejection": "linkedit_and_chained_fixups",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "0x80000034 contents changed"
+    },
+    {
+      "name": "altered_chained_pointer",
+      "expected_rejection": "linkedit_and_chained_fixups",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Chained-fixup imports, pointers or semantics changed"
+    },
+    {
+      "name": "changed_import_symbol",
+      "expected_rejection": "linkedit_and_chained_fixups",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "0x80000034 contents changed"
+    },
+    {
+      "name": "unmoved_indirect_symbols",
+      "expected_rejection": "linkedit_and_chained_fixups",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "indirect_symbols lies outside LINKEDIT"
+    },
+    {
+      "name": "altered_nlist_table",
+      "expected_rejection": "linkedit_and_chained_fixups",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "symbols contents changed"
+    },
+    {
+      "name": "wrong_signature_slot_count",
+      "expected_rejection": "code_signature",
+      "rejected": true,
+      "page_hashes_recomputed": false,
+      "reason": "CodeDirectory does not cover every signed byte exactly"
+    },
+    {
+      "name": "wrong_signature_code_limit",
+      "expected_rejection": "code_signature",
+      "rejected": true,
+      "page_hashes_recomputed": false,
+      "reason": "CodeDirectory does not cover every signed byte exactly"
+    },
+    {
+      "name": "stale_signature_version",
+      "expected_rejection": "version_consistency",
+      "rejected": true,
+      "page_hashes_recomputed": false,
+      "reason": "Signature identifier version mismatch"
+    },
+    {
+      "name": "stale_settings_version",
+      "expected_rejection": "version_consistency",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Settings UTF16 version mismatch"
+    },
+    {
+      "name": "stale_shared_runtime_version",
+      "expected_rejection": "version_consistency",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Runtime/event/export version constants are inconsistent: [{'address': 73132, 'value': '1.6.0'}]; expected 1.6.8"
+    },
+    {
+      "name": "nonzero_extension_reserved_word",
+      "expected_rejection": "repair_directories",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Invalid extension entry for patch site 0x46d8"
+    },
+    {
+      "name": "unaligned_hook_resolver",
+      "expected_rejection": "repair_directories",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Invalid extension entry for patch site 0x4878"
+    },
+    {
+      "name": "wrong_native_frame_registers",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: frame register encoding differs from prologue at 0x20610"
+    },
+    {
+      "name": "missing_native_frame_encoding",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: unwind gap hides native instructions"
+    },
+    {
+      "name": "wrong_unwind_page_kind",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: compressed page bounds"
+    },
+    {
+      "name": "nonzero_unwind_padding",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: nonzero table padding"
+    },
+    {
+      "name": "unaligned_startup_installer",
+      "expected_rejection": "repair_directories",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Invalid extension entry for patch site 0x4650"
+    },
+    {
+      "name": "wrong_startup_installer_target",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x4650"
+    },
+    {
+      "name": "unreviewed_startup_adjacent_edit",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unreviewed original section edits: ['0x4654']"
+    },
+    {
+      "name": "unaligned_tabbar_spacing",
+      "expected_rejection": "repair_directories",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Invalid extension entry for patch site 0x6568"
+    },
+    {
+      "name": "wrong_tabbar_spacing_target",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x6568"
+    },
+    {
+      "name": "unreviewed_tabbar_adjacent_edit",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unreviewed original section edits: ['0x656c']"
+    },
+    {
+      "name": "occupied_reserved_data_gap",
+      "expected_rejection": "repair_directories",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Nonzero unused repair space 0x12c7c..0x14000"
+    },
+    {
+      "name": "wrong_reader_entry_target_5d50",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x5d50"
+    },
+    {
+      "name": "wrong_reader_entry_target_5da0",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x5da0"
+    },
+    {
+      "name": "wrong_reader_entry_target_5dec",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x5dec"
+    },
+    {
+      "name": "wrong_reader_entry_target_5e38",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Wrong patched branch target at 0x5e38"
+    },
+    {
+      "name": "adr_to_unmapped_memory",
+      "expected_rejection": "instruction_addresses",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Unmapped file-backed address 0x70000+0x1"
+    },
+    {
+      "name": "export_stops_using_shared_constant",
+      "expected_rejection": "version_consistency",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Cannot establish distinct event/export writes of the shared version"
+    },
+    {
+      "name": "original_158_stale_export_157",
+      "expected_rejection": "version_consistency",
+      "rejected": true,
+      "page_hashes_recomputed": false,
+      "reason": "Runtime/event/export version constants are inconsistent: [{'address': 73132, 'value': '1.5.8'}, {'address': 76320, 'value': '1.5.7'}]; expected 1.5.8"
+    }
+  ],
+  "device_tested": false
+}

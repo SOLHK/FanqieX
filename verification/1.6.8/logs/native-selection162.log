@@ -1,0 +1,220 @@
+{
+  "passed": true,
+  "candidate_sha256": "2a2090e41331ee4f8b11814157f7c4754ff722852312010a5fd82d6d599277b8",
+  "scope": "Actual ARM64 native bridge plus original click/sync instructions; public UIKit/Foundation boundaries",
+  "device_tested": false,
+  "native_internal_drag_observed": false,
+  "gpu_refraction_tested": false,
+  "physical_hit_testing_tested": false,
+  "cases": [
+    {
+      "name": "native_build_true_titles_and_programmatic_sync",
+      "passed": true,
+      "detail": [
+        {
+          "slide": "0x0",
+          "native_class": "UISegmentedControl",
+          "programmatic_action_sends": 0,
+          "material_lifecycle_separate": true
+        },
+        {
+          "slide": "0x180000000",
+          "native_class": "UISegmentedControl",
+          "programmatic_action_sends": 0,
+          "material_lifecycle_separate": true
+        }
+      ]
+    },
+    {
+      "name": "actual_title_fallback_or_failure",
+      "passed": true,
+      "detail": {
+        "actual_item_titles": true,
+        "normal_title_fallback": true,
+        "no_invented_titles": true
+      }
+    },
+    {
+      "name": "original_routing_duplicate_guard_and_reentry",
+      "passed": true,
+      "detail": [
+        {
+          "slide": "0x0",
+          "valid_route_count": 1,
+          "duplicate_routes": 0
+        },
+        {
+          "slide": "0x180000000",
+          "valid_route_count": 1,
+          "duplicate_routes": 0
+        },
+        {
+          "host_behavior": "reject",
+          "final_index": 2,
+          "route_count": 1
+        },
+        {
+          "host_behavior": "redirect",
+          "final_index": 0,
+          "route_count": 1
+        },
+        {
+          "host_behavior": "synchronous_reentry",
+          "final_index": 3,
+          "route_count": 1
+        }
+      ]
+    },
+    {
+      "name": "tracking_preview_respects_true_host_selection",
+      "passed": true,
+      "detail": [
+        {
+          "unchanged_host_preserves_preview": true,
+          "external_host_change_wins": true
+        },
+        {
+          "host_behavior_while_tracking": "reject",
+          "final_index": 2
+        },
+        {
+          "host_behavior_while_tracking": "redirect",
+          "final_index": 0
+        }
+      ]
+    },
+    {
+      "name": "invalid_callback_fail_closed",
+      "passed": true,
+      "detail": [
+        "negative",
+        "past_end",
+        "control_disabled",
+        "button_disabled",
+        "item_disabled",
+        "items_reordered",
+        "buttons_reordered",
+        "items_replaced",
+        "buttons_missing",
+        "foreign_sender",
+        "proxy_rebound",
+        "window_changed"
+      ]
+    },
+    {
+      "name": "reorder_replacement_window_and_teardown",
+      "passed": true,
+      "detail": [
+        "paired_reorder",
+        "button_replacement",
+        "item_replacement",
+        "window_change"
+      ]
+    },
+    {
+      "name": "hidden_state_ownership",
+      "passed": true,
+      "detail": {
+        "host_value_preserved": true,
+        "foreign_reparent_preserved": true,
+        "original_hidden_preserved": true
+      }
+    },
+    {
+      "name": "allocation_failure_restores_fallback",
+      "passed": true,
+      "detail": [
+        "missing_class",
+        "missing_constructor",
+        "segment_alloc",
+        "segment_init",
+        "controller_alloc",
+        "weak_box_1",
+        "weak_box_2",
+        "weak_box_3",
+        "weak_box_4"
+      ]
+    },
+    {
+      "name": "weak_lifetime_and_stale_callback",
+      "passed": true,
+      "detail": [
+        "normal_teardown",
+        "bar_death",
+        "proxy_death",
+        "proxy_death_real_target_without_hold",
+        "held_stale_callback"
+      ]
+    },
+    {
+      "name": "explicit_callee_saved_register_canaries",
+      "passed": true,
+      "detail": [
+        {
+          "entry": "update",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "has_native",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "value_changed_success",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "value_changed_early_return",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "restore",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "has_native_after_restore",
+          "slide": "0x0",
+          "preserved": true
+        },
+        {
+          "entry": "update",
+          "slide": "0x180000000",
+          "preserved": true
+        },
+        {
+          "entry": "has_native",
+          "slide": "0x180000000",
+          "preserved": true
+        },
+        {
+          "entry": "value_changed_success",
+          "slide": "0x180000000",
+          "preserved": true
+        },
+        {
+          "entry": "value_changed_early_return",
+          "slide": "0x180000000",
+          "preserved": true
+        },
+        {
+          "entry": "restore",
+          "slide": "0x180000000",
+          "preserved": true
+        },
+        {
+          "entry": "has_native_after_restore",
+          "slide": "0x180000000",
+          "preserved": true
+        }
+      ]
+    }
+  ],
+  "case_groups": 10,
+  "instructions": 948800,
+  "abi_checks": "Every invocation preserves x18/x19-x29, d8-d15 and balanced SP; framework calls poison caller-saved registers."
+}
+

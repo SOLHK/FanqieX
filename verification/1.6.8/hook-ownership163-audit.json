@@ -1,0 +1,66 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    {
+      "slide": "0x0",
+      "mode": "inherited",
+      "rules": 2
+    },
+    {
+      "slide": "0x0",
+      "mode": "owned",
+      "rules": 2
+    },
+    {
+      "slide": "0x0",
+      "mode": "wrong_encoding",
+      "rules": 2
+    },
+    {
+      "slide": "0x0",
+      "mode": "add_rejected",
+      "rules": 2
+    },
+    {
+      "slide": "0x0",
+      "mode": "unknown_owner",
+      "rules": 2
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "inherited",
+      "rules": 2
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "owned",
+      "rules": 2
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "wrong_encoding",
+      "rules": 2
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "add_rejected",
+      "rules": 2
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "unknown_owner",
+      "rules": 2
+    },
+    {
+      "slide": "0x0",
+      "mode": "legacy_glass",
+      "rules": 3
+    },
+    {
+      "slide": "0x180000000",
+      "mode": "legacy_glass",
+      "rules": 3
+    }
+  ]
+}

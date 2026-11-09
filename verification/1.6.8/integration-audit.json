@@ -1,0 +1,33 @@
+{
+  "sha256": "2a2090e41331ee4f8b11814157f7c4754ff722852312010a5fd82d6d599277b8",
+  "passed": true,
+  "cases": [
+    {
+      "name": "full_repair_material_interaction_edge_monitor",
+      "passed": true
+    },
+    {
+      "name": "stable_foreground_no_glass_z_order_churn",
+      "passed": true
+    },
+    {
+      "name": "pan_poll_original_route_full_repair_closed_loop",
+      "passed": true
+    },
+    {
+      "name": "scroll_offset_and_lens_diagnostic_observation",
+      "passed": true
+    },
+    {
+      "name": "original_restore_tears_down_all_extensions",
+      "passed": true
+    }
+  ],
+  "instructions": 428592,
+  "repair_entries_intercepted": false,
+  "device_ui_tested": false,
+  "limitations": [
+    "Objective-C/UIKit and host methods are modeled.",
+    "No GPU glass sampling, physical touches, iOS load or installation is tested."
+  ]
+}
