@@ -169,6 +169,9 @@ LAdDecision164:
     ldp x6, x7, [sp, #64]
     ldp x29, x30, [sp], #112
     br x16
+LDiagnosticVersion:
+    adr x0, LSversion
+    b Lstr
 // @COMPONENT_DATA
 .p2align 2
 LFQDdirectory:
@@ -176,4 +179,6 @@ LFQDdirectory:
     .long LFQD_FQDInstall - Lpatch
     .long LFQD_FQDSettings - Lpatch
     .long LFQD_FQDAdDecision - Lpatch
+    .long LFQD_FQDLoadStage - Lpatch
+    .long LFQD_FQDLoadSummary - Lpatch
 

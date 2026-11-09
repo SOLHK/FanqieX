@@ -23,6 +23,7 @@ extern B class_addMethod(Obj, Sel, Imp, const char *);
 extern Obj objc_getAssociatedObject(Obj, const void *);
 extern void objc_setAssociatedObject(Obj, const void *, Obj, U);
 extern void FQDRecord(const char *, Obj);
+extern Obj FQDVersion(void);
 extern Method FQDResolveOwned(Obj, Sel, int, const char *);
 
 #define O0(o, s) ((Obj (*)(Obj, Sel))objc_msgSend)((o), sel_registerName(s))
@@ -46,6 +47,8 @@ static void SendsKey(void) {
 static void ExceptionKey(void) {
 }
 static void StateKey(void) {
+}
+static void LoadStateKey(void) {
 }
 extern Obj objc_allocateClassPair(Obj, const char *, U);
 extern void objc_registerClassPair(Obj);
@@ -125,6 +128,199 @@ static B Enhanced(void) {
         O0(objc_getClass("NSUserDefaults"), "standardUserDefaults"),
         sel_registerName("boolForKey:"), Text("FanqieX.EnhancedDiagnostics.1"));
 }
+
+// This small journal is separate from the asynchronous diagnostic logger. It
+// can show the last completed plugin stage after a later process termination;
+// it cannot run when dyld rejects the image or identify a system crash cause.
+static void Emit(const char *, const char *, Obj, Obj, Obj);
+static B LoadStageKnown(Obj stage) {
+    if (!Kind(stage, "NSString"))
+        return 0;
+    return B1(stage, "isEqualToString:", Text("entry")) ||
+           B1(stage, "isEqualToString:", Text("diagnosticsInstallBegin")) ||
+           B1(stage, "isEqualToString:", Text("diagnosticsInstallComplete")) ||
+           B1(stage, "isEqualToString:", Text("startupPopupInstalled")) ||
+           B1(stage, "isEqualToString:", Text("legacyHooksInstalled")) ||
+           B1(stage, "isEqualToString:", Text("firstPageDidAppear")) ||
+           B1(stage, "isEqualToString:", Text("loadFinished")) ||
+           B1(stage, "isEqualToString:", Text("loggerReady"));
+}
+static Obj LoadTime(void) {
+    double value = ((double (*)(Obj, Sel))objc_msgSend)(
+        O0(objc_getClass("NSDate"), "date"), sel_registerName("timeIntervalSince1970"));
+    return ((Obj (*)(Obj, Sel, double))objc_msgSend)(
+        objc_getClass("NSNumber"), sel_registerName("numberWithDouble:"), value);
+}
+static Obj LoadMetadata(Obj value, I limit) {
+    return Kind(value, "NSString") && Q0(value, "length") <= limit ? value : (Obj)0;
+}
+static void LoadPrevious(Obj report, Obj url) {
+    Obj manager = O0(objc_getClass("NSFileManager"), "defaultManager");
+    Obj path = O0(url, "path");
+    if (!B1(manager, "fileExistsAtPath:", path)) {
+        Put(report, "previousRead", Text("absent"));
+        return;
+    }
+    Obj error = 0;
+    Obj attributes = ((Obj (*)(Obj, Sel, Obj, Obj *))objc_msgSend)(
+        manager, sel_registerName("attributesOfItemAtPath:error:"), path, &error);
+    if (!attributes || Q0(At(attributes, "NSFileSize"), "unsignedLongLongValue") > 32768) {
+        Put(report, "previousRead", Text(attributes ? "oversized" : "statFailed"));
+        return;
+    }
+    Obj data = ((Obj (*)(Obj, Sel, Obj, U, Obj *))objc_msgSend)(
+        objc_getClass("NSData"), sel_registerName("dataWithContentsOfURL:options:error:"),
+        url, 1, &error);
+    if (!data || Q0(data, "length") > 32768) {
+        Put(report, "previousRead", Text(data ? "oversized" : "readFailed"));
+        return;
+    }
+    Obj previous = ((Obj (*)(Obj, Sel, Obj, U, Obj *))objc_msgSend)(
+        objc_getClass("NSJSONSerialization"), sel_registerName("JSONObjectWithData:options:error:"),
+        data, 0, &error);
+    if (!Kind(previous, "NSDictionary") ||
+        !Kind(At(previous, "version"), "NSString") ||
+        !B1(At(previous, "version"), "isEqualToString:", FQDVersion()) ||
+        !LoadStageKnown(At(previous, "stage")) ||
+        !Kind(At(previous, "complete"), "NSNumber") ||
+        !Kind(At(previous, "time"), "NSNumber")) {
+        Put(report, "previousRead", Text("invalid"));
+        return;
+    }
+    // Keep four validated fields, never a nested previous attempt or any
+    // arbitrary text/metadata from the user-editable Documents file.
+    Obj summary = Dict();
+    Put(summary, "stage", At(previous, "stage"));
+    Put(summary, "complete", Num(B0(At(previous, "complete"), "boolValue")));
+    Put(summary, "time", At(previous, "time"));
+    Put(summary, "version", FQDVersion());
+    Put(report, "previous", summary);
+    Put(report, "previousRead", Text("loaded"));
+}
+static Obj LoadState(void) {
+    Obj owner = objc_getClass("NSProcessInfo");
+    Obj state = objc_getAssociatedObject(owner, LoadStateKey);
+    if (state)
+        return state;
+    state = Dict();
+    Obj lock = O0(O0(objc_getClass("NSLock"), "alloc"), "init");
+    Put(state, "lock", lock);
+    V0(lock, "release");
+    Obj report = Dict();
+    Put(report, "version", FQDVersion());
+    Put(report, "sessionId", UUID());
+    Put(report, "complete", Num(0));
+    Put(report, "startedAt", LoadTime());
+    Put(report, "osVersion", LoadMetadata(
+        O0(O0(objc_getClass("NSProcessInfo"), "processInfo"), "operatingSystemVersionString"), 128));
+    Obj bundle = O0(objc_getClass("NSBundle"), "mainBundle");
+    Put(report, "hostVersion", LoadMetadata(O1(bundle, "objectForInfoDictionaryKey:",
+                                               Text("CFBundleShortVersionString")), 64));
+    Put(report, "hostBuild", LoadMetadata(O1(bundle, "objectForInfoDictionaryKey:",
+                                             Text("CFBundleVersion")), 64));
+    Put(report, "stages", O0(objc_getClass("NSMutableArray"), "array"));
+    Put(state, "report", report);
+    Obj manager = O0(objc_getClass("NSFileManager"), "defaultManager");
+    Obj locations = ((Obj (*)(Obj, Sel, U, U))objc_msgSend)(
+        manager, sel_registerName("URLsForDirectory:inDomains:"), 9, 1);
+    Obj documents = O0(locations, "firstObject");
+    if (documents) {
+        Obj directory = O1(documents, "URLByAppendingPathComponent:", Text("FanqieX"));
+        Obj url = O1(directory, "URLByAppendingPathComponent:", Text("load-diagnostics.json"));
+        Put(state, "directory", directory);
+        Put(state, "url", url);
+        LoadPrevious(report, url);
+    } else {
+        Put(report, "previousRead", Text("documentsUnavailable"));
+        Put(report, "writeFailed", Num(1));
+        Put(report, "writeFailure", Text("documentsUnavailable"));
+    }
+    objc_setAssociatedObject(owner, LoadStateKey, state, 0x301);
+    return state;
+}
+static void LoadFailure(Obj report, const char *reason, Obj error) {
+    Put(report, "writeFailed", Num(1));
+    Put(report, "writeFailure", Text(reason));
+    Put(report, "writeErrorCode", Num(error ? Q0(error, "code") : 0));
+}
+static void LoadPersist(Obj state) {
+    Obj report = At(state, "report");
+    Obj url = At(state, "url");
+    if (!url)
+        return;
+    Obj error = 0;
+    if (!B0(At(state, "directoryReady"), "boolValue")) {
+        B created = ((B (*)(Obj, Sel, Obj, B, Obj, Obj *))objc_msgSend)(
+            O0(objc_getClass("NSFileManager"), "defaultManager"),
+            sel_registerName("createDirectoryAtURL:withIntermediateDirectories:attributes:error:"),
+            At(state, "directory"), 1, 0, &error);
+        if (!created) {
+            LoadFailure(report, "directoryFailed", error);
+            return;
+        }
+        Put(state, "directoryReady", Num(1));
+    }
+    Obj data = ((Obj (*)(Obj, Sel, Obj, U, Obj *))objc_msgSend)(
+        objc_getClass("NSJSONSerialization"), sel_registerName("dataWithJSONObject:options:error:"),
+        report, 0, &error);
+    if (!data || Q0(data, "length") > 32768) {
+        LoadFailure(report, data ? "oversized" : "serializationFailed", error);
+        return;
+    }
+    B written = ((B (*)(Obj, Sel, Obj, U, Obj *))objc_msgSend)(
+        data, sel_registerName("writeToURL:options:error:"), url, 1, &error);
+    if (!written)
+        LoadFailure(report, "writeFailed", error);
+}
+Obj FQDLoadSummary(void) {
+    Obj state = LoadState();
+    Obj lock = At(state, "lock");
+    V0(lock, "lock");
+    Obj report = At(state, "report");
+    Obj summary = O0(report, "mutableCopy");
+    Obj stages = O0(At(report, "stages"), "copy");
+    Put(summary, "stages", stages);
+    V0(stages, "release");
+    V0(lock, "unlock");
+    return O0(summary, "autorelease");
+}
+void FQDLoadStage(const char *stage) {
+    Obj name = Text(stage);
+    if (!LoadStageKnown(name))
+        return;
+    Obj state = LoadState();
+    Obj lock = At(state, "lock");
+    V0(lock, "lock");
+    Obj report = At(state, "report");
+    Obj stages = At(report, "stages");
+    if (B0(At(report, "complete"), "boolValue") ||
+        B1(name, "isEqualToString:", At(report, "stage"))) {
+        V0(lock, "unlock");
+        return;
+    }
+    if (Q0(stages, "count") >= 24) {
+        if (!B0(At(report, "stagesTruncated"), "boolValue")) {
+            Put(report, "stagesTruncated", Num(1));
+            LoadPersist(state);
+        }
+        V0(lock, "unlock");
+        return;
+    }
+    Obj time = LoadTime();
+    Obj entry = Dict();
+    Put(entry, "stage", name);
+    Put(entry, "time", time);
+    V1(stages, "addObject:", entry);
+    Put(report, "stage", name);
+    Put(report, "time", time);
+    B complete = B1(name, "isEqualToString:", Text("firstPageDidAppear"));
+    Put(report, "complete", Num(complete));
+    LoadPersist(state);
+    V0(lock, "unlock");
+    if (complete)
+        Emit("pluginLoad", "FanqieX", 0, 0, FQDLoadSummary());
+}
+
 static Obj State(void) {
     return objc_getAssociatedObject(Root(), StateKey);
 }
@@ -374,6 +570,8 @@ static void PageEvent(Obj self, Sel cmd, B animated, const char *alias, const ch
     Imp original = Original(self, alias);
     if (original)
         ((void (*)(Obj, Sel, B))original)(self, cmd, animated);
+    if (B1(Text(event), "isEqualToString:", Text("pageDidAppear")))
+        FQDLoadStage("firstPageDidAppear");
     Emit(event, cls, self, correlation, Dict());
 }
 #define PAGE_PAIR(name, cls)                                                                       \
@@ -398,6 +596,10 @@ PAGE_PAIR(ShortVideo, "SSShortVideoRcmdMainViewController")
 static const char *RequestPath(Obj request) {
     Obj method = Get(request, "method");
     Obj value = Get(method, "operationType");
+    // This field originates outside the plugin. Unknown values must not turn
+    // an unrelated startup request into an unrecognized-selector exception.
+    if (!Kind(value, "NSString"))
+        return (const char *)0;
     if (B1(value, "isEqualToString:", Text("$POST /novel/commentapi/idea/list/:item_id/v1/")))
         return "idea/list/:item_id/v1";
     if (B1(value, "isEqualToString:", Text("$POST /novel/commentapi/comment/list/:group_id/v1/")))
@@ -689,6 +891,7 @@ static void Install(const char *cls, const char *selector, const char *encoding,
     method_setImplementation(method, replacement);
 }
 void FQDInstall(void) {
+    FQDLoadStage("diagnosticsInstallBegin");
     if (!State()) {
         Obj state = Dict();
         Obj lock = O0(O0(objc_getClass("NSLock"), "alloc"), "init");
@@ -777,6 +980,7 @@ void FQDInstall(void) {
     INSTALL_PAGE(Shelf, "SSBookShelf525ViewController")
     INSTALL_PAGE(Mine, "SSMine737KMPViewController")
     INSTALL_PAGE(ShortVideo, "SSShortVideoRcmdMainViewController")
+    FQDLoadStage("diagnosticsInstallComplete");
 }
 
 void FQDAdDecision(Obj object, Sel selector, I rule, const char *cls, const char *method, I kind) {

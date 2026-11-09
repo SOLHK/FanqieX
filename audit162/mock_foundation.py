@@ -18,10 +18,14 @@ from mock_uikit import Runtime as ViewRuntime
 class Runtime(ViewRuntime):
     WINDOW_IMP = 0x33000400
     VIEW_LOAD_IMP = 0x33000500
+    LOAD_STAGES = frozenset(('entry', 'diagnosticsInstallBegin', 'diagnosticsInstallComplete',
+                             'startupPopupInstalled', 'legacyHooksInstalled',
+                             'firstPageDidAppear', 'loadFinished', 'loggerReady'))
 
     def __init__(self,data,slide=0,disk_root=None,**options):
         self.dynamic_classes = set(); self.initialized = set()
         self.thread = 'main'; self.now = 1700000000.0
+        self.thread_objects = {}
         self.main_jobs = []; self.queued_operations = []; self.callbacks = []
         self.fail_read = False; self.fail_write = False; self.fail_directory = False
         self.fail_write_prefix = None
@@ -83,7 +87,7 @@ class Runtime(ViewRuntime):
         cls = self.class_names[self.objects[receiver].cls]
         if name == 'rightBarButtonItem':
             return self.is_kind(receiver,self.classes['UINavigationItem'])
-        if name in ('doubleValue','unsignedLongLongValue'):
+        if name in ('doubleValue','unsignedLongLongValue','longLongValue','boolValue'):
             return cls == 'NSNumber'
         if name in ('effect','setEffect:','setCornerConfiguration:'):
             return self.is_kind(receiver,self.classes['UIVisualEffectView'])
@@ -146,6 +150,33 @@ class Runtime(ViewRuntime):
 
     def url(self,path):
         return self.obj('NSURL','url:'+str(path),value=str(path))
+
+    def is_load_path(self, path):
+        return Path(path) == self.disk_root / 'Documents' / 'FanqieX' / 'load-diagnostics.json'
+
+    def is_load_report(self, pointer):
+        """Only the small, fixed startup journal may serialize on the UI thread."""
+        try:
+            value = self.native(pointer)
+        except (KeyError, ValueError):
+            return False
+        if not isinstance(value, dict):
+            return False
+        allowed = {'version', 'sessionId', 'complete', 'startedAt', 'osVersion',
+                   'hostVersion', 'hostBuild', 'stages', 'stage', 'time', 'previous',
+                   'previousRead', 'writeFailed', 'writeFailure', 'writeErrorCode',
+                   'stagesTruncated'}
+        if not value.keys() <= allowed or value.get('version') != '1.6.4':
+            return False
+        if (not isinstance(value.get('sessionId'), str) or
+                not isinstance(value.get('stage'), str) or value['stage'] not in self.LOAD_STAGES):
+            return False
+        stages = value.get('stages')
+        return (isinstance(stages, list) and len(stages) <= 24 and
+                all(isinstance(stage, dict) and stage.keys() == {'stage', 'time'} and
+                    isinstance(stage['stage'], str) and stage['stage'] in self.LOAD_STAGES and
+                    isinstance(stage['time'], (int, float))
+                    for stage in stages))
 
     def error(self,cpu,address,reason):
         if address:
@@ -288,6 +319,10 @@ class Runtime(ViewRuntime):
                 result = self.obj(cls,'date',value=self.now)
             elif cls == 'NSThread' and name == 'isMainThread':
                 result = int(self.thread == 'main')
+            elif cls == 'NSThread' and name == 'currentThread':
+                if self.thread not in self.thread_objects:
+                    self.thread_objects[self.thread] = self.obj('NSThread', 'thread_' + self.thread)
+                result = self.thread_objects[self.thread]
             elif cls == 'NSRunLoop' and name == 'mainRunLoop':
                 result = getattr(self,'main_runloop',0)
                 if not result:
@@ -382,10 +417,21 @@ class Runtime(ViewRuntime):
                 fp = (float(st['value']),)
             elif name == 'unsignedLongLongValue':
                 result = int(st['value'])
+            elif name == 'longLongValue' and cls == 'NSNumber':
+                result = int(st['value'])
+            elif name == 'boolValue' and cls == 'NSNumber':
+                result = int(bool(st['value']))
+            elif name == 'code' and cls == 'NSError':
+                result = st.get('code', -1)
+            elif name == 'isEqualToString:' and cls == 'NSString':
+                result = int(bool(a[2]) and self.is_kind(a[2], self.classes['NSString']) and
+                             st['value'] == self.string_value(a[2]))
             elif name == 'length' and cls in ('NSString', 'NSData'):
                 result = len(st['value'])
             elif name == 'operatingSystemVersionString':
                 result = self.text_object('iOS 26.0 (mock platform boundary)')
+            elif name == 'systemUptime' and cls == 'NSProcessInfo':
+                fp = (self.now - 1699999000.0,)
             elif name == 'traitCollection':
                 result = self.obj('UITraitCollection','traits',contrast=0)
             elif name == 'accessibilityContrast':
@@ -437,9 +483,10 @@ class Runtime(ViewRuntime):
                 require(a[2] in self.selector_names and a[4] == 0,'Explicit asynchronous main-thread selector ABI')
                 self.main_jobs.append((receiver,a[2],a[3])); self.event('schedule_main',receiver,selector=self.selector_names[a[2]])
             elif name == 'URLsForDirectory:inDomains:':
-                require(self.thread == 'worker','Persistent storage path selected on worker')
-                require(a[2] == 14 and a[3] == 1,'Application Support in user domain')
-                folder = self.disk_root/('ApplicationSupport' if a[2] == 14 else 'Caches')
+                require(a[2] in (9,14) and a[3] == 1,'Known user-domain storage directory')
+                require(self.thread == 'worker' or a[2] == 9,
+                        'Only the fixed startup journal selects Documents on main')
+                folder = self.disk_root/('ApplicationSupport' if a[2] == 14 else 'Documents')
                 result = self.obj('NSArray','directory_urls',items=[self.url(folder)])
                 self.event('storage_directory',receiver,directory=a[2])
             elif name == 'temporaryDirectory':
@@ -451,10 +498,12 @@ class Runtime(ViewRuntime):
             elif name == 'path':
                 result = self.text_object(st['value'])
             elif name == 'fileExistsAtPath:':
-                require(self.thread == 'worker','File existence on worker')
+                require(self.thread == 'worker' or self.is_load_path(self.string_value(a[2])),
+                        'Only the fixed startup journal may check file existence on main')
                 result = int(Path(self.string_value(a[2])).exists())
             elif name == 'attributesOfItemAtPath:error:':
-                require(self.thread == 'worker', 'File metadata read on worker')
+                require(self.thread == 'worker' or self.is_load_path(self.string_value(a[2])),
+                        'Only the fixed startup journal may stat a file on main')
                 try:
                     metadata = Path(self.string_value(a[2])).stat()
                     result = self.dict_pointer({
@@ -488,14 +537,19 @@ class Runtime(ViewRuntime):
                 except OSError as error:
                     self.error(cpu, a[3], str(error))
             elif name == 'createDirectoryAtURL:withIntermediateDirectories:attributes:error:':
-                require(self.thread == 'worker','Directory creation on worker')
+                directory = Path(self.string_value(a[2]))
+                require(self.thread == 'worker' or
+                        directory == self.disk_root / 'Documents' / 'FanqieX',
+                        'Only the fixed startup journal directory may be created on main')
                 require(a[3] == 1 and a[4] == 0,'Directory creation x3/x4 ABI')
                 if self.fail_directory:
                     self.error(cpu,a[5],'injected directory creation failure')
                 else:
                     Path(self.string_value(a[2])).mkdir(parents=True,exist_ok=True); result = 1
             elif name == 'writeToURL:options:error:':
-                require(self.thread == 'worker','File serialization/write on worker')
+                require(self.thread == 'worker' or
+                        (self.is_load_path(self.string_value(a[2])) and st.get('load_report', False)),
+                        'Only validated startup-journal bytes may be written on main')
                 path = Path(self.string_value(a[2])); require(a[3] & 1,'Atomic data writing requested')
                 if self.fail_write or (self.fail_write_prefix and str(path).startswith(str(self.fail_write_prefix))):
                     self.error(cpu,a[4],'injected write failure')
@@ -559,7 +613,15 @@ class Runtime(ViewRuntime):
         return self.finish(cpu,result,fp,float_value)
 
     def serialization(self,cpu,receiver,name,a):
-        require(self.thread == 'worker','JSON/plist and file reading stay on worker')
+        startup = False
+        if name == 'dataWithContentsOfURL:options:error:':
+            startup = self.is_load_path(self.string_value(a[2]))
+        elif name == 'JSONObjectWithData:options:error:' and a[2] in self.objects:
+            startup = self.objects[a[2]].state.get('load_source', False)
+        elif name == 'dataWithJSONObject:options:error:':
+            startup = self.is_load_report(a[2])
+        require(self.thread == 'worker' or startup,
+                'Only the fixed startup journal may perform small synchronous JSON I/O')
         result = 0
         try:
             if name == 'isValidJSONObject:':
@@ -568,6 +630,8 @@ class Runtime(ViewRuntime):
             elif name == 'dataWithJSONObject:options:error:':
                 if self.fail_json: raise ValueError('injected JSON failure')
                 result = self.box(json.dumps(self.native(a[2]),ensure_ascii=False,allow_nan=False).encode())
+                if startup:
+                    self.objects[result].state['load_report'] = True
             elif name == 'JSONObjectWithData:options:error:':
                 result = self.box(json.loads(self.native(a[2])))
             elif name == 'dataWithPropertyList:format:options:error:':
@@ -580,6 +644,8 @@ class Runtime(ViewRuntime):
             elif name == 'dataWithContentsOfURL:options:error:':
                 if self.fail_read: raise OSError('injected read failure')
                 result = self.box(Path(self.string_value(a[2])).read_bytes())
+                if startup:
+                    self.objects[result].state['load_source'] = True
             else:
                 raise AssertionError('Unmodeled serialization selector '+name)
         except (ValueError,TypeError,OSError,plistlib.InvalidFileException) as exc:

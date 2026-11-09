@@ -16,7 +16,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=Path('build/native-smoke'))
     parser.add_argument('--failure-case', choices=[
-        'operation-type-number', 'operation-type-null', 'callback-throws'])
+        'operation-type-number', 'operation-type-null', 'callback-throws', 'load-diagnostics-normal'])
     args = parser.parse_args()
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
         parser.error('Real Foundation smoke checks require a native arm64 macOS runner')
@@ -30,7 +30,7 @@ def main() -> None:
     # the installed NSException observer forwards rather than swallows raise.
     native_flags = ['-x', 'objective-c', '-fno-objc-arc', '-fno-objc-exceptions',
                     '-ffreestanding', '-fno-builtin', '-fno-stack-protector',
-                    '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
+                    '-fno-exceptions', '-fno-asynchronous-unwind-tables', '-funwind-tables',
                     '-fno-jump-tables', '-fno-vectorize', '-fno-slp-vectorize',
                     '-Wall', '-Wextra', '-Werror', '-Os']
     subprocess.run(['xcrun', '--sdk', 'macosx', 'clang', '-arch', 'arm64', *native_flags,
@@ -42,7 +42,7 @@ def main() -> None:
                     str(root / 'tests/native_diagnostics_smoke.m'), str(native),
                     '-framework', 'Foundation', '-o', str(executable)], check=True, cwd=root)
     cases = [args.failure_case] if args.failure_case else [
-        'normal', 'operation-type-number', 'operation-type-null', 'callback-throws']
+        'normal', 'operation-type-number', 'operation-type-null', 'callback-throws', 'load-diagnostics-normal']
     results = []
     for case in cases:
         command = [str(executable)]

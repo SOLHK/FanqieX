@@ -228,6 +228,8 @@ LDLimitsExportMetadata:
     bl Luint
     LDSET x20, LDLimitsTruncatedField, x0
     GET x21, LDunlock
+    bl LFQD_FQDLoadSummary
+    LDSET x20, LDLimitsLoadField, x0
     ldp x23, x24, [sp, #48]
     ldp x21, x22, [sp, #32]
     ldp x19, x20, [sp, #16]
@@ -589,6 +591,7 @@ LDLimitsSessionField: .asciz "sessionId"
 LDLimitsCorrelationField: .asciz "correlationId"
 LDLimitsDroppedField: .asciz "droppedRecords"
 LDLimitsTruncatedField: .asciz "truncated"
+LDLimitsLoadField: .asciz "loadDiagnostics"
 LDLimitsLength: .asciz "length"
 LDLimitsAttributes: .asciz "attributesOfItemAtPath:error:"
 LDLimitsFileSize: .asciz "NSFileSize"

@@ -12,6 +12,7 @@ import struct
 import uuid
 from macho_tools import assemble_object, sections, macho_commands, disassemble
 from extend_macho import extend, verify_extension, verify_signature
+from native_unwind import add_native_unwind
 
 UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354'
 SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
@@ -153,6 +154,10 @@ def build(source_path, output_path, *, version=VERSION):
   replace(0x4650,bytes.fromhex('fa67bba9'),branch(0x4650,BASE+popup),'Install startup popup rule')
   replace(0x6568,bytes.fromhex('0010651e'),branch(0x6568,BASE+tabbar),'Set symmetric tab bar safe area margins')
   replace(0x46d8,branch(0x46d8,0xa580,True),branch(0x46d8,BASE+ad_install,True),'Record executed ad decisions')
+  unwound, unwind_report = add_native_unwind(bytes(data), obj, image_base=BASE)
+  at, size = unwind_report['section_offset'], unwind_report['section_size']
+  replace(at,bytes(data[at:at+size]),unwound[at:at+size],
+   'Link compiler-generated native exception unwind frames into the existing metadata slot')
  marker=b'FQ162RDR'
  need(payload.count(marker)==1,'One reader fix entry table')
  reader_at=payload.index(marker)
@@ -216,6 +221,8 @@ def build(source_path, output_path, *, version=VERSION):
   original_allowed.update(range(0x4650,0x4654))
   original_allowed.update(range(0x6568,0x656c))
   original_allowed.update(range(0x46d8,0x46dc))
+  original_allowed.update(range(unwind_report['section_offset'],
+   unwind_report['section_offset']+unwind_report['section_size']))
  original_checked=0
  for sec in sections(uploaded):
   a=sec['offset']; b=a+sec['size']
@@ -244,6 +251,8 @@ def build(source_path, output_path, *, version=VERSION):
    'Regular base/native gray selection, shelf first-frame composition and original reader controls have not been visually checked on a device.',
    'Removed repeat-layout mutations are instruction-tested; real touch-to-action latency remains unmeasured.',
    'Diagnostics observe bounded plugin state; pending writes are not crash durable.']}
+ if profile164:
+  report['native_unwind'] = unwind_report
  output_path.parent.mkdir(parents=True,exist_ok=True)
  output_path.write_bytes(out)
  output_path.with_suffix('.validation.json').write_text(json.dumps(report,indent=2)+'\n')

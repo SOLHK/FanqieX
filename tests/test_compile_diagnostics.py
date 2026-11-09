@@ -35,6 +35,9 @@ class DiagnosticsCompilerTests(unittest.TestCase):
         self.assertEqual(compiled.count('// @COMPONENT_DATA'), 1)
         self.assertNotIn('@PAGE', compiled)
         self.assertNotIn('.section', compiled)
+        self.assertIn('.cfi_startproc', compiled)
+        self.assertIn('.cfi_def_cfa w29, 16', compiled)
+        self.assertIn('.cfi_endproc', compiled)
         for entry in ('FQDInstall', 'FQDSettings', 'FQDAdDecision'):
             self.assertIn('LFQD_' + entry + ':', compiled)
 
@@ -65,6 +68,8 @@ l_string:
             'external GOT': prefix + 'adrp x0, _malloc@GOTPAGE\n',
             'mismatched page pair': prefix + 'adrp x0, _FQDProbe@PAGE\nadd x0,x0,_other@PAGEOFF\n',
             'unexpected image flags': prefix + 'ret\n.section __DATA,__objc_imageinfo,regular,no_dead_strip\nL_OBJC_IMAGE_INFO:\n.long 0\n.long 65\n',
+            'external unwind personality': prefix + '.cfi_personality 155, _bad\n',
+            'unreviewed unwind escape': prefix + '.cfi_escape 0\n',
         }
         for name, assembly in violations.items():
             with self.subTest(name=name), self.assertRaises(ValueError):

@@ -8,18 +8,122 @@
 
 extern void FQDInstall(void);
 extern void FQDAdDecision(void *, void *, long, const char *, const char *, long);
+extern void FQDLoadStage(const char *);
+extern void *FQDLoadSummary(void);
 
 static NSMutableArray *SmokeEvents;
 static NSMutableDictionary *OriginalCalls;
 static NSUInteger SmokeChecks;
 static NSString *const PrivateSentinel = @"FANQIEX_PRIVATE_BODY_QUERY_TOKEN_SENTINEL";
+static NSURL *DocumentsFixture;
+static NSURL *FixtureParent;
+static Method DocumentsMethod;
+static IMP OriginalDocumentsMethod;
+static BOOL CleanupDocuments(void);
+static NSArray *Events(NSString *name);
 
 static void Check(BOOL condition, const char *message) {
     SmokeChecks++;
     if (!condition) {
         fprintf(stderr, "native smoke failed: %s\n", message);
+        (void)CleanupDocuments();
         exit(2);
     }
+}
+
+static NSArray *FixtureDocumentURLs(id self, SEL cmd, NSSearchPathDirectory directory,
+                                   NSSearchPathDomainMask domains) {
+    if (directory == NSDocumentDirectory && domains == NSUserDomainMask)
+        return @[DocumentsFixture];
+    return ((NSArray *(*)(id, SEL, NSSearchPathDirectory, NSSearchPathDomainMask))
+            OriginalDocumentsMethod)(self, cmd, directory, domains);
+}
+
+static BOOL CleanupDocuments(void) {
+    if (DocumentsMethod && OriginalDocumentsMethod) {
+        method_setImplementation(DocumentsMethod, OriginalDocumentsMethod);
+        DocumentsMethod = NULL; OriginalDocumentsMethod = NULL;
+    }
+    if (!DocumentsFixture)
+        return YES;
+    // Delete only our directly-created UUID child of the resolved temp base.
+    BOOL inside = [[DocumentsFixture URLByDeletingLastPathComponent] isEqual:FixtureParent] &&
+                  [[DocumentsFixture lastPathComponent] hasPrefix:@"fanqiex-native-smoke-"];
+    BOOL removed = inside && [[NSFileManager defaultManager] removeItemAtURL:DocumentsFixture error:NULL];
+    [DocumentsFixture release]; DocumentsFixture = nil;
+    [FixtureParent release]; FixtureParent = nil;
+    return removed;
+}
+
+static void IsolateDocuments(void) {
+    NSFileManager *manager = [NSFileManager defaultManager];
+    FixtureParent = [[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByResolvingSymlinksInPath]
+                              isDirectory:YES] retain];
+    NSString *name = [@"fanqiex-native-smoke-" stringByAppendingString:[NSUUID UUID].UUIDString];
+    DocumentsFixture = [[FixtureParent URLByAppendingPathComponent:name isDirectory:YES] retain];
+    Check([[DocumentsFixture URLByDeletingLastPathComponent] isEqual:FixtureParent],
+          "fixture is a checked direct temp child");
+    Check([manager createDirectoryAtURL:DocumentsFixture withIntermediateDirectories:NO attributes:nil error:NULL],
+          "fixture temp directory created");
+    SEL selector = @selector(URLsForDirectory:inDomains:);
+    DocumentsMethod = class_getInstanceMethod([manager class], selector);
+    Check(DocumentsMethod != NULL, "Foundation document-directory selector exists");
+    OriginalDocumentsMethod = method_setImplementation(DocumentsMethod, (IMP)FixtureDocumentURLs);
+    Check([[manager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask]
+           isEqualToArray:@[DocumentsFixture]], "Documents resolves only to fixture temp directory");
+    NSArray *forwarded = [manager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask];
+    NSArray *original = ((NSArray *(*)(id, SEL, NSSearchPathDirectory, NSSearchPathDomainMask))
+                         OriginalDocumentsMethod)(manager, selector, NSCachesDirectory, NSUserDomainMask);
+    Check([forwarded isEqualToArray:original], "other directory queries preserve Foundation behavior");
+}
+
+static NSURL *LoadJournalURL(void) {
+    return [[DocumentsFixture URLByAppendingPathComponent:@"FanqieX" isDirectory:YES]
+            URLByAppendingPathComponent:@"load-diagnostics.json"];
+}
+
+static void RunLoadDiagnostics(void) {
+    NSFileManager *manager = [NSFileManager defaultManager];
+    NSURL *url = LoadJournalURL();
+    FQDLoadStage("unknown-private-stage");
+    Check(![manager fileExistsAtPath:url.path], "unknown load stage creates no journal");
+    NSArray *stages = @[@"entry", @"diagnosticsInstallBegin", @"diagnosticsInstallComplete",
+                        @"startupPopupInstalled", @"legacyHooksInstalled", @"loggerReady",
+                        @"loadFinished", @"firstPageDidAppear"];
+    NSTimeInterval previousTime = 0;
+    NSString *session = nil;
+    for (NSUInteger index = 0; index < stages.count; index++) {
+        NSString *stage = stages[index];
+        FQDLoadStage(stage.UTF8String);
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        Check(data && data.length <= 32768, "atomic journal exists within 32 KiB limit");
+        NSDictionary *journal = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+        Check([journal isKindOfClass:[NSDictionary class]], "journal is valid real Foundation JSON");
+        Check([journal[@"stage"] isEqual:stage] && [journal[@"stages"] count] == index + 1,
+              "every fixed stage appends in order");
+        Check([journal[@"time"] doubleValue] >= previousTime, "journal timestamps are nondecreasing");
+        previousTime = [journal[@"time"] doubleValue];
+        Check([journal[@"complete"] boolValue] == (index == stages.count - 1),
+              "only first page appearance completes plugin load");
+        Check([journal[@"version"] isEqualToString:@"1.6.4"] &&
+              [journal[@"previousRead"] isEqualToString:@"absent"], "fresh journal metadata");
+        if (!session) session = [[journal[@"sessionId"] copy] autorelease];
+        Check([journal[@"sessionId"] isEqual:session] &&
+              [[[NSUUID alloc] initWithUUIDString:session] autorelease] != nil, "load session stays stable");
+        for (NSString *key in @[@"hostVersion", @"hostBuild"])
+            Check(journal[key] == [NSNull null] || [journal[key] isKindOfClass:[NSString class]],
+                  "optional host metadata accepts nil or bounded string");
+        NSString *expectedVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        NSString *expectedBuild = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
+        if (!expectedVersion) Check(journal[@"hostVersion"] == [NSNull null], "nil host version is represented safely");
+        if (!expectedBuild) Check(journal[@"hostBuild"] == [NSNull null], "nil host build is represented safely");
+    }
+    NSData *completed = [NSData dataWithContentsOfURL:url];
+    FQDLoadStage("entry");
+    Check([[NSData dataWithContentsOfURL:url] isEqual:completed], "completed journal is immutable within process");
+    NSDictionary *summary = (NSDictionary *)FQDLoadSummary();
+    Check([summary[@"stages"] count] == 8 && [summary[@"complete"] boolValue], "summary contains eight fixed stages");
+    Check(Events(@"pluginLoad").count == 1, "completed load is emitted exactly once");
 }
 
 static void Called(id object, SEL selector) {
@@ -73,6 +177,10 @@ void FQDRecord(const char *event, void *payload) {
     NSDictionary *snapshot = [[data copy] autorelease];
     [SmokeEvents addObject:@{@"event" : [NSString stringWithUTF8String:event],
                             @"data" : snapshot}];
+}
+
+void *FQDVersion(void) {
+    return @"1.6.4";
 }
 
 @interface SmokePageBase : NSObject
@@ -237,6 +345,8 @@ static BDRpcInternalRequest *Request(id operationType) {
 static void CheckEventsHaveCorrelation(void) {
     for (NSDictionary *record in SmokeEvents) {
         NSDictionary *data = record[@"data"];
+        if ([record[@"event"] isEqualToString:@"pluginLoad"])
+            continue;
         Check([data[@"objectId"] isKindOfClass:[NSString class]] || data[@"objectId"] == [NSNull null],
               "anonymous object identity");
         Check([data[@"correlationId"] isKindOfClass:[NSString class]], "correlation is a string");
@@ -418,17 +528,27 @@ int main(int argc, const char **argv) {
             failureCase = [NSString stringWithUTF8String:argv[2]];
             if (![failureCase isEqualToString:@"operation-type-number"] &&
                 ![failureCase isEqualToString:@"operation-type-null"] &&
-                ![failureCase isEqualToString:@"callback-throws"]) {
+                ![failureCase isEqualToString:@"callback-throws"] &&
+                ![failureCase isEqualToString:@"load-diagnostics-normal"]) {
                 fprintf(stderr, "unknown native smoke case\n"); return 2;
             }
         } else if (argc != 1) { fprintf(stderr, "unexpected native smoke arguments\n"); return 2; }
         BOOL passed = YES;
         NSString *exceptionName = nil;
-        @try { RunSmoke(failureCase); }
+        @try {
+            IsolateDocuments();
+            if ([failureCase isEqualToString:@"load-diagnostics-normal"])
+                RunLoadDiagnostics();
+            else
+                RunSmoke(failureCase);
+        }
         @catch (NSException *exception) { passed = NO; exceptionName = exception.name; }
+        BOOL fixtureCleaned = CleanupDocuments();
+        passed = passed && fixtureCleaned;
         NSMutableDictionary *report = [NSMutableDictionary dictionaryWithDictionary:@{
             @"passed" : @(passed), @"checks" : @(SmokeChecks), @"events" : @(SmokeEvents.count),
             @"case" : failureCase ?: @"normal", @"native_foundation_tested" : @YES,
+            @"documents_isolated" : @YES, @"fixture_cleaned" : @(fixtureCleaned),
             @"ios_or_uikit_tested" : @NO,
             @"scope" : @"Production diagnostics linked to real macOS Foundation and libobjc with explicit host fixtures"}];
         if (exceptionName) report[@"unexpected_exception_name"] = exceptionName;

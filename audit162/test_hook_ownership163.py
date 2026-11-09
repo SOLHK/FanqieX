@@ -28,7 +28,8 @@ class HookRuntime(Runtime):
         marker=self.data.find(b'FQ164DIA')
         decision=struct.unpack_from('<I',self.data,marker+16)[0]+0x800 if marker>=0 else -1
         native_install=struct.unpack_from('<I',self.data,marker+8)[0]+0x800 if marker>=0 else -1
-        if entry in (decision,native_install):
+        boot_stage=struct.unpack_from('<I',self.data,marker+20)[0]+0x800 if marker>=0 else -1
+        if entry in (decision,native_install,boot_stage):
             # Decision serialization is exercised by the diagnostic suite.
             # This fixture retains real trampoline and original host behavior.
             result=0

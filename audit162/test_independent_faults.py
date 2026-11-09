@@ -105,6 +105,18 @@ def main():
     if args.expected_version in ("1.6.3", "1.6.4"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
     if args.expected_version == "1.6.4":
+        unwind_slot = next(section for section in image.sections if section['name'] == '__unwind_info')
+        unwind_at = unwind_slot['offset']
+        page = unpack('<I', data, unwind_at + 32)[0]
+        entry_at, entry_count = unpack('<HH', data, unwind_at + page + 4)
+        native_frame = next(unwind_at + page + entry_at + 8 * i
+            for i in range(entry_count)
+            if unpack('<II', data, unwind_at + page + entry_at + 8 * i)[0] >= 0x14080
+            and unpack('<II', data, unwind_at + page + entry_at + 8 * i)[1] & 0xFF000000 == 0x04000000)
+        case('wrong_native_frame_registers', flip(native_frame + 4), 'original_sections')
+        case('missing_native_frame_encoding', u32(native_frame + 4, 0), 'original_sections')
+        case('wrong_unwind_page_kind', u32(unwind_at + page, 3), 'original_sections')
+        case('nonzero_unwind_padding', flip(unwind_at + unwind_slot['size'] - 1), 'original_sections')
         case("unaligned_startup_installer", u32(0x14010 + 25 * 4, 1), "repair_directories")
         startup_branch = unpack("<I", data, 0x4650)[0]
         case("wrong_startup_installer_target", u32(0x4650, startup_branch + 1), "instruction_addresses")
@@ -136,7 +148,9 @@ def main():
 
     pc, word, _ = references[0]
     case("adr_to_unmapped_memory", u32(pc, adr_word(pc, 0x70000, word & 31)), "instruction_addresses")
-    shared_refs = [row for row in references if row[2] == runtime_version and row[1] & 31 == 0]
+    field_writes = {row['pc'] for row in good['checks']['version_consistency']['details']['shared_event_export_writes']}
+    shared_refs = [row for row in references if row[2] == runtime_version and row[1] & 31 == 0
+                   and row[0] in field_writes]
     require(len(shared_refs) >= 2, "Shared version fault requires both event and export references")
     pc, word, target = shared_refs[-1]
     case("export_stops_using_shared_constant", u32(pc, adr_word(pc, target + 1, 0)), "version_consistency")

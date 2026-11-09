@@ -200,7 +200,10 @@ def main():
                 "--report", output / "native-diagnostics164-audit.json"])
             run("diagnostic-limits164", ["audit162/test_diagnostic_limits164.py", candidate,
                 "--report", output / "diagnostic-limits164-audit.json"])
+            run("load-diagnostics164", ["audit162/test_load_diagnostics164.py", "--candidate", candidate,
+                "--report", output / "load-diagnostics164-audit.json"])
             run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
+            run("native-unwind", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_native_unwind.py", "-v"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

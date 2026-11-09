@@ -18,6 +18,7 @@ import subprocess
 
 IMPORTS = {
     '_FQDRecord': 'Lrecord_named',
+    '_FQDVersion': 'LDiagnosticVersion',
     '_FQDResolveOwned': 'LHookOwned',
     '_FQDString': 'Lstr',
     '_objc_msgSend': 'Lpatch + (0xa5d4 - PATCH_BASE)',
@@ -114,6 +115,15 @@ def normalize_assembly(assembly: str) -> str:
         if line.startswith('.'):
             if re.fullmatch(r'\.p2align\s+[0-4](?:,\s*[0-9]+(?:,\s*[0-9]+)?)?', line):
                 output.append(line)
+            elif output is code and (
+                    line in ('.cfi_startproc', '.cfi_endproc', '.cfi_remember_state', '.cfi_restore_state') or
+                    re.fullmatch(r'\.cfi_def_cfa_offset\s+[0-9]+', line) or
+                    re.fullmatch(r'\.cfi_def_cfa\s+(?:w29|wsp),\s*[0-9]+', line) or
+                    re.fullmatch(r'\.cfi_offset\s+(?:w(?:19|2[0-9]|30)|b(?:[89]|1[0-5])),\s*-[0-9]+', line) or
+                    re.fullmatch(r'\.cfi_restore\s+(?:w(?:19|2[0-9]|30)|b(?:[89]|1[0-5]))', line)):
+                # Preserve compiler-generated frame rules. The assembler emits
+                # compact-unwind records which the final Mach-O builder links.
+                output.append(line)
             elif output is data and re.fullmatch(r'\.asciz\s+"(?:[^"\\]|\\.)*"', line):
                 output.append(line)
             else:
@@ -154,7 +164,7 @@ def compile_component(source_path: Path, *, compiler: list[str] | None = None) -
             compiler = [found]
     options = ['-target', 'arm64-apple-ios15.0.1', '-x', 'objective-c',
                '-fno-objc-arc', '-fno-objc-exceptions', '-ffreestanding', '-fno-builtin', '-fno-stack-protector',
-               '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
+               '-fno-exceptions', '-fno-asynchronous-unwind-tables', '-funwind-tables',
                '-fno-jump-tables', '-fno-vectorize', '-fno-slp-vectorize',
                '-Wall', '-Wextra', '-Werror', '-Os', '-S', '-o', '-', '-']
     process = subprocess.run([*compiler, *options], capture_output=True,

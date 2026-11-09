@@ -215,6 +215,14 @@ def check_layout(old: Image, new: Image) -> dict:
 def check_sections(old: Image, new: Image, version: str) -> dict:
     extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
     allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
+    unwind = None
+    if version == '1.6.4':
+        # Allow only a completely validated, compiler-frame-matching replacement
+        # of this metadata slot; every original function entry stays identical.
+        from unwind_audit import check_native_unwind
+        unwind = check_native_unwind(old.data, new.data)
+        slot = next(section for section in old.sections if section['name'] == '__unwind_info')
+        allowed |= set(range(slot['offset'], slot['offset'] + slot['size']))
     changed = []
     for section in old.sections:
         start, size = section["offset"], section["size"]
@@ -238,7 +246,8 @@ def check_sections(old: Image, new: Image, version: str) -> dict:
     return {"compared_sections": len(old.sections), "changed_original_section_bytes": len(changed),
             "allowed_code_sites": [hex(item[0]) for item in PATCH_SITES] + ["0x5d50", "0x5da0", "0x5dec", "0x5e38", "0x649c", "0x7848", "0x7ac4"]
             + [hex(pc) for pc in extra_sites],
-            "allowed_utf16_version_range": ["0xec84", "0xec8e"]}
+            "allowed_utf16_version_range": ["0xec84", "0xec8e"],
+            "native_unwind": unwind}
 
 
 def version_word(version: str) -> int:

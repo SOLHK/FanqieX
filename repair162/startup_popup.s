@@ -2,17 +2,15 @@
 // A true result follows the native skip-and-mark-read path. Other startup
 // popups use separate paths. Installation uses the existing launch-ad option.
 LStartupPopupInstall:
-    stp x29, x30, [sp, #-32]!
-    mov x29, sp
-    str x0, [sp, #16]
-    bl LFQD_FQDInstall
-    ldr x0, [sp, #16]
-    ldp x29, x30, [sp], #32
-    tbz w0, #0, LStartupPopupLegacy
     stp x29, x30, [sp, #-48]!
     mov x29, sp
-    stp x19, x20, [sp, #16]
-    str w0, [sp, #32]
+    str x0, [sp, #16]
+    str x19, [sp, #32]
+    adr x0, LStartupLoadEntry
+    bl LFQD_FQDLoadStage
+    bl LFQD_FQDInstall
+    ldr x0, [sp, #16]
+    tbz w0, #0, LStartupPopupLegacy
     adr x0, LStartupPopupClass
     bl Lpatch + (0xa5b0 - PATCH_BASE)     // objc_getClass
     cbz x0, LStartupPopupInstalled
@@ -27,11 +25,18 @@ LStartupPopupInstall:
     cbz x0, LStartupPopupInstalled
     adr x1, LStartupPopupSuppress
     bl Lpatch + (0xa580 - PATCH_BASE)     // method_setImplementation
+    adr x0, LStartupLoadPopup
+    bl LFQD_FQDLoadStage
 LStartupPopupInstalled:
-    ldr w0, [sp, #32]
-    ldp x19, x20, [sp, #16]
-    ldp x29, x30, [sp], #48
 LStartupPopupLegacy:
+    ldr x0, [sp, #16]
+    bl LStartupPopupLegacyBody
+    adr x0, LStartupLoadLegacy
+    bl LFQD_FQDLoadStage
+    ldr x19, [sp, #32]
+    ldp x29, x30, [sp], #48
+    ret
+LStartupPopupLegacyBody:
     stp x26, x25, [sp, #-80]!             // replay the original entry word
     b Lpatch + (0x4654 - PATCH_BASE)
 
@@ -82,3 +87,6 @@ LStartupResultKey:     .asciz "result"
 LStartupPopupBlocked:  .asciz "blocked"
 LStartupDisplayKey:    .asciz "pageDisplay"
 LStartupDisplayUnknown: .asciz "unobserved"
+LStartupLoadEntry:      .asciz "entry"
+LStartupLoadPopup:      .asciz "startupPopupInstalled"
+LStartupLoadLegacy:     .asciz "legacyHooksInstalled"
