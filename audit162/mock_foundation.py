@@ -488,7 +488,11 @@ class Runtime(ViewRuntime):
                         'Only the fixed startup journal selects Documents on main')
                 folder = self.disk_root/('ApplicationSupport' if a[2] == 14 else 'Documents')
                 result = self.obj('NSArray','directory_urls',items=[self.url(folder)])
-                self.event('storage_directory',receiver,directory=a[2])
+                # Keep the existing journal trace scoped to its Application
+                # Support store. The new, separately tested boot journal has
+                # a distinct Documents trace and never changes that store.
+                self.event('storage_directory' if a[2] == 14 else 'load_storage_directory',
+                           receiver,directory=a[2])
             elif name == 'temporaryDirectory':
                 result = self.url(self.disk_root/'tmp')
             elif name == 'URLByAppendingPathComponent:':

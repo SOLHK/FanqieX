@@ -230,6 +230,8 @@ def failures(data, labels):
 def worker_scope(data, labels):
     cpu, runtime = make(data)
     stage(cpu, runtime, labels, data, 'entry')
+    require(any(event['event'] == 'load_storage_directory' and event['directory'] == 9
+                for event in runtime.events), 'The independent boot journal actually selects Documents')
     bad = runtime.box({'version': '1.6.4', 'event': 'ordinary_diagnostic'}, mutable=True)
     arguments = [runtime.classes['NSJSONSerialization'],
                  runtime.sel('dataWithJSONObject:options:error:'), bad, 0, 0, 0, 0, 0]
