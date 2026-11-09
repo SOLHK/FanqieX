@@ -1,6 +1,6 @@
 {
-  "candidate": "D:\\Codex\\2026-11-08\\fanqiex-1-6-3-1-6\\work\\FanqieX\\build\\164-startup-frozen2\\FanqieX-1.6.4.dylib",
-  "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "candidate": "D:\\Codex\\2026-11-08\\fanqiex-1-6-3-1-6\\work\\FanqieX\\build\\164-startup-event-verified\\FanqieX-1.6.4.dylib",
+  "sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "shadow": {
     "passed": true,
     "runs": [
@@ -211,14 +211,14 @@
   },
   "native_background_lifecycle": {
     "passed": true,
-    "instructions": 163827,
+    "instructions": 163873,
     "late_background_original_then_clear": true,
     "layout_called_background_hook_synchronously": true,
     "native_colors_and_hidden_restored": true
   },
   "cache_changes": {
     "passed": true,
-    "instructions": 183700,
+    "instructions": 183746,
     "edge_identity_change": true,
     "selected_page_change_preserves_native_sync": true,
     "cached_geometry_rechecked": true
@@ -229,38 +229,38 @@
       {
         "name": "bar_hidden",
         "passed": true,
-        "instructions": 156187
+        "instructions": 156233
       },
       {
         "name": "proxy_hidden",
         "passed": true,
-        "instructions": 156254
+        "instructions": 156300
       },
       {
         "name": "ancestor_hidden",
         "passed": true,
-        "instructions": 87622
+        "instructions": 87645
       },
       {
         "name": "no_window",
         "passed": true,
-        "instructions": 152775
+        "instructions": 152821
       },
       {
         "name": "proxy_detached",
         "passed": true,
-        "instructions": 155234
+        "instructions": 155280
       },
       {
         "name": "scroll_detached",
         "passed": true,
-        "instructions": 90405
+        "instructions": 90428
       }
     ]
   },
   "original_hidden_true": {
     "passed": true,
-    "instructions": 148573
+    "instructions": 148619
   },
   "synchronous_reentry": {
     "passed": true,
@@ -268,7 +268,7 @@
       {
         "name": "cache_invalidated_while_busy",
         "passed": true,
-        "instructions": 148996,
+        "instructions": 149042,
         "callback": {
           "old_target_unpublished_before_callback": true
         }
@@ -276,7 +276,7 @@
       {
         "name": "disabled_after_original_restore",
         "passed": true,
-        "instructions": 142746,
+        "instructions": 142792,
         "callback": {
           "old_target_unpublished_before_callback": true
         }
@@ -300,29 +300,29 @@
       {
         "name": "ratio_active",
         "passed": true,
-        "instructions": 84141
+        "instructions": 84164
       },
       {
         "name": "ratio_inactive",
         "passed": true,
-        "instructions": 56904
+        "instructions": 56927
       },
       {
         "name": "ratio_detached",
         "passed": true,
-        "instructions": 75350
+        "instructions": 75373
       },
       {
         "name": "ratio_inactive_ASLR",
         "passed": true,
-        "instructions": 56904
+        "instructions": 56927
       }
     ],
     "ABI": "All runs enforce 16-byte stack alignment, balanced SP, x18/x19-x29 and d8-d15 preservation; runtime calls clobber caller-saved arguments"
   },
   "ancestor_scroll_exclusion": {
     "passed": true,
-    "instructions": 83501,
+    "instructions": 83524,
     "regression": "Reproduced ancestor being retained and modified in prior a424e46f candidate; corrected candidate rejects parent itself"
   },
   "retained_155_scenarios": {
@@ -398,7 +398,7 @@
       "off_main_guard": true,
       "timer_interval_seconds": 60.0,
       "delayed_timer_prunes": true,
-      "instructions": 259956
+      "instructions": 260025
     },
     "time_window_restart": {
       "passed": true,
@@ -410,7 +410,7 @@
       "clock_rollback_future_preserved": true,
       "restart_read_from_real_plist": true,
       "unique_export_files": true,
-      "instructions": 48734
+      "instructions": 48740
     },
     "full_export": {
       "passed": true,
@@ -418,7 +418,7 @@
       "export_record_count": 1027,
       "export_bytes": 180047,
       "all_nested_fields_compared": true,
-      "instructions": 745557,
+      "instructions": 745505,
       "scope": "1025 restored synthetic records plus real new enqueue/bootstrap events, not 1025 enqueue benchmark"
     },
     "diagnostic_UI_and_IO": {
@@ -432,13 +432,13 @@
       "retry_full_persist": true,
       "failed_export_error_UI": true,
       "corrupt_restart_reported": true,
-      "instructions": 50413
+      "instructions": 50139
     },
     "producer_interleaving": {
       "passed": true,
       "producer_during_worker_unlock": true,
       "FIFO_and_no_lost_wakeup": true,
-      "instructions": 9278,
+      "instructions": 9322,
       "scope": "One controlled scheduling interleaving; no exhaustive threaded Foundation test"
     }
   },
@@ -450,7 +450,7 @@
           "glass_disabled": 0,
           "ASLR_slide": "0x0",
           "passed": true,
-          "instructions": 4795,
+          "instructions": 4721,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         },
@@ -458,7 +458,7 @@
           "glass_disabled": 1,
           "ASLR_slide": "0x0",
           "passed": true,
-          "instructions": 4795,
+          "instructions": 4721,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         },
@@ -466,7 +466,7 @@
           "glass_disabled": 0,
           "ASLR_slide": "0x100000000",
           "passed": true,
-          "instructions": 4795,
+          "instructions": 4721,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         }
@@ -479,13 +479,13 @@
       "late_attachment": true,
       "late_content_growth": true,
       "no_top_edge_changes": true,
-      "instructions": 208251
+      "instructions": 208297
     },
     "inner_paging_and_replacement": {
       "passed": true,
       "same_tab_inner_paging": true,
       "effect_object_replacement": true,
-      "instructions": 103615
+      "instructions": 103638
     },
     "mixed_originals_and_shared_effect": {
       "passed": true,
@@ -493,7 +493,7 @@
       "stable_original_records": true,
       "shared_target_deduplication": true,
       "last_owner_restores": true,
-      "instructions": 206000
+      "instructions": 206046
     },
     "scope_exclusions_and_nested_depth": {
       "passed": true,
@@ -509,14 +509,14 @@
         "other_window"
       ],
       "eleven_level_hierarchy": true,
-      "instructions": 196916
+      "instructions": 196962
     },
     "bounded_multi_ownership": {
       "passed": true,
       "eligible_input_count": 25,
       "maximum_owned_effects": 16,
       "turnover_and_full_restoration": true,
-      "instructions": 365512
+      "instructions": 365535
     }
   },
   "device_tested": false,
@@ -524,7 +524,7 @@
   "input_data": "Synthetic modeled native objects and generated test log records; no device logs",
   "actual_patch_entries_stubbed": false,
   "instruction_execution": {
-    "candidate_total_steps": 4395528,
+    "candidate_total_steps": 4395927,
     "baseline_control_total_steps": 0,
     "candidate_payload_unique_instructions_observed": 3272,
     "scope": "Candidate-only observed addresses are separated from uploaded-baseline controls; no claim that instruction coverage proves UIKit behavior"

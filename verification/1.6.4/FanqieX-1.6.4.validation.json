@@ -6,7 +6,7 @@
   "reconstruction_input_version": "1.5.8",
   "reconstruction_input_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
   "rebuild_base_sha256": "918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4",
-  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "candidate_sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "size_bytes": 222352,
   "changes": [
     {
@@ -14,7 +14,7 @@
       "size": 14180,
       "reason": "Rebuild main repair with extension calls",
       "old_sha256": "d3e781e9881f8715f6d52c729d971f961903f635c373302d117e3cdef470a0a9",
-      "new_sha256": "d6a952a2bda73f3b2dde4292cb6d24356ac2a445ccc22dd5b61a9da49e1d3c69"
+      "new_sha256": "3570e29b15691ecc9b14dcd75e527020f2ca3c3f5ecd3aec67efb667b606028f"
     },
     {
       "offset": "0x11900",
@@ -105,14 +105,14 @@
       "size": 4,
       "reason": "Record executed ad decisions",
       "old_sha256": "9717e03754fb4316ebacdf2bc1df399ee766cc6aab57534ba4fc164ad5abde8b",
-      "new_sha256": "d38f5669e415f8515627881b02860d3ea76a7a92909d68bf2de3ff11637b26df"
+      "new_sha256": "ac271112ff0c295e08f9fac103a82c3fe49410bdb6a1b52b5703602d6487df24"
     },
     {
       "offset": "0xedec",
       "size": 4216,
       "reason": "Link compiler-generated native exception unwind frames into the existing metadata slot",
       "old_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
-      "new_sha256": "94dd5c101b766efba52665d33759b84e2dd7b24959ab596ee347c5b45a531004"
+      "new_sha256": "61ffd3e9b65689ed5c03c84d6c80428da6e460e18e5829561182fff5ed58e6a3"
     },
     {
       "offset": "0x5d50",
@@ -189,7 +189,7 @@
       "size": 16,
       "reason": "Deterministic UUID",
       "old_sha256": "282955acd1f224f7787df021bccc01e5fcbc26b39f76b89493802770b58ab0ca",
-      "new_sha256": "102eeb79b437dc2ec244f9920576e59441b1e5e1e7d2482c3f0ba5b91becdfdd"
+      "new_sha256": "aaf55ea407738bfe9bc1adb3eb3a6b6c69be7436991c30a224c25971c26627d8"
     }
   ],
   "signature": {
@@ -208,17 +208,17 @@
     "exec_segment_flags": 0,
     "page_hashes_valid": true,
     "invalid_pages": [],
-    "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
-    "cdhash": "c6aeea10f00db2adb4182601df1243ecc5974bc8",
+    "sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
+    "cdhash": "1344ccb9ffbedf74b39962be7ce0183fc186b7fe",
     "device_acceptance_tested": false
   },
   "extension_layout": {
     "passed": true,
     "extension_base": 81920,
     "capacity": 131072,
-    "payload_bytes": 92608,
-    "source_sha256": "40808887734cc791559191fb445f3727b087192d5af69a1eb1f9393eaa1b5b7c",
-    "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+    "payload_bytes": 92624,
+    "source_sha256": "dfcf7ffe0c006009a56f45649ac343f4143af26ecac4a5b8ac9b0397207f377e",
+    "candidate_sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
     "size_bytes": 222352,
     "header_end": 1984,
     "segments": [
@@ -293,8 +293,8 @@
       "exec_segment_flags": 0,
       "page_hashes_valid": true,
       "invalid_pages": [],
-      "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
-      "cdhash": "c6aeea10f00db2adb4182601df1243ecc5974bc8",
+      "sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
+      "cdhash": "1344ccb9ffbedf74b39962be7ce0183fc186b7fe",
       "device_acceptance_tested": false
     },
     "limits": [
@@ -303,7 +303,7 @@
       "ARM64 instruction/ABI and UIKit behavior require separate audits."
     ]
   },
-  "uuid": "9cf29c8f-016a-5afb-bbb9-8a2e935363d9",
+  "uuid": "30ad4ba1-aad6-5a95-a546-9f1c5c262ec5",
   "main_directory": {
     "ratio": 2304,
     "layout": 2364,
@@ -366,9 +366,9 @@
     "capture_edge": 4416,
     "restore_removed": 4064,
     "extension": 81920,
-    "extension_code_end": 159584,
-    "extension_strings": 159584,
-    "extension_end": 174528
+    "extension_code_end": 159600,
+    "extension_strings": 159600,
+    "extension_end": 174544
   },
   "extension_directory": {
     "update": 82192,
@@ -386,19 +386,19 @@
     "should_begin": 90568,
     "style_control": 102208,
     "style_glyph": 103128,
-    "code_end": 159584,
-    "strings": 159584,
-    "end": 174528,
-    "native_key": 159584,
-    "monitor_key": 159587,
-    "owner_key": 159588,
-    "timer_key": 159589,
-    "tick_key": 159590,
-    "rejected_key": 159586,
+    "code_end": 159600,
+    "strings": 159600,
+    "end": 174544,
+    "native_key": 159600,
+    "monitor_key": 159603,
+    "owner_key": 159604,
+    "timer_key": 159605,
+    "tick_key": 159606,
+    "rejected_key": 159602,
     "reserved24": 128528,
     "reserved25": 128872,
     "reserved26": 129204,
-    "reserved27": 132004
+    "reserved27": 132020
   },
   "reader_directory": {
     "reader_panel": 121172,
@@ -408,13 +408,13 @@
     "image_alignment": 120568,
     "layout_observe": 122672,
     "finish": 101104,
-    "control_busy_key": 162992,
-    "busy_key": 164834,
-    "owner_back_key": 164840,
-    "back_owned_key": 164835,
-    "back_original_key": 164836,
-    "back_mode_key": 164837,
-    "last_log_key": 164841,
+    "control_busy_key": 163008,
+    "busy_key": 164850,
+    "owner_back_key": 164856,
+    "back_owned_key": 164851,
+    "back_original_key": 164852,
+    "back_mode_key": 164853,
+    "last_log_key": 164857,
     "settle_control": 115448
   },
   "original_unchanged": true,
@@ -439,456 +439,456 @@
     "native_entry_count": 89,
     "merged_entry_count": 153,
     "original_limit": 42356,
-    "merged_limit": 159584,
+    "merged_limit": 159600,
     "section_descriptors_unchanged": true,
     "native_entries": [
       {
-        "start": 132500,
-        "end": 132764,
+        "start": 132516,
+        "end": 132780,
         "encoding": 67108867
       },
       {
-        "start": 132764,
-        "end": 135104,
+        "start": 132780,
+        "end": 135120,
         "encoding": 67108895
       },
       {
-        "start": 135104,
-        "end": 135216,
+        "start": 135120,
+        "end": 135232,
         "encoding": 67108867
       },
       {
-        "start": 135216,
-        "end": 135392,
+        "start": 135232,
+        "end": 135408,
         "encoding": 67108871
       },
       {
-        "start": 135392,
-        "end": 136268,
+        "start": 135408,
+        "end": 136284,
         "encoding": 67108895
       },
       {
-        "start": 136268,
-        "end": 136336,
+        "start": 136284,
+        "end": 136352,
         "encoding": 67108865
       },
       {
-        "start": 136336,
-        "end": 136928,
+        "start": 136352,
+        "end": 136944,
         "encoding": 67108867
       },
       {
-        "start": 136928,
-        "end": 136996,
+        "start": 136944,
+        "end": 137012,
         "encoding": 67108865
       },
       {
-        "start": 136996,
-        "end": 137500,
+        "start": 137012,
+        "end": 137516,
         "encoding": 67108871
       },
       {
-        "start": 137500,
-        "end": 137644,
+        "start": 137516,
+        "end": 137660,
         "encoding": 67109121
       },
       {
-        "start": 137644,
-        "end": 137704,
+        "start": 137660,
+        "end": 137720,
         "encoding": 67108865
       },
       {
-        "start": 137704,
-        "end": 138364,
+        "start": 137720,
+        "end": 138380,
         "encoding": 67108895
       },
       {
-        "start": 138364,
-        "end": 138816,
+        "start": 138380,
+        "end": 138832,
         "encoding": 67108879
       },
       {
-        "start": 138816,
-        "end": 139248,
+        "start": 138832,
+        "end": 139264,
         "encoding": 67108879
       },
       {
-        "start": 139248,
-        "end": 139320,
+        "start": 139264,
+        "end": 139336,
         "encoding": 67108865
       },
       {
-        "start": 139320,
-        "end": 139472,
+        "start": 139336,
+        "end": 139488,
         "encoding": 67108867
       },
       {
-        "start": 139472,
-        "end": 141852,
+        "start": 139488,
+        "end": 141868,
         "encoding": 67108871
       },
       {
-        "start": 141852,
-        "end": 142572,
+        "start": 141868,
+        "end": 142588,
         "encoding": 67108879
       },
       {
-        "start": 142572,
-        "end": 142576,
+        "start": 142588,
+        "end": 142592,
         "encoding": 33554432
       },
       {
-        "start": 142576,
-        "end": 142744,
+        "start": 142592,
+        "end": 142760,
         "encoding": 67108871
       },
       {
-        "start": 142744,
-        "end": 143016,
+        "start": 142760,
+        "end": 143032,
         "encoding": 67108867
       },
       {
-        "start": 143016,
-        "end": 143344,
+        "start": 143032,
+        "end": 143360,
         "encoding": 67108867
       },
       {
-        "start": 143344,
-        "end": 143524,
+        "start": 143360,
+        "end": 143540,
         "encoding": 67108867
       },
       {
-        "start": 143524,
-        "end": 143932,
+        "start": 143540,
+        "end": 143948,
         "encoding": 67108879
       },
       {
-        "start": 143932,
-        "end": 144064,
+        "start": 143948,
+        "end": 144080,
         "encoding": 67108867
       },
       {
-        "start": 144064,
-        "end": 144284,
+        "start": 144080,
+        "end": 144300,
         "encoding": 67108867
       },
       {
-        "start": 144284,
-        "end": 144468,
+        "start": 144300,
+        "end": 144484,
         "encoding": 67108867
       },
       {
-        "start": 144468,
-        "end": 144488,
+        "start": 144484,
+        "end": 144504,
         "encoding": 33554432
       },
       {
-        "start": 144488,
-        "end": 144508,
+        "start": 144504,
+        "end": 144524,
         "encoding": 33554432
       },
       {
-        "start": 144508,
-        "end": 144528,
+        "start": 144524,
+        "end": 144544,
         "encoding": 33554432
       },
       {
-        "start": 144528,
-        "end": 144548,
+        "start": 144544,
+        "end": 144564,
         "encoding": 33554432
       },
       {
-        "start": 144548,
-        "end": 144940,
+        "start": 144564,
+        "end": 144956,
         "encoding": 67108879
       },
       {
-        "start": 144940,
-        "end": 145276,
+        "start": 144956,
+        "end": 145292,
         "encoding": 67108871
       },
       {
-        "start": 145276,
-        "end": 145556,
+        "start": 145292,
+        "end": 145572,
         "encoding": 67108871
       },
       {
-        "start": 145556,
-        "end": 145576,
+        "start": 145572,
+        "end": 145592,
         "encoding": 33554432
       },
       {
-        "start": 145576,
-        "end": 145596,
+        "start": 145592,
+        "end": 145612,
         "encoding": 33554432
       },
       {
-        "start": 145596,
-        "end": 145616,
+        "start": 145612,
+        "end": 145632,
         "encoding": 33554432
       },
       {
-        "start": 145616,
-        "end": 146116,
+        "start": 145632,
+        "end": 146132,
         "encoding": 67108895
       },
       {
-        "start": 146116,
-        "end": 146540,
+        "start": 146132,
+        "end": 146556,
         "encoding": 67108879
       },
       {
-        "start": 146540,
-        "end": 147536,
+        "start": 146556,
+        "end": 147552,
         "encoding": 67108895
       },
       {
-        "start": 147536,
-        "end": 148148,
+        "start": 147552,
+        "end": 148164,
         "encoding": 67108895
       },
       {
-        "start": 148148,
-        "end": 148300,
+        "start": 148164,
+        "end": 148316,
         "encoding": 67108867
       },
       {
-        "start": 148300,
-        "end": 148788,
+        "start": 148316,
+        "end": 148804,
         "encoding": 67108895
       },
       {
-        "start": 148788,
-        "end": 150544,
+        "start": 148804,
+        "end": 150560,
         "encoding": 67108895
       },
       {
-        "start": 150544,
-        "end": 151184,
+        "start": 150560,
+        "end": 151200,
         "encoding": 67108895
       },
       {
-        "start": 151184,
-        "end": 152624,
+        "start": 151200,
+        "end": 152640,
         "encoding": 67108895
       },
       {
-        "start": 152624,
-        "end": 152964,
+        "start": 152640,
+        "end": 152980,
         "encoding": 67108871
       },
       {
-        "start": 152964,
-        "end": 153252,
+        "start": 152980,
+        "end": 153268,
         "encoding": 67108871
       },
       {
-        "start": 153252,
-        "end": 153692,
+        "start": 153268,
+        "end": 153708,
         "encoding": 67108871
       },
       {
-        "start": 153692,
-        "end": 153844,
+        "start": 153708,
+        "end": 153860,
         "encoding": 67108867
       },
       {
-        "start": 153844,
-        "end": 153872,
+        "start": 153860,
+        "end": 153888,
         "encoding": 33554432
       },
       {
-        "start": 153872,
-        "end": 153900,
+        "start": 153888,
+        "end": 153916,
         "encoding": 33554432
       },
       {
-        "start": 153900,
-        "end": 154052,
+        "start": 153916,
+        "end": 154068,
         "encoding": 67108867
       },
       {
-        "start": 154052,
-        "end": 154080,
+        "start": 154068,
+        "end": 154096,
         "encoding": 33554432
       },
       {
-        "start": 154080,
-        "end": 154108,
+        "start": 154096,
+        "end": 154124,
         "encoding": 33554432
       },
       {
-        "start": 154108,
-        "end": 154260,
+        "start": 154124,
+        "end": 154276,
         "encoding": 67108867
       },
       {
-        "start": 154260,
-        "end": 154288,
+        "start": 154276,
+        "end": 154304,
         "encoding": 33554432
       },
       {
-        "start": 154288,
-        "end": 154316,
+        "start": 154304,
+        "end": 154332,
         "encoding": 33554432
       },
       {
-        "start": 154316,
-        "end": 154468,
+        "start": 154332,
+        "end": 154484,
         "encoding": 67108867
       },
       {
-        "start": 154468,
-        "end": 154496,
+        "start": 154484,
+        "end": 154512,
         "encoding": 33554432
       },
       {
-        "start": 154496,
-        "end": 154524,
+        "start": 154512,
+        "end": 154540,
         "encoding": 33554432
       },
       {
-        "start": 154524,
-        "end": 154676,
+        "start": 154540,
+        "end": 154692,
         "encoding": 67108867
       },
       {
-        "start": 154676,
-        "end": 154704,
+        "start": 154692,
+        "end": 154720,
         "encoding": 33554432
       },
       {
-        "start": 154704,
-        "end": 154732,
+        "start": 154720,
+        "end": 154748,
         "encoding": 33554432
       },
       {
-        "start": 154732,
-        "end": 155764,
+        "start": 154748,
+        "end": 155780,
         "encoding": 67108895
       },
       {
-        "start": 155764,
-        "end": 155908,
+        "start": 155780,
+        "end": 155924,
         "encoding": 67109121
       },
       {
-        "start": 155908,
-        "end": 155956,
+        "start": 155924,
+        "end": 155972,
         "encoding": 67108864
       },
       {
-        "start": 155956,
-        "end": 156104,
+        "start": 155972,
+        "end": 156120,
         "encoding": 67109123
       },
       {
-        "start": 156104,
-        "end": 156236,
+        "start": 156120,
+        "end": 156252,
         "encoding": 67108865
       },
       {
-        "start": 156236,
-        "end": 156240,
+        "start": 156252,
+        "end": 156256,
         "encoding": 33554432
       },
       {
-        "start": 156240,
-        "end": 156328,
+        "start": 156256,
+        "end": 156344,
         "encoding": 67108865
       },
       {
-        "start": 156328,
-        "end": 156416,
+        "start": 156344,
+        "end": 156432,
         "encoding": 67108865
       },
       {
-        "start": 156416,
-        "end": 156508,
+        "start": 156432,
+        "end": 156524,
         "encoding": 67108867
       },
       {
-        "start": 156508,
-        "end": 156772,
+        "start": 156524,
+        "end": 156788,
         "encoding": 67108867
       },
       {
-        "start": 156772,
-        "end": 156868,
+        "start": 156788,
+        "end": 156884,
         "encoding": 67108865
       },
       {
-        "start": 156868,
-        "end": 156872,
+        "start": 156884,
+        "end": 156888,
         "encoding": 33554432
       },
       {
-        "start": 156872,
-        "end": 156964,
+        "start": 156888,
+        "end": 156980,
         "encoding": 67108867
       },
       {
-        "start": 156964,
-        "end": 157916,
+        "start": 156980,
+        "end": 157932,
         "encoding": 67108879
       },
       {
-        "start": 157916,
-        "end": 157988,
+        "start": 157932,
+        "end": 158004,
         "encoding": 67108865
       },
       {
-        "start": 157988,
-        "end": 158060,
+        "start": 158004,
+        "end": 158076,
         "encoding": 67108865
       },
       {
-        "start": 158060,
-        "end": 158620,
+        "start": 158076,
+        "end": 158636,
         "encoding": 67108879
       },
       {
-        "start": 158620,
-        "end": 158624,
+        "start": 158636,
+        "end": 158640,
         "encoding": 33554432
       },
       {
-        "start": 158624,
-        "end": 158992,
+        "start": 158640,
+        "end": 159008,
         "encoding": 67108879
       },
       {
-        "start": 158992,
-        "end": 158996,
+        "start": 159008,
+        "end": 159012,
         "encoding": 33554432
       },
       {
-        "start": 158996,
-        "end": 159208,
+        "start": 159012,
+        "end": 159224,
         "encoding": 67108871
       },
       {
-        "start": 159208,
-        "end": 159212,
+        "start": 159224,
+        "end": 159228,
         "encoding": 33554432
       },
       {
-        "start": 159212,
-        "end": 159216,
+        "start": 159228,
+        "end": 159232,
         "encoding": 33554432
       },
       {
-        "start": 159216,
-        "end": 159220,
+        "start": 159232,
+        "end": 159236,
         "encoding": 33554432
       },
       {
-        "start": 159220,
-        "end": 159584,
+        "start": 159236,
+        "end": 159600,
         "encoding": 67108879
       }
     ],
     "original_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
-    "merged_sha256": "94dd5c101b766efba52665d33759b84e2dd7b24959ab596ee347c5b45a531004"
+    "merged_sha256": "61ffd3e9b65689ed5c03c84d6c80428da6e460e18e5829561182fff5ed58e6a3"
   }
 }

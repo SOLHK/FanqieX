@@ -2,6 +2,12 @@
   "passed": true,
   "device_tested": false,
   "cases": {
+    "named_event_payloads": {
+      "startup_null_preserved": true,
+      "scalar_preserved": true,
+      "explicit_correlation_preserved": true,
+      "generated_correlations": 3
+    },
     "bounded_pending": {
       "accepted": 2048,
       "dropped": 1,

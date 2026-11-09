@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "candidate_sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "scope": "Actual ARM64 executed against UIControl/Foundation boundary fixtures",
   "device_tested": false,
   "physical_hit_testing_tested": false,
@@ -144,6 +144,6 @@
     }
   ],
   "case_groups": 7,
-  "instructions": 319652,
+  "instructions": 320158,
   "abi_checks": "Every invocation preserves x18/x19-x29, d8-d15 and balanced SP; framework calls poison caller-saved registers."
 }

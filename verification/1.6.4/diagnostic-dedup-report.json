@@ -1,7 +1,7 @@
 {
   "passed": true,
   "scope": "Actual supplied ARM64 control flow with public API boundary models; not iOS latency or pixels",
-  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "candidate_sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "baseline_sha256": "6031d37a2d4e41038338eb0d5730bb6f30833fb0c3499bf4f5b781a88a64a7a1",
   "negative_controls": {
     "bar_color": {
@@ -18,8 +18,8 @@
         "snapshots": 1,
         "observer_calls": 9,
         "replacement_objects": 8,
-        "instructions": 86814,
-        "native_boundary_calls": 6044,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
         "color_conversions": 18,
         "all_snapshot_data_identical": true
       }
@@ -38,8 +38,8 @@
         "snapshots": 1,
         "observer_calls": 9,
         "replacement_objects": 8,
-        "instructions": 86814,
-        "native_boundary_calls": 6044,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
         "color_conversions": 18,
         "all_snapshot_data_identical": true
       }
@@ -58,8 +58,8 @@
         "snapshots": 1,
         "observer_calls": 9,
         "replacement_objects": 8,
-        "instructions": 86814,
-        "native_boundary_calls": 6044,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
         "color_conversions": 18,
         "all_snapshot_data_identical": true
       }
@@ -78,8 +78,8 @@
         "snapshots": 1,
         "observer_calls": 9,
         "replacement_objects": 24,
-        "instructions": 86814,
-        "native_boundary_calls": 6044,
+        "instructions": 86837,
+        "native_boundary_calls": 6047,
         "color_conversions": 18,
         "all_snapshot_data_identical": true
       }
@@ -96,7 +96,7 @@
     "current_candidate": {
       "event_version": "1.6.4",
       "export_version": "1.6.4",
-      "instructions": 81220,
+      "instructions": 81243,
       "real_export_json_written": true
     },
     "old_158_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
@@ -120,7 +120,7 @@
       "1.5.9",
       "1.6.4"
     ],
-    "instructions": 305936
+    "instructions": 305959
   },
   "semantic_changes": {
     "passed": true,

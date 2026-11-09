@@ -5,12 +5,12 @@
     {
       "slide": "0x0",
       "case": "owned",
-      "instructions": 11912
+      "instructions": 11935
     },
     {
       "slide": "0x0",
       "case": "inherited",
-      "instructions": 11965
+      "instructions": 11988
     },
     {
       "slide": "0x0",
@@ -35,12 +35,12 @@
     {
       "slide": "0x180000000",
       "case": "owned",
-      "instructions": 11912
+      "instructions": 11935
     },
     {
       "slide": "0x180000000",
       "case": "inherited",
-      "instructions": 11965
+      "instructions": 11988
     },
     {
       "slide": "0x180000000",

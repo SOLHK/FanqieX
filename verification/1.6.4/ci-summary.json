@@ -9,7 +9,7 @@
       "name": "build",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.594,
+      "seconds": 0.578,
       "log": "logs/build.log"
     },
     {
@@ -23,7 +23,7 @@
       "name": "extension-layout-selftest",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.156,
+      "seconds": 0.14,
       "log": "logs/extension-layout-selftest.log"
     },
     {
@@ -44,77 +44,77 @@
       "name": "native-surface",
       "passed": true,
       "returncode": 0,
-      "seconds": 11.078,
+      "seconds": 10.766,
       "log": "logs/native-surface.log"
     },
     {
       "name": "glass-interaction",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.219,
+      "seconds": 3.234,
       "log": "logs/glass-interaction.log"
     },
     {
       "name": "integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.875,
+      "seconds": 3.969,
       "log": "logs/integration.log"
     },
     {
       "name": "diagnostic-dedup",
       "passed": true,
       "returncode": 0,
-      "seconds": 43.031,
+      "seconds": 42.75,
       "log": "logs/diagnostic-dedup.log"
     },
     {
       "name": "legacy-execution",
       "passed": true,
       "returncode": 0,
-      "seconds": 35.86,
+      "seconds": 36.078,
       "log": "logs/legacy-execution.log"
     },
     {
       "name": "material-transitions160",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.218,
+      "seconds": 0.219,
       "log": "logs/material-transitions160.log"
     },
     {
       "name": "feed-viewport",
       "passed": true,
       "returncode": 0,
-      "seconds": 7.266,
+      "seconds": 7.375,
       "log": "logs/feed-viewport.log"
     },
     {
       "name": "feed-integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 15.125,
+      "seconds": 15.062,
       "log": "logs/feed-integration.log"
     },
     {
       "name": "feed-realistic159",
       "passed": true,
       "returncode": 0,
-      "seconds": 24.0,
+      "seconds": 23.719,
       "log": "logs/feed-realistic159.log"
     },
     {
       "name": "first-frame160",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.703,
+      "seconds": 5.75,
       "log": "logs/first-frame160.log"
     },
     {
       "name": "reader-diagnostics160",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.359,
+      "seconds": 3.406,
       "log": "logs/reader-diagnostics160.log"
     },
     {
@@ -135,42 +135,42 @@
       "name": "glass-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.219,
+      "seconds": 3.234,
       "log": "logs/glass-readability162.log"
     },
     {
       "name": "interaction-diagnostics162",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.515,
+      "seconds": 1.453,
       "log": "logs/interaction-diagnostics162.log"
     },
     {
       "name": "native-selection162",
       "passed": true,
       "returncode": 0,
-      "seconds": 8.485,
+      "seconds": 8.391,
       "log": "logs/native-selection162.log"
     },
     {
       "name": "native-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.906,
+      "seconds": 6.938,
       "log": "logs/native-readability162.log"
     },
     {
       "name": "native-orchestration162",
       "passed": true,
       "returncode": 0,
-      "seconds": 15.187,
+      "seconds": 15.062,
       "log": "logs/native-orchestration162.log"
     },
     {
       "name": "hook-ownership163",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.266,
+      "seconds": 1.234,
       "log": "logs/hook-ownership163.log"
     },
     {
@@ -198,49 +198,50 @@
       "name": "native-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 7.062,
+      "seconds": 7.109,
       "log": "logs/native-diagnostics164.log"
     },
     {
       "name": "diagnostic-limits164",
       "passed": true,
       "returncode": 0,
-      "seconds": 37.688,
+      "seconds": 38.313,
       "log": "logs/diagnostic-limits164.log"
     },
     {
       "name": "load-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.562,
+      "seconds": 1.547,
       "log": "logs/load-diagnostics164.log"
     },
     {
       "name": "native-compiler-boundaries",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.453,
+      "seconds": 0.469,
       "log": "logs/native-compiler-boundaries.log"
     },
     {
       "name": "native-unwind",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.203,
+      "seconds": 0.219,
       "log": "logs/native-unwind.log"
     }
   ],
   "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models",
-  "source_manifest_sha256": "ab5b15e879540a681a62664a300dfe30dea4ce884a0f58d9640f11756278618c",
-  "source_file_count": 218,
+  "source_manifest_sha256": "55b30bf89b30c99f3bfcd979a60e2808210a325dd6d73b03db80c4effc6b4792",
+  "source_file_count": 220,
   "llvm": {
     "version": "22.1.8",
     "library_sha256": "1e2aed1785cedbbb6f19338eac72257649bab60157e044d0435883871a2f58af"
   },
-  "git_head_at_start": "35dcb0c41824f02e512a4f654d10bf81c6334501",
+  "git_head_at_start": "1fefff5cfcbbe5e0d15c1462a4b56cfcef0186e2",
   "git_working_tree_clean_at_start": true,
-  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "candidate_sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "candidate_size": 222352,
   "two_builds_identical": true,
+  "delivery_candidate_identical": true,
   "source_files_unchanged_during_verification": true
 }

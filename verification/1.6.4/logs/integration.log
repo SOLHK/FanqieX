@@ -1,5 +1,5 @@
 {
-  "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+  "sha256": "74ec1423e4622e36e88c2c3593be4265e55059b20116c4a163f21a13cabc92be",
   "passed": true,
   "cases": [
     {
@@ -23,7 +23,7 @@
       "passed": true
     }
   ],
-  "instructions": 428454,
+  "instructions": 428592,
   "repair_entries_intercepted": false,
   "device_ui_tested": false,
   "limitations": [
