@@ -1,0 +1,36 @@
+{
+  "version": "1.7.3",
+  "scope": "Actual ARM64 instructions with explicit UIKit geometry boundaries; not a compositor or injected-device test",
+  "device_tested": false,
+  "pixel_rendering_tested": false,
+  "implementation_sha256": "3af0afc4a04b1e701bc2f35a920be3c5742c8da02d84be0d82beaaacb532df73",
+  "xcode_generated_assembly_sha256": "804e41b7644d832ade0dc13d8036ee807977a14c0a31edb54997deb2a3c6dee6",
+  "generated_assembly_commit": "b1f8373ea7c726a99a30d3f0273c1b22a17ed94c",
+  "xcode_build_run": 42659523146,
+  "xcode_version": "27.2",
+  "xcode_candidate_sha256": "de57b33f7ce873b24be35f55a611f5a722a3dfab0e95a1a68abe6430c0356825",
+  "candidate_size": 222352,
+  "linux_rebuild_of_frozen_assembly_matches_xcode_exactly": true,
+  "baseline": {
+    "version": "1.7.2",
+    "sha256": "3edd178363167dd039262d0768de98291206e8e5e95b85aa89b38187e5edbe75",
+    "searchClippingDisabled": true,
+    "offscreenWordHasVisibleArea": true,
+    "categoryGlassMissing": true,
+    "ownerCornerRadius": 6.0
+  },
+  "header_regression": {
+    "passed_on_xcode_candidate": true,
+    "widths": [320, 375, 390, 430, 440, 768, 1024],
+    "heights": [36, 40, 44],
+    "address_slides": [0, 4294967296],
+    "checks": ["offscreen cycling text clipped", "matching capsule crop", "category entry glass restored", "horizontal navigation unchanged", "surface reuse", "theme ABI forwarded once", "host property restoration", "geometry-only diagnostics"]
+  },
+  "preliminary_local_full_regression": {
+    "passed": true,
+    "steps": 38,
+    "compiler": "local Clang-generated ARM64",
+    "candidate_sha256": "72ace28318d44d95085e35c4037ed83fd76ac913d246eb9fdb3c23afe5b4d99f",
+    "note": "The full same-commit Xcode candidate regression and package verification are recorded separately by verify.yml; this preliminary result does not claim those later checks passed."
+  }
+}
