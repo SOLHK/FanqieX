@@ -106,6 +106,58 @@ static B Flag(Obj view,const char *selector) {
 static Obj BoolBox(B value) {
     return ((Obj(*)(Obj,Sel,B))Message)(Lookup("NSNumber"),sel_registerName("numberWithBool:"),value);
 }
+// The search owner is also the clipping viewport for cycling search words.
+// Disabling its clipping lets the next word draw over the navigation row. Keep
+// that viewport clipped, but give its layer the same capsule as the material.
+// Only the two header owners use this path; reader/shelf icon optics are unchanged.
+static void HeaderKey(void) {}
+static void HeaderClipsKey(void) {}
+static void HeaderOpaqueKey(void) {}
+static void HeaderRadiusKey(void) {}
+static void HeaderAppliedRadiusKey(void) {}
+static void HeaderLogKey(void) {}
+static void HeaderLogTimeKey(void) {}
+static Obj Number(double value);
+static void HeaderDiagnostics(Obj view);
+static double Radius(Obj view) {
+    return ((double(*)(Obj,Sel))Message)(O0(view,"layer"),sel_registerName("cornerRadius"));
+}
+static void SetRadius(Obj view,double value) {
+    ((void(*)(Obj,Sel,double))Message)(O0(view,"layer"),sel_registerName("setCornerRadius:"),value);
+}
+static double Double(Obj value) {
+    return ((double(*)(Obj,Sel))Message)(value,sel_registerName("doubleValue"));
+}
+static void PrepareHeaderOwner(Obj view,Rect bounds) {
+    B clips=Flag(view,"clipsToBounds"), opaque=Flag(view,"isOpaque");
+    double current=Radius(view),wanted=(bounds.width<bounds.height ? bounds.width : bounds.height)*0.5;
+    Obj applied=objc_getAssociatedObject(view,HeaderAppliedRadiusKey);
+    if (!objc_getAssociatedObject(view,HeaderClipsKey) || !clips)
+        objc_setAssociatedObject(view,HeaderClipsKey,BoolBox(clips),1);
+    if (!objc_getAssociatedObject(view,HeaderOpaqueKey) || opaque)
+        objc_setAssociatedObject(view,HeaderOpaqueKey,BoolBox(opaque),1);
+    if (!applied || current!=Double(applied))
+        objc_setAssociatedObject(view,HeaderRadiusKey,Number(current),1);
+    if (current!=wanted) SetRadius(view,wanted);
+    if (!applied || Double(applied)!=wanted)
+        objc_setAssociatedObject(view,HeaderAppliedRadiusKey,Number(wanted),1);
+    if (!clips) VB(view,"setClipsToBounds:",1);
+    if (opaque) VB(view,"setOpaque:",0);
+}
+static void RestoreHeaderOwner(Obj view) {
+    Obj clips=objc_getAssociatedObject(view,HeaderClipsKey),opaque=objc_getAssociatedObject(view,HeaderOpaqueKey);
+    Obj radius=objc_getAssociatedObject(view,HeaderRadiusKey),applied=objc_getAssociatedObject(view,HeaderAppliedRadiusKey);
+    // Restore only properties still owned by this decoration. A later host write wins.
+    if (clips && Flag(view,"clipsToBounds")) VB(view,"setClipsToBounds:",Flag(clips,"boolValue"));
+    if (opaque && !Flag(view,"isOpaque")) VB(view,"setOpaque:",Flag(opaque,"boolValue"));
+    if (radius && applied && Radius(view)==Double(applied)) SetRadius(view,Double(radius));
+    objc_setAssociatedObject(view,HeaderClipsKey,0,1);
+    objc_setAssociatedObject(view,HeaderOpaqueKey,0,1);
+    objc_setAssociatedObject(view,HeaderRadiusKey,0,1);
+    objc_setAssociatedObject(view,HeaderAppliedRadiusKey,0,1);
+    objc_setAssociatedObject(view,HeaderLogKey,0,1);
+    objc_setAssociatedObject(view,HeaderLogTimeKey,0,1);
+}
 // The host's setSsCornerRadius: enables masksToBounds. Native optical edges
 // must not inherit that old rectangular/rounded clipping surface. This changes
 // only the exact decorated owner, never an ancestor, child or layer mask.
@@ -134,7 +186,7 @@ B FQHIsDuration(Obj view) {
 }
 Obj FQHSurface(Obj view) { return objc_getAssociatedObject(view,SurfaceKey); }
 static void Restore(Obj view,Obj surface) {
-    if (!surface) { RestoreOwner(view); return; }
+    if (!surface) { RestoreHeaderOwner(view); RestoreOwner(view); return; }
     Obj clear=O0(Lookup("UIColor"),"clearColor");
     Obj current=O0(view,"backgroundColor");
     if (current==clear || ((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),clear))
@@ -142,7 +194,7 @@ static void Restore(Obj view,Obj surface) {
     V0(surface,"removeFromSuperview");
     objc_setAssociatedObject(view,SurfaceKey,0,1);
     objc_setAssociatedObject(view,BackgroundKey,0,1);
-    RestoreOwner(view);
+    RestoreHeaderOwner(view); RestoreOwner(view);
 }
 static void ClearBackground(Obj view,Obj clear) {
     Obj value=O0(view,"backgroundColor");
@@ -185,7 +237,8 @@ void FQHApply(Obj view) {
         objc_setAssociatedObject(view,BackgroundKey,current,1);
     Obj transaction=Lookup("CATransaction");
     V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
-    PrepareOwner(view);
+    if (objc_getAssociatedObject(view,HeaderKey)) PrepareHeaderOwner(view,bounds);
+    else PrepareOwner(view);
     Rect placed=((Rect(*)(Obj,Sel))Message)(surface,sel_registerName("frame"));
     if (placed.x!=bounds.x || placed.y!=bounds.y || placed.width!=bounds.width || placed.height!=bounds.height)
         ((void(*)(Obj,Sel,Rect))Message)(surface,sel_registerName("setFrame:"),bounds);
@@ -197,16 +250,34 @@ void FQHApply(Obj view) {
     V0(transaction,"commit");
     objc_setAssociatedObject(view,BusyKey,0,0);
 }
+void FQHHeader(Obj view) {
+    if (!Kind(view,"UIView")) return;
+    objc_setAssociatedObject(view,HeaderKey,Text(Kind(view,"SSBookStoreCategorySignView") ? "categoryButton" : "search"),1);
+    FQHApply(view);
+    if (FQHSurface(view)) HeaderDiagnostics(view);
+}
 static Imp Original(const char *cls,const char *alias) {
     return method_getImplementation(class_getInstanceMethod(Lookup(cls),sel_registerName(alias)));
 }
 static void HomeLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreNewViewController","fqx165_originalRelayout"))(self,cmd);
-    FQHApply(Get(self,"searchBgView"));
+    FQHHeader(Get(self,"searchBgView"));
 }
 static void HomeAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSBookStoreNewViewController","fqx165_originalAppear:"))(self,cmd,animated);
-    FQHApply(Get(self,"searchBgView"));
+    FQHHeader(Get(self,"searchBgView"));
+}
+static void CategoryLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookStoreCategorySignView","fqx173_originalLayout"))(self,cmd);
+    FQHHeader(self);
+}
+static void CategoryColor(Obj self,Sel cmd,double ratio,int from,int to,int fromTemplate,int toTemplate) {
+    ((void(*)(Obj,Sel,double,int,int,int,int))Original("SSBookStoreCategorySignView","fqx173_originalColor:from:to:fromTemplate:toTemplate:"))(self,cmd,ratio,from,to,fromTemplate,toTemplate);
+    FQHHeader(self);
+}
+static void SearchColor(Obj self,Sel cmd,double ratio,int from,int to,int fromTemplate,int toTemplate) {
+    ((void(*)(Obj,Sel,double,int,int,int,int))Original("SSBookStoreSearchBarComponent","fqx173_originalSearchColor:from:to:fromTemplate:toTemplate:"))(self,cmd,ratio,from,to,fromTemplate,toTemplate);
+    FQHHeader(Get(Get(self,"bookStoreVCContext"),"searchBgView"));
 }
 static void Hook(const char *name,const char *selector,const char *alias,const char *type,Imp imp) {
     Obj cls=Lookup(name);
@@ -302,6 +373,30 @@ static Obj RectArray(Rect rect) {
     V1(result,"addObject:",Number(rect.x)); V1(result,"addObject:",Number(rect.y));
     V1(result,"addObject:",Number(rect.width)); V1(result,"addObject:",Number(rect.height));
     return result;
+}
+static void HeaderDiagnostics(Obj view) {
+    Rect bounds=Bounds(view);
+    Obj previous=objc_getAssociatedObject(view,HeaderLogKey);
+    if (previous && SameRect(bounds,UnboxRect(previous))) return;
+    double now=((double(*)(Obj,Sel))Message)(O0(Lookup("NSProcessInfo"),"processInfo"),sel_registerName("systemUptime"));
+    Obj last=objc_getAssociatedObject(view,HeaderLogTimeKey);
+    if (last && now-Double(last)<1.0) return;
+    objc_setAssociatedObject(view,HeaderLogKey,RectBox(bounds),1);
+    objc_setAssociatedObject(view,HeaderLogTimeKey,Number(now),1);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"role",objc_getAssociatedObject(view,HeaderKey));
+    Put(record,"hostFrame",RectArray(Frame(view))); Put(record,"hostBounds",RectArray(bounds));
+    Put(record,"glassRect",RectArray(Frame(FQHSurface(view))));
+    Put(record,"clipsToBounds",BoolBox(Flag(view,"clipsToBounds")));
+    Put(record,"cornerRadius",Number(Radius(view)));
+    Obj children=Get(view,"subviews"),frames=O0(Lookup("NSMutableArray"),"array");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    Put(record,"childCount",Number((double)count));
+    Put(record,"childrenTruncated",BoolBox(count>12));
+    if (count>12) count=12;
+    for (U i=0;i<count;++i) V1(frames,"addObject:",RectArray(Frame(At(children,i))));
+    Put(record,"childFrames",frames); // Geometry only: never log book names or query text.
+    FQDRecord("headerLayout173",record);
 }
 static void RecordLayout(Obj view,Obj glass,Rect image,const char *role) {
     Rect frame=Frame(view),bounds=Bounds(view),material=Frame(glass);
@@ -542,8 +637,10 @@ void FQHInstall(void) {
     Hook("SSReaderFloatingCommonButton","layoutSubviews","fqx171_originalLayout","v16@0:8",(Imp)ListenLayout);
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
     Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
-    // Category navigation remains entirely host-owned to prevent label overlap.
-    // Do not mutate search glass during the host's interactive top-tab transition.
+    // This is the right-hand category ENTRY, not the horizontal category tabs.
+    Hook("SSBookStoreCategorySignView","layoutSubviews","fqx173_originalLayout","v16@0:8",(Imp)CategoryLayout);
+    Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
+    Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);

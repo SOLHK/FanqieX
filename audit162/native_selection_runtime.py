@@ -19,7 +19,7 @@ NAMES = ('update', 'restore', 'has_native', 'value_changed', 'control_key',
 def native_entries(data):
     binary_version = struct.unpack_from('<I', data, 0x800 + 6 * 4)[0]
     layouts = {0x10601: (b'FQ161SEG', 0x10601), 0x10602: (b'FQ162SEG', 0x10602),
-               0x10603: (b'FQ162SEG', 0x10602), 0x10604: (b'FQ162SEG', 0x10602), 0x10605: (b'FQ162SEG', 0x10602), 0x10606: (b'FQ162SEG', 0x10602), 0x10701: (b'FQ162SEG', 0x10602), 0x10702: (b'FQ162SEG', 0x10602)}
+               0x10603: (b'FQ162SEG', 0x10602), 0x10604: (b'FQ162SEG', 0x10602), 0x10605: (b'FQ162SEG', 0x10602), 0x10606: (b'FQ162SEG', 0x10602), 0x10701: (b'FQ162SEG', 0x10602), 0x10702: (b'FQ162SEG', 0x10602), 0x10703: (b'FQ162SEG', 0x10602)}
     require(binary_version in layouts, 'Known native selection binary')
     marker, layout_version = layouts[binary_version]
     require(data.count(marker) == 1, 'One immutable native selection directory')

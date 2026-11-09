@@ -18,7 +18,7 @@ UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354
 SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
 PREVIOUS_SHA = '8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e'
 VERSION, ENCODED = '1.6.2', 0x10602
-RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604, '1.6.5': 0x10605, '1.6.6': 0x10606, '1.6.7': 0x10607, '1.7.1': 0x10701, '1.7.2': 0x10702}
+RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604, '1.6.5': 0x10605, '1.6.6': 0x10606, '1.6.7': 0x10607, '1.7.1': 0x10701, '1.7.2': 0x10702, '1.7.3': 0x10703}
 PRODUCT_NAME = 'FanqieX'
 BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
 NAMES = ['ratio','layout','installer','repair','strings','end','version','reserved',
@@ -54,9 +54,9 @@ def compose_assembly(path, version=VERSION):
  extension=['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s']
  if version != VERSION:
   extension.append('hook_ownership.s')
- if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
+ if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
   extension.extend(('startup_popup.s', 'tabbar_spacing.s', 'diagnostic_limits.s', 'ad_decisions.s'))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
   extension.append('home_glass.s')
  for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
                        ('EXTENSION',extension)]:
@@ -65,12 +65,12 @@ def compose_assembly(path, version=VERSION):
    parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2, 'Component boundary: '+filename)
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
-   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2') else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
+   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2', '1.7.3') else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Native diagnostic component boundary')
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
-   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2') else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
+   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2', '1.7.3') else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Home glass component boundary')
    code.append(parts[0]); data.append(parts[1])
   for kind, values in [('CODE',code),('DATA',data)]:
@@ -99,7 +99,7 @@ def build(source_path, output_path, *, version=VERSION):
  source_path=Path(source_path); output_path=Path(output_path)
  encoded=RELEASES[version]
  isolated=version != VERSION
- profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2')
+ profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3')
  need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
  uploaded=source_path.read_bytes()
  need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
@@ -134,7 +134,7 @@ def build(source_path, output_path, *, version=VERSION):
  if isolated:
   hook=e['reserved24']
   need(off+128<=hook<e['code_end'] and hook%4==0,'Hook ownership entry bounds')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
   marker=payload.index(b'FQ165HOM')
   home_gate,home_check=struct.unpack_from('<II',payload,marker+8)
   need(all(off+128<=entry<e['code_end'] and entry%4==0 for entry in (home_gate,home_check)),'Host compatibility entries in code')
@@ -160,7 +160,7 @@ def build(source_path, output_path, *, version=VERSION):
  for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
  if isolated:
   replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
   replace(0x4018,bytes.fromhex('00008052'),branch(0x4018,BASE+home_check,True),'Validate same-build host under the original constructor unwind frame')
   replace(0x401c,branch(0x401c,0xa5c8,True),branch(0x401c,BASE+home_gate),'Accept compatible build or replay the original UUID gate')
  if profile164:
@@ -228,7 +228,7 @@ def build(source_path, output_path, *, version=VERSION):
   original_allowed.update(range(a,a+4))
  for a in (0x7848,0x7ac4,0x5d50,0x5da0,0x5dec,0x5e38,0x649c):
   original_allowed.update(range(a,a+4))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3'):
   original_allowed.update(range(0x4018,0x4020))
  if isolated:
   original_allowed.update(range(0x4878,0x487c))
