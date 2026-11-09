@@ -1,0 +1,92 @@
+{
+  "base_commit": "9f7284e13543d8587d2ac8f0e446f5589a69cd10",
+  "host_build": "7.4.3.33",
+  "verified_hooks": [
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "relayout",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0xa3b8898"
+    },
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "viewDidAppear:",
+      "encoding": "v20@0:8B16",
+      "implementation_file_offset": "0xa401f68"
+    },
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "layoutSubviews",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0xd61be14"
+    },
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "implementation_file_offset": "0xd61c2f4"
+    },
+    {
+      "class": "SSBookStoreSearchBarComponent",
+      "selector": "resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "implementation_file_offset": "0xd7797a0"
+    },
+    {
+      "class": "SSBookShelfSubViewController",
+      "selector": "viewDidLayoutSubviews",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0xd3d3794"
+    },
+    {
+      "class": "FQReaderSaasNavigationView",
+      "selector": "layoutSubviews",
+      "encoding": "v16@0:8",
+      "implementation_file_offset": "0x7de9314"
+    },
+    {
+      "class": "FQReaderSaasNavigationView",
+      "selector": "readerInsertedViewThemeConfigChange:",
+      "encoding": "v24@0:8@16",
+      "implementation_file_offset": "0x7de985c"
+    },
+    {
+      "class": "FQReaderNavigationBarMoreBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "implementation_file_offset": "0x7db3560"
+    },
+    {
+      "class": "FQReaderNavigationBarSearchBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "implementation_file_offset": "0x7db437c"
+    },
+    {
+      "class": "SSReaderNavigationBarDownloadBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "implementation_file_offset": "0xea1fdb4"
+    },
+    {
+      "class": "SSReaderNavigationBarCommunitySwitchBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "implementation_file_offset": "0xea1de38"
+    }
+  ],
+  "clipping_source": {
+    "search_layout": "0xa3b8ed0",
+    "duration_init": "0xd4d2eb4",
+    "corner_setter": "0xa3b9a50",
+    "masksToBounds_call": "0xa3b9a84"
+  },
+  "attachment_summary": {
+    "plugin_version": "1.6.5",
+    "os": "27.3 (24C5037i)",
+    "host_build": "7.4.3.33",
+    "startup_complete": true,
+    "control_layer_snapshots_available": false
+  },
+  "device_visual_fix_verified": false
+}

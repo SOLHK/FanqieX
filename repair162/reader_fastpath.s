@@ -1683,10 +1683,24 @@ LRobserve_record:
     mov x0, x21
     adr x1, LRfield_owner
     bl Ldict_set
+    .if FQ_VERSION >= 0x10606
+    mov x0, x19
+    bl LFQH_FQHReaderCount
+    mov x22, x0
+    bl Luint
+    mov x2, x0
+    mov x0, x21
+    adr x1, LRfield_native_buttons
+    bl Ldict_set
+    .endif
     mov x0, x19
     bl LGscope
     cmp w0, #1
     cset w0, eq
+    .if FQ_VERSION >= 0x10606
+    cmp x22, #0
+    csel w0, w0, wzr, eq
+    .endif
     bl Luint
     mov x2, x0
     mov x0, x21
@@ -2063,3 +2077,7 @@ LRback_control_key: .byte 0
 LRlog_reason_key: .byte 0
 LRlog_shift_key: .byte 0
 .p2align 2
+
+.if FQ_VERSION >= 0x10606
+LRfield_native_buttons: .asciz "readerNativeGlassButtons"
+.endif

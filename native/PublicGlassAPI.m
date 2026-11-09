@@ -121,3 +121,15 @@ void FQSetListenForeground(UILabel *label) {
 void FQSuppressOwnedScrollEdge(UIScrollView *scrollView) {
     scrollView.bottomEdgeEffect.hidden = YES;
 }
+
+// 1.6.6 uses the real UIButton configuration system for native icon buttons.
+// Host target/action, per-state artwork and interaction stay on the same button.
+void FQConfigureNativeIconButton(UIButton *button) {
+    UIButtonConfiguration *configuration = [UIButtonConfiguration glassButtonConfiguration];
+    configuration.image = [button imageForState:UIControlStateNormal];
+    NSAttributedString *title = [button attributedTitleForState:UIControlStateNormal];
+    if (title) configuration.attributedTitle = title;
+    else configuration.title = [button titleForState:UIControlStateNormal];
+    configuration.contentInsets = NSDirectionalEdgeInsetsZero;
+    button.configuration = configuration;
+}

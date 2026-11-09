@@ -882,6 +882,22 @@ LGstyle_control:
     str x1, [sp, #192]
     str xzr, [sp, #200]
     str w0, [sp, #56]
+    .if FQ_VERSION >= 0x10606
+    cmp w0, #2
+    b.ne LGcontrol_166_scope
+    mov x0, x19
+    bl LFQH_FQHIsDuration
+    cbz w0, LGcontrol_166_scope
+    // One material inside the duration owner's own bounds. In particular,
+    // never expand this long pill into its clipped parent's coordinate area.
+    mov x0, x19
+    bl LFQH_FQHApply
+    mov x0, x19
+    bl LFQH_FQHSurface
+    b LGcontrol_return
+LGcontrol_166_scope:
+    ldr w0, [sp, #56]
+    .endif
     cbz w0, LGcontrol_fallback
     AGET x19, LGcontrol_busy_key
     cbnz x0, LGcontrol_reentrant

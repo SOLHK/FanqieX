@@ -21,7 +21,7 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5"), default="1.6.2")
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
     good = audit(baseline, data, expected_version=args.expected_version)
@@ -100,11 +100,11 @@ def main():
     case("stale_settings_version", lambda blob: blob.__setitem__(0xEC84 + 8, ord("8")), "version_consistency")
     case("stale_shared_runtime_version", lambda blob: blob.__setitem__(runtime_version + 4, ord("8")),
          "version_consistency")
-    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27}[args.expected_version]
+    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27}[args.expected_version]
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5"):
+    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.4", "1.6.5"):
+    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6"):
         unwind_slot = next(section for section in image.sections if section['name'] == '__unwind_info')
         unwind_at = unwind_slot['offset']
         page = unpack('<I', data, unwind_at + 32)[0]

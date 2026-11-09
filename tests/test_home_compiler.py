@@ -6,13 +6,15 @@ sys.path.insert(0,str(ROOT/'scripts'))
 from compile_diagnostics import compile_component
 class HomeCompilerTests(unittest.TestCase):
     def test_compiled_component_matches_source(self):
-        source=ROOT/'native/HomeGlass.m'
-        compiled=compile_component(source).replace('LFQD_','LFQH_')
-        committed=(ROOT/'native/HomeGlass.s').read_text()
-        # Toolchains may schedule differently; pin the translation source digest.
-        self.assertEqual(compiled.splitlines()[0],committed.splitlines()[0])
-        self.assertIn('LFQH_FQHApply:',compiled)
-        self.assertIn('.cfi_startproc',compiled)
-        self.assertNotIn('@PAGE',compiled)
-        self.assertEqual(compiled.count('// @COMPONENT_DATA'),1)
+        for name in ('HomeGlass','ControlGlass'):
+            with self.subTest(component=name):
+                source=ROOT/'native'/(name+'.m')
+                compiled=compile_component(source).replace('LFQD_','LFQH_')
+                committed=(ROOT/'native'/(name+'.s')).read_text()
+                # Toolchain scheduling can differ; pin the exact source digest.
+                self.assertEqual(compiled.splitlines()[0],committed.splitlines()[0])
+                self.assertIn('LFQH_FQHApply:',compiled)
+                self.assertIn('.cfi_startproc',compiled)
+                self.assertNotIn('@PAGE',compiled)
+                self.assertEqual(compiled.count('// @COMPONENT_DATA'),1)
 if __name__=='__main__': unittest.main()

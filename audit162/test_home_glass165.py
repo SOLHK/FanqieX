@@ -3,7 +3,7 @@ No device rendering, dyld, signing or real iOS lifecycle is simulated.
 """
 import argparse, json, math, struct
 from pathlib import Path
-from arm64 import CPU, require
+from arm64 import CPU, require, release_version
 from geometry_runtime import GeometryRuntime
 from test_feed_viewport import labels_for
 
@@ -67,6 +67,11 @@ class Runtime(GeometryRuntime):
         if pc-self.slide==0xa5d4 and r:
             if r==self.MAIN_BUNDLE and name=='bundleIdentifier': return self.finish(cpu,self.text_object(self.identity))
             if r in self.objects:
+                if name=='isOpaque': return self.finish(cpu,int(self.objects[r].state.get('opaque',False)))
+                if name=='setClipsToBounds:':
+                    self.objects[r].state['clipsToBounds']=bool(cpu.x[2])
+                    self.objects[self.layer(r)].state['masksToBounds']=bool(cpu.x[2])
+                    return self.finish(cpu)
                 if name=='setIsAccessibilityElement:':
                     self.objects[r].state['isAccessibilityElement']=cpu.x[2]
                     return self.finish(cpu)
@@ -102,7 +107,7 @@ def run(data,labels):
         call(c,'LFQH_FQHInstall')
         before=len([e for e in r.events if e['event']=='method_setImplementation'])
         call(c,'LFQH_FQHInstall')
-        require(len([e for e in r.events if e['event']=='method_setImplementation'])==before==5,'Exactly five hooks, idempotent installation')
+        require(len([e for e in r.events if e['event']=='method_setImplementation'])==before==(6 if release_version(data)=='1.6.6' else 5),'Expected fixture hooks, idempotent installation')
         for width in (320,375,390,430,440,768,1024):
             v=r.view('UIView','search',(0,0,width-90,40),r.ROOT,backgroundColor=r.color('original'),userInteractionEnabled=1)
             cat=r.view(CATEGORY,'category',(width-80,0,64,40),r.ROOT,backgroundColor=r.color('category'),userInteractionEnabled=1)
@@ -180,7 +185,7 @@ def run(data,labels):
     require(info['cpu']==0x100000c and info['subtype']==0 and info['platform']==2,'Generic ARM64 iOS image')
     require(tuple(map(int,info['minimum_os'].split('.'))) <= (18,0,0),'Deployment target permits iOS 18/26/27')
     require(all(d['path'] in SYSTEM_LIBRARIES for d in info['dependencies']),'Only public system library dependencies')
-    require(info['install_name']=='@rpath/FanqieX-1.6.5.dylib' and info['initializers'],'Correct load identifier and initializer')
+    require(info['install_name']=='@rpath/FanqieX-'+release_version(data)+'.dylib' and info['initializers'],'Correct load identifier and initializer')
     from unwind_audit import decode
     from macho_tools import sections
     slot=next(s for s in sections(data) if s['name']=='__unwind_info')
