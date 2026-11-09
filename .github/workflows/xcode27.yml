@@ -20,6 +20,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: true
+      - name: Preserve the exact source checkout for reproducible diagnosis
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/xcode27
+          git archive --format=zip --output=build/xcode27/source-checkout.zip HEAD
       - name: Select Xcode 27.2
         shell: bash
         run: |
@@ -52,6 +58,8 @@ jobs:
           path: |
             build/xcode27/*.dylib
             build/xcode27/*.json
+            build/xcode27/*.zip
+            build/xcode27/*.composed.s
             build/xcode27/SHA256SUMS.txt
             native/AlignedGlass.s
             build/native-smoke/*.json
