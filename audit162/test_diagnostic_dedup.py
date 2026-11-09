@@ -37,7 +37,7 @@ ENTRY_INDEX = {
 
 def entries(data):
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] in (0x10507, 0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701),
+    require(words[6] in (0x10507, 0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701,0x10702),
             'Known diagnostic payload directory')
     result = {name: 0x800+words[index] for name, index in ENTRY_INDEX.items()}
     result['version'] = words[6]
