@@ -15,7 +15,7 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.6.8'), default=VERSION)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.6.9'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
@@ -101,7 +101,7 @@ SHA-256: {digest}
 SHA-256 {digest}
 大小 {len(binary)} bytes
 '''
-    if version in ('1.6.5','1.6.6', '1.6.7', '1.6.8'):
+    if version in ('1.6.5','1.6.6', '1.6.7', '1.6.9'):
         readme=(ROOT/'docs'/f'REPAIR_{version}.md').read_text(encoding='utf-8')
         readme += f'\n交付 SHA-256: {digest}\n大小: {len(binary)} bytes\n'
     (output / 'README_zh-CN.txt').write_text(readme)

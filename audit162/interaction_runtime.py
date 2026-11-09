@@ -18,7 +18,7 @@ KEY_NAMES = ('overlay', 'lens', 'controller', 'pan', 'drag', 'start_item',
 def read_entries(data):
     words = struct.unpack_from('<64I', data, 0x800)
     versions = {0x10508:b'FQ158EXT', 0x10600:b'FQ160EXT', 0x10601:b'FQ161EXT',
-                0x10602:b'FQ162EXT', 0x10603:b'FQ162EXT', 0x10604:b'FQ162EXT', 0x10605:b'FQ162EXT', 0x10606:b'FQ162EXT', 0x10608:b'FQ162EXT'}
+                0x10602:b'FQ162EXT', 0x10603:b'FQ162EXT', 0x10604:b'FQ162EXT', 0x10605:b'FQ162EXT', 0x10606:b'FQ162EXT', 0x10609:b'FQ162EXT'}
     require(words[6] in versions, 'Interaction audit requires a known version')
     extension = 0x800 + words[60]
     require(data[extension:extension+8] == versions[words[6]], 'Known extension directory')

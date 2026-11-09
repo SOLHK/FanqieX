@@ -25,7 +25,7 @@ class Runtime(PreviousRuntime):
             self.records.append((event,self.native(cpu.x[1])))
             return self.finish(cpu)
         r,sel=cpu.x[:2];name=self.selector_names.get(sel)
-        if pc==self.CONFIG_SET and r in self.host_views: self.host_mutations.append(('configuration',r))
+        if pc==self.CONFIG_SET and r in self.host_views and not self.is_kind(r,self.classes['UIImageView']): self.host_mutations.append(('configuration',r))
         if pc-self.slide==0xa5d4:
             if r in self.classes.values() and self.class_names[r]=='FQXGlassBackground167' and name in ('new','alloc'):
                 value=self.view('FQXGlassBackground167','empty_native_glass')
@@ -33,7 +33,7 @@ class Runtime(PreviousRuntime):
                 return self.finish(cpu,value)
             if r in self.objects:
                 state=self.objects[r].state
-                if name in ('setFrame:','setBounds:','setCenter:','setConfiguration:') and r in self.host_views:
+                if name in ('setFrame:','setBounds:','setCenter:','setConfiguration:') and r in self.host_views and not self.is_kind(r,self.classes['UIImageView']):
                     self.host_mutations.append((name,r))
                 if name in ('imageView','searchAndMoreView'): return self.finish(cpu,state.get(name,0))
                 if name=='btd_hitTestEdgeInsets': return self.finish(cpu,fp=state.get('hitInsets',(0.,0.,0.,0.)))
@@ -105,13 +105,14 @@ def exercise(data,labels,baseline):
         require(r.reentered==1,'Configuration publication reenters the guarded reader callback')
         for b in controls:
             glass=material(c,r,labels,b);st=r.objects[glass].state
-            require(st['frame']==((-12.,-6.,36.,36.) if b==back else (-6.,-6.,36.,36.)),'Every background centered on original 24pt artwork, including custom download')
+            require(st['frame']==((0.,-6.,36.,36.) if b==back else (-6.,-6.,36.,36.)),'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
+        require(r.objects[r.objects[back].state['imageView']].state['frame']==(12.,0.,24.,24.),'Back glyph moves with its lens; visible center 18 and left lens edge 16 in host parent')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
         for v in before:
             for field in ('frame','bounds','image','imageView','images','configuration','contentMode','text','font'):
-                require(r.objects[v].state.get(field)==before[v].get(field),'Host content and geometry unchanged: '+field)
+                require((field=='frame' and v==r.objects[back].state['imageView']) or r.objects[v].state.get(field)==before[v].get(field),'Host content and geometry unchanged: '+field)
         original_targets={b:before[b]['control_targets'] for b in controls}
         for b in controls:
             if r.is_kind(b,r.classes['UIControl']):
@@ -159,13 +160,15 @@ def exercise(data,labels,baseline):
         a=r.objects[material(c,r,labels,search)].state['frame'];z=r.objects[material(c,r,labels,more)].state['frame']
         require(32+z[0]-(a[0]+a[2])==4,'Device-reported 32pt centers retain a 4pt glass gap')
         require(not r.host_mutations,'No host geometry mutation anywhere in shelf/reader paths')
+        require(r.objects[r.objects[search].state['imageView']].state['frame']==(3.,3.,18.,18.),'Search artwork has balanced 5pt padding in 28pt lens')
+        require(r.objects[r.objects[more].state['imageView']].state['frame']==(-1.5,3.,18.,18.),'More asset transparent padding is compensated at the image, not by shifting the lens')
         # A deliberately off-center original image still determines the lens
         # center without altering its host or its image view.
         r.objects[search].state['bounds']=(5.,7.,24.,24.)
         iv=r.objects[search].state['imageView'];r.objects[iv].state['frame']=(7.,10.,18.,16.);r.objects[iv].state['bounds']=(0.,0.,18.,16.)
         send(c,r,vc,'viewDidLayoutSubviews')
         glass=material(c,r,labels,search)
-        require(r.objects[glass].state['frame']==(2.,4.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
+        require(r.objects[glass].state['frame']==(3.,5.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
         replacement=r.view('UIImageView','host_recreated_image',(9.,9.,16.,20.),search)
         r.objects[search].state['imageView']=replacement
         send(c,r,vc,'viewDidLayoutSubviews')

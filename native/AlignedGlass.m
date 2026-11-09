@@ -38,6 +38,20 @@ static void OwnerBusyKey(void) {}
 static void ReaderGlassKey(void) {}
 static void IconGlassKey(void) {}
 static void IconRectKey(void) {}
+static void GlyphOriginalKey(void) {}
+static void GlyphAppliedKey(void) {}
+static void GlyphViewKey(void) {}
+static void RestoreGlyph(Obj owner) {
+    Obj glyph=objc_getAssociatedObject(owner,GlyphViewKey);
+    Obj original=objc_getAssociatedObject(glyph,GlyphOriginalKey);
+    if (original) {
+        Rect rect=((Rect(*)(Obj,Sel))Message)(original,sel_registerName("CGRectValue"));
+        ((void(*)(Obj,Sel,Rect))Message)(glyph,sel_registerName("setFrame:"),rect);
+    }
+    objc_setAssociatedObject(glyph,GlyphOriginalKey,0,1);
+    objc_setAssociatedObject(glyph,GlyphAppliedKey,0,1);
+    objc_setAssociatedObject(owner,GlyphViewKey,0,1);
+}
 static void HitInsetsKey(void) {}
 static void AppliedHitInsetsKey(void) {}
 static void LayoutKey(void) {}
@@ -317,6 +331,7 @@ static void RecordLayout(Obj view,Obj glass,Rect image,const char *role) {
 }
 Obj FQHIconGlass(Obj view) { return objc_getAssociatedObject(view,IconGlassKey); }
 static void RestoreIcon(Obj view,Obj glass) {
+    RestoreGlyph(view);
     if (glass) { ObservePress(view,glass,0); V0(glass,"removeFromSuperview"); }
     objc_setAssociatedObject(view,IconGlassKey,0,1);
     objc_setAssociatedObject(view,IconRectKey,0,1);
@@ -338,13 +353,30 @@ static void Icon(Obj view,const char *role) {
         Rect measured=Convert(glyph,Bounds(glyph),view);
         if (VisibleRect(measured)) image=measured;
     }
-    // The inspected back asset draws its chevron in the left half of a 24pt canvas.
-    // Align the lens to that visible center, without changing the host image.
     B back=Equal(Text(role),"readerBack");
     B shelf=Equal(Text(role),"shelfSearch") || Equal(Text(role),"shelfMore");
+    if ((back || shelf) && glyph) {
+        if (objc_getAssociatedObject(view,GlyphViewKey)!=glyph) RestoreGlyph(view);
+        Rect current=Frame(glyph);
+        Obj old=objc_getAssociatedObject(glyph,GlyphOriginalKey);
+        Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
+        if (!old || !applied || !SameRect(current,UnboxRect(applied))) {
+            old=RectBox(current);objc_setAssociatedObject(glyph,GlyphOriginalKey,old,1);
+        }
+        Rect base=UnboxRect(old),adjusted=base;
+        if (back) adjusted.x+=base.width*0.5;
+        else {
+            adjusted.width=base.width*0.75;adjusted.height=base.height*0.75;
+            adjusted.x+=base.width*0.125;adjusted.y+=base.height*0.125;
+            if (Equal(Text(role),"shelfMore")) adjusted.x-=base.width*0.1875;
+        }
+        if (!SameRect(current,adjusted)) SetFrame(glyph,adjusted);
+        objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
+        objc_setAssociatedObject(view,GlyphViewKey,glyph,1);
+    }
     double diameter=shelf ? 28 : 36;
-    double centerX=image.x+image.width*(back ? 0.25 : 0.5);
-    Rect material={centerX-diameter*0.5,image.y+image.height*0.5-diameter*0.5,diameter,diameter};
+    double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0);
+    Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
     if (!CanExpandHit(view)) {
         RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return;
     }

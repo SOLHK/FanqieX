@@ -458,6 +458,13 @@ static void Released(Obj self, Sel cmd) {
         ((void (*)(Obj, Sel))original)(self, cmd);
 }
 static void ModelCount(Obj self, Sel cmd, I value, const char *alias, const char *cls) {
+    const char *getter=B1(Text(alias),"isEqualToString:",Text("fqx164_entranceOrigin")) ? "ideaOriginCount" :
+        B1(Text(alias),"isEqualToString:",Text("fqx164_dataRaw")) ? "_ideaCount" : "ideaCount";
+    if (Count(self,getter)==value) {
+        Imp original=Original(self,alias);
+        if (original) ((void(*)(Obj,Sel,I))original)(self,cmd,value);
+        return;
+    }
     Obj d = Dict();
     Put(d, "before", Values(self));
     Put(d, "newValue", Num(value));
@@ -994,6 +1001,7 @@ void FQDAdDecision(Obj object, Sel selector, I rule, const char *cls, const char
     ((void (*)(Obj, Sel, Obj, Obj))objc_msgSend)(counts, sel_registerName("setObject:forKey:"),
                                                  Num(count), key);
     V0(lock, "unlock");
+    if (count > 2 && (count & 63) != 0) return;
     Obj d = Dict();
     Put(d, "ruleId", Num(rule));
     Put(d, "ruleType", Text("exactHostMethod"));

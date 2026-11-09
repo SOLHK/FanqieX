@@ -250,7 +250,7 @@ def main():
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10604,0x10605,0x10606,0x10607,0x10608), 'Expected actual 1.6.4')
+    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10604,0x10605,0x10606,0x10607,0x10609), 'Expected actual 1.6.4')
     cases = {}
     for action in (named_event_payloads, bounded_pending, schedule_recovery, retention_and_bytes,
                    size_guard_and_sessions, exports_and_disk_errors):

@@ -74,6 +74,11 @@ def cases(data, labels, slide):
             'The original sign-in completion receives its unchanged execution argument')
     require(all('sessionId' in r and 'correlationId' in r for r in records),
             'All rules enter the unified session envelope')
+    index,cls_name,selector,kind,method,receiver=rules[0]
+    for _ in range(63):
+        cpu.run(rt.methods[method]['imp']-slide,args=(receiver,rt.sel(selector),0,0,0,0,0,0))
+    sampled=[r['data']['callCount'] for r in journal(cpu,rt,data) if r['event']=='adRuleDecision' and r['data']['ruleId']==index]
+    require(sampled==[1,2,64],'Repeated rule calls keep exact cumulative counts while avoiding 62 full snapshots per interval')
     return {'slide':hex(slide),'rules':45,'calls':90,'custom_completion_preserved':True}
 
 
