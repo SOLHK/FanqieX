@@ -208,10 +208,6 @@ static void HomeAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSBookStoreNewViewController","fqx165_originalAppear:"))(self,cmd,animated);
     FQHApply(Get(self,"searchBgView"));
 }
-static void SearchColor(Obj self,Sel cmd,double ratio,int from,int to,int fromTemplate,int toTemplate) {
-    ((void(*)(Obj,Sel,double,int,int,int,int))Original("SSBookStoreSearchBarComponent","fqx165_originalSearchColor:from:to:fromTemplate:toTemplate:"))(self,cmd,ratio,from,to,fromTemplate,toTemplate);
-    FQHApply(Get(Get(self,"bookStoreVCContext"),"searchBgView"));
-}
 static void Hook(const char *name,const char *selector,const char *alias,const char *type,Imp imp) {
     Obj cls=Lookup(name);
     if (!cls || class_getInstanceMethod(cls,sel_registerName(alias))) return;
@@ -547,7 +543,7 @@ void FQHInstall(void) {
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
     Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
     // Category navigation remains entirely host-owned to prevent label overlap.
-    Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx165_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
+    // Do not mutate search glass during the host's interactive top-tab transition.
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);
