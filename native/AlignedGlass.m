@@ -86,9 +86,7 @@ B FQHCompatibleHost(void) {
     B compatible=Equal(O0(bundle,"bundleIdentifier"),"com.dragon.read") &&
         Equal(O1(bundle,"objectForInfoDictionaryKey:",Text("CFBundleVersion")),"7.4.3.33") &&
         Signature("SSBookStoreNewViewController","relayout","v16@0:8") &&
-        Signature("SSBookStoreNewViewController","searchBgView","@16@0:8") &&
-        Signature("SSBookStoreCategorySignView","layoutSubviews","v16@0:8") &&
-        Signature("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","v40@0:8d16i24i28i32i36");
+        Signature("SSBookStoreNewViewController","searchBgView","@16@0:8");
     objc_autoreleasePoolPop(pool);
     return compatible;
 }
@@ -209,14 +207,6 @@ static void HomeLayout(Obj self,Sel cmd) {
 static void HomeAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSBookStoreNewViewController","fqx165_originalAppear:"))(self,cmd,animated);
     FQHApply(Get(self,"searchBgView"));
-}
-static void CategoryLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSBookStoreCategorySignView","fqx165_originalLayout"))(self,cmd);
-    FQHApply(self);
-}
-static void CategoryColor(Obj self,Sel cmd,double ratio,int from,int to,int fromTemplate,int toTemplate) {
-    ((void(*)(Obj,Sel,double,int,int,int,int))Original("SSBookStoreCategorySignView","fqx165_originalColor:from:to:fromTemplate:toTemplate:"))(self,cmd,ratio,from,to,fromTemplate,toTemplate);
-    FQHApply(self);
 }
 static void SearchColor(Obj self,Sel cmd,double ratio,int from,int to,int fromTemplate,int toTemplate) {
     ((void(*)(Obj,Sel,double,int,int,int,int))Original("SSBookStoreSearchBarComponent","fqx165_originalSearchColor:from:to:fromTemplate:toTemplate:"))(self,cmd,ratio,from,to,fromTemplate,toTemplate);
@@ -556,8 +546,7 @@ void FQHInstall(void) {
     Hook("SSReaderFloatingCommonButton","layoutSubviews","fqx171_originalLayout","v16@0:8",(Imp)ListenLayout);
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
     Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
-    Hook("SSBookStoreCategorySignView","layoutSubviews","fqx165_originalLayout","v16@0:8",(Imp)CategoryLayout);
-    Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx165_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
+    // Category navigation remains entirely host-owned to prevent label overlap.
     Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx165_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
