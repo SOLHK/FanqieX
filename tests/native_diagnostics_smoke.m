@@ -94,7 +94,9 @@ PAGE_FIXTURE(SSShortVideoRcmdMainViewController)
 PAGE_FIXTURE(FQCParagraphCommentListViewController)
 PAGE_FIXTURE(SmokeUntargetedPage)
 
-@interface FQCParagraphEntranceViewModel : NSObject
+@interface FQCParagraphEntranceViewModel : NSObject {
+    long _smokeRawIdeaCount;
+}
 @property(nonatomic) long ideaCount;
 @property(nonatomic) long ideaOriginCount;
 @property(nonatomic) long _ideaCount;
@@ -105,6 +107,7 @@ PAGE_FIXTURE(SmokeUntargetedPage)
 @property(nonatomic, retain) id currentBubbleData;
 @end
 @implementation FQCParagraphEntranceViewModel
+@synthesize _ideaCount = _smokeRawIdeaCount;
 - (void)dealloc {
     [_chapterId release]; [_paragraphId release];
     [_bubbleData release]; [_currentBubbleData release];
@@ -267,7 +270,7 @@ static void RunSmoke(NSString *failureCase) {
     [unrelated release];
     Check(SmokeEvents.count == before, "unrelated startup request is not recorded");
 
-    if (failureCase) {
+    if ([failureCase hasPrefix:@"operation-type-"]) {
         id unexpected = [failureCase isEqualToString:@"operation-type-number"] ? (id)@42 : [NSNull null];
         NSUInteger originalInits = Calls([BDRpcAsyncOperation class], @selector(initWithRequest:completion:));
         BDRpcAsyncOperation *unknown = [[BDRpcAsyncOperation alloc]
@@ -341,6 +344,42 @@ static void RunSmoke(NSString *failureCase) {
     NSDictionary *lastResponse = [Events(@"commentResponseParsed") lastObject];
     Check([lastCount[@"correlationId"] isEqual:lastResponse[@"correlationId"]],
           "synchronous network completion carries correlation to model update");
+    if ([failureCase isEqualToString:@"callback-throws"]) {
+        NSException *expectedCallback = [NSException exceptionWithName:@"SmokeExpectedCallbackException"
+                                                               reason:PrivateSentinel userInfo:nil];
+        __block NSUInteger throwingCalls = 0;
+        BDRpcAsyncOperation *throwing = [[BDRpcAsyncOperation alloc]
+            initWithRequest:Request(@"$POST /novel/commentapi/idea/list/:item_id/v1/")
+            completion:^(id result) {
+                (void)result; throwingCalls++; [expectedCallback raise];
+            }];
+        NSString *throwingCorrelation = [Events(@"commentRequestCreated") lastObject][@"correlationId"];
+        // Establish a distinct current UI operation while the older request
+        // remains in flight. Its throwing callback must not leave its scoped
+        // network correlation attached to the current thread.
+        [bubble ideaCountTap];
+        NSString *currentCorrelation = [Events(@"commentBubbleTap") lastObject][@"correlationId"];
+        Check(![currentCorrelation isEqual:throwingCorrelation], "overlapping request has distinct context");
+        BOOL caughtCallback = NO;
+        @try { [throwing _postHandleResult:@{} headerFields:nil]; }
+        @catch (NSException *actual) { caughtCallback = actual == expectedCallback; }
+        Check(caughtCallback && throwingCalls == 1,
+              "exception from original RPC completion crosses production callback unchanged");
+        BDRpcAsyncOperation *afterFailure = [[BDRpcAsyncOperation alloc]
+            initWithRequest:Request(@"$POST /novel/commentapi/comment/list/:group_id/v1/")
+            completion:^(id result) { (void)result; model.ideaCount = 3; }];
+        NSDictionary *nextCreated = [Events(@"commentRequestCreated") lastObject];
+        Check([nextCreated[@"correlationId"] isEqual:currentCorrelation] &&
+              ![nextCreated[@"correlationId"] isEqual:throwingCorrelation],
+              "later request does not inherit the failed callback's thread context");
+        [afterFailure _postHandleResult:@{@"data" : @{}} headerFields:nil];
+        NSDictionary *nextCount = [Events(@"commentCountChanged") lastObject];
+        NSDictionary *nextDelivered = [Events(@"commentResponseDelivered") lastObject];
+        Check([nextCount[@"correlationId"] isEqual:currentCorrelation] &&
+              [nextDelivered[@"correlationId"] isEqual:currentCorrelation],
+              "later response and model update retain the fresh correlation");
+        [afterFailure release]; [throwing release];
+    }
     bubble.hidden = YES; [bubble removeFromSuperview]; [bubble release]; [model release];
     Check(Events(@"commentBubbleDealloc").count == 1, "real deallocation forwarded after observation");
 
@@ -360,7 +399,9 @@ static void RunSmoke(NSString *failureCase) {
     @try { [expected raise]; }
     @catch (NSException *actual) { caught = actual == expected; }
     Check(caught, "original NSException still raises the exact exception");
-    Check(Events(@"exceptionRaise").count == 1, "raise event observed once");
+    Check(Events(@"exceptionRaise").count ==
+          ([failureCase isEqualToString:@"callback-throws"] ? 2u : 1u),
+          "each intentional exception raise observed once");
     CheckEventsHaveCorrelation();
     NSData *json = [NSJSONSerialization dataWithJSONObject:SmokeEvents options:0 error:NULL];
     NSString *text = [[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] autorelease];
@@ -376,7 +417,8 @@ int main(int argc, const char **argv) {
         if (argc == 3 && !strcmp(argv[1], "--failure-case")) {
             failureCase = [NSString stringWithUTF8String:argv[2]];
             if (![failureCase isEqualToString:@"operation-type-number"] &&
-                ![failureCase isEqualToString:@"operation-type-null"]) {
+                ![failureCase isEqualToString:@"operation-type-null"] &&
+                ![failureCase isEqualToString:@"callback-throws"]) {
                 fprintf(stderr, "unknown native smoke case\n"); return 2;
             }
         } else if (argc != 1) { fprintf(stderr, "unexpected native smoke arguments\n"); return 2; }

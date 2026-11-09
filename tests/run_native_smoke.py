@@ -15,7 +15,8 @@ import subprocess
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=Path('build/native-smoke'))
-    parser.add_argument('--failure-case', choices=['operation-type-number', 'operation-type-null'])
+    parser.add_argument('--failure-case', choices=[
+        'operation-type-number', 'operation-type-null', 'callback-throws'])
     args = parser.parse_args()
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
         parser.error('Real Foundation smoke checks require a native arm64 macOS runner')
@@ -41,7 +42,7 @@ def main() -> None:
                     str(root / 'tests/native_diagnostics_smoke.m'), str(native),
                     '-framework', 'Foundation', '-o', str(executable)], check=True, cwd=root)
     cases = [args.failure_case] if args.failure_case else [
-        'normal', 'operation-type-number', 'operation-type-null']
+        'normal', 'operation-type-number', 'operation-type-null', 'callback-throws']
     results = []
     for case in cases:
         command = [str(executable)]
