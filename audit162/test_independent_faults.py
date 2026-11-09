@@ -98,7 +98,7 @@ def main():
         slice(identifier_start, identifier_start + len(f"FanqieX-{args.expected_version}.dylib")),
         b"FanqieX-1.5.8.dylib"), "version_consistency", resign=False)
     case("stale_settings_version", lambda blob: blob.__setitem__(0xEC84 + 8, blob[0xEC84 + 8] ^ 1), "version_consistency")
-    case("stale_shared_runtime_version", lambda blob: blob.__setitem__(runtime_version + 4, ord("0")),
+    case("stale_shared_runtime_version", lambda blob: blob.__setitem__(runtime_version + 4, blob[runtime_version + 4] ^ 1),
          "version_consistency")
     reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.0": 27}[args.expected_version]
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
