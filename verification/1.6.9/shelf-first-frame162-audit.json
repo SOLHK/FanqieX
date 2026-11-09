@@ -1,0 +1,364 @@
+{
+  "passed": true,
+  "candidate_sha256": "b1e802028fadcc23bd035c8db0136f95c7a9d1f437e5546d31adebeaf70150ac",
+  "device_tested": false,
+  "scope": "Actual ARM64 hook/material ordering at modeled public UIKit/CA boundaries; no pixels or frame-duration claim",
+  "cases": [
+    {
+      "name": "SSBookShelfHeaderView",
+      "passed": true,
+      "details": {
+        "class": "SSBookShelfHeaderView",
+        "entry": "0x7f64",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093056,
+          "frame": [
+            -8.0,
+            0.0,
+            48.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            48.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "SS525BookShelfSubHeaderView",
+      "passed": true,
+      "details": {
+        "class": "SS525BookShelfSubHeaderView",
+        "entry": "0x7fb0",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093568,
+          "frame": [
+            -2.0,
+            -2.0,
+            190.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            190.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "SSBookShelfEditHeaderView",
+      "passed": true,
+      "details": {
+        "class": "SSBookShelfEditHeaderView",
+        "entry": "0x7ffc",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093056,
+          "frame": [
+            -8.0,
+            0.0,
+            48.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            48.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "SSBookShelfFilterHeaderView",
+      "passed": true,
+      "details": {
+        "class": "SSBookShelfFilterHeaderView",
+        "entry": "0x8048",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093568,
+          "frame": [
+            -2.0,
+            0.0,
+            69.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            69.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "read_return_ambient_animation",
+      "passed": true,
+      "details": {
+        "class": "SS525BookShelfSubHeaderView",
+        "entry": "0x7fb0",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093568,
+          "frame": [
+            -2.0,
+            -2.0,
+            190.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            190.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": true
+      }
+    },
+    {
+      "name": "mount_synchronous_layout_reentry",
+      "passed": true,
+      "details": {
+        "class": "SSBookShelfFilterHeaderView",
+        "entry": "0x8048",
+        "slide": "0x0",
+        "first_attachment": {
+          "view": 822093568,
+          "frame": [
+            -2.0,
+            0.0,
+            69.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            69.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 1,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "first_frame_aslr",
+      "passed": true,
+      "details": {
+        "class": "SSBookShelfHeaderView",
+        "entry": "0x7f64",
+        "slide": "0x180000000",
+        "first_attachment": {
+          "view": 822093056,
+          "frame": [
+            -8.0,
+            0.0,
+            48.0,
+            32.0
+          ],
+          "bounds": [
+            0,
+            0,
+            48.0,
+            32.0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": true,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": true,
+          "transparent_backing": true,
+          "host_background_cleared": true,
+          "associated_before_attachment": true
+        },
+        "reentry_count": 0,
+        "ambient_transition_preserved": false
+      }
+    },
+    {
+      "name": "initial_loading_and_reuse",
+      "passed": true,
+      "details": [
+        {
+          "name": "zero_then_ready",
+          "attachments": 1,
+          "atomic_resize_commits": 1
+        },
+        {
+          "name": "hidden_then_visible",
+          "attachments": 1,
+          "atomic_resize_commits": 1
+        },
+        {
+          "name": "reuse_after_reader",
+          "attachments": 1,
+          "atomic_resize_commits": 2
+        },
+        {
+          "name": "zero_during_return",
+          "attachments": 2,
+          "atomic_resize_commits": 2
+        },
+        {
+          "name": "font_resize",
+          "attachments": 1,
+          "atomic_resize_commits": 2
+        },
+        {
+          "name": "custom_drawing",
+          "attachments": 1,
+          "atomic_resize_commits": 1
+        },
+        {
+          "name": "reparented_decoration",
+          "attachments": 2,
+          "atomic_resize_commits": 2
+        },
+        {
+          "name": "zero_adopted_decoration",
+          "attachments": 1,
+          "atomic_resize_commits": 1
+        }
+      ]
+    },
+    {
+      "name": "failed_resize_restores_previous_shape",
+      "passed": true,
+      "details": [
+        {
+          "failure": "fail_corner_factory",
+          "old_shape_restored": true,
+          "retry_succeeded": true
+        },
+        {
+          "failure": "fail_size_snapshot",
+          "old_shape_restored": true,
+          "retry_succeeded": true
+        }
+      ]
+    },
+    {
+      "name": "missing_public_material_or_shape",
+      "passed": true,
+      "details": [
+        {
+          "missing": "UIGlassEffect",
+          "no_partial_surface": true
+        },
+        {
+          "missing": "UICornerConfiguration",
+          "no_partial_surface": true
+        }
+      ]
+    },
+    {
+      "name": "negative_shipped_161_ordering",
+      "passed": true,
+      "details": {
+        "sha256": "8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e",
+        "first_attachment": {
+          "view": 822092800,
+          "frame": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "bounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "capsule_configured_for_current_size": true,
+          "native_corner_present": true,
+          "positive_size": false,
+          "interaction_disabled": true,
+          "accessibility_hidden": true,
+          "autoresizing_disabled": false,
+          "transparent_backing": false,
+          "host_background_cleared": false,
+          "associated_before_attachment": false
+        },
+        "unfinished_mounted_geometry_count": 1,
+        "new_contract_rejected": true
+      }
+    }
+  ],
+  "executed_instructions": 359170,
+  "case_count": 11
+}

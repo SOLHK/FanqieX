@@ -1,0 +1,545 @@
+{
+  "candidate": "D:\\Codex\\2026-11-09\\c65cc0d-x20\\work\\FanqieX\\build\\verify169-delivery\\FanqieX-1.6.9.dylib",
+  "sha256": "b1e802028fadcc23bd035c8db0136f95c7a9d1f437e5546d31adebeaf70150ac",
+  "shadow": {
+    "passed": true,
+    "runs": [
+      [
+        {
+          "event": "shadowOpacity",
+          "value": 0.0,
+          "bits": 0,
+          "self": 822085888,
+          "object": "first_label.layer"
+        },
+        {
+          "event": "shadowRadius",
+          "value": 0.0,
+          "self": 822085888,
+          "object": "first_label.layer"
+        }
+      ],
+      [
+        {
+          "event": "shadowOpacity",
+          "value": 0.0,
+          "bits": 0,
+          "self": 822085888,
+          "object": "first_label.layer"
+        },
+        {
+          "event": "shadowRadius",
+          "value": 0.0,
+          "self": 822085888,
+          "object": "first_label.layer"
+        }
+      ]
+    ],
+    "scope": "Actual modified title-layer setter block; not full UIKit font rendering"
+  },
+  "geometry": {
+    "passed": true,
+    "cases": [
+      {
+        "name": "first_zero_frame",
+        "passed": true,
+        "instructions": 177,
+        "result": 0,
+        "events": [
+          {
+            "event": "frame",
+            "value": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "setFrame",
+            "value": [
+              4.0,
+              4.0,
+              82.0,
+              48.0
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "bounds",
+            "value": [
+              0,
+              0,
+              82.0,
+              48.0
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "cornerRadius",
+            "value": 24.0,
+            "owner_bounds": [
+              0,
+              0,
+              82.0,
+              48.0
+            ],
+            "self": 822091008,
+            "object": "first_button.layer"
+          },
+          {
+            "event": "masksToBounds",
+            "value": true,
+            "self": 822091008,
+            "object": "first_button.layer"
+          }
+        ]
+      },
+      {
+        "name": "same_frame_repairs_missing_corner",
+        "passed": true,
+        "instructions": 168,
+        "result": 0,
+        "events": [
+          {
+            "event": "frame",
+            "value": [
+              4,
+              4,
+              82,
+              48
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "bounds",
+            "value": [
+              0,
+              0,
+              82,
+              48
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "cornerRadius",
+            "value": 24.0,
+            "owner_bounds": [
+              0,
+              0,
+              82,
+              48
+            ],
+            "self": 822091008,
+            "object": "first_button.layer"
+          },
+          {
+            "event": "masksToBounds",
+            "value": true,
+            "self": 822091008,
+            "object": "first_button.layer"
+          }
+        ]
+      },
+      {
+        "name": "new_dimensions",
+        "passed": true,
+        "instructions": 177,
+        "result": 0,
+        "events": [
+          {
+            "event": "frame",
+            "value": [
+              4,
+              4,
+              82,
+              48
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "setFrame",
+            "value": [
+              2.0,
+              2.0,
+              20.0,
+              44.0
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "bounds",
+            "value": [
+              0,
+              0,
+              20.0,
+              44.0
+            ],
+            "self": 822085376,
+            "object": "first_button"
+          },
+          {
+            "event": "cornerRadius",
+            "value": 10.0,
+            "owner_bounds": [
+              0,
+              0,
+              20.0,
+              44.0
+            ],
+            "self": 822091008,
+            "object": "first_button.layer"
+          },
+          {
+            "event": "masksToBounds",
+            "value": true,
+            "self": 822091008,
+            "object": "first_button.layer"
+          }
+        ]
+      }
+    ],
+    "scope": "Actual frame/corner wrapper and original _set_frame with synchronous state model; no CA transaction or pixel test"
+  },
+  "native_background_lifecycle": {
+    "passed": true,
+    "instructions": 163873,
+    "late_background_original_then_clear": true,
+    "layout_called_background_hook_synchronously": true,
+    "native_colors_and_hidden_restored": true
+  },
+  "cache_changes": {
+    "passed": true,
+    "instructions": 183746,
+    "edge_identity_change": true,
+    "selected_page_change_preserves_native_sync": true,
+    "cached_geometry_rechecked": true
+  },
+  "visibility": {
+    "passed": true,
+    "cases": [
+      {
+        "name": "bar_hidden",
+        "passed": true,
+        "instructions": 156233
+      },
+      {
+        "name": "proxy_hidden",
+        "passed": true,
+        "instructions": 156300
+      },
+      {
+        "name": "ancestor_hidden",
+        "passed": true,
+        "instructions": 87645
+      },
+      {
+        "name": "no_window",
+        "passed": true,
+        "instructions": 152821
+      },
+      {
+        "name": "proxy_detached",
+        "passed": true,
+        "instructions": 155280
+      },
+      {
+        "name": "scroll_detached",
+        "passed": true,
+        "instructions": 90428
+      }
+    ]
+  },
+  "original_hidden_true": {
+    "passed": true,
+    "instructions": 148619
+  },
+  "synchronous_reentry": {
+    "passed": true,
+    "cases": [
+      {
+        "name": "cache_invalidated_while_busy",
+        "passed": true,
+        "instructions": 149042,
+        "callback": {
+          "old_target_unpublished_before_callback": true
+        }
+      },
+      {
+        "name": "disabled_after_original_restore",
+        "passed": true,
+        "instructions": 142792,
+        "callback": {
+          "old_target_unpublished_before_callback": true
+        }
+      }
+    ],
+    "scope": "Synchronous callback from mocked edge setter into actual repair code on reachable busy/inactive paths"
+  },
+  "installation_and_ratio_ABI": {
+    "passed": true,
+    "cases": [
+      {
+        "name": "installer_own",
+        "passed": true,
+        "instructions": 675
+      },
+      {
+        "name": "installer_inherited",
+        "passed": true,
+        "instructions": 775
+      },
+      {
+        "name": "ratio_active",
+        "passed": true,
+        "instructions": 84164
+      },
+      {
+        "name": "ratio_inactive",
+        "passed": true,
+        "instructions": 56927
+      },
+      {
+        "name": "ratio_detached",
+        "passed": true,
+        "instructions": 75373
+      },
+      {
+        "name": "ratio_inactive_ASLR",
+        "passed": true,
+        "instructions": 56927
+      }
+    ],
+    "ABI": "All runs enforce 16-byte stack alignment, balanced SP, x18/x19-x29 and d8-d15 preservation; runtime calls clobber caller-saved arguments"
+  },
+  "ancestor_scroll_exclusion": {
+    "passed": true,
+    "instructions": 83524,
+    "regression": "Reproduced ancestor being retained and modified in prior a424e46f candidate; corrected candidate rejects parent itself"
+  },
+  "retained_155_scenarios": {
+    "material_lifecycle": {
+      "passed": true,
+      "actual_original_call_site": true,
+      "frame_attach_order": [
+        {
+          "event": "setFrame",
+          "value": [
+            12.0,
+            3.0,
+            366.0,
+            56.0
+          ],
+          "self": 822085120,
+          "object": "floating_proxy"
+        },
+        {
+          "event": "addSubview",
+          "child": 822085120,
+          "frame": [
+            12.0,
+            3.0,
+            366.0,
+            56.0
+          ],
+          "self": 822084608,
+          "object": "bar"
+        },
+        {
+          "event": "bring_front",
+          "child": 822085120,
+          "self": 822084608,
+          "object": "bar"
+        }
+      ],
+      "reuse_and_new_window": true,
+      "failure_guards": [
+        {
+          "name": "zero_bounds",
+          "passed": true,
+          "instructions": 89
+        },
+        {
+          "name": "hidden_ancestor",
+          "passed": true,
+          "instructions": 350
+        },
+        {
+          "name": "cumulative_alpha",
+          "passed": true,
+          "instructions": 389
+        },
+        {
+          "name": "factory_missing",
+          "passed": true,
+          "instructions": 752
+        },
+        {
+          "name": "factory_nil",
+          "passed": true,
+          "instructions": 781
+        }
+      ],
+      "synchronous_reentry": true,
+      "scope": "Actual material control flow and public setter arguments; no glass rendering or CA timing"
+    },
+    "diagnostic_observation": {
+      "passed": true,
+      "unchanged_deduplicated": true,
+      "nil_selection_and_shadow_fields": true,
+      "off_main_guard": true,
+      "timer_interval_seconds": 60.0,
+      "delayed_timer_prunes": true,
+      "instructions": 260025
+    },
+    "time_window_restart": {
+      "passed": true,
+      "inclusive_boundary": true,
+      "delayed_worker_seconds": 7200,
+      "operation_order_reversed": true,
+      "marker_excludes_later_same_time": true,
+      "invalid_time_repaired": true,
+      "clock_rollback_future_preserved": true,
+      "restart_read_from_real_plist": true,
+      "unique_export_files": true,
+      "instructions": 48740
+    },
+    "full_export": {
+      "passed": true,
+      "restored_record_count": 1025,
+      "export_record_count": 1027,
+      "export_bytes": 180047,
+      "all_nested_fields_compared": true,
+      "instructions": 745505,
+      "scope": "1025 restored synthetic records plus real new enqueue/bootstrap events, not 1025 enqueue benchmark"
+    },
+    "diagnostic_UI_and_IO": {
+      "passed": true,
+      "whole_original_settings_menu_executed": true,
+      "high_argument_ABI": true,
+      "journal_atomic_failure_keeps_old_bytes": true,
+      "memory_export_after_storage_failure": true,
+      "duplicate_click_guard": true,
+      "worker_to_main_share_and_popover": true,
+      "retry_full_persist": true,
+      "failed_export_error_UI": true,
+      "corrupt_restart_reported": true,
+      "instructions": 50139
+    },
+    "producer_interleaving": {
+      "passed": true,
+      "producer_during_worker_unlock": true,
+      "FIFO_and_no_lost_wakeup": true,
+      "instructions": 9322,
+      "scope": "One controlled scheduling interleaving; no exhaustive threaded Foundation test"
+    }
+  },
+  "new_156_regressions": {
+    "native_done_and_close": {
+      "passed": true,
+      "cases": [
+        {
+          "glass_disabled": 0,
+          "ASLR_slide": "0x0",
+          "passed": true,
+          "instructions": 4721,
+          "done_and_export_coexist": true,
+          "original_dismiss_executed": true
+        },
+        {
+          "glass_disabled": 1,
+          "ASLR_slide": "0x0",
+          "passed": true,
+          "instructions": 4721,
+          "done_and_export_coexist": true,
+          "original_dismiss_executed": true
+        },
+        {
+          "glass_disabled": 0,
+          "ASLR_slide": "0x100000000",
+          "passed": true,
+          "instructions": 4721,
+          "done_and_export_coexist": true,
+          "original_dismiss_executed": true
+        }
+      ],
+      "scope": "Whole actual menu and close path; gesture hit testing remains device-only"
+    },
+    "nested_and_late_scrolls": {
+      "passed": true,
+      "outer_and_inner": true,
+      "late_attachment": true,
+      "late_content_growth": true,
+      "no_top_edge_changes": true,
+      "instructions": 208297
+    },
+    "inner_paging_and_replacement": {
+      "passed": true,
+      "same_tab_inner_paging": true,
+      "effect_object_replacement": true,
+      "instructions": 103638
+    },
+    "mixed_originals_and_shared_effect": {
+      "passed": true,
+      "mixed_original_hidden_states": true,
+      "stable_original_records": true,
+      "shared_target_deduplication": true,
+      "last_owner_restores": true,
+      "instructions": 206046
+    },
+    "scope_exclusions_and_nested_depth": {
+      "passed": true,
+      "excluded_cases": [
+        "offscreen",
+        "too_narrow",
+        "short_carousel",
+        "horizontal",
+        "above_bar",
+        "hidden",
+        "transparent",
+        "nonfinite_content",
+        "other_window"
+      ],
+      "eleven_level_hierarchy": true,
+      "instructions": 196962
+    },
+    "bounded_multi_ownership": {
+      "passed": true,
+      "eligible_input_count": 25,
+      "maximum_owned_effects": 16,
+      "turnover_and_full_restoration": true,
+      "instructions": 365535
+    }
+  },
+  "device_tested": false,
+  "UIKit_rendering_simulated": false,
+  "input_data": "Synthetic modeled native objects and generated test log records; no device logs",
+  "actual_patch_entries_stubbed": false,
+  "instruction_execution": {
+    "candidate_total_steps": 4395927,
+    "baseline_control_total_steps": 0,
+    "candidate_payload_unique_instructions_observed": 3272,
+    "scope": "Candidate-only observed addresses are separated from uploaded-baseline controls; no claim that instruction coverage proves UIKit behavior"
+  },
+  "limits": [
+    "No iOS loading, dyld execution, UIKit pixels, Core Animation scheduling, gesture handling or glass sampling was tested.",
+    "Host original layout/background/ratio IMPs are unavailable and modeled; callbacks test specified synchronous state changes only.",
+    "View coordinates use translation with frame/bounds; transforms, clipping by ancestor rectangles, occlusion and animation interpolation are not modeled.",
+    "Actual selection/frame/background-clear/background-restore helpers, whole original settings initializer/open-menu and the original proxy-frame call-site execute; the full original controller _update_home path is not executed.",
+    "Edge ownership uses a bounded geometric heuristic; the test does not identify the user video backing layer as a UIScrollEdgeEffect.",
+    "Explicit retain/release and association policies are observed, but UIKit object deallocation and autorelease timing are not simulated.",
+    "Foundation runtime dispatch, +initialize, serial queues, locks, timer scheduling, filesystem APIs, JSON and plist calls use explicit native-boundary models. JSON/plist encodings and temporary disk files are real Python artifacts, not Apple Foundation results.",
+    "Queue reversal and one controlled producer/worker interleaving are executed, not exhaustive concurrency or OS scheduling tests.",
+    "Clock rollback can preserve future-dated records but cannot recover records already deleted by an earlier later cutoff.",
+    "The 1025-record completeness check restores seeded synthetic history then executes actual prune/export plus fresh enqueues; it is not an enqueue throughput or real-device memory benchmark.",
+    "Default-runloop timer delivery, suspension, crash durability between asynchronous flushes, UI activity completion and operating-system export file eviction remain untested on iOS."
+  ]
+}

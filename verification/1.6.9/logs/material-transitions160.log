@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "candidate": {
+    "sha256": "b1e802028fadcc23bd035c8db0136f95c7a9d1f437e5546d31adebeaf70150ac",
+    "first_mount_writes": 1,
+    "writes_after_hide_fade_show": 0
+  },
+  "negative_control_159": {
+    "sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+    "first_mount_writes": 2,
+    "writes_after_hide_fade_show": 2
+  },
+  "device_tested": false,
+  "scope": "Actual ARM64 setter order and cache lifecycle; UIKit modeled"
+}

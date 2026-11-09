@@ -1,0 +1,499 @@
+{
+  "schema": "fanqiex.independent159.v1",
+  "baseline_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
+  "candidate_sha256": "b1e802028fadcc23bd035c8db0136f95c7a9d1f437e5546d31adebeaf70150ac",
+  "candidate_size": 222352,
+  "expected_version": "1.6.9",
+  "passed": true,
+  "checks": {
+    "baseline_identity": {
+      "passed": true
+    },
+    "parse": {
+      "passed": true
+    },
+    "layout": {
+      "passed": true,
+      "details": {
+        "segment_count": 4,
+        "original_section_count": 12,
+        "extension_capacity": 131072,
+        "extension_protection": "RX",
+        "linkedit_fileoff": 212992,
+        "writable_executable_segments": 0
+      }
+    },
+    "original_sections": {
+      "passed": true,
+      "details": {
+        "compared_sections": 12,
+        "changed_original_section_bytes": 1103,
+        "allowed_code_sites": [
+          "0x41d8",
+          "0x4704",
+          "0x4cbc",
+          "0x5b94",
+          "0x60b8",
+          "0x6c84",
+          "0x6ce8",
+          "0x6db4",
+          "0x5d50",
+          "0x5da0",
+          "0x5dec",
+          "0x5e38",
+          "0x649c",
+          "0x7848",
+          "0x7ac4",
+          "0x4878",
+          "0x4650",
+          "0x6568",
+          "0x46d8"
+        ],
+        "allowed_utf16_version_range": [
+          "0xec84",
+          "0xec8e"
+        ],
+        "native_unwind": {
+          "passed": true,
+          "original_entries_preserved": 63,
+          "native_functions": 152,
+          "frame_prologues_checked": 107,
+          "leaf_functions_checked": 45,
+          "native_code_references_checked": 766,
+          "old_sentinel_zero": true,
+          "section_descriptor_unchanged": true,
+          "all_unused_table_bytes_zero": true,
+          "function_gaps_bounded": true,
+          "table_sha256": "cd91f13e11935786712f0273aa77c36128a279851117b6803ef570103927ff0d",
+          "scope": "Independent compact-unwind decoding and emitted ARM64 frame-layout audit"
+        }
+      }
+    },
+    "load_commands": {
+      "passed": true,
+      "details": {
+        "dependencies": [
+          "/usr/lib/libSystem.B.dylib",
+          "/usr/lib/libobjc.A.dylib",
+          "/System/Library/Frameworks/Foundation.framework/Foundation",
+          "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+          "/System/Library/Frameworks/UIKit.framework/UIKit"
+        ],
+        "uuid": "224174769b3453eb9913056464dec7ae",
+        "install_name": "@rpath/FanqieX-1.6.9.dylib"
+      }
+    },
+    "linkedit_and_chained_fixups": {
+      "passed": true,
+      "details": {
+        "relocation_delta": 98304,
+        "tables": [
+          {
+            "name": "0x26",
+            "size": 184,
+            "old_offset": 115360,
+            "new_offset": 213664,
+            "sha256": "b9fce801de3a14e4267d26aaec9992d2b6d8625104a11203f0f5a2293f8e075d"
+          },
+          {
+            "name": "0x29",
+            "size": 0,
+            "old_offset": 115544,
+            "new_offset": 213848,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "name": "0x80000034",
+            "size": 672,
+            "old_offset": 114688,
+            "new_offset": 212992,
+            "sha256": "009aa184f89af6c49a95588decafe121e8909e3136bf93cd38b4f881b4878961"
+          },
+          {
+            "name": "symbols",
+            "size": 3072,
+            "old_offset": 115544,
+            "new_offset": 213848,
+            "sha256": "cbcceeffba310489e47d8ceedf87f37e06bf6db40631f013c243e7ca570a1df6"
+          },
+          {
+            "name": "symbol_strings",
+            "size": 3376,
+            "old_offset": 118792,
+            "new_offset": 217096,
+            "sha256": "0e5f12ffef7096913df0b69abacc0be800b5b4d576a5768dc7d0702f51c2bb50"
+          },
+          {
+            "name": "indirect_symbols",
+            "size": 172,
+            "old_offset": 118616,
+            "new_offset": 216920,
+            "sha256": "b40a6298a4322133a8383a1d444cc64503fc1ab362075bb3563e5f1ab60e3e37"
+          },
+          {
+            "name": "entire_unsigned_linkedit",
+            "size": 7488,
+            "old_offset": 114688,
+            "new_offset": 212992,
+            "sha256": "1dcee8e2b5219a7f14b41af6eb056e607f1ee8bdd43b4fe7163f7de4240f3062"
+          }
+        ],
+        "chained_slots": 656,
+        "chained_import_count": 23,
+        "chained_imports": [
+          {
+            "record": 2,
+            "name": "_objc_autoreleasePoolPop",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 12802,
+            "name": "_method_setImplementation",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 26114,
+            "name": "_class_addMethod",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 34818,
+            "name": "_method_getImplementation",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 48130,
+            "name": "_sel_registerName",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 57346,
+            "name": "_objc_lookUpClass",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 66562,
+            "name": "_objc_autoreleasePoolPush",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 79873,
+            "name": "__dyld_get_image_header",
+            "library_ordinal": 1,
+            "weak": false
+          },
+          {
+            "record": 92162,
+            "name": "_objc_msgSend",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 99329,
+            "name": "_strcmp",
+            "library_ordinal": 1,
+            "weak": false
+          },
+          {
+            "record": 103426,
+            "name": "_method_getTypeEncoding",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 115714,
+            "name": "_class_getInstanceMethod",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 128514,
+            "name": "_class_getClassMethod",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 139778,
+            "name": "_objc_registerClassPair",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 152066,
+            "name": "_objc_allocateClassPair",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 164354,
+            "name": "_objc_getAssociatedObject",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 177666,
+            "name": "_objc_setAssociatedObject",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 190978,
+            "name": "_object_getIvar",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 199170,
+            "name": "_class_getInstanceVariable",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 212993,
+            "name": "___stack_chk_fail",
+            "library_ordinal": 1,
+            "weak": false
+          },
+          {
+            "record": 222209,
+            "name": "___stack_chk_guard",
+            "library_ordinal": 1,
+            "weak": false
+          },
+          {
+            "record": 231938,
+            "name": "_object_getClass",
+            "library_ordinal": 2,
+            "weak": false
+          },
+          {
+            "record": 240644,
+            "name": "___CFConstantStringClassReference",
+            "library_ordinal": 4,
+            "weak": false
+          }
+        ],
+        "chained_blob_sha256": "009aa184f89af6c49a95588decafe121e8909e3136bf93cd38b4f881b4878961"
+      }
+    },
+    "code_signature": {
+      "passed": true,
+      "details": {
+        "signature_offset": 220480,
+        "signature_size": 1872,
+        "directory_offset": 220504,
+        "directory_size": 1848,
+        "code_limit": 220480,
+        "code_slots": 54,
+        "hash_offset": 120,
+        "identifier": "FanqieX-1.6.9.dylib",
+        "all_page_hashes_valid": true,
+        "cdhash": "a7a4a5b37a409fe9ef5fa5d9d323caf7f042e561",
+        "device_acceptance_tested": false
+      }
+    },
+    "repair_directories": {
+      "passed": true,
+      "details": {
+        "main": {
+          "ratio": 256,
+          "layout": 316,
+          "installer": 488,
+          "repair": 1156,
+          "strings": 69888,
+          "end": 74876,
+          "version": 67081,
+          "reserved": 0,
+          "frame": 956,
+          "background": 400,
+          "restore": 876,
+          "edge_update": 1520,
+          "edge_restore": 1864,
+          "find": 3360,
+          "round": 996,
+          "sync": 828,
+          "eligible": 2752,
+          "visible": 2616,
+          "message": 3692,
+          "install_method": 628,
+          "busy_key": 70390,
+          "scroll_key": 70391,
+          "edge_key": 70392,
+          "hidden_key": 70393,
+          "parent_key": 70394,
+          "selected_key": 70395,
+          "sync_original": 868,
+          "restore_original": 948,
+          "proxy_frame": 3784,
+          "material_update": 3972,
+          "material_reset": 4656,
+          "settings_boot": 8044,
+          "ui_install": 8192,
+          "ui_export": 8428,
+          "ui_present": 8704,
+          "diagnostic_init": 9220,
+          "diagnostic_enqueue": 10080,
+          "diagnostic_tick": 9988,
+          "diagnostic_maintenance": 10012,
+          "diagnostic_observe": 7064,
+          "diagnostic_snapshot": 7068,
+          "diagnostic_snapshot_all": 7888,
+          "diagnostic_heartbeat": 7880,
+          "describe_view": 5288,
+          "describe_children": 6144,
+          "string": 4792,
+          "number": 4888,
+          "dict_set": 4964,
+          "uint": 4840,
+          "now": 5056,
+          "settings_trampoline": 8080,
+          "signature_key": 72120,
+          "bars_key": 72121,
+          "ui_busy_key": 72122,
+          "ui_sender_key": 72123,
+          "code_end": 13920,
+          "window": 324,
+          "find_record": 2228,
+          "capture_edge": 2368,
+          "restore_removed": 2016,
+          "extension": 79872,
+          "extension_code_end": 172172,
+          "extension_strings": 172176,
+          "extension_end": 189860
+        },
+        "extension": {
+          "update": 80144,
+          "restore": 80304,
+          "native_update": 80840,
+          "native_restore": 80736,
+          "same_bottom_rect": 81340,
+          "safe_tree": 81824,
+          "monitor_start": 82336,
+          "poll": 82700,
+          "snapshot": 83260,
+          "interaction_update": 86864,
+          "interaction_restore": 87688,
+          "pan": 89288,
+          "should_begin": 88520,
+          "style_control": 100160,
+          "style_glyph": 101124,
+          "code_end": 172172,
+          "strings": 172176,
+          "end": 189860,
+          "native_key": 172176,
+          "monitor_key": 172179,
+          "owner_key": 172180,
+          "timer_key": 172181,
+          "tick_key": 172182,
+          "rejected_key": 172178,
+          "reserved24": 126564,
+          "reserved25": 126908,
+          "reserved26": 127244,
+          "reserved27": 130060
+        },
+        "reader": {
+          "reader_panel": 119168,
+          "walk": 120216,
+          "back_prepare": 116020,
+          "back_restore": 113508,
+          "image_alignment": 118564,
+          "layout_observe": 120668,
+          "finish": 99056,
+          "control_busy_key": 175584,
+          "busy_key": 177426,
+          "owner_back_key": 177432,
+          "back_owned_key": 177427,
+          "back_original_key": 177428,
+          "back_mode_key": 177429,
+          "last_log_key": 177433,
+          "settle_control": 113444
+        },
+        "expected_version": "1.6.9",
+        "main_version": 67081,
+        "extension_version": 67081,
+        "reader_table_address": 178984,
+        "code_ranges": [
+          [
+            2304,
+            15968
+          ],
+          [
+            82048,
+            174220
+          ]
+        ]
+      }
+    },
+    "instruction_addresses": {
+      "passed": true,
+      "details": {
+        "instruction_words_checked": 26480,
+        "direct_reference_counts": {
+          "BL": 4732,
+          "CBZ/CBNZ": 1031,
+          "B": 476,
+          "ADR": 3706,
+          "B.cond": 745,
+          "LDR-literal": 30,
+          "TBZ/TBNZ": 22
+        },
+        "branch_target_count": 7006,
+        "scope": "All direct branches/ADR/ADRP/literal addresses in emitted repair code; not a full ISA proof",
+        "adr_reference_count": 3706
+      }
+    },
+    "version_consistency": {
+      "passed": true,
+      "details": {
+        "version": "1.6.9",
+        "settings_utf16": "1.6.9",
+        "runtime_constants": [
+          {
+            "address": 73132,
+            "value": "1.6.9"
+          }
+        ],
+        "shared_event_export_writes": [
+          {
+            "pc": 8976,
+            "key_address": 73453,
+            "dictionary_register": 21
+          },
+          {
+            "pc": 15344,
+            "key_address": 76297,
+            "dictionary_register": 26
+          }
+        ],
+        "ascii_version_occurrences": [
+          {
+            "address": 1479,
+            "value": "1.6.9"
+          },
+          {
+            "address": 73132,
+            "value": "1.6.9"
+          },
+          {
+            "address": 220600,
+            "value": "1.6.9"
+          }
+        ],
+        "events_and_export_share_constant": true
+      }
+    }
+  },
+  "device_tested": false,
+  "limitations": [
+    "No iOS/dyld acceptance or injected-process execution was performed.",
+    "UIKit rendering, touch behaviour and real-device latency are outside this binary audit.",
+    "Direct instruction address checks do not prove every instruction's semantics."
+  ]
+}
