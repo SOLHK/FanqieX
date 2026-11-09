@@ -119,8 +119,8 @@ def run(data,labels):
             c.run(0xa5d4,args=[cat,r.sel('layoutSubviews')])
             key=slide+labels['LFQH_SurfaceKey']
             surfaces=[r.associations[(v,key)]]
-        require((cat,key) not in r.associations,'Host category strip receives no plugin-owned glass overlay')
-            for o,s in zip((v,cat),surfaces):
+            require((cat,key) not in r.associations,'Host category strip receives no plugin-owned glass overlay')
+            for o,s in zip((v,),surfaces):
                 state=r.objects[s].state
                 require(state['frame']==r.objects[o].state['bounds'],'Glass fills exact original hit bounds')
                 require(not state['userInteractionEnabled'] and state['accessibilityElementsHidden'],'Decoration cannot steal taps or duplicate accessibility')
@@ -129,7 +129,7 @@ def run(data,labels):
                 c.run(0xa5d4,args=[controller,r.sel('relayout')])
                 c.run(0xa5d4,args=[cat,r.sel('layoutSubviews')])
                 require((cat,key) not in r.associations,'Repeated category layout remains host-owned')
-            require(surfaces==[r.associations[(o,key)] for o in (v,cat)],'Repeated layout reuses both surfaces')
+            require(surfaces==[r.associations[(v,key)]],'Repeated layout reuses the search surface only')
             theme=r.color('new_theme');r.objects[v].state['backgroundColor']=theme;r.objects[cat].state['backgroundColor']=theme
             for obj,sel in ((component,SEARCH_COLOR),):
                 c.run(0xa5d4,args=[obj,r.sel(sel),1,2,3,4],fp_args=[0.375])
