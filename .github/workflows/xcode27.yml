@@ -53,6 +53,7 @@ jobs:
             build/xcode27/*.dylib
             build/xcode27/*.json
             build/xcode27/SHA256SUMS.txt
+            native/AlignedGlass.s
             build/native-smoke/*.json
             build/native-smoke/*.log
             build/logger-startup-smoke/*.json
