@@ -30,6 +30,7 @@ jobs:
       - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
         run: |
           set -euo pipefail
+          mkdir -p build
           python3 scripts/compile_diagnostics.py native/AlignedGlass.m --output build/AlignedGlass.raw.s
           python3 - <<'PY'
           from pathlib import Path
