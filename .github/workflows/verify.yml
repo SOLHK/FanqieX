@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.7.1
+name: Verify FanqieX 1.7.2
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: verify171-${{ github.ref }}
+  group: verify172-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,8 +27,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libllvm19 clang-19 python3
 
+      - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
+        run: |
+          set -euo pipefail
+          python3 scripts/compile_diagnostics.py native/AlignedGlass.m --output build/AlignedGlass.raw.s
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build/AlignedGlass.raw.s")
+          text = p.read_text(encoding="utf-8").replace("LFQD_", "LFQH_")
+          Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
+          PY
+
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.7.1 --output build/ci171 --expect-candidate dist/1.7.1/FanqieX-1.7.1.dylib
+        run: python3 scripts/verify162.py --version 1.7.2 --output build/ci172
 
       - name: Upload verification reports and logs
         if: always()
@@ -36,19 +47,24 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci171/*.json
-            build/ci171/logs/
+            build/ci172/*.json
+            build/ci172/logs/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Package the verified plugin
+        if: success()
+        run: python3 scripts/package162.py --version 1.7.2 --verification-dir build/ci172
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.7.1-${{ github.sha }}
+          name: FanqieX-1.7.2-${{ github.sha }}
           path: |
-            build/ci171/FanqieX-1.7.1.dylib
-            build/ci171/SHA256SUMS.txt
-            build/ci171/ci-summary.json
+            dist/1.7.2/FanqieX-1.7.2.dylib
+            dist/1.7.2/FanqieX-1.7.2.zip
+            dist/1.7.2/SHA256SUMS.txt
+            dist/1.7.2/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30
