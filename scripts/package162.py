@@ -75,6 +75,9 @@ SHA-256: {digest}
     verification = {key: summary[key] for key in
                     ('passed', 'candidate_sha256', 'candidate_size', 'two_builds_identical',
                      'device_tested', 'source_manifest_sha256', 'source_file_count', 'steps')}
+    for key in ('candidate_source', 'linux_candidate_sha256', 'xcode_validation_sha256'):
+        if key in summary:
+            verification[key] = summary[key]
     verification['scope'] = summary['scope']
     (output / 'VERIFICATION.json').write_text(
         json.dumps(verification, ensure_ascii=False, indent=2) + '\n')
