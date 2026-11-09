@@ -6,7 +6,7 @@
   "reconstruction_input_version": "1.5.8",
   "reconstruction_input_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
   "rebuild_base_sha256": "918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4",
-  "candidate_sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
+  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
   "size_bytes": 222352,
   "changes": [
     {
@@ -14,7 +14,7 @@
       "size": 14180,
       "reason": "Rebuild main repair with extension calls",
       "old_sha256": "d3e781e9881f8715f6d52c729d971f961903f635c373302d117e3cdef470a0a9",
-      "new_sha256": "3bb6d3bc4bc3a027bfe5ef4d9e3d30f924ce779947a19f6b29ec026b65e39154"
+      "new_sha256": "d6a952a2bda73f3b2dde4292cb6d24356ac2a445ccc22dd5b61a9da49e1d3c69"
     },
     {
       "offset": "0x11900",
@@ -98,14 +98,21 @@
       "size": 4,
       "reason": "Set symmetric tab bar safe area margins",
       "old_sha256": "f8c3ed5279499c57aadeccb8d411a83e871516a313338d758c1d931db9f23f1e",
-      "new_sha256": "4e4fdb9de6db1ff4004cbb74d8b683b6b4cc0ff4d96bfe0f228693a5082c3ee7"
+      "new_sha256": "5149af399090394036b492e4996f3910b3789023fcad466a7e241317a608d30b"
     },
     {
       "offset": "0x46d8",
       "size": 4,
       "reason": "Record executed ad decisions",
       "old_sha256": "9717e03754fb4316ebacdf2bc1df399ee766cc6aab57534ba4fc164ad5abde8b",
-      "new_sha256": "eb0d6b3a82cb4f78c423edfe4ffd51de03f7f513e1bb150cd6fc04d1b52f590c"
+      "new_sha256": "d38f5669e415f8515627881b02860d3ea76a7a92909d68bf2de3ff11637b26df"
+    },
+    {
+      "offset": "0xedec",
+      "size": 4216,
+      "reason": "Link compiler-generated native exception unwind frames into the existing metadata slot",
+      "old_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
+      "new_sha256": "94dd5c101b766efba52665d33759b84e2dd7b24959ab596ee347c5b45a531004"
     },
     {
       "offset": "0x5d50",
@@ -182,7 +189,7 @@
       "size": 16,
       "reason": "Deterministic UUID",
       "old_sha256": "282955acd1f224f7787df021bccc01e5fcbc26b39f76b89493802770b58ab0ca",
-      "new_sha256": "3da13c996bd1b1c39b44a4b86a049cf4e28d182ca3f578b7661acd5e31ced71a"
+      "new_sha256": "102eeb79b437dc2ec244f9920576e59441b1e5e1e7d2482c3f0ba5b91becdfdd"
     }
   ],
   "signature": {
@@ -201,17 +208,17 @@
     "exec_segment_flags": 0,
     "page_hashes_valid": true,
     "invalid_pages": [],
-    "sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
-    "cdhash": "7e500c1cabcd0d3b30badf486fd16cc951abd115",
+    "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+    "cdhash": "c6aeea10f00db2adb4182601df1243ecc5974bc8",
     "device_acceptance_tested": false
   },
   "extension_layout": {
     "passed": true,
     "extension_base": 81920,
     "capacity": 131072,
-    "payload_bytes": 85956,
-    "source_sha256": "9741f0405a4d427997c8064a5f3d6ba1bd0330c77d854bc5098bba749ca0c0cf",
-    "candidate_sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
+    "payload_bytes": 92608,
+    "source_sha256": "40808887734cc791559191fb445f3727b087192d5af69a1eb1f9393eaa1b5b7c",
+    "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
     "size_bytes": 222352,
     "header_end": 1984,
     "segments": [
@@ -286,8 +293,8 @@
       "exec_segment_flags": 0,
       "page_hashes_valid": true,
       "invalid_pages": [],
-      "sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
-      "cdhash": "7e500c1cabcd0d3b30badf486fd16cc951abd115",
+      "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
+      "cdhash": "c6aeea10f00db2adb4182601df1243ecc5974bc8",
       "device_acceptance_tested": false
     },
     "limits": [
@@ -296,7 +303,7 @@
       "ARM64 instruction/ABI and UIKit behavior require separate audits."
     ]
   },
-  "uuid": "25323107-b784-589a-a3c3-ba932e6106d6",
+  "uuid": "9cf29c8f-016a-5afb-bbb9-8a2e935363d9",
   "main_directory": {
     "ratio": 2304,
     "layout": 2364,
@@ -359,9 +366,9 @@
     "capture_edge": 4416,
     "restore_removed": 4064,
     "extension": 81920,
-    "extension_code_end": 154084,
-    "extension_strings": 154088,
-    "extension_end": 167876
+    "extension_code_end": 159584,
+    "extension_strings": 159584,
+    "extension_end": 174528
   },
   "extension_directory": {
     "update": 82192,
@@ -379,19 +386,19 @@
     "should_begin": 90568,
     "style_control": 102208,
     "style_glyph": 103128,
-    "code_end": 154084,
-    "strings": 154088,
-    "end": 167876,
-    "native_key": 154088,
-    "monitor_key": 154091,
-    "owner_key": 154092,
-    "timer_key": 154093,
-    "tick_key": 154094,
-    "rejected_key": 154090,
+    "code_end": 159584,
+    "strings": 159584,
+    "end": 174528,
+    "native_key": 159584,
+    "monitor_key": 159587,
+    "owner_key": 159588,
+    "timer_key": 159589,
+    "tick_key": 159590,
+    "rejected_key": 159586,
     "reserved24": 128528,
     "reserved25": 128872,
-    "reserved26": 129188,
-    "reserved27": 131968
+    "reserved26": 129204,
+    "reserved27": 132004
   },
   "reader_directory": {
     "reader_panel": 121172,
@@ -401,13 +408,13 @@
     "image_alignment": 120568,
     "layout_observe": 122672,
     "finish": 101104,
-    "control_busy_key": 157496,
-    "busy_key": 159338,
-    "owner_back_key": 159344,
-    "back_owned_key": 159339,
-    "back_original_key": 159340,
-    "back_mode_key": 159341,
-    "last_log_key": 159345,
+    "control_busy_key": 162992,
+    "busy_key": 164834,
+    "owner_back_key": 164840,
+    "back_owned_key": 164835,
+    "back_original_key": 164836,
+    "back_mode_key": 164837,
+    "last_log_key": 164841,
     "settle_control": 115448
   },
   "original_unchanged": true,
@@ -422,5 +429,466 @@
     "Regular base/native gray selection, shelf first-frame composition and original reader controls have not been visually checked on a device.",
     "Removed repeat-layout mutations are instruction-tested; real touch-to-action latency remains unmeasured.",
     "Diagnostics observe bounded plugin state; pending writes are not crash durable."
-  ]
+  ],
+  "native_unwind": {
+    "passed": true,
+    "scope": "Assembler-derived native ARM64 compact unwind; existing slot rewritten",
+    "section_offset": 60908,
+    "section_size": 4216,
+    "original_entry_count": 63,
+    "native_entry_count": 89,
+    "merged_entry_count": 153,
+    "original_limit": 42356,
+    "merged_limit": 159584,
+    "section_descriptors_unchanged": true,
+    "native_entries": [
+      {
+        "start": 132500,
+        "end": 132764,
+        "encoding": 67108867
+      },
+      {
+        "start": 132764,
+        "end": 135104,
+        "encoding": 67108895
+      },
+      {
+        "start": 135104,
+        "end": 135216,
+        "encoding": 67108867
+      },
+      {
+        "start": 135216,
+        "end": 135392,
+        "encoding": 67108871
+      },
+      {
+        "start": 135392,
+        "end": 136268,
+        "encoding": 67108895
+      },
+      {
+        "start": 136268,
+        "end": 136336,
+        "encoding": 67108865
+      },
+      {
+        "start": 136336,
+        "end": 136928,
+        "encoding": 67108867
+      },
+      {
+        "start": 136928,
+        "end": 136996,
+        "encoding": 67108865
+      },
+      {
+        "start": 136996,
+        "end": 137500,
+        "encoding": 67108871
+      },
+      {
+        "start": 137500,
+        "end": 137644,
+        "encoding": 67109121
+      },
+      {
+        "start": 137644,
+        "end": 137704,
+        "encoding": 67108865
+      },
+      {
+        "start": 137704,
+        "end": 138364,
+        "encoding": 67108895
+      },
+      {
+        "start": 138364,
+        "end": 138816,
+        "encoding": 67108879
+      },
+      {
+        "start": 138816,
+        "end": 139248,
+        "encoding": 67108879
+      },
+      {
+        "start": 139248,
+        "end": 139320,
+        "encoding": 67108865
+      },
+      {
+        "start": 139320,
+        "end": 139472,
+        "encoding": 67108867
+      },
+      {
+        "start": 139472,
+        "end": 141852,
+        "encoding": 67108871
+      },
+      {
+        "start": 141852,
+        "end": 142572,
+        "encoding": 67108879
+      },
+      {
+        "start": 142572,
+        "end": 142576,
+        "encoding": 33554432
+      },
+      {
+        "start": 142576,
+        "end": 142744,
+        "encoding": 67108871
+      },
+      {
+        "start": 142744,
+        "end": 143016,
+        "encoding": 67108867
+      },
+      {
+        "start": 143016,
+        "end": 143344,
+        "encoding": 67108867
+      },
+      {
+        "start": 143344,
+        "end": 143524,
+        "encoding": 67108867
+      },
+      {
+        "start": 143524,
+        "end": 143932,
+        "encoding": 67108879
+      },
+      {
+        "start": 143932,
+        "end": 144064,
+        "encoding": 67108867
+      },
+      {
+        "start": 144064,
+        "end": 144284,
+        "encoding": 67108867
+      },
+      {
+        "start": 144284,
+        "end": 144468,
+        "encoding": 67108867
+      },
+      {
+        "start": 144468,
+        "end": 144488,
+        "encoding": 33554432
+      },
+      {
+        "start": 144488,
+        "end": 144508,
+        "encoding": 33554432
+      },
+      {
+        "start": 144508,
+        "end": 144528,
+        "encoding": 33554432
+      },
+      {
+        "start": 144528,
+        "end": 144548,
+        "encoding": 33554432
+      },
+      {
+        "start": 144548,
+        "end": 144940,
+        "encoding": 67108879
+      },
+      {
+        "start": 144940,
+        "end": 145276,
+        "encoding": 67108871
+      },
+      {
+        "start": 145276,
+        "end": 145556,
+        "encoding": 67108871
+      },
+      {
+        "start": 145556,
+        "end": 145576,
+        "encoding": 33554432
+      },
+      {
+        "start": 145576,
+        "end": 145596,
+        "encoding": 33554432
+      },
+      {
+        "start": 145596,
+        "end": 145616,
+        "encoding": 33554432
+      },
+      {
+        "start": 145616,
+        "end": 146116,
+        "encoding": 67108895
+      },
+      {
+        "start": 146116,
+        "end": 146540,
+        "encoding": 67108879
+      },
+      {
+        "start": 146540,
+        "end": 147536,
+        "encoding": 67108895
+      },
+      {
+        "start": 147536,
+        "end": 148148,
+        "encoding": 67108895
+      },
+      {
+        "start": 148148,
+        "end": 148300,
+        "encoding": 67108867
+      },
+      {
+        "start": 148300,
+        "end": 148788,
+        "encoding": 67108895
+      },
+      {
+        "start": 148788,
+        "end": 150544,
+        "encoding": 67108895
+      },
+      {
+        "start": 150544,
+        "end": 151184,
+        "encoding": 67108895
+      },
+      {
+        "start": 151184,
+        "end": 152624,
+        "encoding": 67108895
+      },
+      {
+        "start": 152624,
+        "end": 152964,
+        "encoding": 67108871
+      },
+      {
+        "start": 152964,
+        "end": 153252,
+        "encoding": 67108871
+      },
+      {
+        "start": 153252,
+        "end": 153692,
+        "encoding": 67108871
+      },
+      {
+        "start": 153692,
+        "end": 153844,
+        "encoding": 67108867
+      },
+      {
+        "start": 153844,
+        "end": 153872,
+        "encoding": 33554432
+      },
+      {
+        "start": 153872,
+        "end": 153900,
+        "encoding": 33554432
+      },
+      {
+        "start": 153900,
+        "end": 154052,
+        "encoding": 67108867
+      },
+      {
+        "start": 154052,
+        "end": 154080,
+        "encoding": 33554432
+      },
+      {
+        "start": 154080,
+        "end": 154108,
+        "encoding": 33554432
+      },
+      {
+        "start": 154108,
+        "end": 154260,
+        "encoding": 67108867
+      },
+      {
+        "start": 154260,
+        "end": 154288,
+        "encoding": 33554432
+      },
+      {
+        "start": 154288,
+        "end": 154316,
+        "encoding": 33554432
+      },
+      {
+        "start": 154316,
+        "end": 154468,
+        "encoding": 67108867
+      },
+      {
+        "start": 154468,
+        "end": 154496,
+        "encoding": 33554432
+      },
+      {
+        "start": 154496,
+        "end": 154524,
+        "encoding": 33554432
+      },
+      {
+        "start": 154524,
+        "end": 154676,
+        "encoding": 67108867
+      },
+      {
+        "start": 154676,
+        "end": 154704,
+        "encoding": 33554432
+      },
+      {
+        "start": 154704,
+        "end": 154732,
+        "encoding": 33554432
+      },
+      {
+        "start": 154732,
+        "end": 155764,
+        "encoding": 67108895
+      },
+      {
+        "start": 155764,
+        "end": 155908,
+        "encoding": 67109121
+      },
+      {
+        "start": 155908,
+        "end": 155956,
+        "encoding": 67108864
+      },
+      {
+        "start": 155956,
+        "end": 156104,
+        "encoding": 67109123
+      },
+      {
+        "start": 156104,
+        "end": 156236,
+        "encoding": 67108865
+      },
+      {
+        "start": 156236,
+        "end": 156240,
+        "encoding": 33554432
+      },
+      {
+        "start": 156240,
+        "end": 156328,
+        "encoding": 67108865
+      },
+      {
+        "start": 156328,
+        "end": 156416,
+        "encoding": 67108865
+      },
+      {
+        "start": 156416,
+        "end": 156508,
+        "encoding": 67108867
+      },
+      {
+        "start": 156508,
+        "end": 156772,
+        "encoding": 67108867
+      },
+      {
+        "start": 156772,
+        "end": 156868,
+        "encoding": 67108865
+      },
+      {
+        "start": 156868,
+        "end": 156872,
+        "encoding": 33554432
+      },
+      {
+        "start": 156872,
+        "end": 156964,
+        "encoding": 67108867
+      },
+      {
+        "start": 156964,
+        "end": 157916,
+        "encoding": 67108879
+      },
+      {
+        "start": 157916,
+        "end": 157988,
+        "encoding": 67108865
+      },
+      {
+        "start": 157988,
+        "end": 158060,
+        "encoding": 67108865
+      },
+      {
+        "start": 158060,
+        "end": 158620,
+        "encoding": 67108879
+      },
+      {
+        "start": 158620,
+        "end": 158624,
+        "encoding": 33554432
+      },
+      {
+        "start": 158624,
+        "end": 158992,
+        "encoding": 67108879
+      },
+      {
+        "start": 158992,
+        "end": 158996,
+        "encoding": 33554432
+      },
+      {
+        "start": 158996,
+        "end": 159208,
+        "encoding": 67108871
+      },
+      {
+        "start": 159208,
+        "end": 159212,
+        "encoding": 33554432
+      },
+      {
+        "start": 159212,
+        "end": 159216,
+        "encoding": 33554432
+      },
+      {
+        "start": 159216,
+        "end": 159220,
+        "encoding": 33554432
+      },
+      {
+        "start": 159220,
+        "end": 159584,
+        "encoding": 67108879
+      }
+    ],
+    "original_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
+    "merged_sha256": "94dd5c101b766efba52665d33759b84e2dd7b24959ab596ee347c5b45a531004"
+  }
 }

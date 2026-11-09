@@ -1,6 +1,6 @@
 {
-  "candidate": "D:\\Codex\\2026-11-08\\fanqiex-1-6-3-1-6\\work\\FanqieX\\build\\164-delivery-verified\\FanqieX-1.6.4.dylib",
-  "sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
+  "candidate": "D:\\Codex\\2026-11-08\\fanqiex-1-6-3-1-6\\work\\FanqieX\\build\\164-startup-frozen2\\FanqieX-1.6.4.dylib",
+  "sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
   "shadow": {
     "passed": true,
     "runs": [
@@ -410,15 +410,15 @@
       "clock_rollback_future_preserved": true,
       "restart_read_from_real_plist": true,
       "unique_export_files": true,
-      "instructions": 46272
+      "instructions": 48734
     },
     "full_export": {
       "passed": true,
       "restored_record_count": 1025,
       "export_record_count": 1027,
-      "export_bytes": 179781,
+      "export_bytes": 180047,
       "all_nested_fields_compared": true,
-      "instructions": 744326,
+      "instructions": 745557,
       "scope": "1025 restored synthetic records plus real new enqueue/bootstrap events, not 1025 enqueue benchmark"
     },
     "diagnostic_UI_and_IO": {
@@ -432,7 +432,7 @@
       "retry_full_persist": true,
       "failed_export_error_UI": true,
       "corrupt_restart_reported": true,
-      "instructions": 47660
+      "instructions": 50413
     },
     "producer_interleaving": {
       "passed": true,
@@ -524,7 +524,7 @@
   "input_data": "Synthetic modeled native objects and generated test log records; no device logs",
   "actual_patch_entries_stubbed": false,
   "instruction_execution": {
-    "candidate_total_steps": 4389082,
+    "candidate_total_steps": 4395528,
     "baseline_control_total_steps": 0,
     "candidate_payload_unique_instructions_observed": 3272,
     "scope": "Candidate-only observed addresses are separated from uploaded-baseline controls; no claim that instruction coverage proves UIKit behavior"

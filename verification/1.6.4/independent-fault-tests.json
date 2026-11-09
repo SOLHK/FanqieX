@@ -1,8 +1,8 @@
 {
   "passed": true,
-  "candidate_sha256": "4b9dc8fd5e90f2d79cb4b57826daf22ddae4f7a0da49799207fa3fc4cc1135bb",
+  "candidate_sha256": "3ae884a74886a7bedff0d5f25d1da3e9fdd67653d48fff79984d35c4e9e73313",
   "positive_control_passed": true,
-  "negative_controls": 34,
+  "negative_controls": 38,
   "cases": [
     {
       "name": "unsigned_instruction_corruption",
@@ -145,6 +145,34 @@
       "reason": "Invalid extension entry for patch site 0x4878"
     },
     {
+      "name": "wrong_native_frame_registers",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: frame register encoding differs from prologue at 0x20594"
+    },
+    {
+      "name": "missing_native_frame_encoding",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: unwind gap hides native instructions"
+    },
+    {
+      "name": "wrong_unwind_page_kind",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: compressed page bounds"
+    },
+    {
+      "name": "nonzero_unwind_padding",
+      "expected_rejection": "original_sections",
+      "rejected": true,
+      "page_hashes_recomputed": true,
+      "reason": "Native unwind: nonzero table padding"
+    },
+    {
       "name": "unaligned_startup_installer",
       "expected_rejection": "repair_directories",
       "rejected": true,
@@ -233,7 +261,7 @@
       "expected_rejection": "version_consistency",
       "rejected": true,
       "page_hashes_recomputed": true,
-      "reason": "Shared version is not referenced by two emitted code paths"
+      "reason": "Cannot establish distinct event/export writes of the shared version"
     },
     {
       "name": "original_158_stale_export_157",
