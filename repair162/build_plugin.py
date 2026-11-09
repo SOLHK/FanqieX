@@ -66,7 +66,7 @@ def compose_assembly(path, version=VERSION):
    need(len(parts)==2, 'Component boundary: '+filename)
    code.append(parts[0]); data.append(parts[1])
   if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.6.9'):
-   parts=(path.parents[1]/'native'/'FanqieXDiagnostics.s').read_text().split('// @COMPONENT_DATA')
+   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version == '1.6.9' else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Native diagnostic component boundary')
    code.append(parts[0]); data.append(parts[1])
   if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.6.9'):
