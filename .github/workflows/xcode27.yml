@@ -28,6 +28,8 @@ jobs:
           sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
+      - name: Exercise the diagnostic module with real Foundation and libobjc
+        run: python3 tests/run_native_smoke.py
       - name: Build actual plugin twice and type-check native APIs
         run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.6.4 --expect-candidate dist/1.6.4/FanqieX-1.6.4.dylib
       - name: Preserve build and evidence
@@ -39,5 +41,7 @@ jobs:
             build/xcode27/*.dylib
             build/xcode27/*.json
             build/xcode27/SHA256SUMS.txt
+            build/native-smoke/*.json
+            build/native-smoke/*.log
           if-no-files-found: warn
           retention-days: 30
