@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: verify172-${{ github.ref }}
@@ -27,8 +28,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libllvm19 clang-19 python3
 
+      - name: Download the matching Xcode 27.2 build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/xcode27-artifact
+          for attempt in $(seq 1 30); do
+            run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
+            if [ -n "$run_id" ]; then
+              gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.7.2.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.7.2.validation.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "No successful Xcode 27.2 build artifact found for $GITHUB_SHA" >&2
+          exit 1
+
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.7.2 --output build/ci172
+        run: python3 scripts/verify162.py --version 1.7.2 --output build/ci172 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.7.2.dylib
 
       - name: Upload verification reports and logs
         if: always()
