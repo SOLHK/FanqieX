@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: xcode27-${{ github.ref }}
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
+          persist-credentials: true
       - name: Select Xcode 27.2
         shell: bash
         run: |
@@ -60,3 +60,17 @@ jobs:
             build/logger-startup-smoke/*.log
           if-no-files-found: warn
           retention-days: 30
+      - name: Commit regenerated ARM64 glass assembly to test branch
+        if: github.ref == 'refs/heads/test'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/AlignedGlass.s
+          if git diff --cached --quiet; then
+            echo "Generated assembly already matches the committed source."
+            exit 0
+          fi
+          git commit -m "Regenerate aligned glass ARM64 assembly"
+          git push origin HEAD:test
