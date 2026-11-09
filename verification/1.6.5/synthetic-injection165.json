@@ -1,0 +1,119 @@
+{
+  "passed": true,
+  "candidate_sha256": "f32bce28aacca514d93462bd06fe70fce83b9128008c941ba5549c1719942fb8",
+  "cases": [
+    {
+      "host_cpu_subtype": 0,
+      "path": "FanqieX-1.6.5.dylib",
+      "load": "@executable_path/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 0,
+      "path": "Frameworks/FanqieX-1.6.5.dylib",
+      "load": "@loader_path/Frameworks/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 0,
+      "path": "Frameworks/FanqieX-1.6.5.dylib",
+      "load": "@rpath/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 0,
+      "path": "Dylibs/FanqieX-1.6.5.dylib",
+      "load": "@rpath/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 2,
+      "path": "FanqieX-1.6.5.dylib",
+      "load": "@executable_path/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 2,
+      "path": "Frameworks/FanqieX-1.6.5.dylib",
+      "load": "@loader_path/Frameworks/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 2,
+      "path": "Frameworks/FanqieX-1.6.5.dylib",
+      "load": "@rpath/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    },
+    {
+      "host_cpu_subtype": 2,
+      "path": "Dylibs/FanqieX-1.6.5.dylib",
+      "load": "@rpath/FanqieX-1.6.5.dylib",
+      "structural_preflight": "pass",
+      "device_tested": false,
+      "certificate_trust_verified": false,
+      "plugin": "FanqieX-1.6.5.dylib",
+      "warnings": [],
+      "limits": [
+        "Structural validation only; no Apple certificate trust or device execution test.",
+        "Signer version, certificate/profile, host version and iOS rendering require device acceptance."
+      ]
+    }
+  ],
+  "scope": "Final plugin bytes in 8 synthetic IPA load-command layouts. No real signer, dyld, certificates or device execution."
+}

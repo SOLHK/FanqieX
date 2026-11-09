@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    {
+      "slide": "0x0",
+      "rules": 45,
+      "calls": 90,
+      "custom_completion_preserved": true
+    },
+    {
+      "slide": "0x180000000",
+      "rules": 45,
+      "calls": 90,
+      "custom_completion_preserved": true
+    }
+  ]
+}

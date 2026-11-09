@@ -1,0 +1,411 @@
+{
+  "passed": true,
+  "candidate_sha256": "f32bce28aacca514d93462bd06fe70fce83b9128008c941ba5549c1719942fb8",
+  "device_tested": false,
+  "scope": "Actual ARM64 execution; modeled public UIKit boundaries; no device pixels or tap-latency claim",
+  "cases": [
+    {
+      "name": "top_original_image",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_original_button",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "button",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_original_absent",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "absent",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_original_nil",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "nil",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_original_aslr",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "image",
+        "slide": "0x100000000",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_deep_nested_scope",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": true,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_dynamic_subclass",
+      "passed": true,
+      "details": {
+        "owner": "FQNavigationRuntimeSubclass",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "story_big_original",
+      "passed": true,
+      "details": {
+        "owner": "SSStoryBigNavigationBar",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "story_small_original",
+      "passed": true,
+      "details": {
+        "owner": "SSStorySmallNavigationBar",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": false,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "top_when_glass_disabled",
+      "passed": true,
+      "details": {
+        "owner": "FQReaderSaasNavigationView",
+        "getter": "image",
+        "slide": "0x0",
+        "nested_wrappers": false,
+        "glass_disabled": true,
+        "controls_preserved": 5,
+        "material_allocations": 0,
+        "system_symbol_requests": 0
+      }
+    },
+    {
+      "name": "four_actual_top_hooks",
+      "passed": true,
+      "details": [
+        {
+          "class": "FQReaderSaasNavigationView",
+          "entry": "0x5d04",
+          "host_layout_calls": 1
+        },
+        {
+          "class": "SSReaderNavigationBarDownloadButton",
+          "entry": "0x8170",
+          "host_layout_calls": 1
+        },
+        {
+          "class": "SSStoryBigNavigationBar",
+          "entry": "0x81b8",
+          "host_layout_calls": 1
+        },
+        {
+          "class": "SSStorySmallNavigationBar",
+          "entry": "0x8208",
+          "host_layout_calls": 1
+        }
+      ]
+    },
+    {
+      "name": "legacy_owned_state_cleanup",
+      "passed": true,
+      "details": {
+        "host_changes_preserved": false,
+        "standalone_image": false,
+        "decorations_removed": 4,
+        "owned_image_restored": true
+      }
+    },
+    {
+      "name": "legacy_state_with_host_changes",
+      "passed": true,
+      "details": {
+        "host_changes_preserved": true,
+        "standalone_image": false,
+        "decorations_removed": 4,
+        "owned_image_restored": true
+      }
+    },
+    {
+      "name": "legacy_standalone_cleanup",
+      "passed": true,
+      "details": {
+        "host_changes_preserved": false,
+        "standalone_image": true,
+        "decorations_removed": 4,
+        "owned_image_restored": true
+      }
+    },
+    {
+      "name": "bounded_top_cleanup_and_reentry",
+      "passed": true,
+      "details": {
+        "cleanup_visit_limit": 64,
+        "nested_instruction_count": 16
+      }
+    },
+    {
+      "name": "bottom_complete_captions_preserved",
+      "passed": true,
+      "details": {
+        "frames": [
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            10.0,
+            0.0,
+            80.0,
+            70.0
+          ]
+        ],
+        "nested_icon_button": false,
+        "host_frames_and_actions_unchanged": true
+      }
+    },
+    {
+      "name": "bottom_nested_icons_preserved",
+      "passed": true,
+      "details": {
+        "frames": [
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            16.0,
+            0.0,
+            68.0,
+            70.0
+          ],
+          [
+            10.0,
+            0.0,
+            80.0,
+            70.0
+          ]
+        ],
+        "nested_icon_button": true,
+        "host_frames_and_actions_unchanged": true
+      }
+    },
+    {
+      "name": "listen_style_and_restore_preserved",
+      "passed": true,
+      "details": {
+        "frame": [
+          1.0,
+          1.0,
+          54.0,
+          54.0
+        ],
+        "background_restored": true
+      }
+    },
+    {
+      "name": "menu_attachment_preserved",
+      "passed": true,
+      "details": {
+        "premount_then_attach_styles": true,
+        "detach_restores": true
+      }
+    },
+    {
+      "name": "reader_scope_exclusions_preserved",
+      "passed": true,
+      "details": {
+        "excluded_control_types": 4,
+        "scroll_content_untouched": true
+      }
+    },
+    {
+      "name": "listen_reuse_preserved",
+      "passed": true,
+      "details": {
+        "replaced_caption_restored": true,
+        "moved_caption_epoch_preserved": true
+      }
+    },
+    {
+      "name": "listen_orphan_owner_preserved",
+      "passed": true,
+      "details": {
+        "zeroing_weak_owner_recovery": true
+      }
+    },
+    {
+      "name": "negative160_original_top_contract",
+      "passed": true,
+      "details": {
+        "version": "1.6.0",
+        "new_contract_rejected": true,
+        "glass_created": true,
+        "host_artwork_replaced": true
+      }
+    },
+    {
+      "name": "shelf_edit",
+      "passed": true,
+      "details": {
+        "frame": [
+          -8.0,
+          0.0,
+          48.0,
+          32.0
+        ],
+        "horizontal_text_padding": 10,
+        "vertical_text_padding": 6,
+        "instructions": 5813
+      }
+    },
+    {
+      "name": "shelf_filter",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          0.0,
+          69.0,
+          32.0
+        ],
+        "instructions": 6567
+      }
+    },
+    {
+      "name": "shelf_reading_time",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          -2.0,
+          156.0,
+          32.0
+        ],
+        "instructions": 6399
+      }
+    },
+    {
+      "name": "shelf_larger_font",
+      "passed": true,
+      "details": {
+        "frame": [
+          -2.0,
+          5.0,
+          52.0,
+          34.0
+        ],
+        "instructions": 5813
+      }
+    },
+    {
+      "name": "shelf_clipped_text",
+      "passed": true,
+      "details": {
+        "no_material_when_padding_impossible": true,
+        "instructions": 3643
+      }
+    },
+    {
+      "name": "out_of_scope_original",
+      "passed": true,
+      "details": {
+        "original_trampoline_executed": true,
+        "frame": [
+          0.0,
+          0.0,
+          44.0,
+          44.0
+        ],
+        "instructions": 2740
+      }
+    }
+  ],
+  "executed_instructions": 1059002
+}

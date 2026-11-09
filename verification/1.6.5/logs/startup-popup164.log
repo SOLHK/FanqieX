@@ -1,0 +1,66 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    {
+      "slide": "0x0",
+      "case": "owned",
+      "instructions": 12021
+    },
+    {
+      "slide": "0x0",
+      "case": "inherited",
+      "instructions": 12074
+    },
+    {
+      "slide": "0x0",
+      "case": "disabled",
+      "instructions": 6641
+    },
+    {
+      "slide": "0x0",
+      "case": "missing_class",
+      "instructions": 6830
+    },
+    {
+      "slide": "0x0",
+      "case": "missing_method",
+      "instructions": 6876
+    },
+    {
+      "slide": "0x0",
+      "case": "wrong_encoding",
+      "instructions": 6882
+    },
+    {
+      "slide": "0x180000000",
+      "case": "owned",
+      "instructions": 12021
+    },
+    {
+      "slide": "0x180000000",
+      "case": "inherited",
+      "instructions": 12074
+    },
+    {
+      "slide": "0x180000000",
+      "case": "disabled",
+      "instructions": 6641
+    },
+    {
+      "slide": "0x180000000",
+      "case": "missing_class",
+      "instructions": 6830
+    },
+    {
+      "slide": "0x180000000",
+      "case": "missing_method",
+      "instructions": 6876
+    },
+    {
+      "slide": "0x180000000",
+      "case": "wrong_encoding",
+      "instructions": 6882
+    }
+  ]
+}
