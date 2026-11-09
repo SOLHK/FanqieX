@@ -91,7 +91,9 @@ def exercise(data,labels,baseline):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        require(len([e for e in r.events if e['event']=='method_setImplementation'])==8,'Eight targeted hooks; category strip remains host-owned')
+        require(len([e for e in r.events if e['event']=='method_setImplementation'])==7,'Seven stable hooks; top-tab transition remains host-owned')
+        source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
+        require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
         for cl,imp in size_methods.items():require(r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp']==imp,'Original insert dimensions remain authoritative')
         nav=r.view(NAV,'reader',(12,64,416,44),r.ROOT)
         back=icon(r,nav,'back',(12,10,24,24),canvas=(0,0,24,24))
