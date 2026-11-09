@@ -1077,6 +1077,8 @@ LSinteractive: .asciz "isInteractive"
 LSversion:
     .if FQ_VERSION == 0x10607
     .asciz "1.6.7"
+    .elseif FQ_VERSION == 0x10702
+    .asciz "1.7.2"
     .elseif FQ_VERSION == 0x10701
     .asciz "1.7.1"
     .elseif FQ_VERSION == 0x10606
