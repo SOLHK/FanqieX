@@ -107,7 +107,7 @@ def run(data,labels):
         call(c,'LFQH_FQHInstall')
         before=len([e for e in r.events if e['event']=='method_setImplementation'])
         call(c,'LFQH_FQHInstall')
-        require(len([e for e in r.events if e['event']=='method_setImplementation'])==before==(6 if release_version(data) in ('1.6.6','1.6.9') else 5),'Expected fixture hooks, idempotent installation')
+        require(len([e for e in r.events if e['event']=='method_setImplementation'])==before==(6 if release_version(data) in ('1.6.6','1.7.0') else 5),'Expected fixture hooks, idempotent installation')
         for width in (320,375,390,430,440,768,1024):
             v=r.view('UIView','search',(0,0,width-90,40),r.ROOT,backgroundColor=r.color('original'),userInteractionEnabled=1)
             cat=r.view(CATEGORY,'category',(width-80,0,64,40),r.ROOT,backgroundColor=r.color('category'),userInteractionEnabled=1)

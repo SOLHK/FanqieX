@@ -13,6 +13,9 @@ class Runtime(PreviousRuntime):
     def __init__(self,data,slide=0,available=True):
         super().__init__(data,slide,available)
         self._class('SSReaderNavigationBarDownloadButton','UIView')
+        self._class('FQReaderSaaSBaseButton','UIButton')
+        imp=0x33090000;self.hosts[imp]=('FQReaderSaaSBaseButton','layoutSubviews')
+        self._add(self.classes['FQReaderSaaSBaseButton'],'layoutSubviews',imp,'v16@0:8')
         self.records=[];self.host_mutations=[];self.host_views=set();self.no_hit_api=False
     def responds(self,receiver,name):
         if name in ('btd_hitTestEdgeInsets','setBtd_hitTestEdgeInsets:'):
@@ -62,7 +65,7 @@ def machine(data,labels,slide=0,available=True):
 
 def call(c,labels,name,*args): return c.run(labels[name],args=args,max_steps=1500000)
 def icon(r,parent,name,frame,*,download=False,canvas=(0,0,24,24),image_size=(64,64)):
-    cls='SSReaderNavigationBarDownloadButton' if download else 'UIButton'
+    cls='SSReaderNavigationBarDownloadButton' if download else 'FQReaderSaaSBaseButton' if name.startswith('shelf_') else 'UIButton'
     b=r.view(cls,name,frame,parent,clipsToBounds=False,opaque=True)
     image=r.obj('UIImage','PRIVATE_ORIGINAL_ASSET',size=image_size)
     iv=r.view('UIImageView',name+'_original_image',canvas,b)
@@ -88,7 +91,7 @@ def exercise(data,labels,baseline):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        require(len([e for e in r.events if e['event']=='method_setImplementation'])==8,'Only eight targeted hooks; no size-provider replacement')
+        require(len([e for e in r.events if e['event']=='method_setImplementation'])==9,'Nine targeted hooks; no size-provider replacement')
         for cl,imp in size_methods.items():require(r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp']==imp,'Original insert dimensions remain authoritative')
         nav=r.view(NAV,'reader',(12,64,416,44),r.ROOT)
         back=icon(r,nav,'back',(12,10,24,24),canvas=(0,0,24,24))
@@ -156,23 +159,29 @@ def exercise(data,labels,baseline):
             send(c,r,vc,'viewDidLayoutSubviews')
             require(r.objects[parent].state['frame']==(348.,y,56.,24.),'Toolbar stays at host-selected safe-area/header origin')
             require(r.objects[search].state['frame']==(0,0,24,24) and r.objects[more].state['frame']==(32,0,24,24),'Shelf buttons retain host-local frames')
-            require(hit_contains(r,parent,(-2.,-2.,60.,28.)),'Container also admits touches on both visible outer rims')
+            require(hit_contains(r,parent,(-14.,-2.,72.,28.)),'Container also admits touches on both visible outer rims')
         a=r.objects[material(c,r,labels,search)].state['frame'];z=r.objects[material(c,r,labels,more)].state['frame']
-        require(32+z[0]-(a[0]+a[2])==4,'Device-reported 32pt centers retain a 4pt glass gap')
+        require(32+z[0]-(a[0]+a[2])==16,'Device-reported 32pt host centers produce a 16pt visual gap')
         require(not r.host_mutations,'No host geometry mutation anywhere in shelf/reader paths')
-        require(r.objects[r.objects[search].state['imageView']].state['frame']==(3.,3.,18.,18.),'Search artwork has balanced 5pt padding in 28pt lens')
-        require(r.objects[r.objects[more].state['imageView']].state['frame']==(-1.5,3.,18.,18.),'More asset transparent padding is compensated at the image, not by shifting the lens')
+        require(r.objects[r.objects[search].state['imageView']].state['frame']==(-9.,3.,18.,18.),'Search artwork has balanced 5pt padding in 28pt lens')
+        require(r.objects[r.objects[more].state['imageView']].state['frame']==(-3.,3.,18.,18.),'More asset transparent padding is compensated at the image, not by shifting the lens')
+        for button,expected in ((search,(-9.,3.,18.,18.)),(more,(-3.,3.,18.,18.))):
+            iv=r.objects[button].state['imageView']
+            for _ in range(10):
+                r.objects[iv].state['frame']=(0.,0.,24.,24.)
+                send(c,r,button,'layoutSubviews')
+                require(r.objects[iv].state['frame']==expected,'Button layout reapplies optical alignment after host resets artwork')
         # A deliberately off-center original image still determines the lens
         # center without altering its host or its image view.
         r.objects[search].state['bounds']=(5.,7.,24.,24.)
         iv=r.objects[search].state['imageView'];r.objects[iv].state['frame']=(7.,10.,18.,16.);r.objects[iv].state['bounds']=(0.,0.,18.,16.)
         send(c,r,vc,'viewDidLayoutSubviews')
         glass=material(c,r,labels,search)
-        require(r.objects[glass].state['frame']==(3.,5.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
+        require(r.objects[glass].state['frame']==(-9.,5.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
         replacement=r.view('UIImageView','host_recreated_image',(9.,9.,16.,20.),search)
         r.objects[search].state['imageView']=replacement
         send(c,r,vc,'viewDidLayoutSubviews')
-        require(r.objects[glass].state['frame']==(3.,5.,28.,28.),'Host-recreated image drives the new center without a stale image reference')
+        require(r.objects[glass].state['frame']==(-9.,5.,28.,28.),'Host-recreated image drives the new center without a stale image reference')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
         send(c,r,vc,'viewDidLayoutSubviews')
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')

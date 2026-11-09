@@ -38,6 +38,7 @@ static void OwnerBusyKey(void) {}
 static void ReaderGlassKey(void) {}
 static void IconGlassKey(void) {}
 static void IconRectKey(void) {}
+static void ShelfRoleKey(void) {}
 static void GlyphOriginalKey(void) {}
 static void GlyphAppliedKey(void) {}
 static void GlyphViewKey(void) {}
@@ -368,14 +369,15 @@ static void Icon(Obj view,const char *role) {
         else {
             adjusted.width=base.width*0.75;adjusted.height=base.height*0.75;
             adjusted.x+=base.width*0.125;adjusted.y+=base.height*0.125;
-            if (Equal(Text(role),"shelfMore")) adjusted.x-=base.width*0.1875;
+            if (Equal(Text(role),"shelfSearch")) adjusted.x-=12;
+            if (Equal(Text(role),"shelfMore")) adjusted.x-=base.width*0.25;
         }
         if (!SameRect(current,adjusted)) SetFrame(glyph,adjusted);
         objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
         objc_setAssociatedObject(view,GlyphViewKey,glyph,1);
     }
     double diameter=shelf ? 28 : 36;
-    double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0);
+    double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(Equal(Text(role),"shelfSearch") ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
     if (!CanExpandHit(view)) {
         RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return;
@@ -474,6 +476,8 @@ void FQHShelf(Obj self) {
     if (objc_getAssociatedObject(self,OwnerBusyKey)) return;
     objc_setAssociatedObject(self,OwnerBusyKey,self,0);
     Obj search=Get(self,"searchButton"),more=Get(self,"moreButton"),parent=Get(self,"searchAndMoreView");
+    objc_setAssociatedObject(search,ShelfRoleKey,Text("search"),1);
+    objc_setAssociatedObject(more,ShelfRoleKey,Text("more"),1);
     Icon(search,"shelfSearch");Icon(more,"shelfMore");
     if (Kind(parent,"UIView")) {
         Rect area=Bounds(parent);IncludeGlass(search,parent,&area);IncludeGlass(more,parent,&area);
@@ -485,6 +489,11 @@ static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
     FQHShelf(self);
 }
+static void ShelfButtonLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
+    Obj role=objc_getAssociatedObject(self,ShelfRoleKey);
+    if (role) Icon(self,Equal(role,"search") ? "shelfSearch" : "shelfMore");
+}
 void FQHInstall(void) {
     if (!FQHGlassAvailable()) return;
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
@@ -492,6 +501,7 @@ void FQHInstall(void) {
     Hook("SSBookStoreCategorySignView","layoutSubviews","fqx165_originalLayout","v16@0:8",(Imp)CategoryLayout);
     Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx165_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
     Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx165_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
+    Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);
     Hook("FQReaderSaasNavigationView","readerInsertedViewThemeConfigChange:","fqx167_originalTheme:","v24@0:8@16",(Imp)ReaderTheme);
