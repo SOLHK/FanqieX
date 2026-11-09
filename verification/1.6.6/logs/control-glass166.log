@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    "reader five, bookshelf two, native sizes, events, reentry, restoration at 0x0",
+    "reader five, bookshelf two, native sizes, events, reentry, restoration at 0x100000000",
+    "clipping negative control",
+    "clipping fix and actual duration entry",
+    "missing native APIs"
+  ],
+  "limits": [
+    "Explicit UIKit/Foundation boundaries; no GPU rendering, device touch or optical gap measurement."
+  ]
+}

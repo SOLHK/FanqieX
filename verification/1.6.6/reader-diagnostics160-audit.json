@@ -1,0 +1,149 @@
+{
+  "passed": true,
+  "candidate_sha256": "1494a2903af8f619874aa86ae6c5849609261abeb71996a42c408bca24afb63c",
+  "scope": "Actual ARM64 executed against UIControl/Foundation boundary fixtures",
+  "device_tested": false,
+  "physical_hit_testing_tested": false,
+  "host_action_or_presentation_latency_measured": false,
+  "cases": [
+    {
+      "name": "normal_pairs",
+      "passed": true,
+      "detail": [
+        {
+          "slide": "0x0",
+          "callback_records": 2,
+          "host_actions_preserved": true
+        },
+        {
+          "slide": "0x180000000",
+          "callback_records": 2,
+          "host_actions_preserved": true
+        }
+      ]
+    },
+    {
+      "name": "terminal_and_rate_budget",
+      "passed": true,
+      "detail": {
+        "rapid_pairs": 100,
+        "rapid_records": 2,
+        "next_click_records": 2
+      }
+    },
+    {
+      "name": "scope_and_geometry",
+      "passed": true,
+      "detail": {
+        "accepted_owner_classes": [
+          "FQReaderSaasNavigationView",
+          "SSReaderMenuView",
+          "FQReaderSaaSBottomToolView",
+          "SSNewAudioPlayControlView"
+        ],
+        "rejected": [
+          "foreign_owner",
+          "shelf_owner",
+          "wrong_owner",
+          "off_window",
+          "hidden_owner",
+          "switch",
+          "slider",
+          "text",
+          "segment",
+          "not_control"
+        ],
+        "geometry": [
+          {
+            "bounds": [
+              0,
+              0,
+              24,
+              44
+            ],
+            "glass": [
+              -6,
+              4,
+              36,
+              36
+            ],
+            "within_bounds": 0
+          },
+          {
+            "bounds": [
+              10,
+              20,
+              44,
+              44
+            ],
+            "glass": [
+              14,
+              24,
+              36,
+              36
+            ],
+            "within_bounds": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "disable_and_lifetime",
+      "passed": true,
+      "detail": [
+        "disable_on_layout",
+        "disable_before_event",
+        "owner_death_down",
+        "owner_death_terminal",
+        "control_death",
+        "reparent_foreign"
+      ]
+    },
+    {
+      "name": "host_ordering_and_reentry",
+      "passed": true,
+      "detail": {
+        "target_ordering": [
+          {
+            "observer_first": false,
+            "injected_callback_interval_ms": 1700.0000000000455
+          },
+          {
+            "observer_first": true,
+            "injected_callback_interval_ms": 200.00000000004547
+          }
+        ],
+        "reentrant_callback_guarded": true
+      }
+    },
+    {
+      "name": "allocation_and_class_collision",
+      "passed": true,
+      "detail": [
+        {
+          "observer_alloc_nil": true
+        },
+        {
+          "weak_fail_at": 1
+        },
+        {
+          "weak_fail_at": 2
+        },
+        {
+          "foreign_class": true
+        }
+      ]
+    },
+    {
+      "name": "off_main_is_noop",
+      "passed": true,
+      "detail": {
+        "public_entries_checked": 3,
+        "off_main_view_accesses": 0
+      }
+    }
+  ],
+  "case_groups": 7,
+  "instructions": 320158,
+  "abi_checks": "Every invocation preserves x18/x19-x29, d8-d15 and balanced SP; framework calls poison caller-saved registers."
+}

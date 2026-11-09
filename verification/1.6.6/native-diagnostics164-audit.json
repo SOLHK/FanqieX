@@ -1,0 +1,164 @@
+{
+  "passed": true,
+  "candidate_sha256": "1494a2903af8f619874aa86ae6c5849609261abeb71996a42c408bca24afb63c",
+  "cases": [
+    {
+      "signed_extract_controls": 5
+    },
+    {
+      "installation": {
+        "slide": "0x0",
+        "parent_and_sibling_preserved": true,
+        "repeated_installation_stable": true,
+        "installed_methods": 28
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 0,
+        "slide": "0x0",
+        "events": 11,
+        "count_before": 0,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 1,
+        "slide": "0x0",
+        "events": 11,
+        "count_before": 1,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 7,
+        "slide": "0x0",
+        "events": 11,
+        "count_before": 7,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "network": {
+        "slide": "0x0",
+        "tracked_comment_requests": 2,
+        "unrelated_requests_observed": 0,
+        "original_callbacks_preserved": true,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "ordered_requests": {
+        "slide": "0x0",
+        "out_of_order_detected": true,
+        "empty_data_observed": true,
+        "retry_observed": true
+      }
+    },
+    {
+      "enhanced_actions": {
+        "slide": "0x0",
+        "normal_mode_passive": true,
+        "enhanced_timeout": true
+      }
+    },
+    {
+      "exceptions_navigation": {
+        "slide": "0x0",
+        "exception_original_forwarded": true,
+        "navigation_result_preserved": true
+      }
+    },
+    {
+      "settings": {
+        "slide": "0x0",
+        "opt_in_toggle": true,
+        "close_item_preserved": true
+      }
+    },
+    {
+      "installation": {
+        "slide": "0x180000000",
+        "parent_and_sibling_preserved": true,
+        "repeated_installation_stable": true,
+        "installed_methods": 28
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 0,
+        "slide": "0x180000000",
+        "events": 11,
+        "count_before": 0,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 1,
+        "slide": "0x180000000",
+        "events": 11,
+        "count_before": 1,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "bubble_cycle": {
+        "starting_count": 7,
+        "slide": "0x180000000",
+        "events": 11,
+        "count_before": 7,
+        "count_after": 0,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "network": {
+        "slide": "0x180000000",
+        "tracked_comment_requests": 2,
+        "unrelated_requests_observed": 0,
+        "original_callbacks_preserved": true,
+        "privacy_sentinel_absent": true
+      }
+    },
+    {
+      "ordered_requests": {
+        "slide": "0x180000000",
+        "out_of_order_detected": true,
+        "empty_data_observed": true,
+        "retry_observed": true
+      }
+    },
+    {
+      "enhanced_actions": {
+        "slide": "0x180000000",
+        "normal_mode_passive": true,
+        "enhanced_timeout": true
+      }
+    },
+    {
+      "exceptions_navigation": {
+        "slide": "0x180000000",
+        "exception_original_forwarded": true,
+        "navigation_result_preserved": true
+      }
+    },
+    {
+      "settings": {
+        "slide": "0x180000000",
+        "opt_in_toggle": true,
+        "close_item_preserved": true
+      }
+    }
+  ],
+  "device_tested": false,
+  "native_transport_executed": false,
+  "scope": "Actual compiled ARM64 diagnostics with explicit host and Foundation boundaries"
+}
