@@ -6,7 +6,7 @@ sys.path.insert(0,str(ROOT/'scripts'))
 from compile_diagnostics import compile_component
 class HomeCompilerTests(unittest.TestCase):
     def test_compiled_component_matches_source(self):
-        for name in ('HomeGlass','ControlGlass'):
+        for name in ('HomeGlass','ControlGlass','AlignedGlass'):
             with self.subTest(component=name):
                 source=ROOT/'native'/(name+'.m')
                 compiled=compile_component(source).replace('LFQD_','LFQH_')

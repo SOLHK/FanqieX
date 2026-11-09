@@ -20,7 +20,7 @@ def require(test, detail):
 
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
-    require(version in (0x10602, 0x10603, 0x10604, 0x10605,0x10606), 'Expected a 1.6.2–1.6.5 release candidate')
+    require(version in (0x10602, 0x10603, 0x10604, 0x10605,0x10606,0x10607), 'Expected a 1.6.2–1.6.7 release candidate')
     return f'1.6.{version & 0xff}'
 
 
@@ -261,6 +261,17 @@ class CPU:
             if operation == 3:
                 self.flags(value & (1 << (width-1)), not (value & ((1 << width)-1)), 0, 0)
             self.w(op & 31, value, width=width); return
+        if op & 0x3fe00c10 in (0x3a400000, 0x3a400800):  # CCMN / CCMP register or immediate
+            if self.condition((op >> 12) & 15):
+                width = 64 if op >> 31 else 32
+                lhs = self.r((op >> 5) & 31, width=width)
+                operand = (op >> 16) & 31
+                rhs = operand if op & (1 << 11) else self.r(operand, width=width)
+                subtract = bool(op & (1 << 30))
+                self.arithmetic_flags(lhs, rhs, lhs-rhs if subtract else lhs+rhs, width, subtract)
+            else:
+                self.flags_imm(op & 15)
+            return
         if op & 0x3fe00800 == 0x1a800000:  # CSEL / CSINC / CSINV / CSNEG
             width = 64 if op >> 31 else 32
             if self.condition((op >> 12) & 15):

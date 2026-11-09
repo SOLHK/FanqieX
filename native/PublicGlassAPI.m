@@ -133,3 +133,16 @@ void FQConfigureNativeIconButton(UIButton *button) {
     configuration.contentInsets = NSDirectionalEdgeInsetsZero;
     button.configuration = configuration;
 }
+
+// 1.6.7 uses native glass only on an owned empty background button. The host
+// keeps its configuration, image layout and intrinsic size; no bitmap is copied.
+UIButton *FQMakeAlignedGlassBackground(UIView *host, CGRect originalIconRect) {
+    UIButton *glass = [UIButton buttonWithType:UIButtonTypeCustom];
+    glass.configuration = [UIButtonConfiguration glassButtonConfiguration];
+    glass.frame = CGRectMake(CGRectGetMidX(originalIconRect) - 18,
+                             CGRectGetMidY(originalIconRect) - 18, 36, 36);
+    glass.userInteractionEnabled = NO;
+    glass.accessibilityElementsHidden = YES;
+    [host insertSubview:glass atIndex:0];
+    return glass;
+}

@@ -1,0 +1,104 @@
+{
+  "host_version": "7.4.3.33",
+  "host_sha256": "8ddf85f4c490d595109f7a4352ce842e07f66e4802d7da6705610a4050abf271",
+  "hooks_matched": [
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "relayout",
+      "encoding": "v16@0:8",
+      "image_offset": "0xa3b8898"
+    },
+    {
+      "class": "SSBookStoreNewViewController",
+      "selector": "viewDidAppear:",
+      "encoding": "v20@0:8B16",
+      "image_offset": "0xa401f68"
+    },
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "layoutSubviews",
+      "encoding": "v16@0:8",
+      "image_offset": "0xd61be14"
+    },
+    {
+      "class": "SSBookStoreCategorySignView",
+      "selector": "resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "image_offset": "0xd61c2f4"
+    },
+    {
+      "class": "SSBookStoreSearchBarComponent",
+      "selector": "resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:",
+      "encoding": "v40@0:8d16i24i28i32i36",
+      "image_offset": "0xd7797a0"
+    },
+    {
+      "class": "SSBookShelfSubViewController",
+      "selector": "viewDidLayoutSubviews",
+      "encoding": "v16@0:8",
+      "image_offset": "0xd3d3794"
+    },
+    {
+      "class": "FQReaderSaasNavigationView",
+      "selector": "layoutSubviews",
+      "encoding": "v16@0:8",
+      "image_offset": "0x7de9314"
+    },
+    {
+      "class": "FQReaderSaasNavigationView",
+      "selector": "readerInsertedViewThemeConfigChange:",
+      "encoding": "v24@0:8@16",
+      "image_offset": "0x7de985c"
+    }
+  ],
+  "unchanged_host_size_providers": [
+    {
+      "class": "FQReaderNavigationBarMoreBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "image_offset": "0x7db3560"
+    },
+    {
+      "class": "FQReaderNavigationBarSearchBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "image_offset": "0x7db437c"
+    },
+    {
+      "class": "SSReaderNavigationBarDownloadBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "image_offset": "0xea1fdb4"
+    },
+    {
+      "class": "SSReaderNavigationBarCommunitySwitchBtnInsertObject",
+      "selector": "getInsertViewSize",
+      "encoding": "{CGSize=dd}16@0:8",
+      "image_offset": "0xea1de38"
+    }
+  ],
+  "observed_user_environment": {
+    "plugin": "1.6.6",
+    "ios": "27.3",
+    "ios_build": "24C5037i",
+    "host": "7.4.3.33",
+    "startup_complete": true,
+    "diagnostic_truncated": true,
+    "record_count": 8192,
+    "dropped_records": 2395
+  },
+  "evidence_limits": [
+    "Old device JSON contains no per-button geometry; exact bookshelf upward displacement chain cannot be proven from it.",
+    "Screenshots demonstrate device misalignment in 1.6.6; 1.6.7 remains pending device acceptance."
+  ],
+  "implementation_evidence": {
+    "download_class": "SSReaderNavigationBarDownloadButton",
+    "download_superclass": "UIView",
+    "download_update_layout_offset": "0xea223fc",
+    "download_button_size_pt": 24,
+    "ui_view_hit_insets_getter": "0x705928c",
+    "ui_view_hit_insets_setter": "0xa406268",
+    "original_control_geometry_written_by_167": false,
+    "new_background_size_pt": 36
+  }
+}
