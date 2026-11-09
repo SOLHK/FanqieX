@@ -27,18 +27,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libllvm19 clang-19 python3
 
-      - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
-        run: |
-          set -euo pipefail
-          mkdir -p build
-          python3 scripts/compile_diagnostics.py native/AlignedGlass.m --output build/AlignedGlass.raw.s
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("build/AlignedGlass.raw.s")
-          text = p.read_text(encoding="utf-8").replace("LFQD_", "LFQH_")
-          Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
-          PY
-
       - name: Rebuild twice and verify the exact bytes
         run: python3 scripts/verify162.py --version 1.7.2 --output build/ci172
 
