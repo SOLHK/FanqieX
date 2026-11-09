@@ -898,6 +898,24 @@ LGstyle_control:
 LGcontrol_166_scope:
     ldr w0, [sp, #56]
     .endif
+    .if FQ_VERSION >= 0x10701
+    mov x0, x19
+    bl LFQH_FQHIsEdit
+    cbz w0, LGedit171_other
+    AGET x19, LGcontrol_busy_key
+    cbnz x0, LGcontrol_reentrant
+    ASET x19, LGcontrol_busy_key, x19, 0
+    mov x22, #1
+    bl LRenabled
+    cbz w0, LGcontrol_too_small
+    mov x0, x19
+    bl LFQH_FQHEditRect
+    mov x0, x19
+    bl LGshelf_material
+    b LGcontrol_done
+LGedit171_other:
+    ldr w0, [sp, #56]
+    .endif
     cbz w0, LGcontrol_fallback
     AGET x19, LGcontrol_busy_key
     cbnz x0, LGcontrol_reentrant

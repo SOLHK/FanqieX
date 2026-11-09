@@ -146,6 +146,11 @@ static void Restore(Obj view,Obj surface) {
     objc_setAssociatedObject(view,BackgroundKey,0,1);
     RestoreOwner(view);
 }
+static void ClearBackground(Obj view,Obj clear) {
+    Obj value=O0(view,"backgroundColor");
+    if (value!=clear && !((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("isEqual:"),clear))
+        V1(view,"setBackgroundColor:",clear);
+}
 void FQHApply(Obj view) {
     if (!Kind(view,"UIView") || objc_getAssociatedObject(view,BusyKey)) return;
     objc_setAssociatedObject(view,BusyKey,view,0);
@@ -183,10 +188,12 @@ void FQHApply(Obj view) {
     Obj transaction=Lookup("CATransaction");
     V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
     PrepareOwner(view);
-    ((void(*)(Obj,Sel,Rect))Message)(surface,sel_registerName("setFrame:"),bounds);
-    V1(surface,"setBackgroundColor:",clear);
-    V1(O0(surface,"contentView"),"setBackgroundColor:",clear);
-    V1(view,"setBackgroundColor:",clear);
+    Rect placed=((Rect(*)(Obj,Sel))Message)(surface,sel_registerName("frame"));
+    if (placed.x!=bounds.x || placed.y!=bounds.y || placed.width!=bounds.width || placed.height!=bounds.height)
+        ((void(*)(Obj,Sel,Rect))Message)(surface,sel_registerName("setFrame:"),bounds);
+    ClearBackground(surface,clear);
+    ClearBackground(O0(surface,"contentView"),clear);
+    ClearBackground(view,clear);
     if (O0(surface,"superview")!=view)
         ((void(*)(Obj,Sel,Obj,I))Message)(view,sel_registerName("insertSubview:atIndex:"),surface,0);
     V0(transaction,"commit");
@@ -494,8 +501,59 @@ static void ShelfButtonLayout(Obj self,Sel cmd) {
     Obj role=objc_getAssociatedObject(self,ShelfRoleKey);
     if (role) Icon(self,Equal(role,"search") ? "shelfSearch" : "shelfMore");
 }
+static void ListenLabelKey(void) {}
+static void ListenColorKey(void) {}
+static void ListenTintKey(void) {}
+B FQHIsEdit(Obj view) {
+    return Kind(view,"UIControl") && Kind(Get(view,"superview"),"SSBookshelfEditBottomView");
+}
+Rect FQHEditRect(Obj view) {
+    Rect b=Bounds(view);
+    // Preserve the host's complete icon/caption and its existing touch area.
+    if (b.width>40 && b.height>24) { b.x+=6;b.width-=12;b.y+=4;b.height-=8; }
+    return b;
+}
+static Obj ListenCaption(Obj view,int depth) {
+    if (Kind(view,"UILabel") && Equal(Get(view,"text"),"听")) return view;
+    if (!depth || Kind(view,"UIVisualEffectView")) return 0;
+    Obj children=Get(view,"subviews");U n=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    if (n>12) n=12;
+    for (U i=0;i<n;++i) { Obj found=ListenCaption(At(children,i),depth-1);if(found)return found; }
+    return 0;
+}
+void FQHListen(Obj view) {
+    if (!Kind(view,"SSReaderFloatingCommonButton")) return;
+    Obj label=ListenCaption(view,2),saved=objc_getAssociatedObject(view,ListenLabelKey);
+    if (!Enabled() || !label || !FQHGlassAvailable()) {
+        if (saved) V1(saved,"setTextColor:",objc_getAssociatedObject(view,ListenColorKey));
+        objc_setAssociatedObject(view,ListenLabelKey,0,1);objc_setAssociatedObject(view,ListenColorKey,0,1);
+        objc_setAssociatedObject(view,ListenTintKey,0,1);
+        Restore(view,FQHSurface(view));return;
+    }
+    FQHApply(view);
+    Obj surface=FQHSurface(view);if (!surface) return;
+    if (saved!=label) {
+        if(saved)V1(saved,"setTextColor:",objc_getAssociatedObject(view,ListenColorKey));
+        objc_setAssociatedObject(view,ListenLabelKey,label,1);
+        objc_setAssociatedObject(view,ListenColorKey,Get(label,"textColor"),1);
+    }
+    Obj foreground=O0(Lookup("UIColor"),"labelColor");
+    if (!((B(*)(Obj,Sel,Obj))Message)(Get(label,"textColor"),sel_registerName("isEqual:"),foreground))
+        V1(label,"setTextColor:",foreground);
+    if (!objc_getAssociatedObject(view,ListenTintKey)) {
+        Obj tint=((Obj(*)(Obj,Sel,double))Message)(O0(Lookup("UIColor"),"secondarySystemBackgroundColor"),sel_registerName("colorWithAlphaComponent:"),0.5);
+        Obj effect=O0(Get(surface,"effect"),"copy");
+        V1(effect,"setTintColor:",tint);V1(surface,"setEffect:",effect);V0(effect,"release");
+        objc_setAssociatedObject(view,ListenTintKey,surface,1);
+    }
+}
+static void ListenLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderFloatingCommonButton","fqx171_originalLayout"))(self,cmd);
+    FQHListen(self);
+}
 void FQHInstall(void) {
     if (!FQHGlassAvailable()) return;
+    Hook("SSReaderFloatingCommonButton","layoutSubviews","fqx171_originalLayout","v16@0:8",(Imp)ListenLayout);
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
     Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
     Hook("SSBookStoreCategorySignView","layoutSubviews","fqx165_originalLayout","v16@0:8",(Imp)CategoryLayout);

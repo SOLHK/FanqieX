@@ -513,7 +513,7 @@ def main():
             'Old negative controls use exact user-supplied 1.5.8 bytes')
     negative = old_negative_controls(baseline, a.baseline_composed)
     data = a.candidate.read_bytes()
-    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10700),
+    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701),
             'Known feed candidate version')
     entries = labels_for(data, a.candidate.with_suffix('.composed.s'), EXTRA)
     groups = {'old_158_negative_controls': negative,
