@@ -20,7 +20,7 @@ def require(test, detail):
 
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
-    require(version in (0x10602, 0x10603, 0x10604, 0x10605,0x10606,0x10607,0x10701), 'Expected a 1.6.2–1.7.1 release candidate')
+    require(version in (0x10602, 0x10603, 0x10604, 0x10605,0x10606,0x10607,0x10701,0x10702), 'Expected a 1.6.2–1.7.2 release candidate')
     return f'{version >> 16}.{(version >> 8) & 0xff}.{version & 0xff}'
 
 
