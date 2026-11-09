@@ -118,7 +118,8 @@ def run(data,labels):
             c.run(0xa5d4,args=[controller,r.sel('relayout')])
             c.run(0xa5d4,args=[cat,r.sel('layoutSubviews')])
             key=slide+labels['LFQH_SurfaceKey']
-            surfaces=[r.associations[(o,key)] for o in (v,cat)]
+            surfaces=[r.associations[(v,key)]]
+        require((cat,key) not in r.associations,'Host category strip receives no plugin-owned glass overlay')
             for o,s in zip((v,cat),surfaces):
                 state=r.objects[s].state
                 require(state['frame']==r.objects[o].state['bounds'],'Glass fills exact original hit bounds')
@@ -127,22 +128,24 @@ def run(data,labels):
             for _ in range(8):
                 c.run(0xa5d4,args=[controller,r.sel('relayout')])
                 c.run(0xa5d4,args=[cat,r.sel('layoutSubviews')])
+                require((cat,key) not in r.associations,'Repeated category layout remains host-owned')
             require(surfaces==[r.associations[(o,key)] for o in (v,cat)],'Repeated layout reuses both surfaces')
             theme=r.color('new_theme');r.objects[v].state['backgroundColor']=theme;r.objects[cat].state['backgroundColor']=theme
-            for obj,sel in ((component,SEARCH_COLOR),(cat,COLOR)):
+            for obj,sel in ((component,SEARCH_COLOR),):
                 c.run(0xa5d4,args=[obj,r.sel(sel),1,2,3,4],fp_args=[0.375])
                 require(r.original_calls[-1][3]==[1,2,3,4] and r.original_calls[-1][4]==0.375,'All integer and floating theme arguments forwarded once')
             for o in (v,cat,label):
-                for k in ('frame','userInteractionEnabled','text','font','target','action'):
-                    require(r.objects[o].state.get(k)==snapshots[o].get(k),'Host layout, content and interaction remain unchanged')
+                for k in ('frame','userInteractionEnabled','text','font','target','action','clipsToBounds'):
+                    require(r.objects[o].state.get(k)==snapshots[o].get(k),'Host layout, content, clipping and interaction remain unchanged')
             r.objects[v].state['bounds']=(0,0,width+120,44)
             call(c,'LFQH_FQHApply',v)
             require(r.objects[surfaces[0]].state['frame']==(0,0,width+120,44),'Resize updates existing material without moving the host')
             r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
-            for o in (v,cat): call(c,'LFQH_FQHApply',o)
-            require(all((o,key) not in r.associations and r.objects[o].state['backgroundColor']==theme for o in (v,cat)),'Disable restores latest host theme')
+            call(c,'LFQH_FQHApply',v)
+            require((cat,key) not in r.associations,'Disabling glass does not alter the host category strip')
+            require((v,key) not in r.associations and r.objects[v].state['backgroundColor']==theme,'Disable restores latest search theme')
             r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=0
-        passed.append('header sizing/reuse/theme/restore/forwarding at slide '+hex(slide))
+        passed.append('search glass sizing/reuse/theme/restore; category strip remains host-owned at slide '+hex(slide))
     for available in (False,True):
         c,r=fixture(data,labels,available=available)
         require(call(c,'LFQH_FQHCompatibleHost')['result']==1,'Matching app build accepted independently of UUID and glass API')
