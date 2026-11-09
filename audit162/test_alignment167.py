@@ -45,7 +45,7 @@ class Runtime(PreviousRuntime):
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
                 if name=='insertSubview:atIndex:' and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
-                    require(cs['frame'][2:]==(36.,36.),'Final native background bounds before insertion')
+                    require(cs['frame'][2:] in ((36.,36.),(28.,28.)),'Final native background bounds before insertion')
                     conf=self.objects[cs['configuration']].state
                     require(conf['style']=='glass' and not conf.get('image') and not conf.get('title'),'Glass configuration contains no copied host image/title')
                     require(self.transaction_stack[-1]['disableActions'],'Background publication is nonanimated')
@@ -105,7 +105,7 @@ def exercise(data,labels,baseline):
         require(r.reentered==1,'Configuration publication reenters the guarded reader callback')
         for b in controls:
             glass=material(c,r,labels,b);st=r.objects[glass].state
-            require(st['frame']==(-6.,-6.,36.,36.),'Every background centered on original 24pt artwork, including custom download')
+            require(st['frame']==((-12.,-6.,36.,36.) if b==back else (-6.,-6.,36.,36.)),'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
@@ -146,16 +146,18 @@ def exercise(data,labels,baseline):
             require(not material(c,r,labels,b) and r.objects[b].state['hitInsets']==(0.,0.,0.,0.),'Disable removes owned glass and restores hit insets')
             require(r.objects[b].state['control_targets']==original_targets[b],'Disable removes only plugin observers')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=0
-        parent=r.view('UIView','shelf_header',(348,72,72,24),r.ROOT)
-        search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(48,0,24,24))
+        parent=r.view('UIView','shelf_header',(348,72,56,24),r.ROOT)
+        search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)
         r.host_views.update((parent,search,more))
         for y in (72.,92.,64.,104.,72.):
-            r.objects[parent].state['frame']=(348.,y,72.,24.)
+            r.objects[parent].state['frame']=(348.,y,56.,24.)
             send(c,r,vc,'viewDidLayoutSubviews')
-            require(r.objects[parent].state['frame']==(348.,y,72.,24.),'Toolbar stays at host-selected safe-area/header origin')
-            require(r.objects[search].state['frame']==(0,0,24,24) and r.objects[more].state['frame']==(48,0,24,24),'Shelf buttons retain host-local frames')
-            require(hit_contains(r,parent,(-6.,-6.,84.,36.)),'Container also admits touches on both visible outer rims')
+            require(r.objects[parent].state['frame']==(348.,y,56.,24.),'Toolbar stays at host-selected safe-area/header origin')
+            require(r.objects[search].state['frame']==(0,0,24,24) and r.objects[more].state['frame']==(32,0,24,24),'Shelf buttons retain host-local frames')
+            require(hit_contains(r,parent,(-2.,-2.,60.,28.)),'Container also admits touches on both visible outer rims')
+        a=r.objects[material(c,r,labels,search)].state['frame'];z=r.objects[material(c,r,labels,more)].state['frame']
+        require(32+z[0]-(a[0]+a[2])==4,'Device-reported 32pt centers retain a 4pt glass gap')
         require(not r.host_mutations,'No host geometry mutation anywhere in shelf/reader paths')
         # A deliberately off-center original image still determines the lens
         # center without altering its host or its image view.
@@ -163,11 +165,11 @@ def exercise(data,labels,baseline):
         iv=r.objects[search].state['imageView'];r.objects[iv].state['frame']=(7.,10.,18.,16.);r.objects[iv].state['bounds']=(0.,0.,18.,16.)
         send(c,r,vc,'viewDidLayoutSubviews')
         glass=material(c,r,labels,search)
-        require(r.objects[glass].state['frame']==(-2.,0.,36.,36.),'Nonzero bounds and asymmetric image rectangles stay centered')
+        require(r.objects[glass].state['frame']==(2.,4.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
         replacement=r.view('UIImageView','host_recreated_image',(9.,9.,16.,20.),search)
         r.objects[search].state['imageView']=replacement
         send(c,r,vc,'viewDidLayoutSubviews')
-        require(r.objects[glass].state['frame']==(-1.,1.,36.,36.),'Host-recreated image drives the new center without a stale image reference')
+        require(r.objects[glass].state['frame']==(3.,5.,28.,28.),'Host-recreated image drives the new center without a stale image reference')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
         send(c,r,vc,'viewDidLayoutSubviews')
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')

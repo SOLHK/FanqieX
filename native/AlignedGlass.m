@@ -338,7 +338,13 @@ static void Icon(Obj view,const char *role) {
         Rect measured=Convert(glyph,Bounds(glyph),view);
         if (VisibleRect(measured)) image=measured;
     }
-    Rect material={image.x+image.width*0.5-18,image.y+image.height*0.5-18,36,36};
+    // The inspected back asset draws its chevron in the left half of a 24pt canvas.
+    // Align the lens to that visible center, without changing the host image.
+    B back=Equal(Text(role),"readerBack");
+    B shelf=Equal(Text(role),"shelfSearch") || Equal(Text(role),"shelfMore");
+    double diameter=shelf ? 28 : 36;
+    double centerX=image.x+image.width*(back ? 0.25 : 0.5);
+    Rect material={centerX-diameter*0.5,image.y+image.height*0.5-diameter*0.5,diameter,diameter};
     if (!CanExpandHit(view)) {
         RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return;
     }

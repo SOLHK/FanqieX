@@ -100,7 +100,7 @@ def main():
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10604,0x10605,0x10606,0x10607), 'Expected actual 1.6.4 candidate')
+    require(struct.unpack_from('<I', data, 0x818)[0] in (0x10604,0x10605,0x10606,0x10607,0x10608), 'Expected actual 1.6.4 candidate')
     fixtures = [
         (320, 4, (0, 0, 0, 0), 0),
         (375, 4, (0, 0, 34, 0), 0),
