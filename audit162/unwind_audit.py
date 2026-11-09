@@ -127,21 +127,49 @@ def terminal(word):
     return word == 0xD65F03C0 or word & 0xFFFFFC1F == 0xD61F0000 or word & 0xFC000000 == 0x14000000
 
 
+def leaf_return_path(words, target):
+    """Accept a tiny register-move return block, but no calls or stack effects."""
+    if not 0 <= target < len(words):
+        return False
+    for word in words[target:target + 4]:
+        if word == 0xD65F03C0:  # ret
+            return True
+        if (word & 0xFFE0FFE0) == 0xAA0003E0:  # mov xD, xM
+            continue
+        if (word & 0xFFE00C00) == 0x1A800400:  # cset wD, cond
+            continue
+        return False
+    return False
+
+
 def frame_encoding(words):
-    """Interpret only standard initial stack setup, independently of CFI."""
+    """Interpret standard stack setup after a verified, frameless guard prefix."""
     sp, saves, fp = 0, {}, None
     for index, word in enumerate(words[:32]):
         if word == 0xD503201F:  # Alignment NOP, never a frame save.
             continue
-        # Clang can shrink-wrap a null-input guard before the stack frame.
-        # Its bypass path must go directly to a terminal leaf instruction;
-        # all potentially throwing calls still execute the verified prologue.
-        if sp == 0 and not saves and word & 0x7E000000 == 0x34000000:
-            delta = (word >> 5) & 0x7FFFF
-            target = index + (delta - (1 << 19) if delta & (1 << 18) else delta)
-            need(index < target < len(words) and words[target] == 0xD65F03C0,
-                 'unsupported pre-frame conditional path')
-            continue
+        if sp == 0 and not saves:
+            # Clang may emit comparisons and CSETs before the frame, followed
+            # by multiple conditional branches to a tiny leaf return block.
+            # These paths must not touch the stack or execute a call.
+            if (word & 0xFF00001F) == 0xF100001F:  # cmp xN, #imm
+                continue
+            if (word & 0xFFE0FC1F) == 0xEB00001F:  # cmp xN, xM
+                continue
+            if (word & 0xFFE00C00) == 0x1A800400:  # cset wD, cond
+                continue
+            if (word & 0xFF000010) == 0x54000000:  # b.cond
+                delta = (word >> 5) & 0x7FFFF
+                delta = delta - (1 << 19) if delta & (1 << 18) else delta
+                need(leaf_return_path(words, index + delta),
+                     'unsupported pre-frame conditional path')
+                continue
+            if word & 0x7E000000 == 0x34000000:  # cbz/cbnz
+                delta = (word >> 5) & 0x7FFFF
+                delta = delta - (1 << 19) if delta & (1 << 18) else delta
+                need(leaf_return_path(words, index + delta),
+                     'unsupported pre-frame conditional path')
+                continue
         if word & 0xFF8003FF == 0xD10003FF:  # sub sp,sp,#imm
             sp -= ((word >> 10) & 0xFFF) << (12 if word & (1 << 22) else 0)
             continue
