@@ -252,14 +252,17 @@ def bubble_cycle(data, labels, count, slide):
                 'commentPanelDidAppear', 'commentCountChanged', 'commentBubbleCountUI',
                 'commentPanelWillDisappear', 'commentPanelDismissBegin',
                 'commentPanelDismissReturned', 'commentPanelDidDisappear', 'commentBubbleHidden']
+    if count == 0: required.remove('commentCountChanged')
     observed = [name for name in names if name in required]
     require(observed == required, 'Bubble-to-panel event order follows actual hook dispatch')
     chain = [row for row in rows if row['event'] in required]
     require(len({row['data']['correlationId'] for row in chain}) == 1,
             'Tap, open, model change and dismissal share one correlation identifier')
-    change = next(row['data'] for row in rows if row['event'] == 'commentCountChanged')
-    require(change['before']['count'] == count and change['after']['count'] == 0,
-            'Count transition is observed without changing the host setter result')
+    changes = [row['data'] for row in rows if row['event'] == 'commentCountChanged']
+    if count:
+        require(len(changes)==1 and changes[0]['before']['count']==count and changes[0]['after']['count']==0, 'Actual count changes retain before/after snapshots')
+    else:
+        require(not changes, 'Unchanged zero assignment creates no repeated snapshot')
     hidden = next(row['data'] for row in rows if row['event'] == 'commentBubbleHidden')
     require(hidden['beforeHidden'] == 0 and hidden['afterHidden'] == 1,
             'Host-directed hiding is observed and preserved')
