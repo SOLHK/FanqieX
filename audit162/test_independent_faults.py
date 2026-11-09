@@ -104,7 +104,7 @@ def main():
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
     if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1"):
+    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2"):
         unwind_slot = next(section for section in image.sections if section['name'] == '__unwind_info')
         unwind_at = unwind_slot['offset']
         page = unpack('<I', data, unwind_at + 32)[0]
