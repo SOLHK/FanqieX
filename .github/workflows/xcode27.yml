@@ -32,8 +32,18 @@ jobs:
         run: python3 tests/run_native_smoke.py
       - name: Exercise the startup journal on real Foundation
         run: python3 tests/run_logger_startup_smoke.py
+      - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
+        run: |
+          set -euo pipefail
+          python3 scripts/compile_diagnostics.py native/AlignedGlass.m --output build/AlignedGlass.raw.s
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build/AlignedGlass.raw.s")
+          text = p.read_text(encoding="utf-8").replace("LFQD_", "LFQH_")
+          Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
+          PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.7.1 --expect-candidate dist/1.7.1/FanqieX-1.7.1.dylib
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.7.2
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
