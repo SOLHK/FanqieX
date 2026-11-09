@@ -2,7 +2,7 @@ name: Xcode 27.2 plugin build
 
 on:
   push:
-    branches: [test, 'work/162-*', 'work/163-*', 'work/164-*']
+    branches: [main, test, 'work/162-*', 'work/163-*', 'work/164-*']
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
       - name: Exercise the startup journal on real Foundation
         run: python3 tests/run_logger_startup_smoke.py
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.6.4 --expect-candidate dist/1.6.4/FanqieX-1.6.4.dylib
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.7.1 --expect-candidate dist/1.7.1/FanqieX-1.7.1.dylib
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

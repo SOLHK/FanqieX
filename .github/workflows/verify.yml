@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.6.4
+name: Verify FanqieX 1.7.1
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: verify164-${{ github.ref }}
+  group: verify171-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y libllvm19 clang-19 python3
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.6.4 --output build/ci164 --expect-candidate dist/1.6.4/FanqieX-1.6.4.dylib
+        run: python3 scripts/verify162.py --version 1.7.1 --output build/ci171 --expect-candidate dist/1.7.1/FanqieX-1.7.1.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -36,8 +36,8 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci164/*.json
-            build/ci164/logs/
+            build/ci171/*.json
+            build/ci171/logs/
           if-no-files-found: warn
           retention-days: 30
 
@@ -45,10 +45,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.6.4-${{ github.sha }}
+          name: FanqieX-1.7.1-${{ github.sha }}
           path: |
-            build/ci164/FanqieX-1.6.4.dylib
-            build/ci164/SHA256SUMS.txt
-            build/ci164/ci-summary.json
+            build/ci171/FanqieX-1.7.1.dylib
+            build/ci171/SHA256SUMS.txt
+            build/ci171/ci-summary.json
           if-no-files-found: error
           retention-days: 30

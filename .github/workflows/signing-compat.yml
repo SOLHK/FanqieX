@@ -1,7 +1,7 @@
-name: FanqieX signing compatibility
+name: Legacy 1.6.2 signing compatibility
 on:
   push:
-    branches: [test, 'work/signing-compat-*']
+    branches: [main, test, 'work/signing-compat-*']
   pull_request:
     branches: [test]
   workflow_dispatch:
