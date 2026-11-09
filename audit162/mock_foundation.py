@@ -387,6 +387,8 @@ class Runtime(ViewRuntime):
                 key = self.string_value(a[2])
                 result = self.box(st['info'][key]) if key in st.get('info', {}) else 0
             elif name == 'objectForKey:':
+                require(cls == 'NSUserDefaults' or self.is_kind(receiver, self.classes['NSDictionary']),
+                        cls + ' does not implement objectForKey:')
                 key = self.string_value(a[2])
                 result = self.box(st['values'][key]) if cls == 'NSUserDefaults' and key in st['values'] else st.get('items',{}).get(key,0)
             elif name == 'integerForKey:':

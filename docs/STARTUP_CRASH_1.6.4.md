@@ -2,6 +2,10 @@
 
 用户报告：iOS 27.3 beta 1、番茄小说 7.4.3，旧插件能启动，初次交付的 1.6.4 注入后闪退。尚无该设备的系统崩溃报告，不能把离线推断等同于同机复现。
 
+第一次修复后，宿主 7.4.3.33 和系统 24C5037i 的加载日志连续两次停在 `legacyHooksInstalled`。紧接着执行的 `Lsettings_boot` 会写入 `plugin_start`，其可选数据通过 `Ldict_set` 成为 `NSNull`。`LDLimitsPrepare` 原先只检查指针是否为零，会把 `NSNull` 交给字典查找并触发 `objectForKey:` 未识别选择器异常。旧 Foundation 模型曾错误地为非字典对象返回空结果，因此漏掉了这条启动路径。
+
+现在仅从 `NSDictionary` 类型的负载读取关联 ID。空负载、其他 JSON 值或非法关联 ID 都由记录器生成新 UUID，原数据结构继续保留。回归覆盖真实 ARM64 事件入口，Xcode 工作流也使用真实 Foundation 执行组装后的 `Lsettings_boot` 和日志工作队列。用户设备的冷启动仍待复测。
+
 ## 已复现的缺陷
 
 新增的真实 macOS ARM64 Foundation/libobjc 测试在提交 `3ea97d026f45f40dbafb25e27fc0e8e1d81578b9` 上复现：

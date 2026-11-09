@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import struct
 import tempfile
+import uuid
 
 from arm64 import CPU, require
 from mock_foundation import Runtime as FoundationRuntime
@@ -38,7 +39,7 @@ def make(data, disk_root=None):
     cpu = CPU(data, runtime, ranges=[
         (0x900, directory['code_end']),
         (directory['extension'] + 128, directory['extension_code_end']),
-        (0x4338, 0x43fc), (0x711c, 0x746c),
+        (0x4338, 0x43fc), (0x4704, 0x47dc), (0x4878, 0x48d0), (0x711c, 0x746c),
     ])
     cpu.pointers.update(runtime.rebase_pointers)
     marker = data.index(b'FQ164LIM')
@@ -66,6 +67,34 @@ def export(cpu, runtime, directory):
         return result, None, None
     path = Path(result['url'])
     return result, json.loads(path.read_bytes()), path
+
+
+def named_event_payloads(data):
+    cpu, runtime, directory, _ = make(data)
+    # Run the constructor's actual settings boot entry. It records plugin_start
+    # with nil data, which Lrecord_named stores as NSNull in the envelope.
+    cpu.run(0x4704)
+    events = (
+        ('scalar_payload', runtime.box('payload')),
+        ('explicit_correlation', runtime.box({'correlationId': 'explicit'})),
+        ('invalid_correlation', runtime.box({'correlationId': 7})),
+    )
+    for name, payload in events:
+        cpu.run(directory['record'], runtime.string_pointer(name), payload)
+    runtime.drain_operations(cpu)
+    rows = journal(runtime)
+    require([row['event'] for row in rows] == ['plugin_start', *(name for name, _ in events)],
+            'The startup event and subsequent named events all persist')
+    require(rows[0]['data'] is None and rows[1]['data'] == 'payload',
+            'Nil and scalar payloads retain their original JSON shape')
+    require(rows[2]['data'] == {'correlationId': 'explicit'} and rows[2]['correlationId'] == 'explicit',
+            'An explicit string correlation survives unchanged')
+    require(rows[3]['data'] == {'correlationId': 7},
+            'An invalid correlation value does not rewrite the original payload')
+    generated = {uuid.UUID(rows[index]['correlationId']) for index in (0, 1, 3)}
+    require(len(generated) == 3, 'Missing or invalid correlations receive unique UUIDs')
+    return {'startup_null_preserved': True, 'scalar_preserved': True,
+            'explicit_correlation_preserved': True, 'generated_correlations': len(generated)}
 
 
 def bounded_pending(data):
@@ -223,7 +252,7 @@ def main():
     data = args.candidate.read_bytes()
     require(struct.unpack_from('<I', data, 0x818)[0] == 0x10604, 'Expected actual 1.6.4')
     cases = {}
-    for action in (bounded_pending, schedule_recovery, retention_and_bytes,
+    for action in (named_event_payloads, bounded_pending, schedule_recovery, retention_and_bytes,
                    size_guard_and_sessions, exports_and_disk_errors):
         print('RUN ' + action.__name__, flush=True)
         cases[action.__name__] = action(data)

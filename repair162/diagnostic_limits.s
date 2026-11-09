@@ -41,7 +41,13 @@ LDLimitsPrepare:
     AGET x19, LDLimitsSessionKey
     LDSET x20, LDLimitsSessionField, x0
     LDGET x20, LSk_data
-    cbz x0, LDLimitsPrepareUUID
+    // Named events without a payload store NSNull, so non-nil alone is
+    // insufficient. Keep the payload unchanged and generate a correlation ID.
+    mov x23, x0
+    adr x1, LDdict_class
+    bl Lpatch + (0x7394 - PATCH_BASE)
+    cbz w0, LDLimitsPrepareUUID
+    mov x0, x23
     adr x1, LDLimitsCorrelationField
     bl LDdict_get
     mov x21, x0
