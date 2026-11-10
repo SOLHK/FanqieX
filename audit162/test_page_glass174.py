@@ -22,9 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTRA = [
     "LFQH_FQHPageInstall", "LFQH_FQHPageStyle", "LFQH_FQHPageTint",
     "LFQH_FQHInstallOptionsToggles", "LFQH_FQHPageFilterMiniGame",
-    "LFQH_FQHSurface", "Lrecord_named", "LGstyle_control",
+    "LFQH_FQHSurface", "LFQH_FQHIconGlass", "Lrecord_named", "LGstyle_control",
 ]
 HOOKS = [
+    ("FQReaderUIManager", "showBottomBarContainer:"),
+    ("FQReaderUIManager", "onConfigThemeChange:context:"),
     ("FQReaderSaaSBottomToolView", "layoutSubviews"),
     ("FQReaderSaaSNewProgressView", "layoutSubviews"),
     ("FQReaderSaaSNewProgressView", "updateWithConfigData:"),
@@ -38,12 +40,14 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "layoutSubviews"),
     ("SSBookShelfFilter541Cell", "updateAppearance:"),
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
+    ("SSBookShelfFilterHeaderView", "layoutSubviews"),
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
     ("SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:"),
     ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
+    ("SSMyUserCollectionViewOrderFunCell", "layoutSubviews"),
     ("SSMyUser621BaseViewController", "setupCellMiniGameEntranceData"),
     ("SSMyUserCell2Model", "applyConfiguredMineEcomEntranceData:mineMonetizationStyle:"),
     ("SSMyUser621ViewController", "objectsForListAdapter:"),
@@ -74,10 +78,15 @@ class Runtime(GlassRuntime):
     MINE_ORDER_LAYOUT = 0x330c2600
     SPEECH_THEME = 0x330c0700
     PROGRESS_THEME = 0x330c0b00
+    READER_MENU_SHOW = 0x330c0b10
+    READER_MENU_THEME = 0x330c0b20
 
     def __init__(self, data):
         super().__init__(data)
         for name, parent in (
+            ("FQReaderUIManager", "NSObject"),
+            ("BDReaderViewContainer", "UIView"),
+            ("BDReaderBottomViewContainer", "BDReaderViewContainer"),
             ("FQReaderSaaSBottomToolView", "UIView"),
             ("FQReaderSaaSBottomToolItemView", "UIView"),
             ("FQReaderSaaSBottomToolItem", "NSObject"),
@@ -127,6 +136,7 @@ class Runtime(GlassRuntime):
             if name not in self.classes:
                 self._class(name, parent)
         self.bottom_original_calls = 0
+        self.reader_menu_calls = []
         self.catalog_clicks = []
         self.mine_reloads = []
         self.tab_refreshes = 0
@@ -146,6 +156,10 @@ class Runtime(GlassRuntime):
                   self.CATALOG_CLICK, "v24@0:8@16")
         self._add(self.classes["FQReaderSaaSNewProgressView"], "updateWithConfigData:",
                   self.PROGRESS_THEME, "v24@0:8@16")
+        self._add(self.classes["FQReaderUIManager"], "showBottomBarContainer:",
+                  self.READER_MENU_SHOW, "v20@0:8B16")
+        self._add(self.classes["FQReaderUIManager"], "onConfigThemeChange:context:",
+                  self.READER_MENU_THEME, "v32@0:8@16@24")
         self._add(self.classes["FQReaderSaaSReaderSpeechButton"],
                   "readerInsertedViewBackgroundConfigChange:", self.SPEECH_THEME, "v24@0:8@16")
         self.speech_artwork = self.obj("UIImage", "transparent speech glyph")
@@ -248,6 +262,15 @@ class Runtime(GlassRuntime):
             track = self.objects[slider].state["trackView"]
             self.objects[track].state["backgroundColor"] = cpu.x[2]
             return self.finish(cpu)
+        if pc == self.READER_MENU_SHOW:
+            self.reader_menu_calls.append(cpu.x[2])
+            return self.finish(cpu)
+        if pc == self.READER_MENU_THEME:
+            state = self.objects[receiver].state
+            for view in (state["nProgressView"], state["tabBar"]):
+                self.objects[view].state["backgroundColor"] = cpu.x[2]
+                self.objects[self.objects[view].state["superview"]].state["backgroundColor"] = cpu.x[3]
+            return self.finish(cpu)
         if pc - self.slide == 0xa5d4:
             if receiver == self.classes["UIFont"] and name == "systemFontOfSize:":
                 return self.finish(cpu, self.obj("UIFont", "settings font", pointSize=cpu.fp(0)))
@@ -260,9 +283,12 @@ class Runtime(GlassRuntime):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
             if receiver in self.objects:
                 state = self.objects[receiver].state
+                if name == "setAlpha:":
+                    state["alpha"] = cpu.fp(0)
+                    return self.finish(cpu)
                 if name == "sectionTypeAtIndex:" and "section_types" in state:
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
-                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton",
+                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
                             "visibleCells", "viewModel", "isFiltering") and name in state:
                     return self.finish(cpu, state[name])
@@ -343,7 +369,8 @@ class Runtime(GlassRuntime):
                 self.objects[receiver].state["tintColor"] = cpu.x[2]
                 return self.finish(cpu)
             if receiver in self.objects and name in (
-                    "itemViews", "item", "type", "trackView", "speechBtn", "tintColor", "titleLabel"):
+                    "itemViews", "item", "type", "trackView", "speechBtn", "tintColor", "titleLabel",
+                    "leftBtn", "rightBtn", "horizonLineView", "lineView", "nProgressView", "tabBar"):
                 return self.finish(cpu, self.objects[receiver].state.get(name, 0))
             if name == "removeObjectIdenticalTo:":
                 items = self.objects[receiver].state["items"]
@@ -365,7 +392,7 @@ class Runtime(GlassRuntime):
                     "gameName", "gameContent", "mpName", "items", "hasSelected",
                     "giftButton", "slider", "searchBgView", "functionType", "label",
                     "scanQRCodeView", "darkModeImageView", "sideBarButtonView", "entranceType",
-                    "businessStyle", "isShowPersonalizedBar", "isShowFriendView", "text"):
+                    "businessStyle", "isShowPersonalizedBar", "isShowFriendView", "productImage", "text"):
                 state = self.objects[receiver].state
                 if name == "items":
                     return self.finish(cpu, state.get("items", 0))
@@ -425,7 +452,8 @@ def exercise(data, labels):
     require(len([event for event in runtime.events
                  if event["event"] == "method_setImplementation"]) == installed,
             "second install is idempotent")
-    require(installed_hooks == set(HOOKS), "all reviewed hook selectors are localized to their owners")
+    require(installed_hooks == set(HOOKS),
+            f"exact hook mismatch, missing {set(HOOKS) - installed_hooks}, unexpected {installed_hooks - set(HOOKS)}")
     require(runtime.methods[runtime.get_method(
         runtime.classes["UIView"], runtime.sel("layoutSubviews"))]["imp"] == uiview_before,
         "UIView layout implementation is untouched")
@@ -570,6 +598,16 @@ def exercise(data, labels):
                 "selection refits the latest host fonts without changing their weight")
 
     header = runtime.view("SSBookShelfFilterHeaderView", "filter header", (0, 100, 390, 44), runtime.ROOT)
+    filter_action = [(header, runtime.sel("filterBtnClick"), 64)]
+    filter_button = runtime.view("UIButton", "open all shelf filters", (324, 2, 58, 30), header,
+                                 control_targets=filter_action[:])
+    runtime.objects[header].state["filterButton"] = filter_button
+    send(cpu, runtime, header, "layoutSubviews")
+    filter_glass = surface_for(filter_button)
+    require(filter_glass and runtime.objects[filter_glass].state["frame"] == (0., 1., 58., 28.) and
+            not runtime.objects[filter_glass].state["userInteractionEnabled"] and
+            runtime.objects[filter_button].state["control_targets"] == filter_action,
+            "the separate shelf filter button gets a matching capsule and preserves its native tap")
     row = runtime.view("SSBookShelfFilterMixRowCollectionView", "filter row", (0, 0, 270, 40), header)
     collection = runtime.view("UIView", "filter collection", (0, 0, 270, 40), row)
     filters = []
@@ -604,6 +642,9 @@ def exercise(data, labels):
     send(cpu, runtime, cell, "layoutSubviews")
     require(not surface_for(cell) and runtime.objects[cell].state["backgroundColor"] == theme,
             "disabling glass restores the latest host filter background")
+    send(cpu, runtime, header, "layoutSubviews")
+    require(not surface_for(filter_button) and runtime.objects[filter_button].state["control_targets"] == filter_action,
+            "disabling glass removes only the filter decoration")
     tab, _, _ = tabs[3]
     send(cpu, runtime, tab, "layoutSubviews")
     require(shelf_fonts(tab) == (host_fonts[1], host_fonts[1]),
@@ -623,12 +664,35 @@ def exercise(data, labels):
     require(not call(cpu, labels, "LFQH_FQHSurface", gift)["result"],
             "gift owner itself is not masked")
 
-    progress = runtime.view("FQReaderSaaSNewProgressView", "progress", (0, 700, 390, 48), runtime.ROOT)
+    backdrop = runtime.color("reader panel theme")
+    wrapper_backdrop = runtime.color("reader outer panel theme")
+    progress_wrapper = runtime.view("BDReaderViewContainer", "progress wrapper", (0, 700, 390, 48),
+                                    runtime.ROOT, backgroundColor=wrapper_backdrop)
+    progress = runtime.view("FQReaderSaaSNewProgressView", "progress", (0, 0, 390, 48),
+                            progress_wrapper, backgroundColor=backdrop)
+    runtime.objects[progress_wrapper].state["contentView"] = progress
+    tool_wrapper = runtime.view("BDReaderBottomViewContainer", "tool wrapper", (0, 80, 400, 56),
+                                runtime.ROOT, backgroundColor=wrapper_backdrop, contentView=toolbar)
+    runtime.reparent(toolbar, tool_wrapper)
+    runtime.objects[toolbar].state.update(frame=(0, 0, 400, 56), backgroundColor=backdrop)
+    progress_line = runtime.view("UIView", "progress separator", (0, 0, 390, 1), progress, alpha=0.75)
+    tool_line = runtime.view("UIView", "tools separator", (0, 0, 400, 1), toolbar, alpha=1., hidden=True)
+    runtime.objects[progress].state["horizonLineView"] = progress_line
+    runtime.objects[toolbar].state["lineView"] = tool_line
+    manager = runtime.obj("FQReaderUIManager", "reader menu owner", nProgressView=progress, tabBar=toolbar)
+    chapter_controls = []
+    for key, x, title, action in (("leftBtn", 16, "上一章", "onLastChapterBtnClick:"),
+                                  ("rightBtn", 332, "下一章", "onNextChapterBtnClick:")):
+        host_target = (progress, runtime.sel(action), 64)
+        button = runtime.view("UIButton", title, (x, 15, 42, 18), progress, control_targets=[host_target])
+        caption = runtime.label(title, button, (0, 0, 42, 18), title)
+        runtime.objects[progress].state[key] = button
+        chapter_controls.append((button, caption, x, host_target))
     clear = runtime.color("clearColor")
-    slider = runtime.view("BDReaderNewSlider", "slider", (20, 4, 350, 40), progress,
+    slider = runtime.view("BDReaderNewSlider", "slider", (74, 4, 242, 40), progress,
                           clipsToBounds=True, backgroundColor=clear)
     track_color = runtime.color("hostTrack")
-    track = runtime.view("UIImageView", "track", (0, 12, 350, 16), slider,
+    track = runtime.view("UIImageView", "track", (0, 12, 242, 16), slider,
                          clipsToBounds=True, backgroundColor=track_color)
     fill_color = runtime.color("hostFill")
     fill = runtime.view("UIImageView", "progress fill", (0, 12, 165, 16), slider,
@@ -639,15 +703,55 @@ def exercise(data, labels):
     send(cpu, runtime, progress, "layoutSubviews")
     material = surface_for(track)
     require(material and not surface_for(slider) and
-            runtime.objects[material].state["frame"] == (0.0, 0.0, 350.0, 16.0) and
+            runtime.objects[material].state["frame"] == (0.0, 0.0, 242.0, 16.0) and
             runtime.objects[track].state["backgroundColor"] == clear,
             "the material replaces the host paint along the complete progress track")
-    require(runtime.objects[slider].state["frame"] == (20, 4, 350, 40) and
-            runtime.objects[track].state["frame"] == (0, 12, 350, 16) and
+    require(runtime.objects[slider].state["frame"] == (74, 4, 242, 40) and
+            runtime.objects[track].state["frame"] == (0, 12, 242, 16) and
             runtime.objects[fill].state["frame"] == (0, 12, 165, 16) and
             runtime.objects[fill].state["backgroundColor"] == fill_color and
             runtime.objects[thumb].state["frame"] == (154, 9, 22, 22),
             "slider, track, active fill and thumb remain in host coordinates")
+    chapter_glasses = []
+    for button, caption, x, target in chapter_controls:
+        glass = call(cpu, labels, "LFQH_FQHIconGlass", button)["result"]
+        button_state = runtime.objects[button].state
+        require(glass and runtime.objects[glass].state["frame"] == (-6, -6, 54, 30) and
+                button_state["subviews"][:2] == [glass, caption] and button_state["frame"] == (x, 15, 42, 18) and
+                target in button_state["control_targets"],
+                "chapter buttons get equal padded glass below their native captions and keep their original targets")
+        chapter_glasses.append(glass)
+    panel_states = [runtime.objects[v].state for v in (progress, toolbar, progress_wrapper, tool_wrapper)]
+    def backgrounds():
+        return [state["backgroundColor"] for state in panel_states]
+
+    send(cpu, runtime, manager, "showBottomBarContainer:", 1)
+    require(backgrounds() == [backdrop, backdrop, wrapper_backdrop, wrapper_backdrop],
+            "first native menu show preserves the stock panel colors by default")
+    menu_preferences = runtime.objects[runtime.DEFAULTS].state["values"]
+    menu_key = "FanqieX.ReaderBottomBackground.1"
+    menu_preferences[menu_key] = False
+    panel_frames = [state["frame"] for state in panel_states]
+    send(cpu, runtime, manager, "showBottomBarContainer:", 1)
+    require(backgrounds() == [0] * 4 and
+            runtime.objects[progress_line].state["alpha"] == 0 and runtime.objects[tool_line].state["alpha"] == 0,
+            "off clears all four themed fills and only the two stock separators")
+    require(runtime.objects[tool_line].state["hidden"] and [state["frame"] for state in panel_states] == panel_frames and
+            surface_for(track) == material and
+            all(call(cpu, labels, "LFQH_FQHIconGlass", row[0])["result"] == glass
+                for row, glass in zip(chapter_controls, chapter_glasses)),
+            "transparent menu preserves the host frames, hidden flags and all glass controls")
+    night_backdrop = runtime.color("reader night panel theme")
+    night_wrapper = runtime.color("reader night outer theme")
+    send(cpu, runtime, manager, "onConfigThemeChange:context:", night_backdrop, night_wrapper)
+    require(backgrounds() == [0] * 4, "manager theme writes are suppressed for the two panels while off")
+    menu_preferences[menu_key] = True
+    send(cpu, runtime, manager, "showBottomBarContainer:", 0)
+    require(backgrounds() == [night_backdrop, night_backdrop, night_wrapper, night_wrapper] and
+            runtime.objects[progress_line].state["alpha"] == 0.75 and runtime.objects[tool_line].state["alpha"] == 1. and
+            runtime.reader_menu_calls == [1, 1, 0],
+            "on restores the latest native theme and separator alpha and forwards each native menu show")
+    del menu_preferences[menu_key]
     next_track_color = runtime.color("hostTrackNight")
     send(cpu, runtime, progress, "updateWithConfigData:", next_track_color)
     require(surface_for(track) == material and runtime.objects[track].state["backgroundColor"] == clear,
@@ -659,6 +763,10 @@ def exercise(data, labels):
             runtime.objects[slider].state["clipsToBounds"] and
             runtime.objects[slider].state["backgroundColor"] == clear,
             "removing glass restores the latest stock track while preserving the slider owner")
+    for button, _, _, target in chapter_controls:
+        require(not call(cpu, labels, "LFQH_FQHIconGlass", button)["result"] and
+                runtime.objects[button].state["control_targets"] == [target],
+                "glass disable removes only the chapter materials and their press observers")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     call(cpu, labels, "LFQH_FQHInstall")
@@ -753,26 +861,36 @@ def exercise(data, labels):
                                 userInteractionEnabled=True)
             content = runtime.view("UIView", "opaque contentView", (0, 0, 70, 60), cell,
                                    backgroundColor=shortcut_background)
-            runtime.objects[cell].state["contentView"] = content
             image = runtime.view("UIImageView", "original icon", (25, 8, 20, 20), content)
             label = runtime.label("original caption", content, (0, 35, 70, 18), title)
+            cell_state = runtime.objects[cell].state
+            cell_state["contentView"] = content
+            if item_class == "SSMyUser621FunctionEntryItemCell":
+                cell_state.update(productImage=image, functionType=label)
+            else:
+                cell_state.update(image=image, label=label)
             send(cpu, runtime, cell, "layoutSubviews")
             surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
             require(surface and runtime.objects[content].state["subviews"] == [surface, image, label] and
-                    runtime.objects[surface].state["frame"] == (4, 2, 62, 56) and
+                    runtime.objects[surface].state["frame"] == (20, 2, 30, 30) and
+                    runtime.objects[image].state["frame"] == (27.5, 9.5, 15, 15) and
+                    runtime.objects[label].state["frame"] == (0, 35, 70, 18) and
+                    runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
-                    runtime.objects[cell].state["userInteractionEnabled"],
-                    "each glass button is visible above content paint and behind native shortcut actions")
+                    cell_state["userInteractionEnabled"],
+                    "the centered glyph fits its glass with a separate caption and unchanged host hit area")
             send(cpu, runtime, cell, "layoutSubviews")
-            require(call(cpu, labels, "LFQH_FQHSurface", content)["result"] == surface,
-                    "shortcut layouts reuse the native material")
+            require(call(cpu, labels, "LFQH_FQHSurface", content)["result"] == surface and
+                    runtime.objects[image].state["frame"] == (27.5, 9.5, 15, 15),
+                    "shortcut layouts reuse the native material and scale once")
             shortcut_count += 1
 
     runtime.reparent(cell, runtime.ROOT)
     send(cpu, runtime, cell, "layoutSubviews")
     require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"] and
+            runtime.objects[image].state["frame"] == (25, 8, 20, 20) and
             runtime.objects[content].state["backgroundColor"] == shortcut_background,
-            "reusing the same class outside the shortcut row restores its own background")
+            "reusing the same class outside the shortcut row restores the host glyph and background")
 
     # Standalone promotions are excluded regardless of title or metadata timing.
     owner = runtime.view("SSMyUser621BaseViewController", "profile",
@@ -836,9 +954,11 @@ def exercise(data, labels):
     wallet = runtime.obj("SSMyUserCell2Model", "coins, cash and benefits", businessStyle=4)
     treasure = runtime.obj("SSMyUserCell2Model", "coin task with cooldown", businessStyle=5)
     legacy_wallet = runtime.obj("SSMyUserCell2Model", "legacy balance", businessStyle=0)
+    personalized = runtime.obj("SSMyUserCell2Model", "legacy balance and daily benefits", businessStyle=0,
+                               isShowPersonalizedBar=True, isShowFriendView=True)
     referral = runtime.obj("SSMyUserCell2Model", "legacy referral", businessStyle=0, isShowFriendView=True)
     coupon = runtime.obj("SSMyUserCell2Model", "mixed commerce", businessStyle=3)
-    original_mine_rows = [shortcut_row, wallet, coupon, treasure, legacy_wallet, referral, combined]
+    original_mine_rows = [shortcut_row, wallet, coupon, treasure, legacy_wallet, personalized, referral, combined]
     mine_plan = runtime.obj("NSArray", "Mine section plan", items=original_mine_rows[:])
     runtime.objects[legacy_owner].state["list_objects"] = mine_plan
     require(send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] == mine_plan,
@@ -849,7 +969,7 @@ def exercise(data, labels):
     filtered_rows = send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"]
     require(runtime.objects[filtered_rows].state["items"] == [shortcut_row, coupon, referral, combined] and
             runtime.objects[mine_plan].state["items"] == original_mine_rows,
-            "disabling benefits removes complete wallet sections from the diff without mutating the host plan")
+            "disabling benefits removes both legacy personalized and modern wallet sections from the diff")
     mine_prefs[mine_benefits_key] = True
     require(send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] == mine_plan,
             "re-enabling benefits restores the same section objects in their original order")
@@ -893,19 +1013,19 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 352.0),
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 400.0),
             "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
                      for item in switches]
     require(switch_labels == [f"底栏显示：{title}" for title in titles] +
-            ["书架显示今日看听读时长", "我的显示金币与福利卡片"] and
+            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示底栏背景"] and
             all(runtime.objects[item].state["isOn"] for item in switches),
             "settings expose the current bottom entries and the shelf duration switch")
 
     # Duration uses the host visibility setter and keeps the latest requested state.
-    duration_switch = switches[-2]
+    duration_switch = switches[-3]
     duration_observer, duration_action, _ = runtime.objects[duration_switch].state["control_targets"][0]
     duration_selector = runtime.selector_names[duration_action]
     shelf_header = runtime.view("SS525BookShelfSubHeaderView", "live shelf header", (0, 0, 390, 64),
@@ -946,7 +1066,8 @@ def exercise(data, labels):
     secondary = runtime.view("UIView", "secondary buttons", (0, 0, 440, 42), shelf_header)
     runtime.objects[duration].state["superview"] = secondary
     runtime.objects[secondary].state["subviews"].append(duration)
-    edit = runtime.view("UIButton", "original edit", (380, 4, 44, 30), secondary)
+    edit_targets = [(shelf_header, runtime.sel("onClickEdit"), 64)]
+    edit = runtime.view("UIButton", "original edit", (380, 4, 44, 30), secondary, control_targets=edit_targets[:])
     runtime.objects[shelf_header].state.update(
         delegate=shelf_controller, editButton=edit, secondaryView=secondary, isFiltering=False)
     size_layout = runtime.obj("NSObject", "shelf collection layout", invalidations=0)
@@ -961,6 +1082,10 @@ def exercise(data, labels):
     require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 44., 30.) and
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
+    edit_glass = surface_for(edit)
+    require(edit_glass and runtime.objects[edit_glass].state["frame"] == (0., 1., 44., 28.) and
+            not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
+            "the moved edit uses the matching capsule without intercepting or replacing the tap")
     require(runtime.objects[size_layout].state["invalidations"] == 1,
             "only the transition to a compact row invalidates the list")
     function = runtime.obj("NSObject", "function index", section=1)
@@ -981,8 +1106,10 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.),
             "a narrower title/search gap restores the original position")
+    require(surface_for(edit) == edit_glass and edit_state["control_targets"] == edit_targets,
+            "the original lower placement keeps its glass and edit target")
 
-    benefits_switch = switches[-1]
+    benefits_switch = switches[-2]
     benefits_observer, benefits_action, _ = runtime.objects[benefits_switch].state["control_targets"][0]
     benefits_selector = runtime.selector_names[benefits_action]
     for on in (False, True):
@@ -991,6 +1118,13 @@ def exercise(data, labels):
         require(mine_prefs[mine_benefits_key] is on, "the benefits switch persists its setting")
     require(runtime.mine_reloads == [(legacy_owner, "FanqieXMineBenefits")] * 2 and not runtime.tab_refreshes,
             "each benefits change refreshes the mounted native Mine list without rebuilding tabs")
+    backdrop_switch = switches[-1]
+    backdrop_observer, backdrop_action, _ = runtime.objects[backdrop_switch].state["control_targets"][0]
+    for on in (False, True):
+        runtime.objects[backdrop_switch].state["isOn"] = on
+        send(cpu, runtime, backdrop_observer, runtime.selector_names[backdrop_action], backdrop_switch)
+        require(prefs["FanqieX.ReaderBottomBackground.1"] is on and not runtime.tab_refreshes,
+                "the reader background switch persists independently of the main tab bar")
     window = runtime.obj("UIView", "tab window", rootViewController=tab_owner)
     runtime.tab_app = runtime.obj("UIApplication", "active app", keyWindow=window)
     bar_parent = runtime.view("UIView", "bar parent", (0, 0, 390, 844), runtime.ROOT)
@@ -1032,6 +1166,7 @@ def exercise(data, labels):
     return {
         "reader_controls": ["FQReaderSaaSBottomToolView", "SSReaderBottomToolDivertView",
                             "FQReaderSaaSReaderSpeechButton", "BDReaderNewSlider"],
+        "reader_backdrop_and_chapter_controls": True,
         "shelf_tabs": len(tabs),
         "shelf_filters": len(filters),
         "profile_shortcuts": shortcut_count,

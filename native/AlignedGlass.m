@@ -451,7 +451,7 @@ static void RestoreIcon(Obj view,Obj glass) {
     RestoreHit(view); RestoreOwner(view);
 }
 typedef enum { IconNone, IconGeneric, IconReaderBack, IconReaderMore, IconReaderSearch,
-    IconReaderDownload, IconReaderCommunity, IconShelfSearch, IconShelfMore } IconRole;
+    IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconShelfSearch, IconShelfMore } IconRole;
 static const char *IconRoleName(IconRole role) {
     switch (role) {
         case IconReaderBack: return "readerBack";
@@ -459,6 +459,7 @@ static const char *IconRoleName(IconRole role) {
         case IconReaderSearch: return "readerSearch";
         case IconReaderDownload: return "readerDownload";
         case IconReaderCommunity: return "readerCommunity";
+        case IconReaderChapter: return "readerChapter";
         case IconShelfSearch: return "shelfSearch";
         case IconShelfMore: return "shelfMore";
         default: return "icon";
@@ -513,6 +514,9 @@ static void Icon(Obj view,IconRole role) {
     if (downloadText) {
         // The label draws its text in its own layer. A child glass would cover it.
         material=(Rect){bounds.x-6,bounds.y-5,bounds.width+12,bounds.height+10};
+    } else if (role==IconReaderChapter) {
+        double height=bounds.height+6>30 ? bounds.height+6 : 30;
+        material=(Rect){bounds.x-6,bounds.y+(bounds.height-height)*0.5,bounds.width+12,height};
     }
     if (!VisibleRect(material)) { RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return; }
     Rect placed=downloadText ? Convert(view,material,holder) : material;
@@ -809,6 +813,61 @@ static B ReaderBottomItem(Obj view) {
     int type=ReaderBottomType(view);
     return type>=1 && type<=3;
 }
+static B ReaderBottomBackgroundEnabled(void);
+static void ReaderBackdropAppliedKey(void) {}
+static void ReaderBackdropColorKey(void) {}
+static void ReaderBackdropAlphaKey(void) {}
+static void ReaderBackdropFill(Obj view,B visible) {
+    Obj original=objc_getAssociatedObject(view,ReaderBackdropColorKey);
+    if (visible && !original) return;
+    Obj current=O0(view,"backgroundColor");
+    if (visible) {
+        if (!current) V1(view,"setBackgroundColor:",original);
+        objc_setAssociatedObject(view,ReaderBackdropColorKey,0,1);
+    } else if (current) {
+        objc_setAssociatedObject(view,ReaderBackdropColorKey,current,1);
+        V1(view,"setBackgroundColor:",0);
+    }
+}
+static void ReaderBackdrop(Obj view,B visible) {
+    if (!view) return;
+    B applied=objc_getAssociatedObject(view,ReaderBackdropAppliedKey)!=0;
+    if (visible && !applied) return;
+    B progress=Kind(view,"FQReaderSaaSNewProgressView");
+    if (!progress && !Kind(view,"FQReaderSaaSBottomToolView")) return;
+    Obj parent=O0(view,"superview");
+    // Both stock panels own their paint and may be backed by their dedicated
+    // full-width containers. Leave the reader page and every other insert alone.
+    ReaderBackdropFill(view,visible);
+    if (Kind(parent,"BDReaderViewContainer") && Get(parent,"contentView")==view)
+        ReaderBackdropFill(parent,visible);
+    if (visible==applied) objc_setAssociatedObject(view,ReaderBackdropAppliedKey,visible ? (Obj)0 : view,0);
+    Obj line=Get(view,progress ? "horizonLineView" : "lineView");
+    if (O0(line,"superview")!=view) return;
+    Obj original=objc_getAssociatedObject(line,ReaderBackdropAlphaKey);
+    if (visible && !original) return;
+    double alpha=((double(*)(Obj,Sel))Message)(line,sel_registerName("alpha"));
+    if (visible) {
+        if (alpha==0) ((void(*)(Obj,Sel,double))Message)(line,sel_registerName("setAlpha:"),Double(original));
+        objc_setAssociatedObject(line,ReaderBackdropAlphaKey,0,1);
+    } else if (alpha>0) {
+        objc_setAssociatedObject(line,ReaderBackdropAlphaKey,Number(alpha),1);
+        ((void(*)(Obj,Sel,double))Message)(line,sel_registerName("setAlpha:"),0);
+    }
+}
+static void ReaderMenuBackdrop(Obj manager) {
+    B visible=ReaderBottomBackgroundEnabled();
+    ReaderBackdrop(Get(manager,"nProgressView"),visible);
+    ReaderBackdrop(Get(manager,"tabBar"),visible);
+}
+static void ReaderMenuShow(Obj self,Sel cmd,B animated) {
+    ((void(*)(Obj,Sel,B))Original("FQReaderUIManager","fqx180_originalReaderMenu:"))(self,cmd,animated);
+    ReaderMenuBackdrop(self);
+}
+static void ReaderBackdropTheme(Obj self,Sel cmd,Obj config,Obj context) {
+    ((void(*)(Obj,Sel,Obj,Obj))Original("FQReaderUIManager","fqx180_originalReaderTheme:context:"))(self,cmd,config,context);
+    ReaderMenuBackdrop(self);
+}
 static void CatalogTapKey(void) {}
 static B CatalogTouch(Obj self,Sel cmd,Obj recognizer,Obj touch) {
     (void)self; (void)cmd;
@@ -882,6 +941,7 @@ B FQHReaderOwnsControl(Obj view) {
 }
 static void PageBottomLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBottomToolView","fqx175_originalBottom"))(self,cmd);
+    ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     Obj items=Get(self,"itemViews");
     U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
     Rect area=Bounds(self);
@@ -899,6 +959,9 @@ static void PageBottomLayout(Obj self,Sel cmd) {
     if (catalog) EnsureHit(self,area); else RestoreHit(self);
 }
 static void ReaderProgressGlass(Obj owner) {
+    Obj left=Get(owner,"leftBtn"),right=Get(owner,"rightBtn");
+    if (Kind(left,"UIButton") && O0(left,"superview")==owner) Icon(left,IconReaderChapter);
+    if (Kind(right,"UIButton") && O0(right,"superview")==owner) Icon(right,IconReaderChapter);
     Obj slider=Get(owner,"slider");
     if (!Kind(slider,"BDReaderNewSlider")) return;
     Obj track=Get(slider,"trackView");
@@ -911,10 +974,12 @@ static void ReaderProgressGlass(Obj owner) {
 }
 static void PageProgressLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSNewProgressView","fqx174_originalProgress"))(self,cmd);
+    ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     ReaderProgressGlass(self);
 }
 static void PageProgressTheme(Obj self,Sel cmd,Obj config) {
     ((void(*)(Obj,Sel,Obj))Original("FQReaderSaaSNewProgressView","fqx176_originalProgressTheme:"))(self,cmd,config);
+    ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     ReaderProgressGlass(self);
 }
 static void PageDivertLayout(Obj self,Sel cmd) {
@@ -1016,6 +1081,19 @@ static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterBackground:"))(self,cmd,color);
     ShelfFilterStyle(self);
 }
+static void ShelfActionGlass(Obj button) {
+    if (!Kind(button,"UIButton")) return;
+    if (Flag(button,"isHidden")) { PageRestore(button); return; }
+    Rect material=Bounds(button);
+    material.y+=1;
+    material.height-=2;
+    ApplySurface(button,material,0);
+}
+static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfFilterHeaderView","fqx179_originalShelfFilterHeader"))(self,cmd);
+    Obj button=Get(self,"filterButton");
+    if (Belongs(button,self)) ShelfActionGlass(button);
+}
 static void ProfileScanKey(void) {}
 static void ProfileNightKey(void) {}
 static void ProfileMenuKey(void) {}
@@ -1062,22 +1140,62 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
     ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
 }
-static void PageProfileEntryLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
-    // Both shortcut item classes reach this layout. The 621 item inherits it
-    // through OrderFunCell, whose override calls super.
+static void RestoreProfileEntryGlyph(Obj content) {
+    Obj glyph=objc_getAssociatedObject(content,GlyphViewKey);
+    Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
+    if (applied && !SameRect(Frame(glyph),UnboxRect(applied)))
+        objc_setAssociatedObject(glyph,GlyphOriginalKey,0,1);
+    RestoreGlyph(content);
+}
+static void ProfileEntryGlass(Obj self,B order) {
     Obj content=Get(self,"contentView");
     if (!content) return;
-    if (!HasAncestor(self,"SSMyUserShortcutCell") && !HasAncestor(self,"SSMyUserCollectionView1Cell")) {
+    B shortcut=HasAncestor(self,"SSMyUserShortcutCell") || HasAncestor(self,"SSMyUserCollectionView1Cell");
+    Obj glyph=shortcut && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
+    Obj caption=glyph ? Get(self,Kind(self,"SSMyUser621FunctionEntryItemCell") ? "functionType" : "label") : (Obj)0;
+    if (!Kind(glyph,"UIImageView") || Get(glyph,"superview")!=content || Flag(glyph,"isHidden") ||
+        Get(caption,"superview")!=content) {
+        RestoreProfileEntryGlyph(content);
         PageRestore(content);
         return;
     }
-    // The cell's contentView paints its own background and holds the icon and
-    // caption. Insert above that background, behind its existing children.
-    Rect b=Bounds(content);
-    Rect material={b.x+4,b.y+2,b.width-8,b.height-4};
-    ApplySurface(content,material,0);
-    ShelfTint(FQHSurface(content),1,0);
+    if (objc_getAssociatedObject(content,GlyphViewKey)!=glyph) RestoreProfileEntryGlyph(content);
+    Rect b=Bounds(content),label=Frame(caption),icon=Frame(glyph);
+    double bottom=__builtin_fmin(b.y+b.height-2,label.y-3);
+    double diameter=__builtin_fmin(34,__builtin_fmin(b.width-4,bottom-b.y-2));
+    if (diameter<20 || !VisibleRect(icon) || !VisibleRect(label)) {
+        RestoreProfileEntryGlyph(content);
+        PageRestore(content);
+        return;
+    }
+    double x=__builtin_fmax(b.x+2,__builtin_fmin(icon.x+(icon.width-diameter)*0.5,b.x+b.width-diameter-2));
+    double y=__builtin_fmax(b.y+2,__builtin_fmin(icon.y+(icon.height-diameter)*0.5,bottom-diameter));
+    ApplySurface(content,(Rect){x,y,diameter,diameter},1);
+    Obj surface=FQHSurface(content);
+    if (!surface) return;
+    ShelfTint(surface,1,0);
+    Rect current=icon;
+    Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
+    if (!applied || !SameRect(current,UnboxRect(applied)))
+        objc_setAssociatedObject(glyph,GlyphOriginalKey,RectBox(current),1);
+    Rect original=UnboxRect(objc_getAssociatedObject(glyph,GlyphOriginalKey));
+    double largest=__builtin_fmax(original.width,original.height);
+    double scale=__builtin_fmin(0.75,__builtin_fmin(18,diameter-10)/largest);
+    Rect adjusted={x+(diameter-original.width*scale)*0.5,y+(diameter-original.height*scale)*0.5,
+                   original.width*scale,original.height*scale};
+    if (!SameRect(current,adjusted)) {
+        SetFrame(glyph,adjusted);
+        objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
+    }
+    if (!applied) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
+}
+static void PageProfileEntryLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
+    if (!Kind(self,"SSMyUserCollectionViewOrderFunCell")) ProfileEntryGlass(self,0);
+}
+static void PageProfileOrderLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewOrderFunCell","fqx178_originalProfileOrder"))(self,cmd);
+    ProfileEntryGlass(self,1);
 }
 
 static B MineStandaloneGameRow(Obj model) {
@@ -1140,10 +1258,10 @@ static void RefreshMineBenefits(void) {
 static B MineBenefitsRow(Obj model) {
     if (!Kind(model,"SSMyUserCell2Model")) return 0;
     I style=((I(*)(Obj,Sel))Message)(model,sel_registerName("businessStyle"));
-    // 4 and 5 are the dedicated coin task layouts. Style 0 can also host
-    // personalized or friend entries, which must stay in the plan.
-    return style==4 || style==5 ||
-           (style==0 && !BoolProp(model,"isShowPersonalizedBar") && !BoolProp(model,"isShowFriendView"));
+    // The personalized bar is the legacy benefits strip and takes precedence
+    // over the separate friend entry when both flags are set.
+    return style==4 || style==5 || (style==0 &&
+           (BoolProp(model,"isShowPersonalizedBar") || !BoolProp(model,"isShowFriendView")));
 }
 static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     Obj rows=((Obj(*)(Obj,Sel,Obj))Original("SSMyUser621ViewController","fqx176_originalMineListObjects:"))(self,cmd,adapter);
@@ -1170,7 +1288,8 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     return filtered ? filtered : rows;
 }
 
-enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption, MineBenefitsOption };
+enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
+       MineBenefitsOption, ReaderBottomBackgroundOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -1181,6 +1300,7 @@ static Obj PagePreference(I option) {
         case MallOption: key="FanqieX.BottomMall.1"; break;
         case ShelfDurationOption: key="FanqieX.ShelfReadingDuration.1"; break;
         case MineBenefitsOption: key="FanqieX.MineBenefitsCard.1"; break;
+        case ReaderBottomBackgroundOption: key="FanqieX.ReaderBottomBackground.1"; break;
         default: return 0;
     }
     return Text(key);
@@ -1194,7 +1314,8 @@ static Obj PageOptionLabel(I option) {
         case MineOption: label="底栏显示：我的"; break;
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
-        default: label="我的显示金币与福利卡片"; break;
+        case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
+        default: label="阅读菜单显示底栏背景"; break;
     }
     return Text(label);
 }
@@ -1203,6 +1324,7 @@ static B DefaultEnabled(Obj key) {
     return value ? BoolProp(value,"boolValue") : 1;
 }
 static B MineBenefitsEnabled(void) { return DefaultEnabled(PagePreference(MineBenefitsOption)); }
+static B ReaderBottomBackgroundEnabled(void) { return DefaultEnabled(PagePreference(ReaderBottomBackgroundOption)); }
 static void SetDefault(Obj key,B value) {
     ((void(*)(Obj,Sel,B,Obj))Message)(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         sel_registerName("setBool:forKey:"),value,key);
@@ -1350,6 +1472,7 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
     if (moved) {
         if (Get(button,"superview")!=holder) V1(holder,"addSubview:",button);
         if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
+        ShelfActionGlass(button);
         if (old!=header) objc_setAssociatedObject(holder,ShelfEditHeaderKey,header,1);
         if (!Flag(header,"showReadTimeView") && !Flag(secondary,"isHidden")) {
             compact=cell;
@@ -1420,8 +1543,14 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
         ShelfDurationVisible(self,cmd,Flag(self,"showReadTimeView"));
     ((void(*)(Obj,Sel))Original("SS525BookShelfSubHeaderView","fqx177_originalDurationLayout"))(self,cmd);
     Obj controller=Get(self,"delegate"),holder=Get(controller,"searchAndMoreView");
-    if (Kind(holder,"UIView"))
-        ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),ShelfEditPlacement(controller,holder));
+    Obj edit=0;
+    if (Kind(holder,"UIView")) {
+        edit=ShelfEditPlacement(controller,holder);
+        ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),edit);
+    }
+    if (!edit) ShelfActionGlass(Get(self,"editButton"));
+    ShelfActionGlass(Get(self,"filterButton"));
+    ShelfActionGlass(Get(self,"fullGenreFilterButton"));
 }
 static void RefreshShelfDuration(B enabled) {
     Obj cls=Lookup("SS525BookShelfSubHeaderView");
@@ -1440,14 +1569,10 @@ static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
     Obj key=PagePreference(tag);
     if (!key) return;
     B on=BoolProp(sender,"isOn");
-    if (tag==ShelfDurationOption) {
+    if (tag>=ShelfDurationOption) {
         SetDefault(key,on);
-        RefreshShelfDuration(on);
-        return;
-    }
-    if (tag==MineBenefitsOption) {
-        SetDefault(key,on);
-        RefreshMineBenefits();
+        if (tag==ShelfDurationOption) RefreshShelfDuration(on);
+        else if (tag==MineBenefitsOption) RefreshMineBenefits();
         return;
     }
     Obj owner=ActiveTabOwner();
@@ -1569,15 +1694,15 @@ void FQHInstallOptionsToggles(Obj controller) {
     if (!container) { V0(observer,"release"); return; }
     double width=Bounds(table).width;
     // UITableView can still be unsized before its navigation controller presents it.
-    Rect frame={0,0,width>0 ? width : 320,352};
+    Rect frame={0,0,width>0 ? width : 320,400};
     ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
     V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
-    for (I tag=StoreOption;tag<=MineBenefitsOption;++tag) {
+    for (I tag=StoreOption;tag<=ReaderBottomBackgroundOption;++tag) {
         ToggleRow(container,8+42*(tag-StoreOption),PageOptionLabel(tag),tag,
             DefaultEnabled(PagePreference(tag)),observer);
     }
     Obj note=O0(O0(Lookup("UILabel"),"alloc"),"init");
-    SetFrame(note,(Rect){16,304,frame.width-32,40});
+    SetFrame(note,(Rect){16,352,frame.width-32,40});
     V1(note,"setText:",Text("底栏至少保留一项。\n关闭“我的”后，长按底栏打开 FanqieX 设置。"));
     Q1(note,"setNumberOfLines:",2);
     V1(note,"setFont:",((Obj(*)(Obj,Sel,double))Message)(Lookup("UIFont"),sel_registerName("systemFontOfSize:"),12));
@@ -1593,6 +1718,8 @@ void FQHInstallOptionsToggles(Obj controller) {
 void FQHPageStyle(Obj view) { FQHApply(view); }
 void FQHPageTint(Obj view,B selected) { ShelfTabStyle(view,Get(view,"cellModel"),selected); }
 void FQHPageInstall(void) {
+    Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);
+    Hook("FQReaderUIManager","onConfigThemeChange:context:","fqx180_originalReaderTheme:context:","v32@0:8@16@24",(Imp)ReaderBackdropTheme);
     Hook("FQReaderSaaSBottomToolView","layoutSubviews","fqx175_originalBottom","v16@0:8",(Imp)PageBottomLayout);
     Hook("FQReaderSaaSNewProgressView","layoutSubviews","fqx174_originalProgress","v16@0:8",(Imp)PageProgressLayout);
     Hook("FQReaderSaaSNewProgressView","updateWithConfigData:","fqx176_originalProgressTheme:","v24@0:8@16",(Imp)PageProgressTheme);
@@ -1606,8 +1733,10 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilter541Cell","layoutSubviews","fqx175_originalShelfFilterLayout","v16@0:8",(Imp)PageShelfFilterLayout);
     Hook("SSBookShelfFilter541Cell","updateAppearance:","fqx175_originalShelfFilterAppearance:","v20@0:8B16",(Imp)PageShelfFilterAppearance);
     Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
+    Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
+    Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
     Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
     Hook("SSMyUserCell2Model","applyConfiguredMineEcomEntranceData:mineMonetizationStyle:","fqx176_originalMineEntrances:style:","v32@0:8@16q24",(Imp)MineConfiguredEntrances);
     Hook("SSMyUser621ViewController","objectsForListAdapter:","fqx176_originalMineListObjects:","@24@0:8@16",(Imp)MineListObjects);

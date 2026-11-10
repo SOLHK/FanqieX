@@ -50,7 +50,7 @@ class Runtime(PreviousRuntime):
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
                 if name in ('insertSubview:atIndex:','insertSubview:belowSubview:') and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
-                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.)),'Final native background bounds before insertion')
+                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.),(54.,30.)),'Final native background bounds before insertion')
                     conf=self.objects[cs['configuration']].state
                     require(conf['style']=='glass' and not conf.get('image') and not conf.get('title'),'Glass configuration contains no copied host image/title')
                     require(self.transaction_stack[-1]['disableActions'],'Background publication is nonanimated')
