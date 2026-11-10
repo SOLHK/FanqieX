@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "version": "1.7.4",
+  "archive": {
+    "filename": "番茄小说_7.4.3.ipa_Decompiler.com 3.zip",
+    "sha256": "b09aa914960b77097190bcb7d5a769dc00460f46bd339172d510f203145ba5c3",
+    "bytes": 389622466,
+    "entries": 101166,
+    "uncompressed_bytes": 754152427,
+    "header_files": 97348,
+    "app_files": 3812,
+    "notes": "DECOMPILATION-NOTES.txt reports headers reconstructed from Objective-C runtime metadata and a Swift metadata listing. The archive does not contain a traditional class-dump, method bodies or an ARM64 disassembly listing."
+  },
+  "host": {
+    "bundle_identifier": "com.dragon.read",
+    "cf_bundle_version": "7.4.3.33",
+    "cf_bundle_short_version": "7.4.3",
+    "executable": "Reading",
+    "minimum_os": "15.0.1",
+    "platform_version": "26.0",
+    "sdk": "iphoneos26.0",
+    "ui_design_requires_compatibility": true,
+    "architecture": "arm64",
+    "file_type": "EXECUTE",
+    "uuid": "BEE37D93-3E70-332F-98F1-20890F02BB12",
+    "encrypted": false,
+    "cryptid": 0,
+    "load_commands": 166,
+    "linked_libraries": 142,
+    "objective_c_and_swift_metadata": true
+  },
+  "verified_against_source_checks": {
+    "bundle_identifier": true,
+    "cf_bundle_version": true,
+    "abi_selector_examples": [
+      "SSBookStoreNewViewController relayout v16@0:8",
+      "SSBookStoreNewViewController searchBgView @16@0:8",
+      "SSReaderBottomToolButton layoutSubviews v16@0:8",
+      "FQReaderSaaSNewProgressView layoutSubviews v16@0:8",
+      "SSBookShelfTabSelectViewTitleCell layoutSubviews v16@0:8",
+      "SSMyUserBar layoutSubviews v16@0:8",
+      "SSMyUser621BaseViewController setupCellMiniGameEntranceData v16@0:8"
+    ],
+    "note": "Header declarations and selector strings are evidence of the reconstructed ABI. They are not a substitute for executing the host or for a device injection test."
+  },
+  "target_chain": {
+    "target_label_in_host_binary": false,
+    "conclusion": "The card title is server-provided; it is not a literal in the host Mach-O.",
+    "data_path": [
+      "SSMyUser621BaseViewController.setupCellMiniGameEntranceData",
+      "SSMyUserMiniGameEntranceCellModel.info (SSSSTimorCellInfo.title/name)",
+      "SSMyUser621BaseViewController.models",
+      "SSMyUserMiniGameEntranceCell (titleLabel/textLabel/tagLabel/playButton)"
+    ],
+    "classification": "mini-game promotion card in the personal-page plan, not an SSBizAd SDK-owned view",
+    "deletion_point": "set isInvisible/isDisabled on the exact model and remove that object from the mutable plan before the list adapter creates its cell"
+  },
+  "missing_materials": [
+    "No traditional class-dump file",
+    "No Objective-C/Swift method bodies",
+    "No ARM64 disassembly listing",
+    "No runtime selector implementation addresses for the host",
+    "No server response or rendered screenshot attached to the archive"
+  ],
+  "runtime_limit": "No iPhone injection, UIKit compositor, pixel rendering or host execution was performed in this evidence collection."
+}

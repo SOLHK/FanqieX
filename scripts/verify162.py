@@ -11,8 +11,10 @@ import argparse
 import ctypes
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -61,7 +63,7 @@ def source_manifest():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
-    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3"), default="1.6.2")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     parser.add_argument("--xcode-candidate", type=Path,
@@ -106,13 +108,28 @@ def main():
             path = ROOT / "baseline" / f"FanqieAdBlock-{version}.dylib"
             if digest(path) != expected:
                 raise RuntimeError(f"Pinned baseline {version} was modified")
-        library_path = Path("/lib/x86_64-linux-gnu/libLLVM.so.19.1")
-        library = ctypes.CDLL(str(library_path))
-        version = [ctypes.c_uint() for _ in range(3)]
-        library.LLVMGetVersion.argtypes = [ctypes.POINTER(ctypes.c_uint)] * 3
-        library.LLVMGetVersion(*(ctypes.byref(value) for value in version))
-        summary["llvm"] = {"version": ".".join(str(value.value) for value in version),
-                           "library_sha256": digest(library_path)}
+        if platform.system() == "Windows":
+            compiler = os.environ.get("FQ_CLANG") or shutil.which("clang")
+            if not compiler:
+                raise RuntimeError("Windows verification requires clang; set FQ_CLANG")
+            os.environ["FQ_ASSEMBLER"] = "clang"
+            os.environ["FQ_CLANG"] = compiler
+            os.environ["FQ_NATIVE_CLANG"] = compiler
+            os.environ["PYTHONUTF8"] = "1"
+            summary["assembler"] = {
+                "name": "local clang (non-Apple workstation; not the Xcode release toolchain)",
+                "path": compiler,
+                "version": subprocess.run([compiler, "--version"], capture_output=True,
+                                          text=True, check=True).stdout.splitlines()[0],
+            }
+        else:
+            library_path = Path("/lib/x86_64-linux-gnu/libLLVM.so.19.1")
+            library = ctypes.CDLL(str(library_path))
+            version = [ctypes.c_uint() for _ in range(3)]
+            library.LLVMGetVersion.argtypes = [ctypes.POINTER(ctypes.c_uint)] * 3
+            library.LLVMGetVersion(*(ctypes.byref(value) for value in version))
+            summary["llvm"] = {"version": ".".join(str(value.value) for value in version),
+                               "library_sha256": digest(library_path)}
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                                 capture_output=True, text=True)
         if commit.returncode == 0:
@@ -208,10 +225,10 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
-        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3"):
+        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
             run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
                 "--report", output / "hook-ownership163-audit.json"])
-        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3"):
+        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
             run("ad-decisions164", ["audit162/test_ad_decisions164.py", candidate,
                 "--report", output / "ad-decisions164-audit.json"])
             run("startup-popup164", ["audit162/test_startup_popup164.py", candidate,
@@ -227,7 +244,7 @@ def main():
                 "--report", output / "load-diagnostics164-audit.json"])
             run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
             run("native-unwind", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_native_unwind.py", "-v"])
-        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3"):
+        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
             run("home-glass165", ["audit162/test_home_glass165.py", candidate,
                 "--report", output / "home-glass165.json"])
             run("home-compiler", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_home_compiler.py", "-v"])
@@ -235,17 +252,20 @@ def main():
             run("control-glass166", ["audit162/test_control_glass166.py", candidate,
                 "--baseline", ROOT / "dist/1.6.5/FanqieX-1.6.5.dylib",
                 "--report", output / "control-glass166.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4"):
             run("conditional-compare", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_conditional_compare.py", "-v"])
             run("alignment167", ["audit162/test_alignment167.py", candidate,
                 "--baseline", ROOT / "dist/1.6.6/FanqieX-1.6.6.dylib",
                 "--report", output / "alignment167.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4"):
             run("controls171", ["audit162/test_controls171.py", candidate,
                 "--report", output / "controls171.json"])
-        if args.version == "1.7.3":
+        if args.version in ("1.7.3", "1.7.4"):
             run("header173", ["audit162/test_header173.py", candidate,
                 "--report", output / "header173.json"])
+        if args.version == "1.7.4":
+            run("page-glass174", ["audit162/test_page_glass174.py", candidate,
+                "--report", output / "page-glass174.json"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

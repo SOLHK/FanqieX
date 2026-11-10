@@ -1,0 +1,298 @@
+{
+  "passed": true,
+  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "old_158_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
+  "candidate_source_byte_equality": true,
+  "old_source_byte_equality": true,
+  "test_count": 52,
+  "tests": {
+    "old_158_negative_controls": [
+      {
+        "name": "dynamic_isa",
+        "old_158_result": "refused",
+        "instructions": 248,
+        "passed": true
+      },
+      {
+        "name": "short_intermediate_pager",
+        "old_158_result": "refused",
+        "instructions": 2779,
+        "passed": true
+      },
+      {
+        "name": "real_seq43_convert_roundoff",
+        "old_158_result": "refused",
+        "instructions": 1840,
+        "passed": true
+      },
+      {
+        "name": "compact_void_encoding",
+        "old_158_result": "refused",
+        "instructions": 3274,
+        "passed": true
+      }
+    ],
+    "realistic_accepted_boundaries": [
+      {
+        "name": "ordinary_subclass",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "dynamic_isa",
+        "slide": "0x180000000",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "short_pager",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 76855
+      },
+      {
+        "name": "two_short_pagers",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 89360
+      },
+      {
+        "name": "seq43_roundoff",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "seq39_roundoff",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "compact_void_encoding",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64808
+      },
+      {
+        "name": "combined_realistic_boundaries",
+        "slide": "0x180000000",
+        "passed": true,
+        "instructions": 76825
+      },
+      {
+        "name": "half_point_tolerance",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "feed_top_one_point",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "same_feed_class_outer",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      },
+      {
+        "name": "shelf_seq22_roundoff",
+        "slide": "0x0",
+        "passed": true,
+        "instructions": 64838
+      }
+    ],
+    "realistic_rejected_boundaries": [
+      {
+        "name": "short_pager_mask",
+        "decision": "unsafe-ancestor-or-no-covering-outer",
+        "passed": true
+      },
+      {
+        "name": "short_pager_corner",
+        "decision": "unsafe-ancestor-or-no-covering-outer",
+        "passed": true
+      },
+      {
+        "name": "short_pager_horizontal_page",
+        "decision": "unsafe-feed-geometry",
+        "passed": true
+      },
+      {
+        "name": "short_pager_transform",
+        "decision": "unsafe-ancestor-or-no-covering-outer",
+        "passed": true
+      },
+      {
+        "name": "outer_unclipped",
+        "decision": "outer-viewport-or-extension-mismatch",
+        "passed": true
+      },
+      {
+        "name": "outer_mask",
+        "decision": "unsafe-ancestor-or-no-covering-outer",
+        "passed": true
+      },
+      {
+        "name": "feed_mask",
+        "decision": "unsafe-feed-geometry",
+        "passed": true
+      },
+      {
+        "name": "above_half_point_tolerance",
+        "decision": "unsafe-feed-geometry",
+        "passed": true
+      },
+      {
+        "name": "incompatible_layout_encoding",
+        "decision": "layout-observer-unavailable",
+        "passed": true
+      },
+      {
+        "name": "unfolded_header_seq36",
+        "decision": "outer-viewport-or-extension-mismatch",
+        "passed": true
+      },
+      {
+        "name": "unfolded_header_seq48",
+        "decision": "outer-viewport-or-extension-mismatch",
+        "passed": true
+      }
+    ],
+    "numeric_ownership_and_restoration": [
+      {
+        "name": "stable_ulp_and_restore",
+        "passed": true
+      },
+      {
+        "name": "host_changes_above_epsilon",
+        "passed": true
+      }
+    ],
+    "coverage_above_outer_viewport": [
+      {
+        "name": "short_clipping_wrapper",
+        "accepted": false,
+        "passed": true
+      },
+      {
+        "name": "full_height_clipping_wrapper",
+        "accepted": true,
+        "passed": true
+      },
+      {
+        "name": "short_unclipped_wrapper",
+        "accepted": true,
+        "passed": true
+      },
+      {
+        "name": "masked_wrapper",
+        "accepted": false,
+        "passed": true
+      },
+      {
+        "name": "transformed_wrapper",
+        "accepted": false,
+        "passed": true
+      },
+      {
+        "name": "rounded_clipping_wrapper",
+        "accepted": false,
+        "passed": true
+      },
+      {
+        "name": "narrow_clipping_wrapper",
+        "accepted": false,
+        "passed": true
+      },
+      {
+        "name": "too_many_ancestors_above_outer",
+        "accepted": false,
+        "passed": true
+      }
+    ],
+    "bounded_weak_diagnostics": [
+      {
+        "name": "weak_candidate_bound_and_expiry",
+        "passed": true
+      },
+      {
+        "name": "ancestor_diagnostic_bound",
+        "passed": true
+      }
+    ],
+    "runtime_hook_original_dispatch_and_restoration": [
+      {
+        "name": "fixed_base_original_ignores_subclass_alias",
+        "passed": true
+      },
+      {
+        "name": "after_super_reset",
+        "slide": "0x180000000",
+        "passed": true
+      },
+      {
+        "name": "no_super_reset",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "two_runtime_overrides",
+        "slide": "0x180000000",
+        "passed": true
+      },
+      {
+        "name": "inherited_host_override",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "nested_host_reentry",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "stable_host_layout",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "disable_then_host_layout",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "weak_owner_expired",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "unsupported_tab",
+        "slide": "0x0",
+        "passed": true
+      },
+      {
+        "name": "incompatible_runtime_encoding",
+        "passed": true
+      },
+      {
+        "name": "replaced_runtime_method",
+        "passed": true
+      },
+      {
+        "name": "bounded_eight_runtime_original_slots",
+        "passed": true
+      }
+    ]
+  },
+  "device_ui_tested": false,
+  "limits": [
+    "Only actual ARM64 repair instructions execute; UIKit/Foundation/host methods are modeled boundaries.",
+    "No iPhone visual result, native UIKit animation, signing acceptance or injection was tested.",
+    "Runtime subclass post-layout behavior is checked with modeled host bodies; actual device scheduling, opaque layer mutations and the real app hierarchy remain unverified."
+  ]
+}

@@ -1,0 +1,422 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    {
+      "width": 320,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 68.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 375,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 81.75,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 390,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 85.5,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 98.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 744,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        44,
+        21,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 44,
+      "button_width": 162.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 852,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        21,
+        59
+      ],
+      "slide": "0x0",
+      "margin": 59,
+      "button_width": 181.5,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 390,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 85.5,
+      "origin": 13,
+      "restored": false
+    },
+    {
+      "width": 208,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 12.0,
+      "button_width": 44.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 310,
+      "tabs": 6,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 19.0,
+      "button_width": 44.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 208,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        20,
+        0,
+        20
+      ],
+      "slide": "0x0",
+      "restored": true
+    },
+    {
+      "width": 440,
+      "tabs": 2,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 196.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 3,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 130.66666666666666,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 5,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 78.4,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 6,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x0",
+      "margin": 20,
+      "button_width": 65.33333333333333,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 320,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 68.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 375,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 81.75,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 390,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 85.5,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 98.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 744,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        44,
+        21,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 44,
+      "button_width": 162.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 852,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        21,
+        59
+      ],
+      "slide": "0x180000000",
+      "margin": 59,
+      "button_width": 181.5,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 390,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 85.5,
+      "origin": 13,
+      "restored": false
+    },
+    {
+      "width": 208,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 12.0,
+      "button_width": 44.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 310,
+      "tabs": 6,
+      "safe_area": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 19.0,
+      "button_width": 44.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 208,
+      "tabs": 4,
+      "safe_area": [
+        0,
+        20,
+        0,
+        20
+      ],
+      "slide": "0x180000000",
+      "restored": true
+    },
+    {
+      "width": 440,
+      "tabs": 2,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 196.0,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 3,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 130.66666666666666,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 5,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 78.4,
+      "origin": 0,
+      "restored": false
+    },
+    {
+      "width": 440,
+      "tabs": 6,
+      "safe_area": [
+        0,
+        0,
+        34,
+        0
+      ],
+      "slide": "0x180000000",
+      "margin": 20,
+      "button_width": 65.33333333333333,
+      "origin": 0,
+      "restored": false
+    }
+  ],
+  "baseline_reproduced": true,
+  "scope": "Actual ARM64 factory spacing and button-width inputs with modeled UIKit safe areas"
+}

@@ -11,9 +11,11 @@ import json
 import pathlib
 import os
 import platform
+import re
 import struct
 import subprocess
 import tempfile
+import shutil
 
 
 def macho_commands(data):
@@ -125,6 +127,20 @@ def llvm_library():
     return lib
 
 
+def external_clang():
+    """Return a local Clang capable of emitting Mach-O ARM64 objects.
+
+    CI uses the pinned Xcode toolchain on macOS.  The same reviewed assembly
+    can be checked on a non-Apple workstation with a regular LLVM install;
+    this path is opt-in and never silently replaces the release toolchain.
+    """
+    configured = os.environ.get('FQ_CLANG')
+    found = configured or shutil.which('clang')
+    if not found:
+        return None
+    return found
+
+
 def assemble_object(asm, triple='arm64-apple-ios15.0.1'):
     if platform.system() == 'Darwin' or os.environ.get('FQ_ASSEMBLER') == 'xcode':
         # Use the selected Xcode's actual integrated assembler. The release
@@ -136,6 +152,17 @@ def assemble_object(asm, triple='arm64-apple-ios15.0.1'):
             subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
                             triple, '-c', '-x', 'assembler', str(source),
                             '-o', str(output)], check=True)
+            return output.read_bytes()
+    if os.environ.get('FQ_ASSEMBLER') == 'clang':
+        compiler = external_clang()
+        if not compiler:
+            raise RuntimeError('FQ_ASSEMBLER=clang requires FQ_CLANG or clang on PATH')
+        with tempfile.TemporaryDirectory(prefix='fanqiex-asm-') as folder:
+            source = pathlib.Path(folder) / 'patch.s'
+            output = pathlib.Path(folder) / 'patch.o'
+            source.write_text(asm)
+            subprocess.run([compiler, '-target', triple, '-c', '-x', 'assembler',
+                            str(source), '-o', str(output)], check=True)
             return output.read_bytes()
     lib = llvm_library()
     ptr = C.c_void_p
@@ -191,6 +218,33 @@ def assemble_text(asm):
 
 
 def disassemble(data, address=0):
+    if os.environ.get('FQ_ASSEMBLER') == 'clang' and platform.system() != 'Darwin':
+        compiler = external_clang()
+        if not compiler:
+            raise RuntimeError('FQ_ASSEMBLER=clang requires FQ_CLANG or clang on PATH')
+        objdump = pathlib.Path(compiler).with_name('llvm-objdump' + ('.exe' if os.name == 'nt' else ''))
+        if not objdump.exists():
+            objdump = pathlib.Path(shutil.which('llvm-objdump') or '')
+        if not objdump.exists():
+            return ['Local Clang disassembly unavailable; object bytes were verified.']
+        asm = '.text\n.p2align 2\n' + '\n'.join(
+            '.long 0x%08x' % struct.unpack_from('<I', data, offset)[0]
+            for offset in range(0, len(data), 4)) + '\n'
+        with tempfile.TemporaryDirectory(prefix='fanqiex-disasm-') as folder:
+            source = pathlib.Path(folder) / 'code.s'
+            obj = pathlib.Path(folder) / 'code.o'
+            source.write_text(asm)
+            subprocess.run([compiler, '-target', 'arm64-apple-ios15.0.1', '-c',
+                            '-x', 'assembler', str(source), '-o', str(obj)], check=True)
+            result = subprocess.run([str(objdump), '--macho', '-d', str(obj)],
+                                    check=True, capture_output=True, text=True)
+        lines = ['Local llvm-objdump listing; image base %#x' % address]
+        for line in result.stdout.splitlines():
+            match = re.match(r'\s*([0-9a-f]+):\s+([0-9a-f ]+)\s+(.*)$', line)
+            if match:
+                lines.append('%08x  %s  %s' % (address + int(match.group(1), 16),
+                                               match.group(2).strip(), match.group(3).strip()))
+        return lines
     if platform.system() == 'Darwin':
         # otool is shipped with Xcode; no Homebrew LLVM dependency or unrelated
         # compiler substitution is used in the Apple toolchain build.

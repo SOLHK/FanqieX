@@ -632,6 +632,364 @@ static void ListenLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderFloatingCommonButton","fqx171_originalLayout"))(self,cmd);
     FQHListen(self);
 }
+// ---------------------------------------------------------------------------
+// 1.7.4 page surfaces. These are exact-class hooks. No UIView layout method is
+// replaced and every decoration is a plugin-owned, non-interactive view behind
+// the host's existing content. The same surface is reused across layout/theme
+// passes and is removed from the exact owner when the user disables glass.
+static void PageRoleKey(void) {}
+static void PageTintKey(void) {}
+static void TabOriginalKey(void) {}
+static void TabBusyKey(void) {}
+static void OptionsMarkKey(void) {}
+static void ToggleObserverKey(void) {}
+static void ToggleShortKey(void) {}
+static void ToggleMallKey(void) {}
+static void PageRole(Obj view,const char *role) {
+    objc_setAssociatedObject(view,PageRoleKey,Text(role),1);
+}
+static B BoolProp(Obj view,const char *selector) {
+    return Responds(view,selector) ? Flag(view,selector) : 0;
+}
+static B HasAncestor(Obj view,const char *name) {
+    Obj parent=Get(view,"superview");
+    for (int depth=0;parent && depth<5;++depth,parent=Get(parent,"superview"))
+        if (Kind(parent,name)) return 1;
+    return 0;
+}
+static void PageRestore(Obj view) {
+    if (view && Kind(view,"UIView")) Restore(view,FQHSurface(view));
+}
+static void PageStyle(Obj view,const char *role) {
+    if (!view || !Kind(view,"UIView")) return;
+    Rect bounds=Bounds(view);
+    if (!VisibleRect(bounds)) { PageRestore(view); return; }
+    PageRole(view,role);
+    FQHApply(view);
+}
+static void PageTint(Obj view,const char *role,B selected) {
+    PageStyle(view,role);
+    Obj surface=FQHSurface(view);
+    if (!surface) return;
+    Obj previous=objc_getAssociatedObject(view,PageTintKey);
+    if (previous && BoolProp(previous,"boolValue")==selected) return;
+    Obj effect=O0(Get(surface,"effect"),"copy");
+    if (!effect) return;
+    if (selected) {
+        Obj blue=O0(Lookup("UIColor"),"systemBlueColor");
+        Obj tint=((Obj(*)(Obj,Sel,double))Message)(blue,sel_registerName("colorWithAlphaComponent:"),0.25);
+        V1(effect,"setTintColor:",tint);
+    } else {
+        V1(effect,"setTintColor:",0);
+    }
+    V1(surface,"setEffect:",effect);
+    V0(effect,"release");
+    objc_setAssociatedObject(view,PageTintKey,BoolBox(selected),1);
+}
+static Obj EntryTitle(Obj view) {
+    Obj label=Get(view,"functionType");
+    if (!label) label=Get(view,"label");
+    Obj value=label ? Get(label,"text") : (Obj)0;
+    if (!value) value=Get(view,"titleString");
+    return Kind(value,"NSString") ? value : (Obj)0;
+}
+static B ProfileEntry(Obj view) {
+    Obj title=EntryTitle(view);
+    return Equal(title,"我的订单") || Equal(title,"浏览历史") || Equal(title,"我的消息") ||
+           Equal(title,"创作中心") || Equal(title,"我的预约");
+}
+static void PageBottomLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderBottomToolButton","fqx174_originalBottom"))(self,cmd);
+    PageStyle(self,"readerBottom");
+}
+static void PageProgressLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderSaaSNewProgressView","fqx174_originalProgress"))(self,cmd);
+    Obj slider=Get(self,"slider");
+    PageStyle(slider ? slider : self,"readerProgress");
+}
+static void PageGiftLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderGiftView","fqx174_originalGift"))(self,cmd);
+    Obj button=Get(self,"giftButton");
+    if (button) PageStyle(button,"readerGift"); else PageRestore(self);
+}
+static void PageBookGiftLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderBookEndUserGiftView","fqx174_originalBookGift"))(self,cmd);
+    PageStyle(self,"readerGift");
+}
+static void PageDiscussLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderChapterEndDiscussionEntranceView","fqx174_originalDiscuss"))(self,cmd);
+    if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceButton")) { PageRestore(self); return; }
+    PageStyle(self,"readerDiscuss");
+}
+static void PageDiscussButtonLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderChapterEndDiscussionEntranceButton","fqx174_originalDiscussButton"))(self,cmd);
+    if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceView")) { PageRestore(self); return; }
+    PageStyle(self,"readerDiscuss");
+}
+static void PageShelfCategoryLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfTabSelectViewTitleCell","fqx174_originalShelfCategory"))(self,cmd);
+    PageTint(self,"shelfCategory",BoolProp(self,"hasSelected"));
+}
+static void PageProfileBarLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserBar","fqx174_originalProfileBar"))(self,cmd);
+    Obj search=Get(self,"searchBgView");
+    if (search) PageStyle(search,"profileSearch"); else PageRestore(self);
+}
+static void PageProfileEntryLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
+    if (ProfileEntry(self)) PageStyle(self,"profileEntry"); else PageRestore(self);
+}
+static void PageProfileEntry621Layout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUser621FunctionEntryItemCell","fqx174_originalProfileEntry621"))(self,cmd);
+    if (ProfileEntry(self)) PageStyle(self,"profileEntry"); else PageRestore(self);
+}
+
+// The target game is server-provided; the host binary contains no literal
+// promotion title. Match only the exact reviewed names on game model fields.
+B FQHPageTargetGame(Obj value) {
+    if (Equal(value,"羊了个羊：星球") || Equal(value,"羊了个羊:星球") ||
+        Equal(value,"羊了个羊")) return 1;
+    return Responds(value,"hasPrefix:") &&
+           ((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("hasPrefix:"),Text("羊了个羊"));
+}
+static B TargetModel(Obj model) {
+    if (!model) return 0;
+    Obj info=Get(model,"info");
+    if (info && (FQHPageTargetGame(Get(info,"title")) ||
+                 FQHPageTargetGame(Get(info,"name")))) return 1;
+    if (FQHPageTargetGame(Get(model,"gameName")) ||
+        FQHPageTargetGame(Get(model,"name")) ||
+        FQHPageTargetGame(Get(model,"title"))) return 1;
+    Obj content=Get(model,"gameContent");
+    return content && FQHPageTargetGame(Get(content,"mpName"));
+}
+B FQHPageFilterMiniGame(Obj owner) {
+    if (!owner) return 0;
+    Obj model=Get(owner,"miniGameEntranceCellModel");
+    if (!TargetModel(model)) return 0;
+    // The host's own card-model contract supports an invisible/disabled row.
+    // Removing the object from the mutable plan is a data-level deletion, not
+    // hiding a parent view or blanking a reusable cell.
+    VB(model,"setIsInvisible:",1);
+    VB(model,"setIsDisabled:",1);
+    Obj models=Get(owner,"models");
+    if (Kind(models,"NSMutableArray") && Responds(models,"removeObjectIdenticalTo:"))
+        V1(models,"removeObjectIdenticalTo:",model);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"event",Text("pageAdRemoved174"));
+    Put(record,"ownerClass",Text("SSMyUser621BaseViewController"));
+    Put(record,"source",Text("serverGameModel"));
+    Put(record,"action",Text("removeModelBeforeListAdapter"));
+    FQDRecord("pageAdFilter174",record);
+    return 1;
+}
+static void MiniGameSetup(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUser621BaseViewController","fqx174_originalMiniGameSetup"))(self,cmd);
+    FQHPageFilterMiniGame(self);
+}
+
+// Two bottom entries are optional. Defaults stay enabled for existing users.
+static const char *ShortKey="FanqieX.BottomShortSentences.1";
+static const char *MallKey="FanqieX.BottomMall.1";
+static B DefaultEnabled(const char *key) {
+    Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",Text(key));
+    return value ? BoolProp(value,"boolValue") : 1;
+}
+static void SetDefault(const char *key,B value) {
+    ((void(*)(Obj,Sel,B,Obj))Message)(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
+        sel_registerName("setBool:forKey:"),value,Text(key));
+}
+static B ShortEnabled(void) { return DefaultEnabled(ShortKey); }
+static B MallEnabled(void) { return DefaultEnabled(MallKey); }
+Obj FQHPageTabItems(Obj items) {
+    if (!Kind(items,"NSArray")) return items;
+    Obj result=O0(Lookup("NSMutableArray"),"array");
+    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    if (count>32) count=32;
+    for (U i=0;i<count;++i) {
+        Obj item=At(items,i);
+        Obj title=Get(item,"title");
+        if (Equal(title,"短句") && !ShortEnabled()) continue;
+        if (Equal(title,"商城") && !MallEnabled()) continue;
+        V1(result,"addObject:",item);
+    }
+    return ((U(*)(Obj,Sel))Message)(result,sel_registerName("count"))==count ? items : result;
+}
+static void ApplyTabBar(Obj bar) {
+    if (!bar || objc_getAssociatedObject(bar,TabBusyKey)) return;
+    Obj original=objc_getAssociatedObject(bar,TabOriginalKey);
+    if (!original) {
+        original=Get(bar,"items");
+        if (original) objc_setAssociatedObject(bar,TabOriginalKey,original,1);
+    }
+    Obj filtered=FQHPageTabItems(original);
+    if (filtered==Get(bar,"items")) return;
+    objc_setAssociatedObject(bar,TabBusyKey,bar,0);
+    V1(bar,"setItems:",filtered);
+    objc_setAssociatedObject(bar,TabBusyKey,0,0);
+}
+static void WalkTabBars(Obj view,int depth) {
+    if (!view || depth<0) return;
+    if (Kind(view,"SSTabBar")) { ApplyTabBar(view); return; }
+    Obj children=Get(view,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    if (count>64) count=64;
+    for (U i=0;i<count;++i) WalkTabBars(At(children,i),depth-1);
+}
+static void RefreshTabBars(void) {
+    Obj app=Lookup("UIApplication");
+    if (!app) return;
+    Obj shared=O0(app,"sharedApplication");
+    Obj key=Get(shared,"keyWindow");
+    if (key) WalkTabBars(key,12);
+    Obj windows=Get(shared,"windows");
+    U count=((U(*)(Obj,Sel))Message)(windows,sel_registerName("count"));
+    if (count>8) count=8;
+    for (U i=0;i<count;++i) WalkTabBars(At(windows,i),12);
+}
+static void TabSetItems(Obj self,Sel cmd,Obj items) {
+    if (objc_getAssociatedObject(self,TabBusyKey)) {
+        ((void(*)(Obj,Sel,Obj))Original("SSTabBar","fqx174_originalTabItems"))(self,cmd,items);
+        return;
+    }
+    objc_setAssociatedObject(self,TabOriginalKey,items,1);
+    objc_setAssociatedObject(self,TabBusyKey,self,0);
+    ((void(*)(Obj,Sel,Obj))Original("SSTabBar","fqx174_originalTabItems"))(self,cmd,FQHPageTabItems(items));
+    objc_setAssociatedObject(self,TabBusyKey,0,0);
+}
+static void TabSetItemsAnimated(Obj self,Sel cmd,Obj items,B animated) {
+    if (objc_getAssociatedObject(self,TabBusyKey)) {
+        ((void(*)(Obj,Sel,Obj,B))Original("SSTabBar","fqx174_originalTabItemsAnimated"))(self,cmd,items,animated);
+        return;
+    }
+    objc_setAssociatedObject(self,TabOriginalKey,items,1);
+    objc_setAssociatedObject(self,TabBusyKey,self,0);
+    ((void(*)(Obj,Sel,Obj,B))Original("SSTabBar","fqx174_originalTabItemsAnimated"))(self,cmd,FQHPageTabItems(items),animated);
+    objc_setAssociatedObject(self,TabBusyKey,0,0);
+}
+static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
+    (void)self; (void)cmd;
+    I tag=((I(*)(Obj,Sel))Message)(sender,sel_registerName("tag"));
+    B on=BoolProp(sender,"isOn");
+    SetDefault(tag==1 ? ShortKey : MallKey,on);
+    RefreshTabBars();
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"event",Text("bottomEntryToggle174"));
+    Put(record,"entry",Text(tag==1 ? "shortSentences" : "mall"));
+    Put(record,"enabled",BoolBox(on));
+    FQDRecord("bottomEntryToggle174",record);
+}
+static Obj ToggleObserver(void) {
+    Obj cls=Lookup("FanqieXBottomToggles174");
+    if (cls) return cls;
+    cls=AllocateClass(Lookup("NSObject"),"FanqieXBottomToggles174",0);
+    if (!cls) return 0;
+    class_addMethod(cls,sel_registerName("fqx174_toggle:"),(Imp)ToggleChanged,"v24@0:8@16");
+    RegisterClass(cls);
+    return cls;
+}
+static Obj ToggleRow(Obj container,double y,const char *title,I tag,B on,Obj observer) {
+    Rect bounds=Bounds(container);
+    double width=bounds.width>0 ? bounds.width : 320;
+    Obj label=O0(O0(Lookup("UILabel"),"alloc"),"init");
+    if (!label) return 0;
+    Rect labelFrame={16,y,width-96,30};
+    ((void(*)(Obj,Sel,Rect))Message)(label,sel_registerName("setFrame:"),labelFrame);
+    V1(label,"setText:",Text(title));
+    V1(label,"setFont:",((Obj(*)(Obj,Sel,double))Message)(Lookup("UIFont"),sel_registerName("systemFontOfSize:"),15));
+    V1(label,"setTextColor:",O0(Lookup("UIColor"),"labelColor"));
+    Q1(label,"setAutoresizingMask:",2);
+    V1(container,"addSubview:",label);
+    V0(label,"release");
+    Obj toggle=O0(O0(Lookup("UISwitch"),"alloc"),"init");
+    if (!toggle) return 0;
+    Rect switchFrame={width-80,y+2,64,31};
+    ((void(*)(Obj,Sel,Rect))Message)(toggle,sel_registerName("setFrame:"),switchFrame);
+    Q1(toggle,"setTag:",tag);
+    Q1(toggle,"setAutoresizingMask:",1|16);
+    ((void(*)(Obj,Sel,B,B))Message)(toggle,sel_registerName("setOn:animated:"),on,0);
+    ((void(*)(Obj,Sel,Obj,Sel,U))Message)(toggle,sel_registerName("addTarget:action:forControlEvents:"),
+        observer,sel_registerName("fqx174_toggle:"),4096);
+    V1(container,"addSubview:",toggle);
+    return toggle;
+}
+static Obj FindTable(Obj view,int depth) {
+    if (!view) return 0;
+    if (Kind(view,"UITableView")) return view;
+    if (depth<=0) return 0;
+    Obj children=Get(view,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    if (count>64) count=64;
+    for (U i=0;i<count;++i) {
+        Obj found=FindTable(At(children,i),depth-1);
+        if (found) return found;
+    }
+    return 0;
+}
+static void InstallOptionsToggles(Obj controller) {
+    Obj shortSwitch=objc_getAssociatedObject(controller,ToggleShortKey);
+    Obj mallSwitch=objc_getAssociatedObject(controller,ToggleMallKey);
+    if (shortSwitch) {
+        ((void(*)(Obj,Sel,B,B))Message)(shortSwitch,sel_registerName("setOn:animated:"),ShortEnabled(),0);
+        ((void(*)(Obj,Sel,B,B))Message)(mallSwitch,sel_registerName("setOn:animated:"),MallEnabled(),0);
+        return;
+    }
+    Obj table=FindTable(Get(controller,"view"),5);
+    if (!table || Get(table,"tableHeaderView")) return;
+    Obj observerClass=ToggleObserver();
+    if (!observerClass) return;
+    Obj observer=O0(O0(observerClass,"alloc"),"init");
+    if (!observer) return;
+    Obj container=O0(O0(Lookup("UIView"),"alloc"),"init");
+    if (!container) { V0(observer,"release"); return; }
+    Rect frame={0,0,Bounds(table).width,96};
+    ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
+    V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
+    shortSwitch=ToggleRow(container,8,"底栏显示：短句",1,ShortEnabled(),observer);
+    mallSwitch=ToggleRow(container,50,"底栏显示：商城",2,MallEnabled(),observer);
+    if (!shortSwitch || !mallSwitch) {
+        V0(container,"release"); V0(observer,"release"); return;
+    }
+    objc_setAssociatedObject(controller,ToggleObserverKey,observer,1);
+    objc_setAssociatedObject(controller,ToggleShortKey,shortSwitch,1);
+    objc_setAssociatedObject(controller,ToggleMallKey,mallSwitch,1);
+    objc_setAssociatedObject(controller,OptionsMarkKey,container,1);
+    V1(table,"setTableHeaderView:",container);
+    V0(container,"release");
+    V0(observer,"release");
+}
+static void OptionsAppear(Obj self,Sel cmd,B animated) {
+    ((void(*)(Obj,Sel,B))Original("FanqieAdBlockOptionsController","fqx174_originalOptionsAppear:"))(self,cmd,animated);
+    InstallOptionsToggles(self);
+}
+static void HookOrAdd(const char *name,const char *selector,const char *alias,const char *type,Imp imp) {
+    Hook(name,selector,alias,type,imp);
+    Obj cls=Lookup(name);
+    if (!cls || class_getInstanceMethod(cls,sel_registerName(alias))) return;
+    Method method=class_getInstanceMethod(cls,sel_registerName(selector));
+    if (!method) return;
+    if (class_addMethod(cls,sel_registerName(alias),method_getImplementation(method),type))
+        class_addMethod(cls,sel_registerName(selector),imp,type);
+}
+void FQHPageStyle(Obj view) { PageStyle(view,"readerBottom"); }
+void FQHPageTint(Obj view,B selected) { PageTint(view,"shelfCategory",selected); }
+void FQHPageInstall(void) {
+    Hook("SSReaderBottomToolButton","layoutSubviews","fqx174_originalBottom","v16@0:8",(Imp)PageBottomLayout);
+    Hook("FQReaderSaaSNewProgressView","layoutSubviews","fqx174_originalProgress","v16@0:8",(Imp)PageProgressLayout);
+    Hook("SSReaderGiftView","layoutSubviews","fqx174_originalGift","v16@0:8",(Imp)PageGiftLayout);
+    Hook("SSReaderBookEndUserGiftView","layoutSubviews","fqx174_originalBookGift","v16@0:8",(Imp)PageBookGiftLayout);
+    Hook("SSReaderChapterEndDiscussionEntranceView","layoutSubviews","fqx174_originalDiscuss","v16@0:8",(Imp)PageDiscussLayout);
+    Hook("SSReaderChapterEndDiscussionEntranceButton","layoutSubviews","fqx174_originalDiscussButton","v16@0:8",(Imp)PageDiscussButtonLayout);
+    Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfCategoryLayout);
+    Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
+    Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
+    Hook("SSMyUser621FunctionEntryItemCell","layoutSubviews","fqx174_originalProfileEntry621","v16@0:8",(Imp)PageProfileEntry621Layout);
+    Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
+    Hook("SSTabBar","setItems:","fqx174_originalTabItems","v24@0:8@16",(Imp)TabSetItems);
+    Hook("SSTabBar","setItems:animated:","fqx174_originalTabItemsAnimated","v28@0:8@16B24",(Imp)TabSetItemsAnimated);
+    HookOrAdd("FanqieAdBlockOptionsController","viewDidAppear:","fqx174_originalOptionsAppear:","v20@0:8B16",(Imp)OptionsAppear);
+}
+
 void FQHInstall(void) {
     if (!FQHGlassAvailable()) return;
     Hook("SSReaderFloatingCommonButton","layoutSubviews","fqx171_originalLayout","v16@0:8",(Imp)ListenLayout);

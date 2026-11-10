@@ -49,7 +49,7 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.7.3
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.7.4
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

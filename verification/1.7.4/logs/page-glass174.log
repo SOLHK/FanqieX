@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "pixel_rendering_tested": false,
+  "scope": "Actual candidate ARM64 instructions with explicit UIKit/Foundation boundaries",
+  "static": {
+    "exact_hooks": 13,
+    "global_uiview_layout_hook": false,
+    "startup_wired": true,
+    "model_boundary_deletion": true
+  },
+  "runtime": {
+    "reader_controls": [
+      "SSReaderBottomToolButton"
+    ],
+    "shelf_categories": 4,
+    "profile_shortcuts": 5,
+    "target_game_deleted": true,
+    "normal_game_retained": true,
+    "bottom_entries_default_on": true,
+    "bottom_entries_restored": true,
+    "surface_reuse": true,
+    "disable_restores_host": true,
+    "host_layout_calls": 22,
+    "exact_installed_hooks": 12
+  }
+}

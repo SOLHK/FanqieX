@@ -1,0 +1,464 @@
+{
+  "passed": true,
+  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "candidate_bytes": 222352,
+  "extension_structure": {
+    "passed": true,
+    "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+    "extension_capacity": 131072,
+    "file_bytes": 222352,
+    "header_end": 1984,
+    "unchanged_original_fixups": 656,
+    "unchanged_import_records": 23,
+    "signature": {
+      "offset": 220480,
+      "size": 1872,
+      "pages": 54,
+      "identifier": "FanqieX-1.7.4.dylib",
+      "cdhash": "3402f4648e0af81f9d3fd33894ccfb0115cdc9a3"
+    },
+    "device_tested": false
+  },
+  "candidate_code_matches_composed_source": true,
+  "entries": {
+    "LXclaim_native": "0x14fd4",
+    "LXrelease_native": "0x15124",
+    "LXnative_hidden": "0x15218",
+    "LXnative_original": "0x1534c",
+    "LXguard_owner_key": "0x2dfe0",
+    "LXvalid_proxy": "0x14290",
+    "LXupdate": "0x14110",
+    "LXrestore": "0x141b0",
+    "LXnative_update": "0x143c8",
+    "LXnative_restore": "0x14360",
+    "LXsame_bottom_rect": "0x145bc",
+    "LXsafe_tree": "0x147a0",
+    "LXmonitor_start": "0x149a0",
+    "LXpoll": "0x14b0c",
+    "LXsnapshot": "0x14d3c",
+    "LXnative_key": "0x2dc68",
+    "LXproxy_key": "0x2dc69",
+    "LXmonitor_key": "0x2dc6b",
+    "LXowner_key": "0x2dc6c",
+    "LXtimer_key": "0x2dc6d",
+    "LXtick_key": "0x2dc6e",
+    "LXrejected_key": "0x2dc6a",
+    "Lcode_end": "0x3e60",
+    "LXcode_end": "0x2dc64",
+    "Lrepair": "0xc84",
+    "Ledge_update": "0xdf0",
+    "Ledge_restore": "0xf48",
+    "Lbusy_key": "0x11af6",
+    "Ledge_key": "0x11af8",
+    "Lfind_record": "0x10b4",
+    "Lcapture_edge": "0x1140",
+    "Lrestore_removed": "0xfe0"
+  },
+  "tests": {
+    "basic_visibility_original_imp_and_abi": [
+      {
+        "slide": "0x0",
+        "legacy_name": false,
+        "own_override": false,
+        "original_hidden": false,
+        "first_update_instructions": 4984,
+        "total_instructions": 9043,
+        "passed": true
+      },
+      {
+        "slide": "0x0",
+        "legacy_name": true,
+        "own_override": false,
+        "original_hidden": true,
+        "first_update_instructions": 5073,
+        "total_instructions": 8972,
+        "passed": true
+      },
+      {
+        "slide": "0x0",
+        "legacy_name": false,
+        "own_override": true,
+        "original_hidden": false,
+        "first_update_instructions": 4934,
+        "total_instructions": 8993,
+        "passed": true
+      },
+      {
+        "slide": "0x180000000",
+        "legacy_name": false,
+        "own_override": false,
+        "original_hidden": false,
+        "first_update_instructions": 4984,
+        "total_instructions": 9043,
+        "passed": true
+      }
+    ],
+    "geometric_boundaries": [
+      {
+        "name": "coincident_bottom",
+        "accepted": true,
+        "instructions": 235,
+        "passed": true
+      },
+      {
+        "name": "negative_parent_origin",
+        "accepted": true,
+        "instructions": 235,
+        "passed": true
+      },
+      {
+        "name": "positive_parent_origin",
+        "accepted": true,
+        "instructions": 235,
+        "passed": true
+      },
+      {
+        "name": "maximum_120pt",
+        "accepted": true,
+        "instructions": 235,
+        "passed": true
+      },
+      {
+        "name": "different_parent",
+        "accepted": false,
+        "instructions": 73,
+        "passed": true
+      },
+      {
+        "name": "full_screen_wrapper",
+        "accepted": false,
+        "instructions": 123,
+        "passed": true
+      },
+      {
+        "name": "too_tall",
+        "accepted": false,
+        "instructions": 123,
+        "passed": true
+      },
+      {
+        "name": "x_mismatch",
+        "accepted": false,
+        "instructions": 174,
+        "passed": true
+      },
+      {
+        "name": "y_mismatch",
+        "accepted": false,
+        "instructions": 178,
+        "passed": true
+      },
+      {
+        "name": "width_mismatch",
+        "accepted": false,
+        "instructions": 182,
+        "passed": true
+      },
+      {
+        "name": "nan_wrapper",
+        "accepted": false,
+        "instructions": 103,
+        "passed": true
+      },
+      {
+        "name": "inf_bar",
+        "accepted": false,
+        "instructions": 161,
+        "passed": true
+      },
+      {
+        "name": "nan_parent_origin",
+        "accepted": false,
+        "instructions": 216,
+        "passed": true
+      },
+      {
+        "name": "inf_parent_origin",
+        "accepted": false,
+        "instructions": 216,
+        "passed": true
+      },
+      {
+        "name": "zero_parent_height",
+        "accepted": false,
+        "instructions": 222,
+        "passed": true
+      },
+      {
+        "name": "negative_parent_height",
+        "accepted": false,
+        "instructions": 222,
+        "passed": true
+      },
+      {
+        "name": "nan_parent_height",
+        "accepted": false,
+        "instructions": 220,
+        "passed": true
+      },
+      {
+        "name": "above_lower_half",
+        "accepted": false,
+        "instructions": 227,
+        "passed": true
+      },
+      {
+        "name": "not_at_parent_bottom",
+        "accepted": false,
+        "instructions": 234,
+        "passed": true
+      }
+    ],
+    "unsafe_trees_fail_closed": [
+      {
+        "name": "scroll",
+        "remaining_budget": 188,
+        "guard_instructions": 2303,
+        "update_instructions": 4177,
+        "passed": true
+      },
+      {
+        "name": "controller_responder",
+        "remaining_budget": 188,
+        "guard_instructions": 2351,
+        "update_instructions": 4225,
+        "passed": true
+      },
+      {
+        "name": "wrapper_controller_responder",
+        "remaining_budget": 191,
+        "guard_instructions": 97,
+        "update_instructions": 1971,
+        "passed": true
+      },
+      {
+        "name": "host_bundle_uikit_name",
+        "remaining_budget": 188,
+        "guard_instructions": 2649,
+        "update_instructions": 4523,
+        "passed": true
+      },
+      {
+        "name": "unknown_class",
+        "remaining_budget": 188,
+        "guard_instructions": 2886,
+        "update_instructions": 4760,
+        "passed": true
+      },
+      {
+        "name": "transition",
+        "remaining_budget": 188,
+        "guard_instructions": 2808,
+        "update_instructions": 4682,
+        "passed": true
+      },
+      {
+        "name": "controller_wrapper",
+        "remaining_budget": 188,
+        "guard_instructions": 2888,
+        "update_instructions": 4762,
+        "passed": true
+      },
+      {
+        "name": "legacy_web",
+        "remaining_budget": 188,
+        "guard_instructions": 2911,
+        "update_instructions": 4785,
+        "passed": true
+      },
+      {
+        "name": "wk_web",
+        "remaining_budget": 188,
+        "guard_instructions": 2886,
+        "update_instructions": 4760,
+        "passed": true
+      },
+      {
+        "name": "too_many_children",
+        "remaining_budget": 188,
+        "guard_instructions": 2966,
+        "update_instructions": 4840,
+        "passed": true
+      },
+      {
+        "name": "too_deep",
+        "remaining_budget": 177,
+        "guard_instructions": 11252,
+        "update_instructions": 13126,
+        "passed": true
+      },
+      {
+        "name": "too_many_nodes",
+        "remaining_budget": 0,
+        "guard_instructions": 144585,
+        "update_instructions": 146459,
+        "passed": true
+      },
+      {
+        "name": "cycle",
+        "remaining_budget": 177,
+        "guard_instructions": 11252,
+        "update_instructions": 13126,
+        "passed": true
+      },
+      {
+        "name": "real_bar_descendant",
+        "remaining_budget": 188,
+        "guard_instructions": 3022,
+        "update_instructions": 4896,
+        "passed": true
+      }
+    ],
+    "ownership_revocation": [
+      {
+        "name": "new_scroll_content",
+        "passed": true,
+        "instructions": 8454
+      },
+      {
+        "name": "controller_content",
+        "passed": true,
+        "instructions": 6248
+      },
+      {
+        "name": "host_bundle_content",
+        "passed": true,
+        "instructions": 8800
+      },
+      {
+        "name": "moved_wrapper",
+        "passed": true,
+        "instructions": 6086
+      },
+      {
+        "name": "removed_proxy",
+        "passed": true,
+        "instructions": 5515
+      },
+      {
+        "name": "hidden_proxy",
+        "passed": true,
+        "instructions": 5562
+      },
+      {
+        "name": "zero_proxy_bounds",
+        "passed": true,
+        "instructions": 5901
+      },
+      {
+        "name": "removed_active_key",
+        "passed": true,
+        "instructions": 5459
+      },
+      {
+        "name": "expired_weak_owner",
+        "passed": true,
+        "instructions": 5359
+      }
+    ],
+    "ownership_epochs": {
+      "same_bar_new_epoch": true,
+      "cross_bar_stale_release": true,
+      "total_instructions": 31977,
+      "passed": true
+    },
+    "repeated_claims_and_record_capacity": {
+      "repeated_claims": 128,
+      "weak_boxes_added_after_first": 0,
+      "record_cap": 16,
+      "excess_wrappers_untouched": 2,
+      "instructions": 500927,
+      "passed": true
+    },
+    "runtime_conflicts": [
+      {
+        "name": "alias_present_with_own_override",
+        "instructions": 94,
+        "passed": true
+      },
+      {
+        "name": "inherited_alias_with_own_override",
+        "instructions": 94,
+        "passed": true
+      },
+      {
+        "name": "wrong_encoding",
+        "instructions": 146,
+        "passed": true
+      },
+      {
+        "name": "unknown_runtime_class",
+        "instructions": 28,
+        "passed": true
+      },
+      {
+        "name": "foreign_method_after_claim",
+        "instructions": 9670,
+        "passed": true
+      }
+    ],
+    "weak_monitor_lifecycle": [
+      {
+        "name": "weak_owner_died",
+        "instructions": 5577,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 15,
+        "passed": true
+      },
+      {
+        "name": "bar_detached",
+        "instructions": 7196,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 15,
+        "passed": true
+      },
+      {
+        "name": "proxy_detached",
+        "instructions": 7483,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 15,
+        "passed": true
+      },
+      {
+        "name": "active_proxy_removed",
+        "instructions": 7455,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 15,
+        "passed": true
+      },
+      {
+        "name": "bar_hidden",
+        "instructions": 7243,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 15,
+        "passed": true
+      },
+      {
+        "name": "busy_then_recheck",
+        "instructions": 98324,
+        "modeled_monitor_deallocated": true,
+        "modeled_timer_deallocated": true,
+        "lifetime_events": 23,
+        "passed": true
+      }
+    ]
+  },
+  "ABI_checks": [
+    "Every run preserves x18/x19-x29 and d8-d15.",
+    "Every native boundary requires 16-byte stack alignment.",
+    "Every native call poisons all modeled caller-saved registers.",
+    "The saved visibility IMP receives the original setHidden: selector."
+  ],
+  "limits": [
+    "No iOS/dyld execution, native UIKit pixels, animation timing or device injection acceptance.",
+    "UIKit/Foundation and Objective-C dispatch are explicit boundary models.",
+    "Monitor/timer retained references and weak-zeroing are modeled; a full Objective-C/autorelease heap is not.",
+    "Repeated-claim checks count weak-box creation and balanced explicit retains; they do not prove whole-process leak freedom.",
+    "The instruction decoder is fail-closed and covers instructions exercised here, not a formally verified ARM CPU."
+  ]
+}
