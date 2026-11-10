@@ -91,10 +91,11 @@ Info.plist、entitlements、frameworks 清单、Mach-O 摘要和 Swift 元数据
 - **未在 iPhone 上注入，未做真实 UIKit 像素渲染/GPU 折射/触感测试**。构建和模型通过不等于实机验收；
 - Xcode 27.2 / iOS 27.2 SDK 的云端构建结果以 GitHub Actions 实际记录为准。
 
-本地冻结源码验证共 39 步，候选 SHA-256：
-`001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d`，
-大小 222,352 字节。该候选由 Windows LLVM Clang 23.1.5 组装，属于非 Apple 工作站的
-等价构建检查；Apple 发布工具链构建需以同一提交的 Xcode 27.2 Actions 记录为准。
+本地冻结源码验证共 39 步，最终候选为同一提交的 Xcode 27.2 / iOS 27.2 SDK 构建：
+SHA-256 `b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337`，
+大小 222,352 字节。Xcode 构建运行 `42809439954` 两次构建一致；随后在 Windows
+LLVM Clang 23.1.5 上对同一 Xcode 二进制执行了 39 步 ARM64/结构/边界验证。
+非 Apple 工具链只用于交叉检查，不作为 Apple 发布构建的替代。
 
 ## 安装
 

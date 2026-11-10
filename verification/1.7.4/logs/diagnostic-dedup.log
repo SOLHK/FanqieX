@@ -1,7 +1,7 @@
 {
   "passed": true,
   "scope": "Actual supplied ARM64 control flow with public API boundary models; not iOS latency or pixels",
-  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
   "baseline_sha256": "6031d37a2d4e41038338eb0d5730bb6f30833fb0c3499bf4f5b781a88a64a7a1",
   "negative_controls": {
     "bar_color": {

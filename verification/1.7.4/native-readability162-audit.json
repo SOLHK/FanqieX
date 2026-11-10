@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
   "negative_control_sha256": "8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e",
   "case_groups": 4,
   "cases": [

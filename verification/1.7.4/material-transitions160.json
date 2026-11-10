@@ -1,7 +1,7 @@
 {
   "passed": true,
   "candidate": {
-    "sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+    "sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
     "first_mount_writes": 1,
     "writes_after_hide_fade_show": 0
   },

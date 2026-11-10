@@ -14,6 +14,7 @@
 - 插件包：`dist/1.7.4/FanqieX-1.7.4.zip`
 - 校验值：`dist/1.7.4/SHA256SUMS.txt`
 - 本地验证：`verification/1.7.4/ci-summary.json`
+- 最终候选：Xcode 27.2 构建，SHA-256 `b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337`
 - [GitHub Actions](https://github.com/SOLHK/FanqieX/actions?query=branch%3Atest)
 
 宿主身份已按本次上传的 IPA 逆向 ZIP 重新核对：

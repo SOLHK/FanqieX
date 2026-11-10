@@ -6,7 +6,7 @@
   "reconstruction_input_version": "1.5.8",
   "reconstruction_input_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
   "rebuild_base_sha256": "918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4",
-  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
   "size_bytes": 222352,
   "changes": [
     {
@@ -14,7 +14,7 @@
       "size": 14180,
       "reason": "Rebuild main repair with extension calls",
       "old_sha256": "d3e781e9881f8715f6d52c729d971f961903f635c373302d117e3cdef470a0a9",
-      "new_sha256": "225e626ce2219980db27228fc2ba12d8992ab145670fbf232f955edf667bcc52"
+      "new_sha256": "6306466cc0abf29accc051cb86b8b9786c8093a8f30e3b261619d010ce5081eb"
     },
     {
       "offset": "0x11900",
@@ -126,7 +126,7 @@
       "size": 4216,
       "reason": "Link compiler-generated native exception unwind frames into the existing metadata slot",
       "old_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
-      "new_sha256": "4e7b7f09756a13e6e8d31dd34e9d0b01f3722b63fb473722861e9ac0a91fccd9"
+      "new_sha256": "be89c12d3e819dce69cab71ed11a0b203a23d7103304f9f5b9a5b11083b70f59"
     },
     {
       "offset": "0x5d50",
@@ -203,7 +203,7 @@
       "size": 16,
       "reason": "Deterministic UUID",
       "old_sha256": "282955acd1f224f7787df021bccc01e5fcbc26b39f76b89493802770b58ab0ca",
-      "new_sha256": "49c43f4f6b62a7c7d6b991daba4f70767ef8d835ce3654c2c85eca5a8cd96597"
+      "new_sha256": "b3ce17e3fdedd63191dbd4e77d5b68833d5f39817f221aae19677968e7abf5a0"
     }
   ],
   "signature": {
@@ -222,17 +222,17 @@
     "exec_segment_flags": 0,
     "page_hashes_valid": true,
     "invalid_pages": [],
-    "sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
-    "cdhash": "3402f4648e0af81f9d3fd33894ccfb0115cdc9a3",
+    "sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
+    "cdhash": "702c1eb041a5b7cfb2eb908a424ffb76acc6aa2d",
     "device_acceptance_tested": false
   },
   "extension_layout": {
     "passed": true,
     "extension_base": 81920,
     "capacity": 131072,
-    "payload_bytes": 125456,
-    "source_sha256": "710cc426e02548dd9c6aa586061693aed6ef5056548dd4cae18c30145562b02a",
-    "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+    "payload_bytes": 125648,
+    "source_sha256": "2bcb6aafee3ddd4f0324a9c390e4ba177c2a288fe3e6c6c9d00c9220227e3bb0",
+    "candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
     "size_bytes": 222352,
     "header_end": 1984,
     "segments": [
@@ -307,8 +307,8 @@
       "exec_segment_flags": 0,
       "page_hashes_valid": true,
       "invalid_pages": [],
-      "sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
-      "cdhash": "3402f4648e0af81f9d3fd33894ccfb0115cdc9a3",
+      "sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
+      "cdhash": "702c1eb041a5b7cfb2eb908a424ffb76acc6aa2d",
       "device_acceptance_tested": false
     },
     "limits": [
@@ -317,7 +317,7 @@
       "ARM64 instruction/ABI and UIKit behavior require separate audits."
     ]
   },
-  "uuid": "84028bb8-57b5-535a-8bba-2ea58bd397e1",
+  "uuid": "da19136e-bf8f-56ec-a815-ea74c6949703",
   "main_directory": {
     "ratio": 2304,
     "layout": 2364,
@@ -380,9 +380,9 @@
     "capture_edge": 4416,
     "restore_removed": 4064,
     "extension": 81920,
-    "extension_code_end": 187492,
-    "extension_strings": 187496,
-    "extension_end": 207376
+    "extension_code_end": 187684,
+    "extension_strings": 187688,
+    "extension_end": 207568
   },
   "extension_directory": {
     "update": 82192,
@@ -400,15 +400,15 @@
     "should_begin": 90568,
     "style_control": 102208,
     "style_glyph": 103256,
-    "code_end": 187492,
-    "strings": 187496,
-    "end": 207376,
-    "native_key": 187496,
-    "monitor_key": 187499,
-    "owner_key": 187500,
-    "timer_key": 187501,
-    "tick_key": 187502,
-    "rejected_key": 187498,
+    "code_end": 187684,
+    "strings": 187688,
+    "end": 207568,
+    "native_key": 187688,
+    "monitor_key": 187691,
+    "owner_key": 187692,
+    "timer_key": 187693,
+    "tick_key": 187694,
+    "rejected_key": 187690,
     "reserved24": 128696,
     "reserved25": 129040,
     "reserved26": 129380,
@@ -422,13 +422,13 @@
     "image_alignment": 120696,
     "layout_observe": 122800,
     "finish": 101104,
-    "control_busy_key": 190904,
-    "busy_key": 192746,
-    "owner_back_key": 192752,
-    "back_owned_key": 192747,
-    "back_original_key": 192748,
-    "back_mode_key": 192749,
-    "last_log_key": 192753,
+    "control_busy_key": 191096,
+    "busy_key": 192938,
+    "owner_back_key": 192944,
+    "back_owned_key": 192939,
+    "back_original_key": 192940,
+    "back_mode_key": 192941,
+    "last_log_key": 192945,
     "settle_control": 115576
   },
   "original_unchanged": true,
@@ -450,10 +450,10 @@
     "section_offset": 60908,
     "section_size": 4216,
     "original_entry_count": 63,
-    "native_entry_count": 213,
-    "merged_entry_count": 277,
+    "native_entry_count": 214,
+    "merged_entry_count": 278,
     "original_limit": 42356,
-    "merged_limit": 187492,
+    "merged_limit": 187684,
     "section_descriptors_unchanged": true,
     "native_entries": [
       {
@@ -918,611 +918,616 @@
       },
       {
         "start": 160748,
-        "end": 160888,
+        "end": 160896,
         "encoding": 67108867
       },
       {
-        "start": 160888,
-        "end": 161060,
+        "start": 160896,
+        "end": 161068,
         "encoding": 67108865
       },
       {
-        "start": 161060,
-        "end": 161152,
+        "start": 161068,
+        "end": 161160,
         "encoding": 67108867
       },
       {
-        "start": 161152,
-        "end": 161384,
+        "start": 161160,
+        "end": 161392,
         "encoding": 67108879
       },
       {
-        "start": 161384,
-        "end": 161476,
+        "start": 161392,
+        "end": 161484,
         "encoding": 67108867
       },
       {
-        "start": 161476,
-        "end": 161548,
+        "start": 161484,
+        "end": 161556,
         "encoding": 67108865
       },
       {
-        "start": 161548,
-        "end": 161560,
+        "start": 161556,
+        "end": 161568,
         "encoding": 33554432
       },
       {
-        "start": 161560,
-        "end": 161564,
+        "start": 161568,
+        "end": 161572,
         "encoding": 33554432
       },
       {
-        "start": 161564,
-        "end": 162864,
+        "start": 161572,
+        "end": 162896,
         "encoding": 67109635
       },
       {
-        "start": 162864,
-        "end": 162868,
+        "start": 162896,
+        "end": 162900,
         "encoding": 33554432
       },
       {
-        "start": 162868,
-        "end": 163032,
+        "start": 162900,
+        "end": 163064,
         "encoding": 67108867
       },
       {
-        "start": 163032,
-        "end": 163320,
+        "start": 163064,
+        "end": 163352,
         "encoding": 67108867
       },
       {
-        "start": 163320,
-        "end": 163324,
+        "start": 163352,
+        "end": 163356,
         "encoding": 33554432
       },
       {
-        "start": 163324,
-        "end": 163328,
+        "start": 163356,
+        "end": 163360,
         "encoding": 33554432
       },
       {
-        "start": 163328,
-        "end": 164092,
+        "start": 163360,
+        "end": 164124,
         "encoding": 67109639
       },
       {
-        "start": 164092,
-        "end": 164444,
+        "start": 164124,
+        "end": 164476,
         "encoding": 67108867
       },
       {
-        "start": 164444,
-        "end": 164592,
+        "start": 164476,
+        "end": 164624,
         "encoding": 67108867
       },
       {
-        "start": 164592,
-        "end": 166096,
+        "start": 164624,
+        "end": 166128,
         "encoding": 67110687
       },
       {
-        "start": 166096,
-        "end": 166132,
+        "start": 166128,
+        "end": 166164,
         "encoding": 67108864
       },
       {
-        "start": 166132,
-        "end": 166144,
+        "start": 166164,
+        "end": 166176,
         "encoding": 33554432
       },
       {
-        "start": 166144,
-        "end": 166148,
+        "start": 166176,
+        "end": 166180,
         "encoding": 33554432
       },
       {
-        "start": 166148,
-        "end": 166160,
+        "start": 166180,
+        "end": 166192,
         "encoding": 33554432
       },
       {
-        "start": 166160,
-        "end": 168752,
+        "start": 166192,
+        "end": 168820,
         "encoding": 67112719
       },
       {
-        "start": 168752,
-        "end": 168812,
+        "start": 168820,
+        "end": 168880,
         "encoding": 67108865
       },
       {
-        "start": 168812,
-        "end": 168816,
+        "start": 168880,
+        "end": 168884,
         "encoding": 33554432
       },
       {
-        "start": 168816,
-        "end": 169644,
+        "start": 168884,
+        "end": 169636,
         "encoding": 67108895
       },
       {
-        "start": 169644,
-        "end": 169648,
+        "start": 169636,
+        "end": 169640,
         "encoding": 33554432
       },
       {
-        "start": 169648,
-        "end": 170040,
-        "encoding": 67109639
+        "start": 169640,
+        "end": 169748,
+        "encoding": 67108867
       },
       {
-        "start": 170040,
-        "end": 170852,
-        "encoding": 67112707
-      },
-      {
-        "start": 170852,
-        "end": 171160,
+        "start": 169748,
+        "end": 170112,
         "encoding": 67109635
       },
       {
-        "start": 171160,
-        "end": 171696,
+        "start": 170112,
+        "end": 170996,
+        "encoding": 67112707
+      },
+      {
+        "start": 170996,
+        "end": 171304,
+        "encoding": 67109635
+      },
+      {
+        "start": 171304,
+        "end": 171840,
         "encoding": 67108879
       },
       {
-        "start": 171696,
-        "end": 171700,
+        "start": 171840,
+        "end": 171844,
         "encoding": 33554432
       },
       {
-        "start": 171700,
-        "end": 171772,
+        "start": 171844,
+        "end": 171916,
         "encoding": 67108865
       },
       {
-        "start": 171772,
-        "end": 171880,
+        "start": 171916,
+        "end": 172024,
         "encoding": 67108865
       },
       {
-        "start": 171880,
-        "end": 172708,
+        "start": 172024,
+        "end": 172852,
         "encoding": 67108871
       },
       {
-        "start": 172708,
-        "end": 172972,
+        "start": 172852,
+        "end": 173116,
         "encoding": 67108871
       },
       {
-        "start": 172972,
-        "end": 172976,
+        "start": 173116,
+        "end": 173120,
         "encoding": 33554432
       },
       {
-        "start": 172976,
-        "end": 172980,
+        "start": 173120,
+        "end": 173124,
         "encoding": 33554432
       },
       {
-        "start": 172980,
-        "end": 172984,
+        "start": 173124,
+        "end": 173128,
         "encoding": 33554432
       },
       {
-        "start": 172984,
-        "end": 173192,
+        "start": 173128,
+        "end": 173336,
         "encoding": 67108867
       },
       {
-        "start": 173192,
-        "end": 173892,
+        "start": 173336,
+        "end": 174036,
         "encoding": 67108867
       },
       {
-        "start": 173892,
-        "end": 174020,
+        "start": 174036,
+        "end": 174164,
         "encoding": 67108871
       },
       {
-        "start": 174020,
-        "end": 174392,
+        "start": 174164,
+        "end": 174536,
         "encoding": 67108895
       },
       {
-        "start": 174392,
-        "end": 174404,
+        "start": 174536,
+        "end": 174548,
         "encoding": 33554432
       },
       {
-        "start": 174404,
-        "end": 174704,
+        "start": 174548,
+        "end": 174868,
         "encoding": 67108867
       },
       {
-        "start": 174704,
-        "end": 174708,
+        "start": 174868,
+        "end": 174872,
         "encoding": 33554432
       },
       {
-        "start": 174708,
-        "end": 175136,
+        "start": 174872,
+        "end": 175300,
         "encoding": 67108871
       },
       {
-        "start": 175136,
-        "end": 175900,
+        "start": 175300,
+        "end": 176064,
         "encoding": 67108867
       },
       {
-        "start": 175900,
-        "end": 176100,
+        "start": 176064,
+        "end": 176264,
         "encoding": 67108871
       },
       {
-        "start": 176100,
-        "end": 176180,
+        "start": 176264,
+        "end": 176344,
         "encoding": 67108865
       },
       {
-        "start": 176180,
-        "end": 176280,
+        "start": 176344,
+        "end": 176444,
         "encoding": 67108865
       },
       {
-        "start": 176280,
-        "end": 176392,
+        "start": 176444,
+        "end": 176556,
         "encoding": 67108865
       },
       {
-        "start": 176392,
-        "end": 176472,
+        "start": 176556,
+        "end": 176636,
         "encoding": 67108865
       },
       {
-        "start": 176472,
-        "end": 176588,
+        "start": 176636,
+        "end": 176752,
         "encoding": 67108865
       },
       {
-        "start": 176588,
-        "end": 176704,
+        "start": 176752,
+        "end": 176868,
         "encoding": 67108865
       },
       {
-        "start": 176704,
-        "end": 176796,
+        "start": 176868,
+        "end": 176960,
         "encoding": 67108865
       },
       {
-        "start": 176796,
-        "end": 176908,
+        "start": 176960,
+        "end": 177072,
         "encoding": 67108865
       },
       {
-        "start": 176908,
-        "end": 177016,
+        "start": 177072,
+        "end": 177180,
         "encoding": 67108865
       },
       {
-        "start": 177016,
-        "end": 177124,
+        "start": 177180,
+        "end": 177288,
         "encoding": 67108865
       },
       {
-        "start": 177124,
-        "end": 177196,
+        "start": 177288,
+        "end": 177360,
         "encoding": 67108865
       },
       {
-        "start": 177196,
-        "end": 177436,
+        "start": 177360,
+        "end": 177600,
         "encoding": 67108871
       },
       {
-        "start": 177436,
-        "end": 177688,
+        "start": 177600,
+        "end": 177852,
         "encoding": 67108871
       },
       {
-        "start": 177688,
-        "end": 178692,
+        "start": 177852,
+        "end": 178856,
         "encoding": 67109127
       },
       {
-        "start": 178692,
-        "end": 179160,
+        "start": 178856,
+        "end": 179324,
         "encoding": 67108867
       },
       {
-        "start": 179160,
-        "end": 179232,
+        "start": 179324,
+        "end": 179396,
         "encoding": 67108865
       },
       {
-        "start": 179232,
-        "end": 179316,
+        "start": 179396,
+        "end": 179480,
         "encoding": 67108865
       },
       {
-        "start": 179316,
-        "end": 179416,
+        "start": 179480,
+        "end": 179580,
         "encoding": 67108867
       },
       {
-        "start": 179416,
-        "end": 179488,
+        "start": 179580,
+        "end": 179652,
         "encoding": 67108865
       },
       {
-        "start": 179488,
-        "end": 179624,
+        "start": 179652,
+        "end": 179788,
         "encoding": 67109127
       },
       {
-        "start": 179624,
-        "end": 179784,
+        "start": 179788,
+        "end": 179948,
         "encoding": 67109127
       },
       {
-        "start": 179784,
-        "end": 179924,
+        "start": 179948,
+        "end": 180088,
         "encoding": 67108865
       },
       {
-        "start": 179924,
-        "end": 179996,
+        "start": 180088,
+        "end": 180160,
         "encoding": 67108865
       },
       {
-        "start": 179996,
-        "end": 180068,
+        "start": 180160,
+        "end": 180232,
         "encoding": 67108865
       },
       {
-        "start": 180068,
-        "end": 180156,
+        "start": 180232,
+        "end": 180320,
         "encoding": 67108867
       },
       {
-        "start": 180156,
-        "end": 180780,
+        "start": 180320,
+        "end": 180944,
         "encoding": 67109127
       },
       {
-        "start": 180780,
-        "end": 181072,
+        "start": 180944,
+        "end": 181236,
         "encoding": 67108867
       },
       {
-        "start": 181072,
-        "end": 181076,
+        "start": 181236,
+        "end": 181240,
         "encoding": 33554432
       },
       {
-        "start": 181076,
-        "end": 181080,
+        "start": 181240,
+        "end": 181244,
         "encoding": 33554432
       },
       {
-        "start": 181080,
-        "end": 181084,
+        "start": 181244,
+        "end": 181248,
         "encoding": 33554432
       },
       {
-        "start": 181084,
-        "end": 181088,
+        "start": 181248,
+        "end": 181252,
         "encoding": 33554432
       },
       {
-        "start": 181088,
-        "end": 181092,
+        "start": 181252,
+        "end": 181256,
         "encoding": 33554432
       },
       {
-        "start": 181092,
-        "end": 181096,
+        "start": 181256,
+        "end": 181260,
         "encoding": 33554432
       },
       {
-        "start": 181096,
-        "end": 181100,
+        "start": 181260,
+        "end": 181264,
         "encoding": 33554432
       },
       {
-        "start": 181100,
-        "end": 181104,
+        "start": 181264,
+        "end": 181268,
         "encoding": 33554432
       },
       {
-        "start": 181104,
-        "end": 181212,
+        "start": 181268,
+        "end": 181376,
         "encoding": 67109633
       },
       {
-        "start": 181212,
-        "end": 181612,
+        "start": 181376,
+        "end": 181776,
         "encoding": 67109639
       },
       {
-        "start": 181612,
-        "end": 181692,
-        "encoding": 33554432
-      },
-      {
-        "start": 181692,
-        "end": 181880,
-        "encoding": 67108865
-      },
-      {
-        "start": 181880,
+        "start": 181776,
         "end": 181884,
         "encoding": 33554432
       },
       {
         "start": 181884,
-        "end": 182120,
+        "end": 182072,
+        "encoding": 67108865
+      },
+      {
+        "start": 182072,
+        "end": 182076,
+        "encoding": 33554432
+      },
+      {
+        "start": 182076,
+        "end": 182312,
         "encoding": 67109635
       },
       {
-        "start": 182120,
-        "end": 182124,
+        "start": 182312,
+        "end": 182316,
         "encoding": 33554432
       },
       {
-        "start": 182124,
-        "end": 182128,
+        "start": 182316,
+        "end": 182320,
         "encoding": 33554432
       },
       {
-        "start": 182128,
-        "end": 182188,
+        "start": 182320,
+        "end": 182380,
         "encoding": 67108865
       },
       {
-        "start": 182188,
-        "end": 182360,
+        "start": 182380,
+        "end": 182552,
         "encoding": 67108865
       },
       {
-        "start": 182360,
-        "end": 182536,
+        "start": 182552,
+        "end": 182728,
         "encoding": 67108867
       },
       {
-        "start": 182536,
-        "end": 182540,
+        "start": 182728,
+        "end": 182732,
         "encoding": 33554432
       },
       {
-        "start": 182540,
-        "end": 184264,
+        "start": 182732,
+        "end": 184456,
         "encoding": 67112711
       },
       {
-        "start": 184264,
-        "end": 184268,
+        "start": 184456,
+        "end": 184460,
         "encoding": 33554432
       },
       {
-        "start": 184268,
-        "end": 184272,
+        "start": 184460,
+        "end": 184464,
         "encoding": 33554432
       },
       {
-        "start": 184272,
-        "end": 184324,
+        "start": 184464,
+        "end": 184516,
         "encoding": 67108865
       },
       {
-        "start": 184324,
-        "end": 184376,
+        "start": 184516,
+        "end": 184568,
         "encoding": 67108865
       },
       {
-        "start": 184376,
-        "end": 184380,
-        "encoding": 33554432
-      },
-      {
-        "start": 184380,
-        "end": 184384,
-        "encoding": 33554432
-      },
-      {
-        "start": 184384,
+        "start": 184568,
         "end": 184572,
-        "encoding": 67108867
+        "encoding": 33554432
       },
       {
         "start": 184572,
-        "end": 184640,
-        "encoding": 67108865
-      },
-      {
-        "start": 184640,
-        "end": 184756,
-        "encoding": 67108865
-      },
-      {
-        "start": 184756,
-        "end": 184760,
+        "end": 184576,
         "encoding": 33554432
       },
       {
-        "start": 184760,
+        "start": 184576,
         "end": 184764,
-        "encoding": 33554432
+        "encoding": 67108867
       },
       {
         "start": 184764,
-        "end": 184820,
+        "end": 184832,
         "encoding": 67108865
       },
       {
-        "start": 184820,
-        "end": 184996,
-        "encoding": 67108871
-      },
-      {
-        "start": 184996,
-        "end": 185228,
+        "start": 184832,
+        "end": 184948,
         "encoding": 67108865
       },
       {
-        "start": 185228,
-        "end": 185232,
+        "start": 184948,
+        "end": 184952,
         "encoding": 33554432
       },
       {
-        "start": 185232,
-        "end": 185236,
+        "start": 184952,
+        "end": 184956,
         "encoding": 33554432
       },
       {
-        "start": 185236,
-        "end": 185240,
-        "encoding": 33554432
+        "start": 184956,
+        "end": 185012,
+        "encoding": 67108865
       },
       {
-        "start": 185240,
-        "end": 185244,
-        "encoding": 33554432
-      },
-      {
-        "start": 185244,
-        "end": 185488,
+        "start": 185012,
+        "end": 185188,
         "encoding": 67108871
       },
       {
-        "start": 185488,
-        "end": 186360,
+        "start": 185188,
+        "end": 185420,
+        "encoding": 67108865
+      },
+      {
+        "start": 185420,
+        "end": 185424,
+        "encoding": 33554432
+      },
+      {
+        "start": 185424,
+        "end": 185428,
+        "encoding": 33554432
+      },
+      {
+        "start": 185428,
+        "end": 185432,
+        "encoding": 33554432
+      },
+      {
+        "start": 185432,
+        "end": 185436,
+        "encoding": 33554432
+      },
+      {
+        "start": 185436,
+        "end": 185680,
+        "encoding": 67108871
+      },
+      {
+        "start": 185680,
+        "end": 186552,
         "encoding": 67109647
       },
       {
-        "start": 186360,
-        "end": 186364,
+        "start": 186552,
+        "end": 186556,
         "encoding": 33554432
       },
       {
-        "start": 186364,
-        "end": 186368,
+        "start": 186556,
+        "end": 186560,
         "encoding": 33554432
       },
       {
-        "start": 186368,
-        "end": 187080,
+        "start": 186560,
+        "end": 187272,
         "encoding": 67108879
       },
       {
-        "start": 187080,
-        "end": 187492,
+        "start": 187272,
+        "end": 187684,
         "encoding": 67108871
       }
     ],
     "original_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
-    "merged_sha256": "4e7b7f09756a13e6e8d31dd34e9d0b01f3722b63fb473722861e9ac0a91fccd9"
+    "merged_sha256": "be89c12d3e819dce69cab71ed11a0b203a23d7103304f9f5b9a5b11083b70f59"
   }
 }

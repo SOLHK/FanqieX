@@ -1,285 +1,288 @@
 {
   "passed": true,
-  "candidate_sha256": "001d98496a6665f7e263e750b01a94155ff0d4d8740228208651a8e2a59e079d",
+  "candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
   "candidate_size": 222352,
   "two_builds_identical": true,
   "device_tested": false,
-  "source_manifest_sha256": "e7ce4b2fccf69f7f0ff19259d22077fe68dc837b9751657804a8c4e93420ca52",
+  "source_manifest_sha256": "40a8e47c7ffe0a15b9c72763d867b4042f503a82d4a83faed49628b64f031e6f",
   "source_file_count": 244,
   "steps": [
     {
       "name": "build",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.838,
+      "seconds": 0.853,
       "log": "logs/build.log"
     },
     {
       "name": "rebuild",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.849,
+      "seconds": 0.819,
       "log": "logs/rebuild.log"
     },
     {
       "name": "extension-layout-selftest",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.136,
+      "seconds": 0.135,
       "log": "logs/extension-layout-selftest.log"
     },
     {
       "name": "independent-binary",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.208,
+      "seconds": 0.165,
       "log": "logs/independent-binary.log"
     },
     {
       "name": "independent-faults",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.978,
+      "seconds": 1.986,
       "log": "logs/independent-faults.log"
     },
     {
       "name": "native-surface",
       "passed": true,
       "returncode": 0,
-      "seconds": 8.507,
+      "seconds": 8.554,
       "log": "logs/native-surface.log"
     },
     {
       "name": "glass-interaction",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.462,
+      "seconds": 2.444,
       "log": "logs/glass-interaction.log"
     },
     {
       "name": "integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.957,
+      "seconds": 3.051,
       "log": "logs/integration.log"
     },
     {
       "name": "diagnostic-dedup",
       "passed": true,
       "returncode": 0,
-      "seconds": 32.752,
+      "seconds": 34.074,
       "log": "logs/diagnostic-dedup.log"
     },
     {
       "name": "legacy-execution",
       "passed": true,
       "returncode": 0,
-      "seconds": 28.075,
+      "seconds": 29.66,
       "log": "logs/legacy-execution.log"
     },
     {
       "name": "material-transitions160",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.175,
+      "seconds": 0.16,
       "log": "logs/material-transitions160.log"
     },
     {
       "name": "feed-viewport",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.794,
+      "seconds": 6.004,
       "log": "logs/feed-viewport.log"
     },
     {
       "name": "feed-integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 12.077,
+      "seconds": 12.742,
       "log": "logs/feed-integration.log"
     },
     {
       "name": "feed-realistic159",
       "passed": true,
       "returncode": 0,
-      "seconds": 18.036,
+      "seconds": 18.672,
       "log": "logs/feed-realistic159.log"
     },
     {
       "name": "first-frame160",
       "passed": true,
       "returncode": 0,
-      "seconds": 4.682,
+      "seconds": 4.8,
       "log": "logs/first-frame160.log"
     },
     {
       "name": "reader-diagnostics160",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.857,
+      "seconds": 2.943,
       "log": "logs/reader-diagnostics160.log"
     },
     {
       "name": "reader-original162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.813,
+      "seconds": 7.033,
       "log": "logs/reader-original162.log"
     },
     {
       "name": "shelf-first-frame162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.288,
+      "seconds": 2.482,
       "log": "logs/shelf-first-frame162.log"
     },
     {
       "name": "glass-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.467,
+      "seconds": 2.569,
       "log": "logs/glass-readability162.log"
     },
     {
       "name": "interaction-diagnostics162",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.134,
+      "seconds": 1.178,
       "log": "logs/interaction-diagnostics162.log"
     },
     {
       "name": "native-selection162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.417,
+      "seconds": 6.458,
       "log": "logs/native-selection162.log"
     },
     {
       "name": "native-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.233,
+      "seconds": 5.449,
       "log": "logs/native-readability162.log"
     },
     {
       "name": "native-orchestration162",
       "passed": true,
       "returncode": 0,
-      "seconds": 11.846,
+      "seconds": 12.035,
       "log": "logs/native-orchestration162.log"
     },
     {
       "name": "hook-ownership163",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.347,
+      "seconds": 2.333,
       "log": "logs/hook-ownership163.log"
     },
     {
       "name": "ad-decisions164",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.837,
+      "seconds": 6.834,
       "log": "logs/ad-decisions164.log"
     },
     {
       "name": "startup-popup164",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.741,
+      "seconds": 0.712,
       "log": "logs/startup-popup164.log"
     },
     {
       "name": "tabbar-spacing164",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.099,
+      "seconds": 0.103,
       "log": "logs/tabbar-spacing164.log"
     },
     {
       "name": "native-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.658,
+      "seconds": 5.695,
       "log": "logs/native-diagnostics164.log"
     },
     {
       "name": "diagnostic-limits164",
       "passed": true,
       "returncode": 0,
-      "seconds": 30.664,
+      "seconds": 30.131,
       "log": "logs/diagnostic-limits164.log"
     },
     {
       "name": "load-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.585,
+      "seconds": 1.568,
       "log": "logs/load-diagnostics164.log"
     },
     {
       "name": "native-compiler-boundaries",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.335,
+      "seconds": 0.332,
       "log": "logs/native-compiler-boundaries.log"
     },
     {
       "name": "native-unwind",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.201,
+      "seconds": 0.207,
       "log": "logs/native-unwind.log"
     },
     {
       "name": "home-glass165",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.163,
+      "seconds": 2.165,
       "log": "logs/home-glass165.log"
     },
     {
       "name": "home-compiler",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.495,
+      "seconds": 0.469,
       "log": "logs/home-compiler.log"
     },
     {
       "name": "conditional-compare",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.486,
+      "seconds": 0.424,
       "log": "logs/conditional-compare.log"
     },
     {
       "name": "alignment167",
       "passed": true,
       "returncode": 0,
-      "seconds": 20.721,
+      "seconds": 21.697,
       "log": "logs/alignment167.log"
     },
     {
       "name": "controls171",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.74,
+      "seconds": 1.785,
       "log": "logs/controls171.log"
     },
     {
       "name": "header173",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.729,
+      "seconds": 6.715,
       "log": "logs/header173.log"
     },
     {
       "name": "page-glass174",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.826,
+      "seconds": 0.842,
       "log": "logs/page-glass174.log"
     }
   ],
+  "candidate_source": "same-commit Xcode 27.2 validated build",
+  "linux_candidate_sha256": "b37381470e3f8d4f391f0a950b39e096e477a4f8966fcc2edb4ba62b9d83b337",
+  "xcode_validation_sha256": "6f169ce4c93ca7b26a9c5c08c6a1c4577384eab82f6f2678428fdfa4752d8ad4",
   "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models"
 }
