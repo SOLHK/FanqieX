@@ -12,7 +12,8 @@ EXTRA=['LFQH_FQHButton','LFQH_FQHReader','LFQH_FQHShelf','LFQH_FQHIconGlass','LF
 class Runtime(PreviousRuntime):
     def __init__(self,data,slide=0,available=True):
         super().__init__(data,slide,available)
-        self._class('SSReaderNavigationBarDownloadButton','UIView')
+        self.parents[self.classes['SSReaderNavigationBarDownloadButton']]=self.classes['UIView']
+        self._class('SSReaderNavigationBarBookShelfBtnInsertObject','NSObject')
         self._class('FQReaderSaaSBaseButton','UIButton')
         imp=0x33090000;self.hosts[imp]=('FQReaderSaaSBaseButton','layoutSubviews')
         self._add(self.classes['FQReaderSaaSBaseButton'],'layoutSubviews',imp,'v16@0:8')
@@ -212,6 +213,31 @@ def exercise(data,labels,baseline):
                 'Switching back to the icon clears the old sibling glass')
         require(r.objects[material(c,r,labels,download_icon)].state['frame']==(-6.,-6.,36.,36.),
                 'The native icon variant keeps its round material')
+        shelf_label=r.label('reader_shelf_label',nav,(146,11,64,22),'加入书架')
+        shelf_insert=r.obj('SSReaderNavigationBarBookShelfBtnInsertObject','bookshelf insert',getInsertView=shelf_label)
+        shelf_state=r.objects[shelf_label].state
+        shelf_target=(shelf_insert,r.sel('onBookShelfBtnClick:'))
+        shelf_state.update(userInteractionEnabled=True,gestureRecognizers=[shelf_target])
+        r.host_views.add(shelf_label)
+        inserts=r.objects[r.objects[nav].state['insertObjs']].state['items']
+        inserts.append(shelf_insert)
+        send(c,r,nav,'layoutSubviews')
+        shelf_glass=material(c,r,labels,shelf_label)
+        require(shelf_glass and siblings[siblings.index(shelf_label)-1]==shelf_glass and
+                r.objects[shelf_glass].state['frame']==(140.,6.,76.,32.) and
+                hit_contains(r,shelf_label,(-6.,-5.,76.,32.)),
+                'The entire native shelf action and its visible capsule share the original gesture hit area')
+        for text_value in ('已加书架','加入书架'):
+            shelf_state['text']=r.text_object(text_value)
+            send(c,r,nav,'layoutSubviews')
+            require(material(c,r,labels,shelf_label)==shelf_glass and r.string_value(shelf_state['text'])==text_value and
+                    shelf_state['gestureRecognizers']==[shelf_target] and shelf_state['userInteractionEnabled'],
+                    'Both native shelf states keep the same glass, live caption and original gesture')
+        r.reparent(shelf_label,0)
+        inserts.remove(shelf_insert)
+        send(c,r,nav,'layoutSubviews')
+        require(shelf_glass not in siblings and not material(c,r,labels,shelf_label),
+                'Removing the host shelf insert also removes its sibling glass')
         parent=r.view('UIView','shelf_header',(348,72,56,24),r.ROOT)
         search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)
@@ -249,7 +275,7 @@ def exercise(data,labels,baseline):
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')
         require(not material(c,r,labels,search) and not material(c,r,labels,more),'Shelf backgrounds removed on disable')
         require(r.objects[search].state['imageView']==replacement and r.objects[replacement].state['frame']==(9.,9.,16.,20.),'Disable preserves the latest host-created artwork and layout')
-        results.append('host frame/content preservation; download icon and text; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))
+        results.append('host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))
     # Execute the actual 1.6.6 predecessor as a negative control: its 36pt
     # wrapper leaves a host's 24pt child drawing at the old top-left origin.
     with tempfile.TemporaryDirectory() as folder:

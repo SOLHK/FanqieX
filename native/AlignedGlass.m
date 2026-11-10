@@ -38,6 +38,7 @@ static void OpaqueKey(void) {}
 static void OwnerBusyKey(void) {}
 static void ReaderGlassKey(void) {}
 static void ReaderDownloadLabelKey(void) {}
+static void ReaderShelfLabelKey(void) {}
 static void IconGlassKey(void) {}
 static void IconRectKey(void) {}
 static void ShelfRoleKey(void) {}
@@ -451,7 +452,7 @@ static void RestoreIcon(Obj view,Obj glass) {
     RestoreHit(view); RestoreOwner(view);
 }
 typedef enum { IconNone, IconGeneric, IconReaderBack, IconReaderMore, IconReaderSearch,
-    IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconShelfSearch, IconShelfMore } IconRole;
+    IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconReaderShelf, IconShelfSearch, IconShelfMore } IconRole;
 static const char *IconRoleName(IconRole role) {
     switch (role) {
         case IconReaderBack: return "readerBack";
@@ -460,6 +461,7 @@ static const char *IconRoleName(IconRole role) {
         case IconReaderDownload: return "readerDownload";
         case IconReaderCommunity: return "readerCommunity";
         case IconReaderChapter: return "readerChapter";
+        case IconReaderShelf: return "readerShelf";
         case IconShelfSearch: return "shelfSearch";
         case IconShelfMore: return "shelfMore";
         default: return "icon";
@@ -506,12 +508,12 @@ static void Icon(Obj view,IconRole role) {
     double diameter=shelf ? 28 : 36;
     double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(role==IconShelfSearch ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
-    B downloadText=role==IconReaderDownload && Kind(view,"UILabel");
-    Obj holder=downloadText ? O0(view,"superview") : view;
-    if (!holder || !CanExpandHit(view) || (downloadText && Flag(view,"isHidden"))) {
+    B readerText=(role==IconReaderDownload || role==IconReaderShelf) && Kind(view,"UILabel");
+    Obj holder=readerText ? O0(view,"superview") : view;
+    if (!holder || !CanExpandHit(view) || (readerText && Flag(view,"isHidden"))) {
         RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return;
     }
-    if (downloadText) {
+    if (readerText) {
         // The label draws its text in its own layer. A child glass would cover it.
         material=(Rect){bounds.x-6,bounds.y-5,bounds.width+12,bounds.height+10};
     } else if (role==IconReaderChapter) {
@@ -519,7 +521,7 @@ static void Icon(Obj view,IconRole role) {
         material=(Rect){bounds.x-6,bounds.y+(bounds.height-height)*0.5,bounds.width+12,height};
     }
     if (!VisibleRect(material)) { RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return; }
-    Rect placed=downloadText ? Convert(view,material,holder) : material;
+    Rect placed=readerText ? Convert(view,material,holder) : material;
     if (!glass) {
         Obj config=O0(Lookup("UIButtonConfiguration"),"glassButtonConfiguration");
         if (config) glass=O0(GlassClass(),"new");
@@ -536,7 +538,7 @@ static void Icon(Obj view,IconRole role) {
     // Compare the requested layout, not UIKit's transient pressed geometry.
     B move=!lastRect || !SameRect(UnboxRect(lastRect),placed);
     B attach=O0(glass,"superview")!=holder;
-    B clips=!downloadText && Flag(view,"clipsToBounds"),opaque=!downloadText && Flag(view,"isOpaque");
+    B clips=!readerText && Flag(view,"clipsToBounds"),opaque=!readerText && Flag(view,"isOpaque");
     B changeEnabled=0,changeSelected=0,changeHighlighted=0;
     B enabled=0,selected=0,highlighted=0;
     if (Kind(view,"UIControl")) {
@@ -550,13 +552,13 @@ static void Icon(Obj view,IconRole role) {
         transaction=Lookup("CATransaction");
         V0(transaction,"begin");VB(transaction,"setDisableActions:",1);
     }
-    if (!downloadText) PrepareOwner(view,clips,opaque);
+    if (!readerText) PrepareOwner(view,clips,opaque);
     if (move) {
         SetFrame(glass,placed);
         objc_setAssociatedObject(view,IconRectKey,RectBox(placed),1);
     }
     if (attach) {
-        if (downloadText)
+        if (readerText)
             ((void(*)(Obj,Sel,Obj,Obj))Message)(holder,sel_registerName("insertSubview:belowSubview:"),glass,view);
         else
             ((void(*)(Obj,Sel,Obj,I))Message)(holder,sel_registerName("insertSubview:atIndex:"),glass,0);
@@ -592,8 +594,15 @@ static IconRole InsertRole(Obj obj) {
     if (Kind(obj,"FQReaderNavigationBarMoreBtnInsertObject")) return IconReaderMore;
     if (Kind(obj,"FQReaderNavigationBarSearchBtnInsertObject")) return IconReaderSearch;
     if (Kind(obj,"SSReaderNavigationBarDownloadBtnInsertObject")) return IconReaderDownload;
+    if (Kind(obj,"SSReaderNavigationBarBookShelfBtnInsertObject")) return IconReaderShelf;
     if (Kind(obj,"SSReaderNavigationBarCommunitySwitchBtnInsertObject")) return IconReaderCommunity;
     return IconNone;
+}
+static void TrackReaderLabel(Obj owner,const void *key,Obj label) {
+    Obj previous=objc_getAssociatedObject(owner,key);
+    if (previous==label) return;
+    if (previous) RestoreIcon(previous,FQHIconGlass(previous));
+    objc_setAssociatedObject(owner,key,label,1);
 }
 void FQHReader(Obj owner) {
     if (objc_getAssociatedObject(owner,OwnerBusyKey)) return;
@@ -603,7 +612,7 @@ void FQHReader(Obj owner) {
     I styled=0;
     if (Belongs(back,owner)) { Icon(back,IconReaderBack); IncludeMaterial(FQHIconGlass(back),owner,&area); styled=FQHIconGlass(back)!=0; }
     Obj items=Get(owner,"insertObjs");
-    Obj downloadLabel=0;
+    Obj downloadLabel=0,shelfLabel=0;
     if (Kind(items,"NSArray")) {
         U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
         if (count>16) count=16;
@@ -616,15 +625,15 @@ void FQHReader(Obj owner) {
                 Obj glass=FQHIconGlass(view);
                 IncludeMaterial(glass,owner,&area);
                 styled+=glass!=0;
-                if (glass && role==IconReaderDownload && Kind(view,"UILabel")) downloadLabel=view;
+                if (glass && (role==IconReaderDownload || role==IconReaderShelf) && Kind(view,"UILabel")) {
+                    if (role==IconReaderDownload) downloadLabel=view;
+                    else shelfLabel=view;
+                }
             }
         }
     }
-    Obj previousLabel=objc_getAssociatedObject(owner,ReaderDownloadLabelKey);
-    if (previousLabel!=downloadLabel) {
-        if (previousLabel) RestoreIcon(previousLabel,FQHIconGlass(previousLabel));
-        objc_setAssociatedObject(owner,ReaderDownloadLabelKey,downloadLabel,1);
-    }
+    TrackReaderLabel(owner,ReaderDownloadLabelKey,downloadLabel);
+    TrackReaderLabel(owner,ReaderShelfLabelKey,shelfLabel);
     if (styled) EnsureHit(owner,area); else RestoreHit(owner);
     ReaderCount(owner,styled);
     objc_setAssociatedObject(owner,OwnerBusyKey,0,0);
@@ -923,7 +932,6 @@ static void ReaderBottomGlass(Obj view) {
     ApplySurface(view,glass,0);
     Obj surface=FQHSurface(view);
     if (!surface) { RestoreHit(view); return; }
-    ShelfTint(surface,1,0);
     EnsureHit(view,glass);
     RecordLayout(view,surface,bounds,"readerBottomTool");
 }
@@ -984,8 +992,7 @@ static void PageProgressTheme(Obj self,Sel cmd,Obj config) {
 }
 static void PageDivertLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBottomToolDivertView","fqx175_originalDivert"))(self,cmd);
-    if (HasAncestor(self,"FQReaderSaaSBottomToolView") &&
-        Equal(Get(Get(self,"titleLabel"),"text"),"改编剧场"))
+    if (HasAncestor(self,"FQReaderSaaSBottomToolView"))
         ReaderBottomGlass(self);
     else { PageRestore(self); RestoreHit(self); }
 }
@@ -998,9 +1005,63 @@ static void PageBookGiftLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBookEndUserGiftView","fqx174_originalBookGift"))(self,cmd);
     FQHApply(self);
 }
+static void ChapterDiscussionKey(void) {}
+static B ChapterEntranceOnly(Obj card) {
+    return ((I(*)(Obj,Sel))Message)(Get(card,"model"),sel_registerName("displayMode"))==1;
+}
+static void ChapterDiscussionGlass(Obj card) {
+    Obj previous=objc_getAssociatedObject(card,ChapterDiscussionKey);
+    Obj entry=Get(card,"activeEntranceView");
+    B discussion=Kind(entry,"SSReaderChapterEndDiscussionEntranceView") &&
+        ChapterEntranceOnly(card) && !Flag(entry,"isHidden");
+    if (!discussion && !previous) return;
+    Obj background=Get(card,"contentBackgroundView");
+    if (discussion && Get(entry,"superview")==background && Get(background,"superview")==card) {
+        if (FQHSurface(entry)) PageRestore(entry);
+        FQHApply(background);
+        // Keep the native discussion gesture and the title/count insets.
+        if (FQHSurface(background)) EnsureHit(entry,Convert(background,Bounds(background),entry));
+        else entry=0;
+    } else {
+        PageRestore(background);
+        entry=0;
+    }
+    if (previous!=entry) {
+        RestoreHit(previous);
+        objc_setAssociatedObject(card,ChapterDiscussionKey,entry,1);
+    }
+}
+static void PageChapterCardLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCard"))(self,cmd);
+    ChapterDiscussionGlass(self);
+}
+static void PageChapterCardTheme(Obj self,Sel cmd,Obj config) {
+    ((void(*)(Obj,Sel,Obj))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCardTheme:"))(self,cmd,config);
+    ChapterDiscussionGlass(self);
+}
+static void ChapterRewardGlass(Obj reward) {
+    Obj card=Get(reward,"superview");
+    Obj background=Get(reward,"customBackgroundView");
+    if ((Kind(card,"SSReaderChapterEndCommunityCardView") || Kind(card,"SSReaderChapterEndCombineContainerView")) &&
+        Get(background,"superview")==reward && !Flag(reward,"isHidden")) FQHApply(background);
+    else if (FQHSurface(background)) PageRestore(background);
+}
+static void PageChapterButtonLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderChapterEndBaseButton","fqx177_originalChapterButton"))(self,cmd);
+    if (Kind(self,"SSReaderChapterEndRewardButton")) ChapterRewardGlass(self);
+}
+static void PageChapterRewardTheme(Obj self,Sel cmd,Obj config) {
+    ((void(*)(Obj,Sel,Obj))Original("SSReaderChapterEndRewardButton","fqx177_originalChapterRewardTheme:"))(self,cmd,config);
+    ChapterRewardGlass(self);
+}
 static void PageDiscussLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndDiscussionEntranceView","fqx174_originalDiscuss"))(self,cmd);
-    if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceButton")) { PageRestore(self); return; }
+    Obj card=Get(Get(self,"superview"),"superview");
+    if ((Kind(card,"SSReaderChapterEndCommunityCardView") && ChapterEntranceOnly(card)) ||
+        HasAncestor(self,"SSReaderChapterEndDiscussionEntranceButton")) {
+        if (FQHSurface(self)) PageRestore(self);
+        return;
+    }
     FQHApply(self);
 }
 static void PageDiscussButtonLayout(Obj self,Sel cmd) {
@@ -1152,7 +1213,7 @@ static void ProfileEntryGlass(Obj self,B order) {
     if (!content) return;
     B shortcut=HasAncestor(self,"SSMyUserShortcutCell") || HasAncestor(self,"SSMyUserCollectionView1Cell");
     Obj glyph=shortcut && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
-    Obj caption=glyph ? Get(self,Kind(self,"SSMyUser621FunctionEntryItemCell") ? "functionType" : "label") : (Obj)0;
+    Obj caption=glyph ? Get(self,order ? "functionType" : "label") : (Obj)0;
     if (!Kind(glyph,"UIImageView") || Get(glyph,"superview")!=content || Flag(glyph,"isHidden") ||
         Get(caption,"superview")!=content) {
         RestoreProfileEntryGlyph(content);
@@ -1171,16 +1232,14 @@ static void ProfileEntryGlass(Obj self,B order) {
     double x=__builtin_fmax(b.x+2,__builtin_fmin(icon.x+(icon.width-diameter)*0.5,b.x+b.width-diameter-2));
     double y=__builtin_fmax(b.y+2,__builtin_fmin(icon.y+(icon.height-diameter)*0.5,bottom-diameter));
     ApplySurface(content,(Rect){x,y,diameter,diameter},1);
-    Obj surface=FQHSurface(content);
-    if (!surface) return;
-    ShelfTint(surface,1,0);
+    if (!FQHSurface(content)) return;
     Rect current=icon;
     Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
     if (!applied || !SameRect(current,UnboxRect(applied)))
         objc_setAssociatedObject(glyph,GlyphOriginalKey,RectBox(current),1);
     Rect original=UnboxRect(objc_getAssociatedObject(glyph,GlyphOriginalKey));
     double largest=__builtin_fmax(original.width,original.height);
-    double scale=__builtin_fmin(0.75,__builtin_fmin(18,diameter-10)/largest);
+    double scale=__builtin_fmin(0.75,__builtin_fmin(16,diameter-10)/largest);
     Rect adjusted={x+(diameter-original.width*scale)*0.5,y+(diameter-original.height*scale)*0.5,
                    original.width*scale,original.height*scale};
     if (!SameRect(current,adjusted)) {
@@ -1191,11 +1250,12 @@ static void ProfileEntryGlass(Obj self,B order) {
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
-    if (!Kind(self,"SSMyUserCollectionViewOrderFunCell")) ProfileEntryGlass(self,0);
+    // The native order subclass copies this glyph frame to its product overlay.
+    if (!Kind(self,"SSMyUser621FunctionEntryItemCell")) ProfileEntryGlass(self,0);
 }
 static void PageProfileOrderLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewOrderFunCell","fqx178_originalProfileOrder"))(self,cmd);
-    ProfileEntryGlass(self,1);
+    if (Kind(self,"SSMyUser621FunctionEntryItemCell")) ProfileEntryGlass(self,1);
 }
 
 static B MineStandaloneGameRow(Obj model) {
@@ -1405,7 +1465,9 @@ static Obj ActiveTabOwner(void) {
 static void InstallTabRecovery(Obj owner);
 static void ShelfEditHeaderKey(void) {}
 static void ShelfCompactKey(void) {}
-static const double ShelfCompactHeight=24;
+static const double ShelfFilterOffset=12;
+static const double ShelfCompactFilterTop=2;
+static const double ShelfCompactEmptyHeight=6;
 static Rect ShelfEditFrame(Obj controller,Obj holder,Obj button) {
     Rect frame={0};
     Obj owner=Get(controller,"delegate");
@@ -1494,12 +1556,17 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
 static Size ShelfFunctionSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj index) {
     Size size=((Size(*)(Obj,Sel,Obj,Obj,Obj))Original("SSBookShelfSubViewController","fqx178_originalShelfFunctionSize:layout:index:"))(
         self,cmd,collection,layout,index);
-    if (objc_getAssociatedObject(self,ShelfCompactKey) && size.height>ShelfCompactHeight) {
+    if (objc_getAssociatedObject(self,ShelfCompactKey) && size.height>ShelfCompactEmptyHeight) {
         Obj model=Get(self,"viewModel");
         I section=((I(*)(Obj,Sel))Message)(index,sel_registerName("section"));
         // The host's size switch uses type 1 for the function row.
-        if (((I(*)(Obj,Sel,I))Message)(model,sel_registerName("sectionTypeAtIndex:"),section)==1)
-            size.height-=ShelfCompactHeight;
+        if (((I(*)(Obj,Sel,I))Message)(model,sel_registerName("sectionTypeAtIndex:"),section)==1) {
+            double base=((double(*)(Obj,Sel,B))Message)(Lookup("SSBookShelfFunctionCell"),
+                sel_registerName("cellHeightWithFilterExposure:"),0);
+            // The host clip begins at base + 12 and fills the remaining row.
+            size.height=size.height>base ? size.height-base-ShelfFilterOffset+ShelfCompactFilterTop :
+                ShelfCompactEmptyHeight;
+        }
     }
     return size;
 }
@@ -1509,8 +1576,9 @@ static void ShelfFunctionLayout(Obj self,Sel cmd) {
     if (objc_getAssociatedObject(controller,ShelfCompactKey)!=self) return;
     Obj clip=Get(self,"filterClipView");
     Rect frame=Frame(clip);
-    if (frame.y>=ShelfCompactHeight) {
-        frame.y-=ShelfCompactHeight;
+    double top=Flag(self,"showsFilterExposure") ? ShelfCompactFilterTop : ShelfFilterOffset+ShelfCompactEmptyHeight;
+    if (frame.y>top) {
+        frame.y=top;
         SetFrame(clip,frame);
     }
 }
@@ -1728,6 +1796,10 @@ void FQHPageInstall(void) {
     Hook("SSReaderBookEndUserGiftView","layoutSubviews","fqx174_originalBookGift","v16@0:8",(Imp)PageBookGiftLayout);
     Hook("SSReaderChapterEndDiscussionEntranceView","layoutSubviews","fqx174_originalDiscuss","v16@0:8",(Imp)PageDiscussLayout);
     Hook("SSReaderChapterEndDiscussionEntranceButton","layoutSubviews","fqx174_originalDiscussButton","v16@0:8",(Imp)PageDiscussButtonLayout);
+    Hook("SSReaderChapterEndCommunityCardView","layoutSubviews","fqx177_originalChapterCard","v16@0:8",(Imp)PageChapterCardLayout);
+    Hook("SSReaderChapterEndCommunityCardView","updateWithReaderConfig:","fqx177_originalChapterCardTheme:","v24@0:8@16",(Imp)PageChapterCardTheme);
+    Hook("SSReaderChapterEndBaseButton","layoutSubviews","fqx177_originalChapterButton","v16@0:8",(Imp)PageChapterButtonLayout);
+    Hook("SSReaderChapterEndRewardButton","updateWithThemeConfigChange:","fqx177_originalChapterRewardTheme:","v24@0:8@16",(Imp)PageChapterRewardTheme);
     Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfTabLayout);
     Hook("SSBookShelfTabSelectViewTitleCell","reloadData:","fqx175_originalShelfTabReload:","v24@0:8@16",(Imp)PageShelfTabReload);
     Hook("SSBookShelfFilter541Cell","layoutSubviews","fqx175_originalShelfFilterLayout","v16@0:8",(Imp)PageShelfFilterLayout);

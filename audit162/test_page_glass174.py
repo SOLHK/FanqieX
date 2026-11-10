@@ -35,6 +35,10 @@ HOOKS = [
     ("SSReaderBookEndUserGiftView", "layoutSubviews"),
     ("SSReaderChapterEndDiscussionEntranceView", "layoutSubviews"),
     ("SSReaderChapterEndDiscussionEntranceButton", "layoutSubviews"),
+    ("SSReaderChapterEndCommunityCardView", "layoutSubviews"),
+    ("SSReaderChapterEndCommunityCardView", "updateWithReaderConfig:"),
+    ("SSReaderChapterEndBaseButton", "layoutSubviews"),
+    ("SSReaderChapterEndRewardButton", "updateWithThemeConfigChange:"),
     ("SSBookShelfTabSelectViewTitleCell", "layoutSubviews"),
     ("SSBookShelfTabSelectViewTitleCell", "reloadData:"),
     ("SSBookShelfFilter541Cell", "layoutSubviews"),
@@ -69,6 +73,7 @@ class Runtime(GlassRuntime):
     SHELF_FUNCTION_SIZE = 0x330c3110
     SHELF_FUNCTION_LAYOUT = 0x330c3120
     SHELF_EDIT_LAYOUT = 0x330c3130
+    SHELF_FUNCTION_HEIGHT = 0x330c3140
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -78,6 +83,8 @@ class Runtime(GlassRuntime):
     MINE_ORDER_LAYOUT = 0x330c2600
     SPEECH_THEME = 0x330c0700
     PROGRESS_THEME = 0x330c0b00
+    CHAPTER_CARD_THEME = 0x330c0b40
+    CHAPTER_REWARD_THEME = 0x330c0b50
     READER_MENU_SHOW = 0x330c0b10
     READER_MENU_THEME = 0x330c0b20
 
@@ -99,6 +106,11 @@ class Runtime(GlassRuntime):
             ("SSReaderBookEndUserGiftView", "UIView"),
             ("SSReaderChapterEndDiscussionEntranceView", "UIView"),
             ("SSReaderChapterEndDiscussionEntranceButton", "UIButton"),
+            ("SSReaderChapterEndCommunityCardView", "UIView"),
+            ("SSReaderChapterEndCombineContainerView", "UIView"),
+            ("SSReaderChapterEndCommunityCardViewModel", "NSObject"),
+            ("SSReaderChapterEndBaseButton", "UIView"),
+            ("SSReaderChapterEndRewardButton", "SSReaderChapterEndBaseButton"),
             ("SSBookShelfTabSelectViewTitleCell", "UIView"),
             ("SSBookShelfTabSelectViewTitleCellModel", "NSObject"),
             ("SSBookShelfFilterHeaderView", "UIView"),
@@ -156,6 +168,10 @@ class Runtime(GlassRuntime):
                   self.CATALOG_CLICK, "v24@0:8@16")
         self._add(self.classes["FQReaderSaaSNewProgressView"], "updateWithConfigData:",
                   self.PROGRESS_THEME, "v24@0:8@16")
+        self._add(self.classes["SSReaderChapterEndCommunityCardView"], "updateWithReaderConfig:",
+                  self.CHAPTER_CARD_THEME, "v24@0:8@16")
+        self._add(self.classes["SSReaderChapterEndRewardButton"], "updateWithThemeConfigChange:",
+                  self.CHAPTER_REWARD_THEME, "v24@0:8@16")
         self._add(self.classes["FQReaderUIManager"], "showBottomBarContainer:",
                   self.READER_MENU_SHOW, "v20@0:8B16")
         self._add(self.classes["FQReaderUIManager"], "onConfigThemeChange:context:",
@@ -175,6 +191,10 @@ class Runtime(GlassRuntime):
                   self.SHELF_FUNCTION_SIZE, "{CGSize=dd}40@0:8@16@24@32")
         self._add(self.classes["SSBookShelfFunctionCell"], "layoutContainerSubviews",
                   self.SHELF_FUNCTION_LAYOUT, "v16@0:8")
+        self._add(self.metaclasses[self.classes["SSBookShelfFunctionCell"]], "cellHeightWithFilterExposure:",
+                  self.SHELF_FUNCTION_HEIGHT, "d20@0:8B16")
+        self.shelf_base_height = 30.
+        self.shelf_function_height = 70.
         for selector, imp in (("setIsInvisible:", self.MODEL_INVISIBLE),
                               ("setIsDisabled:", self.MODEL_DISABLED)):
             self._add(self.classes["SSMyUserMiniGameEntranceCellModel"], selector, imp,
@@ -229,9 +249,13 @@ class Runtime(GlassRuntime):
             self.objects[state["coinButton"]].state["hidden"] = not state["showReadTimeView"]
             return self.finish(cpu)
         if pc == self.SHELF_FUNCTION_SIZE:
-            return self.finish(cpu, fp=(440.0, 70.0))
+            return self.finish(cpu, fp=(440., self.shelf_function_height))
+        if pc == self.SHELF_FUNCTION_HEIGHT:
+            require(cpu.x[2] == 0, "the compact size reads the unexposed native row height")
+            return self.finish(cpu, fp=(self.shelf_base_height,))
         if pc == self.SHELF_FUNCTION_LAYOUT:
-            self.objects[self.objects[receiver].state["filterClipView"]].state["frame"] = (0., 42., 440., 40.)
+            frame = (0., self.shelf_base_height + 12., 440., 28.)
+            self.objects[self.objects[receiver].state["filterClipView"]].state["frame"] = frame
             return self.finish(cpu)
         if pc == self.SHELF_EDIT_LAYOUT:
             self.objects[self.objects[receiver].state["editButton"]].state["frame"] = (380., 4., 44., 30.)
@@ -251,8 +275,14 @@ class Runtime(GlassRuntime):
             return self.finish(cpu, self.objects[receiver].state["list_objects"])
         if pc == self.MINE_ORDER_LAYOUT:
             method = self.get_method(self.classes["SSMyUserCollectionViewFunCell"], selector)
-            cpu.pc = self.methods[method]["imp"]
-            return True
+            saved_x, saved_v = cpu.x.copy(), cpu.v.copy()
+            cpu.run(self.methods[method]["imp"] - self.slide, args=(receiver, selector))
+            cpu.x[:], cpu.v[:] = saved_x, saved_v
+            state = self.objects[receiver].state
+            if "image" in state and "productImage" in state:
+                image = self.objects[state["image"]].state
+                self.objects[state["productImage"]].state.update(frame=image["frame"], bounds=image["bounds"])
+            return self.finish(cpu)
         if pc == self.SPEECH_THEME:
             button = self.objects[receiver].state["speechBtn"]
             self.objects[button].state["images"][0] = cpu.x[2]
@@ -261,6 +291,11 @@ class Runtime(GlassRuntime):
             slider = self.objects[receiver].state["slider"]
             track = self.objects[slider].state["trackView"]
             self.objects[track].state["backgroundColor"] = cpu.x[2]
+            return self.finish(cpu)
+        if pc in (self.CHAPTER_CARD_THEME, self.CHAPTER_REWARD_THEME):
+            state = self.objects[receiver].state
+            key = "contentBackgroundView" if pc == self.CHAPTER_CARD_THEME else "customBackgroundView"
+            self.objects[state[key]].state["backgroundColor"] = cpu.x[2]
             return self.finish(cpu)
         if pc == self.READER_MENU_SHOW:
             self.reader_menu_calls.append(cpu.x[2])
@@ -290,7 +325,10 @@ class Runtime(GlassRuntime):
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
                 if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
-                            "visibleCells", "viewModel", "isFiltering") and name in state:
+                            "visibleCells", "viewModel", "isFiltering", "showsFilterExposure") and name in state:
+                    return self.finish(cpu, state[name])
+                if name in ("model", "displayMode", "activeEntranceView", "contentBackgroundView",
+                            "customBackgroundView") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "invalidateLayout" and "invalidations" in state:
                     state["invalidations"] += 1
@@ -498,6 +536,20 @@ def exercise(data, labels):
                 "the item can receive touches across its padded material")
         require(runtime.objects[item].state["subviews"][:2] == [surface, caption],
                 "material is behind the original content")
+        effect = runtime.objects[surface].state["effect"]
+        require(not runtime.objects[effect].state.get("tintColor"),
+                "the reader tools use standard untinted glass")
+    runtime.objects[divert_caption].state["text"] = runtime.text_object("更多改编")
+    send(cpu, runtime, divert, "layoutSubviews")
+    require(call(cpu, labels, "LFQH_FQHSurface", divert)["result"] == surfaces[-1],
+            "the existing adaptation glass is reused when the host switches to 更多改编")
+    runtime.reparent(divert, runtime.ROOT)
+    send(cpu, runtime, divert, "layoutSubviews")
+    require(not call(cpu, labels, "LFQH_FQHSurface", divert)["result"] and
+            runtime.objects[divert].state["backgroundColor"] == saved_background,
+            "the same adaptation class outside the reader tools retains its stock appearance")
+    runtime.reparent(divert, toolbar)
+    send(cpu, runtime, divert, "layoutSubviews")
     for _ in range(20):
         send(cpu, runtime, toolbar, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHSurface", items[0])["result"] == surfaces[0],
@@ -809,6 +861,65 @@ def exercise(data, labels):
     send(cpu, runtime, discuss, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHSurface", discuss)["result"], "chapter discussion glass")
 
+    # The entrance-only community card pins the native 20pt gesture view
+    # inside a 50pt card, alongside a separate 50pt gift with its own backing.
+    card = runtime.view("SSReaderChapterEndCommunityCardView", "chapter community",
+                        (0, 0, 400, 50), runtime.ROOT)
+    model = runtime.obj("SSReaderChapterEndCommunityCardViewModel", "entrance only", displayMode=1)
+    stock_fill = runtime.color("chapter stock fill")
+    card_fill = runtime.view("UIView", "white chapter card", (0, 0, 342, 50), card,
+                             clipsToBounds=True, backgroundColor=stock_fill)
+    entry_frame = (16, 15, 310, 20)
+    entry = runtime.view("SSReaderChapterEndDiscussionEntranceView", "本章讨论", entry_frame, card_fill,
+                         hitInsets=(0., 0., 0., 0.), gesture_action="handleTap")
+    caption = runtime.label("chapter caption", entry, (0, 0, 68, 20), "本章讨论")
+    reward = runtime.view("SSReaderChapterEndRewardButton", "standalone gift",
+                          (350, 0, 50, 50), card, gesture_action="handleStandaloneGift")
+    reward_fill = runtime.view("UIView", "white gift backing", (0, 0, 50, 50), reward,
+                               clipsToBounds=True, backgroundColor=stock_fill)
+    glyph = runtime.view("UIImageView", "gift icon", (14, 14, 22, 22), reward)
+    runtime.objects[card].state.update(model=model, activeEntranceView=entry, contentBackgroundView=card_fill)
+    runtime.objects[reward].state["customBackgroundView"] = reward_fill
+    send(cpu, runtime, card, "layoutSubviews")
+    send(cpu, runtime, entry, "layoutSubviews")
+    send(cpu, runtime, reward, "layoutSubviews")
+    entry_state = runtime.objects[entry].state
+    reward_state = runtime.objects[reward].state
+    card_surface, reward_surface = surface_for(card_fill), surface_for(reward_fill)
+    require(card_surface and reward_surface and not surface_for(entry) and not surface_for(reward),
+            "both stock backings are replaced by one material each, with no nested strip")
+    for backing, surface in ((card_fill, card_surface), (reward_fill, reward_surface)):
+        owner, glass = runtime.objects[backing].state, runtime.objects[surface].state
+        require(glass["frame"] == owner["bounds"] and owner["backgroundColor"] == clear and
+                not glass["userInteractionEnabled"] and owner["subviews"][0] == surface,
+                "material covers the native full-size backing without intercepting touch")
+    require(entry_state["frame"] == entry_frame and entry_state["hitInsets"] == (-15, -16, -15, -16) and
+            entry_state["gesture_action"] == "handleTap" and caption in entry_state["subviews"] and
+            reward_state["gesture_action"] == "handleStandaloneGift" and glyph in reward_state["subviews"],
+            "discussion expands to the card and each original gesture and foreground is retained")
+    chapter_theme = runtime.color("chapter after theme change")
+    send(cpu, runtime, card, "updateWithReaderConfig:", chapter_theme)
+    send(cpu, runtime, reward, "updateWithThemeConfigChange:", chapter_theme)
+    require(surface_for(card_fill) == card_surface and surface_for(reward_fill) == reward_surface and
+            runtime.objects[card_fill].state["backgroundColor"] == clear and
+            runtime.objects[reward_fill].state["backgroundColor"] == clear,
+            "native theme writes are absorbed without allocating another surface")
+    runtime.objects[model].state["displayMode"] = 2
+    send(cpu, runtime, card, "layoutSubviews")
+    require(not surface_for(card_fill) and entry_state["hitInsets"] == (0, 0, 0, 0) and
+            runtime.objects[card_fill].state["backgroundColor"] == chapter_theme,
+            "author-talk reuse restores the card and original discussion tap bounds")
+    runtime.objects[model].state["displayMode"] = 1
+    send(cpu, runtime, card, "layoutSubviews")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, card, "layoutSubviews")
+    send(cpu, runtime, reward, "layoutSubviews")
+    require(not surface_for(card_fill) and not surface_for(reward_fill) and
+            entry_state["hitInsets"] == (0, 0, 0, 0) and
+            runtime.objects[reward_fill].state["backgroundColor"] == chapter_theme,
+            "disabling glass restores both native backgrounds and original hit bounds")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+
     profile = runtime.view("SSMyUserBar", "bar", (0, 0, 390, 96), runtime.ROOT)
     search = runtime.view("UIView", "searchBgView", (16, 20, 260, 40), profile,
                           clipsToBounds=True)
@@ -857,31 +968,46 @@ def exercise(data, labels):
         row = runtime.view(row_class, "Mine shortcut row", (0, 0, 390, 64), runtime.ROOT)
         collection = runtime.view("UIView", "Mine shortcut scroller", (0, 0, 390, 64), row)
         for index, title in enumerate(("我的订单", "浏览历史", "我的消息", "创作中心", "游戏中心")):
-            cell = runtime.view(item_class, title, (index * 78, 0, 70, 60), collection,
+            legacy_order = row_class == "SSMyUserShortcutCell" and index == 0
+            cell_class = "SSMyUserCollectionViewOrderFunCell" if legacy_order else item_class
+            cell = runtime.view(cell_class, title, (index * 78, 0, 70, 60), collection,
                                 userInteractionEnabled=True)
             content = runtime.view("UIView", "opaque contentView", (0, 0, 70, 60), cell,
                                    backgroundColor=shortcut_background)
-            image = runtime.view("UIImageView", "original icon", (25, 8, 20, 20), content)
+            stock_glyph = (22, 5, 26, 26) if legacy_order else (25, 8, 20, 20)
+            adjusted_glyph = (27, 9, 16, 16) if legacy_order else (27.5, 9.5, 15, 15)
+            image = runtime.view("UIImageView", "original icon", stock_glyph, content)
             label = runtime.label("original caption", content, (0, 35, 70, 18), title)
             cell_state = runtime.objects[cell].state
             cell_state["contentView"] = content
-            if item_class == "SSMyUser621FunctionEntryItemCell":
+            foreground = [image, label]
+            if legacy_order:
+                overlay = runtime.view("UIImageView", "optional product image", stock_glyph, content, alpha=0)
+                cell_state.update(image=image, productImage=overlay, label=label)
+                foreground.append(overlay)
+            elif item_class == "SSMyUser621FunctionEntryItemCell":
                 cell_state.update(productImage=image, functionType=label)
             else:
                 cell_state.update(image=image, label=label)
             send(cpu, runtime, cell, "layoutSubviews")
             surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
-            require(surface and runtime.objects[content].state["subviews"] == [surface, image, label] and
+            require(surface and runtime.objects[content].state["subviews"] == [surface] + foreground and
                     runtime.objects[surface].state["frame"] == (20, 2, 30, 30) and
-                    runtime.objects[image].state["frame"] == (27.5, 9.5, 15, 15) and
+                    runtime.objects[image].state["frame"] == adjusted_glyph and
                     runtime.objects[label].state["frame"] == (0, 35, 70, 18) and
                     runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
                     cell_state["userInteractionEnabled"],
                     "the centered glyph fits its glass with a separate caption and unchanged host hit area")
+            effect = runtime.objects[runtime.objects[surface].state["effect"]].state
+            require(effect["style"] == 0 and not effect.get("tintColor"),
+                    "shortcut material has no forced gray tint")
+            if legacy_order:
+                require(runtime.objects[overlay].state["frame"] == adjusted_glyph,
+                        "the native layout copies the normalized order glyph frame to its product overlay")
             send(cpu, runtime, cell, "layoutSubviews")
             require(call(cpu, labels, "LFQH_FQHSurface", content)["result"] == surface and
-                    runtime.objects[image].state["frame"] == (27.5, 9.5, 15, 15),
+                    runtime.objects[image].state["frame"] == adjusted_glyph,
                     "shortcut layouts reuse the native material and scale once")
             shortcut_count += 1
 
@@ -1060,8 +1186,8 @@ def exercise(data, labels):
     search = runtime.view("UIButton", "shelf search", (0, 0, 24, 24), holder)
     more = runtime.view("UIButton", "shelf more", (32, 0, 24, 24), holder)
     cell = runtime.view("SSBookShelfFunctionCell", "shelf function row", (0, 110, 440, 70),
-                        runtime.ROOT, delegate=shelf_controller, headerView=shelf_header)
-    clip = runtime.view("UIView", "filter exposure", (0, 42, 440, 40), cell)
+                        runtime.ROOT, delegate=shelf_controller, headerView=shelf_header, showsFilterExposure=True)
+    clip = runtime.view("UIView", "filter exposure", (0, 42, 440, 28), cell)
     runtime.objects[cell].state["filterClipView"] = clip
     secondary = runtime.view("UIView", "secondary buttons", (0, 0, 440, 42), shelf_header)
     runtime.objects[duration].state["superview"] = secondary
@@ -1092,16 +1218,32 @@ def exercise(data, labels):
     book = runtime.obj("NSObject", "book index", section=2)
     size_selector = "collectionView:layout:sizeForItemAtIndexPath:"
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
-    require(cpu.fp(1) == 46., "the empty function row is compacted by 24pt")
+    require(cpu.fp(1) == 30., "the exposed row keeps its full 28pt filter and a 2pt top inset")
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, book)
     require(cpu.fp(1) == 70., "book row geometry stays at the native size")
     send(cpu, runtime, cell, "layoutContainerSubviews")
-    require(runtime.objects[clip].state["frame"] == (0., 18., 440., 40.),
+    require(runtime.objects[clip].state["frame"] == (0., 2., 440., 28.),
             "exposed filter follows the compact row without clipping")
+    runtime.shelf_base_height = 34.
+    runtime.shelf_function_height = 74.
+    send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
+    require(cpu.fp(1) == 30., "the native font-scaled spacer is removed without changing the filter height")
+    runtime.objects[cell].state["showsFilterExposure"] = False
+    runtime.shelf_function_height = 34.
+    send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
+    require(cpu.fp(1) == 6., "the row collapses to a small inset when no filter is exposed")
+    runtime.shelf_base_height = 30.
+    runtime.shelf_function_height = 70.
+    runtime.objects[cell].state["showsFilterExposure"] = True
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == holder and runtime.objects[size_layout].state["invalidations"] == 2,
             "showing duration restores the lower row while keeping edit in the top bar")
+    send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
+    require(cpu.fp(1) == 70., "visible duration restores the native function height")
+    send(cpu, runtime, cell, "layoutContainerSubviews")
+    require(runtime.objects[clip].state["frame"] == (0., 42., 440., 28.),
+            "visible duration leaves the native function and filter geometry intact")
     runtime.objects[category].state["frame"] = (292., 6., 40., 32.)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.),
@@ -1167,6 +1309,7 @@ def exercise(data, labels):
         "reader_controls": ["FQReaderSaaSBottomToolView", "SSReaderBottomToolDivertView",
                             "FQReaderSaaSReaderSpeechButton", "BDReaderNewSlider"],
         "reader_backdrop_and_chapter_controls": True,
+        "full_chapter_discussion_and_gift_surfaces": True,
         "shelf_tabs": len(tabs),
         "shelf_filters": len(filters),
         "profile_shortcuts": shortcut_count,
