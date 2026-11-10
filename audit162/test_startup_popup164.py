@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the homepage ad dispatch flag in the candidate ARM64 image."""
+"""Exercise both homepage ad dispatch routes in the candidate ARM64 image."""
 import argparse
 import json
 import struct
@@ -14,16 +14,37 @@ CLASS = 'SSCommonABTestHelper'
 SELECTOR = 'insert_screen_ad_pop_cfg'
 ENCODING = 'B16@0:8'
 PRIVATE_TEXT = 'PRIVATE_STARTUP_MESSAGE_164'
+AD_OWNER = 'SSImcAdOperationMessage'
+OPERATION = 'SSImcOperationMessage'
+SERVICE = 'SSImcMessageService'
+LOOKUP = 'getPopupWithDataGroup:'
+LOOKUP_ENCODING = '@24@0:8@16'
 
 
 class Runtime(FoundationRuntime):
     ORIGINAL_GATE_IMP = 0x33000b00
     ORIGINAL_SPLASH_IMP = 0x33000b08
     UNEXPECTED_CALLBACK = 0x33000b10
+    ORIGINAL_LOOKUP_IMP = 0x33000b18
 
     def __init__(self, data, slide):
         super().__init__(data, slide)
         self.private_object = self.text_object(PRIVATE_TEXT)
+        self.lookup_result = 0
+        self.lookup_calls = []
+
+    def imc_host(self, build='7.4.3.33', gate_encoding=ENCODING, lookup_encoding=LOOKUP_ENCODING):
+        self.objects[self.MAIN_BUNDLE].state['info']['CFBundleVersion'] = build
+        home = self._class('SSBookStoreNewViewController', 'UIViewController')
+        self._add(home, 'relayout', self.UNEXPECTED_CALLBACK, 'v16@0:8')
+        self._add(home, 'searchBgView', self.UNEXPECTED_CALLBACK, '@16@0:8')
+        parent = self._class(OPERATION, 'NSObject')
+        ad_owner = self._class(AD_OWNER, OPERATION)
+        service = self._class(SERVICE, 'NSObject')
+        normal_gate = self._add(parent, 'enablePopup', self.ORIGINAL_SPLASH_IMP, ENCODING)
+        ad_gate = self._add(ad_owner, 'enablePopup', self.ORIGINAL_SPLASH_IMP, gate_encoding)
+        lookup = self._add(service, LOOKUP, self.ORIGINAL_LOOKUP_IMP, lookup_encoding)
+        return ad_gate, lookup, normal_gate
 
     def handle(self, cpu, pc):
         require(pc != self.UNEXPECTED_CALLBACK, 'The flag never invokes a presentation callback')
@@ -31,9 +52,24 @@ class Runtime(FoundationRuntime):
             return self.finish(cpu, 0)
         if pc == self.ORIGINAL_SPLASH_IMP:
             return self.finish(cpu, 1)
-        if pc - self.slide == 0xa5d4:
-            require(cpu.x[0] != self.private_object,
+        if pc == self.ORIGINAL_LOOKUP_IMP:
+            self.lookup_calls.append(tuple(cpu.x[:3]))
+            return self.finish(cpu, self.lookup_result)
+        entry = pc - self.slide
+        if entry == 0xa5ec:
+            super().handle(cpu, pc)
+            for offset, byte in enumerate(self.string(cpu.x[0]).encode() + b'\0'):
+                cpu.memory[cpu.x[0] + offset] = byte
+            return True
+        if entry == 0xa5d4:
+            receiver, selector, value = cpu.x[:3]
+            require(receiver != self.private_object,
                     'The decision never messages unrelated host data')
+            name = self.selector_names.get(selector)
+            if receiver == self.MAIN_BUNDLE and name == 'bundleIdentifier':
+                return self.finish(cpu, self.text_object('com.dragon.read'))
+            if name == 'isEqual:':
+                return self.finish(cpu, int(self.string_value(receiver) == self.string_value(value)))
         return super().handle(cpu, pc)
 
 
@@ -50,6 +86,8 @@ def read_decisions(rt):
 
 def check_case(data, slide, mode):
     rt = Runtime(data, slide)
+    if release_version(data) == '1.7.4':
+        rt.imc_host()
     cpu = make_cpu(rt)
     cpu.ranges.append((0x7394, 0x746c))
     parent = rt._class('ABTestBase', 'NSObject')
@@ -122,6 +160,58 @@ def check_case(data, slide, mode):
     return {'slide': hex(slide), 'case': mode, 'instructions': cpu.steps}
 
 
+def check_imc(data, slide, mode, options):
+    rt = Runtime(data, slide)
+    gate, lookup, normal = rt.imc_host(
+        build='7.4.3.34' if mode == 'wrong_build' else '7.4.3.33',
+        gate_encoding='v16@0:8' if mode == 'wrong_gate_abi' else ENCODING,
+        lookup_encoding='v24@0:8@16' if mode == 'wrong_lookup_abi' else LOOKUP_ENCODING,
+    )
+    ab_class = rt._class(CLASS, 'NSObject')
+    legacy = rt._add(rt.metaclasses[ab_class], SELECTOR, rt.ORIGINAL_GATE_IMP, ENCODING)
+    cpu = make_cpu(rt)
+    cpu.ranges.append((0x7394, 0x746c))
+    cpu.run(0x4650, args=(options,))
+    require(not read_decisions(rt), 'Ad hook installation makes no display decision')
+    active = mode in ('launch_only', 'bookstore_only', 'both')
+    legacy_imp, gate_imp, lookup_imp = (rt.methods[method]['imp'] for method in (legacy, gate, lookup))
+    require(rt.methods[normal]['imp'] == rt.ORIGINAL_SPLASH_IMP,
+            'Ordinary IMC dialogs preserve the original enable gate')
+    require((legacy_imp != rt.ORIGINAL_GATE_IMP) == active,
+            'The legacy override is coupled to a complete IMC installation')
+    require((gate_imp != rt.ORIGINAL_SPLASH_IMP) == active,
+            'The ad-specific gate follows the two cleanup options and exact ABI')
+    require((lookup_imp != rt.ORIGINAL_LOOKUP_IMP) == active,
+            'The cached lookup follows the two cleanup options and exact ABI')
+    if not active:
+        return {'slide': hex(slide), 'case': mode, 'instructions': cpu.steps}
+
+    legacy_result = cpu.run(legacy_imp - slide, args=(ab_class, rt.sel(SELECTOR)))['result']
+    require(legacy_result == 1, 'Legacy type 7 keeps the native skip-and-mark-read path')
+    ad = rt.obj(AD_OWNER, 'type_7_ad')
+    require(cpu.run(gate_imp - slide, args=(ad, rt.sel('enablePopup')))['result'] == 0,
+            'Cyber IMC now independently denies the same ad instead of reusing the true legacy flag')
+    normal_handler = rt.obj(OPERATION, 'ordinary_recommendation')
+    service = rt.obj(SERVICE, 'message_service')
+    arguments = (service, rt.sel(LOOKUP), rt.private_object)
+    for host_result, wanted in ((0, 0), (normal_handler, normal_handler), (ad, 0)):
+        rt.lookup_result = host_result
+        require(cpu.run(lookup_imp - slide, args=arguments)['result'] == wanted,
+                'Lookup preserves native absence and ordinary dialogs, but declines the cached type-7 handler')
+    require(rt.lookup_calls == [arguments] * 3, 'Each lookup forwards the receiver, selector and group once')
+    decisions = read_decisions(rt)
+    require(len(decisions) == 2 and decisions[-1]['data'] == {
+        'ruleId': 'bookstore_imc_popup',
+        'ruleType': 'exactHostSelector',
+        'class': SERVICE,
+        'selector': LOOKUP,
+        'result': 'blocked',
+        'pageDisplay': 'unobserved',
+    }, 'A real cached ad decision emits only fixed rule metadata')
+    require(PRIVATE_TEXT not in json.dumps(decisions), 'No resource data enters the diagnostics')
+    return {'slide': hex(slide), 'case': mode, 'instructions': cpu.steps}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('candidate', type=Path)
@@ -130,6 +220,11 @@ def main():
     data = args.candidate.read_bytes()
     cases = [check_case(data, slide, mode) for slide in (0, 0x180000000)
              for mode in ('owned', 'inherited', 'disabled', 'missing_class', 'missing_method', 'wrong_encoding')]
+    if release_version(data) == '1.7.4':
+        cases.extend(check_imc(data, slide, mode, options) for slide in (0, 0x180000000)
+                     for mode, options in (('launch_only', 1), ('bookstore_only', 1 << 6), ('both', 0x41),
+                                           ('disabled', 0), ('other_option', 1 << 5),
+                                           ('wrong_build', 0x41), ('wrong_gate_abi', 0x41), ('wrong_lookup_abi', 0x41)))
     report = json.dumps({'passed': True, 'device_tested': False, 'cases': cases}, indent=2)
     if args.report:
         args.report.write_text(report + '\n', encoding='utf-8')

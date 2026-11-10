@@ -48,10 +48,14 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "updateAppearance:"),
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
     ("SSBookShelfFilterHeaderView", "layoutSubviews"),
+    ("SSBookShelfFilterMixRowCollectionView", "collectionView:layout:insetForSectionAtIndex:"),
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
+    ("SS525BookShelfSubHeaderView", "layoutEditButton"),
     ("SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:"),
     ("SSBookShelfSubViewController", "collectionView:layout:insetForSectionAtIndex:"),
+    ("SSBookShelfSubViewController", "saveOpeningData:indexPath:"),
+    ("SSBookShelfSubViewController", "fetchBookCoverTransitionInfo:"),
     ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
@@ -79,6 +83,9 @@ class Runtime(GlassRuntime):
     SHELF_EDIT_LAYOUT = 0x330c3130
     SHELF_FUNCTION_HEIGHT = 0x330c3140
     SHELF_FUNCTION_INSETS = 0x330c3150
+    SHELF_INLINE_FILTER_INSETS = 0x330c3160
+    SHELF_SAVE_OPENING = 0x330c3170
+    SHELF_COVER_TRANSITION = 0x330c3180
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -131,6 +138,7 @@ class Runtime(GlassRuntime):
             ("SSBookShelf525ViewController", "UIViewController"),
             ("SSBookShelfSubViewController", "UIViewController"),
             ("SSBookShelfFunctionCell", "UIView"),
+            ("SSCoverTransitionInfo", "NSObject"),
             ("SSMyUserBar", "UIView"),
             ("FQReaderSaaSBaseImageView", "UIImageView"),
             ("SSMyUserCollectionViewFunCell", "UIView"),
@@ -204,6 +212,12 @@ class Runtime(GlassRuntime):
                   self.SHELF_FUNCTION_SIZE, "{CGSize=dd}40@0:8@16@24@32")
         self._add(self.classes["SSBookShelfSubViewController"], "collectionView:layout:insetForSectionAtIndex:",
                   self.SHELF_FUNCTION_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
+        self._add(self.classes["SSBookShelfFilterMixRowCollectionView"], "collectionView:layout:insetForSectionAtIndex:",
+                  self.SHELF_INLINE_FILTER_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
+        self._add(self.classes["SSBookShelfSubViewController"], "saveOpeningData:indexPath:",
+                  self.SHELF_SAVE_OPENING, "v32@0:8@16@24")
+        self._add(self.classes["SSBookShelfSubViewController"], "fetchBookCoverTransitionInfo:",
+                  self.SHELF_COVER_TRANSITION, "@24@0:8Q16")
         self._add(self.classes["SSBookShelfFunctionCell"], "layoutContainerSubviews",
                   self.SHELF_FUNCTION_LAYOUT, "v16@0:8")
         self._add(self.metaclasses[self.classes["SSBookShelfFunctionCell"]], "cellHeightWithFilterExposure:",
@@ -267,6 +281,16 @@ class Runtime(GlassRuntime):
             return self.finish(cpu, fp=(440., self.shelf_function_height))
         if pc == self.SHELF_FUNCTION_INSETS:
             return self.finish(cpu, fp=(0., 11., 12., 11.))
+        if pc == self.SHELF_INLINE_FILTER_INSETS:
+            return self.finish(cpu, fp=(0., 20., 0., 24.))
+        if pc == self.SHELF_SAVE_OPENING:
+            state = self.objects[receiver].state
+            state["capture"] = (cpu.x[2], cpu.x[3], self.objects[state["collectionView"]].state["layout_passes"])
+            return self.finish(cpu)
+        if pc == self.SHELF_COVER_TRANSITION:
+            state = self.objects[receiver].state
+            state["lookup_layout_passes"] = self.objects[state["collectionView"]].state["layout_passes"]
+            return self.finish(cpu, state["cover_transition"])
         if pc == self.SHELF_FUNCTION_HEIGHT:
             require(cpu.x[2] == 0, "the compact size reads the unexposed native row height")
             return self.finish(cpu, fp=(self.shelf_base_height,))
@@ -357,8 +381,19 @@ class Runtime(GlassRuntime):
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
                 if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "lineView",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
-                            "visibleCells", "viewModel", "isFiltering", "showsFilterExposure") and name in state:
+                            "visibleCells", "viewModel", "isFiltering", "showsFilterExposure", "optionsView",
+                            "openingModel", "data", "bookId", "collectDatas", "fetchCoverView") and name in state:
                     return self.finish(cpu, state[name])
+                if name == "layoutIfNeeded" and "layout_passes" in state:
+                    state["layout_passes"] += 1
+                    return self.finish(cpu)
+                if name == "firstObject" and "items" in state:
+                    return self.finish(cpu, next(iter(state["items"]), 0))
+                if name == "fetchCoverSize" and "cover_size" in state:
+                    return self.finish(cpu, fp=state["cover_size"])
+                if name == "setCoverFrame:":
+                    state["cover_frame"] = tuple(cpu.fp(i) for i in range(4))
+                    return self.finish(cpu)
                 if name in ("model", "displayMode", "activeEntranceView", "contentBackgroundView",
                             "customBackgroundView") and name in state:
                     return self.finish(cpu, state[name])
@@ -697,6 +732,15 @@ def exercise(data, labels):
             "the separate shelf filter button gets a matching capsule and preserves its native tap")
     row = runtime.view("SSBookShelfFilterMixRowCollectionView", "filter row", (0, 0, 270, 40), header)
     collection = runtime.view("UIView", "filter collection", (0, 0, 270, 40), row)
+    runtime.objects[header].state["optionsView"] = row
+    inline_insets = "collectionView:layout:insetForSectionAtIndex:"
+    send(cpu, runtime, row, inline_insets, collection, 0, 0)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 16., 0., 24.),
+            "the entire inline row starts at the upper bookshelf title gutter")
+    panel_row = runtime.view("SSBookShelfFilterMixRowCollectionView", "separate filter panel", parent=runtime.ROOT)
+    send(cpu, runtime, panel_row, inline_insets, 0, 0, 0)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 20., 0., 24.),
+            "the standalone filter panel keeps its native insets")
     filters = []
     for index, title in enumerate(("全部", "阅读", "听书", "星标")):
         cell = runtime.view("SSBookShelfFilter541Cell", title, (index * 65, 0, 58, 30), collection,
@@ -784,19 +828,24 @@ def exercise(data, labels):
     send(cpu, runtime, fan_wrapper, "layoutSubviews")
     shelf_glass = call(cpu, labels, "LFQH_FQHIconGlass", bookmark)["result"]
     require(shelf_glass and fan_state["subviews"] == [shelf_glass, bookmark] and
-            runtime.objects[shelf_glass].state["frame"] == (-6, -5, 76, 32) and
-            fan_state["hitInsets"] == (-5, -6, -5, -6) and not fan_state["clipsToBounds"],
-            "the actual combined insert exposes its shelf label and the complete capsule")
+            runtime.objects[shelf_glass].state["frame"] == (-18, -7, 88, 36) and
+            bookmark_state["frame"] == (-6, 0, 64, 22) and
+            fan_state["hitInsets"] == (-7, -18, -7, -6) and not fan_state["clipsToBounds"],
+            "the combined insert exposes the centered shelf label and its left-widened capsule")
     bookmark_state["text"] = runtime.text_object("加入书架")
-    send(cpu, runtime, fan_wrapper, "layoutSubviews")
+    bookmark_state["frame"] = (0, 0, 64, 22)
+    for _ in range(10):
+        send(cpu, runtime, fan_wrapper, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHIconGlass", bookmark)["result"] == shelf_glass and
-            bookmark_state["gestureRecognizers"] == [bookmark_target], "wrapped shelf label changes state with its host gesture intact")
+            bookmark_state["frame"] == (-6, 0, 64, 22) and bookmark_state["gestureRecognizers"] == [bookmark_target],
+            "wrapped shelf label remains centered after host relayout without drifting or losing its gesture")
     runtime.reparent(bookmark, 0)
     fan = runtime.view("UIView", "native fan club control", (0, 0, 64, 22), fan_wrapper)
     fan_state["contentView"] = fan
     send(cpu, runtime, fan_wrapper, "layoutSubviews")
     require(fan_state["subviews"] == [fan] and fan_state["clipsToBounds"] and
-            fan_state["hitInsets"] == (0, 0, 0, 0), "switching to fan club removes only the old shelf decoration")
+            fan_state["hitInsets"] == (0, 0, 0, 0) and bookmark_state["frame"] == (0, 0, 64, 22),
+            "switching to fan club removes the shelf decoration and restores the host geometry")
     chapter_controls = []
     for key, x, title, action in (("leftBtn", 16, "上一章", "onLastChapterBtnClick:"),
                                   ("rightBtn", 332, "下一章", "onNextChapterBtnClick:")):
@@ -1122,9 +1171,13 @@ def exercise(data, labels):
             content = runtime.view("UIView", "opaque contentView", (0, 0, 70, 60), cell,
                                    backgroundColor=shortcut_background)
             stock_glyph = (22, 5, 26, 26) if legacy_order else (25, 8, 20, 20)
-            adjusted_glyph = (27, 9, 16, 16) if legacy_order else (27.5, 9.5, 15, 15)
+            caption_frame = (0, 29 if index == 4 else 35, 70, 18)
+            material_frame = (17.5, 0, 35, 27) if index == 4 else (15, 0, 40, 33)
+            adjusted_glyph = (26.5, 5, 17, 17) if index == 4 else (26.25, 7.75, 17.5, 17.5)
+            if legacy_order:
+                adjusted_glyph = (26, 7.5, 18, 18)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
-            label = runtime.label("original caption", content, (0, 35, 70, 18), title)
+            label = runtime.label("original caption", content, caption_frame, title)
             cell_state = runtime.objects[cell].state
             cell_state["contentView"] = content
             foreground = [image, label]
@@ -1139,9 +1192,9 @@ def exercise(data, labels):
             send(cpu, runtime, cell, "layoutSubviews")
             surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
             require(surface and runtime.objects[content].state["subviews"] == [surface] + foreground and
-                    runtime.objects[surface].state["frame"] == (20, 2, 30, 30) and
+                    runtime.objects[surface].state["frame"] == material_frame and
                     runtime.objects[image].state["frame"] == adjusted_glyph and
-                    runtime.objects[label].state["frame"] == (0, 35, 70, 18) and
+                    runtime.objects[label].state["frame"] == caption_frame and
                     runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
                     cell_state["userInteractionEnabled"],
@@ -1360,6 +1413,10 @@ def exercise(data, labels):
     require(edit_glass and runtime.objects[edit_glass].state["frame"] == (0., 1., 44., 28.) and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
+    edit_frame = edit_state["frame"]
+    send(cpu, runtime, shelf_header, "layoutEditButton")
+    require(edit_state["frame"] == edit_frame and edit_state["subviews"].count(edit_glass) == 1,
+            "native secondary-row layout cannot reposition the moved edit or its glass")
     require(runtime.objects[size_layout].state["invalidations"] == 1,
             "only the transition to a compact row invalidates the list")
     function = runtime.obj("NSObject", "function index", section=1)
@@ -1390,6 +1447,33 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 4)
     require(tuple(cpu.fp(i) for i in range(4)) == (0., 11., 12., 11.),
             "the book section keeps its native insets")
+    book_data = runtime.obj("NSObject", "opened book", bookId=runtime.text_object("book-1"))
+    tile_model = runtime.obj("NSObject", "visible book model",
+                             collectDatas=runtime.obj("NSArray", "book data", items=[book_data]))
+    tile = runtime.view("UIView", "book tile", (20, 40, 100, 175), shelf_list,
+                        cellModel=tile_model, cover_size=(96., 138.))
+    cover = runtime.view("UIView", "live book cover", (0, 2, 96, 138), tile)
+    runtime.objects[tile].state["fetchCoverView"] = cover
+    list_state = runtime.objects[shelf_list].state
+    list_state.update(layout_passes=0, visibleCells=runtime.obj("NSArray", "visible book cells", items=[tile]))
+    info = runtime.obj("SSCoverTransitionInfo", "native detached cover snapshot", cover_frame=(20., 199., 96., 138.))
+    controller_state = runtime.objects[shelf_controller].state
+    controller_state.update(openingModel=runtime.obj("NSObject", "opening model", data=book_data), cover_transition=info)
+    send(cpu, runtime, shelf_controller, "saveOpeningData:indexPath:", book_data, book)
+    require(controller_state["capture"] == (book_data, book, 1), "native capture follows the compact layout pass")
+    transition_selector = "fetchBookCoverTransitionInfo:"
+    require(send(cpu, runtime, shelf_controller, transition_selector, 2)["result"] == info and
+            runtime.objects[info].state["cover_frame"] == (20., 150., 96., 138.) and
+            controller_state["lookup_layout_passes"] == 2,
+            "push reuses the snapshot at the live compact cover origin")
+    runtime.objects[tile].state.update(frame=(180, 40, 104, 181), cover_size=(100., 144.))
+    require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info and
+            runtime.objects[info].state["cover_frame"] == (180., 150., 100., 144.) and
+            controller_state["lookup_layout_passes"] == 3,
+            "pop follows the matching book's current position and native cover size after a reorder")
+    runtime.objects[tile_model].state["collectDatas"] = runtime.obj("NSArray", "reused cell data", items=[])
+    require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == 0,
+            "without the matching live book, the host uses its ordinary page animation")
     runtime.shelf_base_height = 30.
     runtime.shelf_function_height = 70.
     runtime.objects[cell].state["showsFilterExposure"] = True
@@ -1397,6 +1481,8 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == holder and runtime.objects[size_layout].state["invalidations"] == 2,
             "showing duration restores the lower row while keeping edit in the top bar")
+    require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info,
+            "uncompacted shelf keeps the stock transition info")
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
     require(cpu.fp(1) == 70., "visible duration restores the native function height")
     send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 1)
@@ -1486,6 +1572,8 @@ def exercise(data, labels):
         "bottom_entries_restored": True,
         "shelf_duration_toggle": True,
         "shelf_edit_top_placement_and_compaction": True,
+        "shelf_inline_filter_alignment": True,
+        "shelf_cover_transition_geometry": True,
         "surface_reuse": True,
         "disable_restores_host": True,
         "host_layout_calls": 22,

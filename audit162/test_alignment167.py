@@ -51,7 +51,7 @@ class Runtime(PreviousRuntime):
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
                 if name in ('insertSubview:atIndex:','insertSubview:belowSubview:') and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
-                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.),(54.,30.)),'Final native background bounds before insertion')
+                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.),(54.,30.),(88.,36.)),'Final native background bounds before insertion')
                     conf=self.objects[cs['configuration']].state
                     require(conf['style']=='glass' and not conf.get('image') and not conf.get('title'),'Glass configuration contains no copied host image/title')
                     require(self.transaction_stack[-1]['disableActions'],'Background publication is nonanimated')
@@ -213,31 +213,48 @@ def exercise(data,labels,baseline):
                 'Switching back to the icon clears the old sibling glass')
         require(r.objects[material(c,r,labels,download_icon)].state['frame']==(-6.,-6.,36.,36.),
                 'The native icon variant keeps its round material')
-        shelf_label=r.label('reader_shelf_label',nav,(146,11,64,22),'加入书架')
+        for control, x in zip(controls[1:],(388,344,268,312)):
+            r.objects[control].state['frame']=(x,10,24,24)
+        shelf_label=r.label('reader_shelf_label',nav,(184,11,64,22),'加入书架')
         shelf_insert=r.obj('SSReaderNavigationBarBookShelfBtnInsertObject','bookshelf insert',getInsertView=shelf_label)
         shelf_state=r.objects[shelf_label].state
         shelf_target=(shelf_insert,r.sel('onBookShelfBtnClick:'))
         shelf_state.update(userInteractionEnabled=True,gestureRecognizers=[shelf_target])
         r.host_views.add(shelf_label)
+        shelf_mutations=len(r.host_mutations)
         inserts=r.objects[r.objects[nav].state['insertObjs']].state['items']
         inserts.append(shelf_insert)
         send(c,r,nav,'layoutSubviews')
         shelf_glass=material(c,r,labels,shelf_label)
         require(shelf_glass and siblings[siblings.index(shelf_label)-1]==shelf_glass and
-                r.objects[shelf_glass].state['frame']==(140.,6.,76.,32.) and
-                hit_contains(r,shelf_label,(-6.,-5.,76.,32.)),
-                'The entire native shelf action and its visible capsule share the original gesture hit area')
+                r.objects[shelf_glass].state['frame']==(166.,4.,88.,36.) and
+                shelf_state['frame']==(178.,11.,64.,22.) and hit_contains(r,shelf_label,(-12.,-7.,88.,36.)),
+                'Native label is centered with 12pt symmetric padding and the adjacent icon height')
+        require(r.objects[download_icon].state['frame'][0]-6-(166+88)==8.,
+                'Widening left preserves the captured 8pt gap to the right download lens')
         for text_value in ('已加书架','加入书架'):
             shelf_state['text']=r.text_object(text_value)
             send(c,r,nav,'layoutSubviews')
             require(material(c,r,labels,shelf_label)==shelf_glass and r.string_value(shelf_state['text'])==text_value and
-                    shelf_state['gestureRecognizers']==[shelf_target] and shelf_state['userInteractionEnabled'],
+                    shelf_state['frame']==(178.,11.,64.,22.) and shelf_state['gestureRecognizers']==[shelf_target] and
+                    shelf_state['userInteractionEnabled'],
                     'Both native shelf states keep the same glass, live caption and original gesture')
+        r.objects[text].state['frame']=(98,10,70,24)
+        send(c,r,nav,'layoutSubviews')
+        require(r.objects[shelf_glass].state['frame']==(176.,4.,78.,36.) and shelf_state['frame']==(183.,11.,64.,22.),
+                'A tighter native title reserves its 8pt gap while keeping the label centered')
+        r.objects[text].state['frame']=(60,10,90,24)
+        shelf_state['frame']=(184,11,64,22)
+        for _ in range(10): send(c,r,nav,'layoutSubviews')
+        require(shelf_state['frame']==(178.,11.,64.,22.),'Native relayout and repeated plugin callbacks cannot accumulate a shift')
         r.reparent(shelf_label,0)
         inserts.remove(shelf_insert)
         send(c,r,nav,'layoutSubviews')
-        require(shelf_glass not in siblings and not material(c,r,labels,shelf_label),
-                'Removing the host shelf insert also removes its sibling glass')
+        require(shelf_glass not in siblings and not material(c,r,labels,shelf_label) and shelf_state['frame']==(184.,11.,64.,22.),
+                'Removing the host shelf insert restores its native frame and removes the sibling glass')
+        require(all(mutation==('setFrame:',shelf_label) for mutation in r.host_mutations[shelf_mutations:]),
+                'The targeted shelf caption is the only host view moved by this change')
+        del r.host_mutations[shelf_mutations:]
         parent=r.view('UIView','shelf_header',(348,72,56,24),r.ROOT)
         search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)

@@ -1,6 +1,5 @@
-// Host 7.4.3 uses this flag in the homepage_not_standard_ad dispatch.
-// A true result follows the native skip-and-mark-read path. Other startup
-// popups use separate paths. Installation uses the existing launch-ad option.
+// Legacy dispatch interprets true as skip-and-mark-read. Cyber IMC interprets
+// the same flag as permission to show the ad, so close that route first.
 LStartupPopupInstall:
     stp x29, x30, [sp, #-48]!
     mov x29, sp
@@ -10,7 +9,15 @@ LStartupPopupInstall:
     bl LFQD_FQDLoadStage
     bl LFQD_FQDInstall
     ldr x0, [sp, #16]
+    .if FQ_VERSION >= 0x10704
+    tbnz w0, #6, LStartupPopupBookstore  // bookstore ads and floating overlays
+    tbz w0, #0, LStartupPopupLegacy     // launch ads
+LStartupPopupBookstore:
+    bl LFQH_FQHBookstoreAdInstall
+    cbz w0, LStartupPopupLegacy
+    .else
     tbz w0, #0, LStartupPopupLegacy
+    .endif
     adr x0, LStartupPopupClass
     bl Lpatch + (0xa5b0 - PATCH_BASE)     // objc_getClass
     cbz x0, LStartupPopupInstalled

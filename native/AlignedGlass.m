@@ -39,6 +39,8 @@ static void OwnerBusyKey(void) {}
 static void ReaderGlassKey(void) {}
 static void ReaderDownloadLabelKey(void) {}
 static void ReaderShelfLabelKey(void) {}
+static void ReaderShelfStockFrameKey(void) {}
+static void ReaderShelfStyledFrameKey(void) {}
 static void IconGlassKey(void) {}
 static void IconRectKey(void) {}
 static void ShelfRoleKey(void) {}
@@ -442,7 +444,16 @@ static void RecordLayout(Obj view,Obj glass,Rect image,const char *role) {
     FQDRecord("controlLayout167",record);
 }
 Obj FQHIconGlass(Obj view) { return objc_getAssociatedObject(view,IconGlassKey); }
+static void RestoreReaderShelfFrame(Obj label) {
+    Obj styled=objc_getAssociatedObject(label,ReaderShelfStyledFrameKey);
+    if (!styled) return;
+    if (SameRect(Frame(label),UnboxRect(styled)))
+        SetFrame(label,UnboxRect(objc_getAssociatedObject(label,ReaderShelfStockFrameKey)));
+    objc_setAssociatedObject(label,ReaderShelfStockFrameKey,0,1);
+    objc_setAssociatedObject(label,ReaderShelfStyledFrameKey,0,1);
+}
 static void RestoreIcon(Obj view,Obj glass) {
+    RestoreReaderShelfFrame(view);
     RestoreGlyph(view);
     if (glass) { ObservePress(view,glass,0); V0(glass,"removeFromSuperview"); }
     objc_setAssociatedObject(view,IconGlassKey,0,1);
@@ -450,6 +461,50 @@ static void RestoreIcon(Obj view,Obj glass) {
     objc_setAssociatedObject(view,LayoutKey,0,1);
     objc_setAssociatedObject(view,LayoutTimeKey,0,1);
     RestoreHit(view); RestoreOwner(view);
+}
+static Rect ReaderShelfMaterial(Obj label,Obj holder,Rect bounds) {
+    Rect current=Frame(label);
+    Obj stockValue=objc_getAssociatedObject(label,ReaderShelfStockFrameKey);
+    Obj styledValue=objc_getAssociatedObject(label,ReaderShelfStyledFrameKey);
+    B unchanged=styledValue && SameRect(current,UnboxRect(styledValue));
+    Rect stock=unchanged ? UnboxRect(stockValue) : current;
+    Obj nav=Kind(holder,"FQReaderSaasNavigationView") ? holder : O0(holder,"superview");
+    double shift=0;
+    if (Kind(nav,"FQReaderSaasNavigationView")) {
+        Rect row=Convert(holder,stock,nav);
+        double left=Bounds(nav).x+8,centerY=row.y+row.height*0.5;
+        Obj children=O0(nav,"subviews"),bg=Get(nav,"bgView"),glass=FQHIconGlass(label);
+        U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+        for (U i=0;i<count;++i) {
+            Obj child=At(children,i);
+            if (child==holder || child==label || child==glass || child==bg || Flag(child,"isHidden")) continue;
+            Rect r=Frame(child);
+            if (r.x>=row.x || r.y>=centerY+18 || r.y+r.height<=centerY-18) continue;
+            Obj otherGlass=FQHIconGlass(child);
+            double right=r.x+r.width;
+            if (O0(otherGlass,"superview")==child) {
+                Rect material=Convert(child,Frame(otherGlass),nav);
+                if (material.x+material.width>right) right=material.x+material.width;
+            }
+            if (right+8>left) left=right+8;
+        }
+        double extra=row.x-6-left;
+        if (extra>0) shift=extra<12 ? extra*0.5 : 6;
+    }
+    // Expand only to the left of the stock pill. Move the label by half the
+    // added width so it stays centered and the existing download gap survives.
+    Rect wanted=stock;
+    wanted.x-=shift;
+    if (!SameRect(current,wanted)) SetFrame(label,wanted);
+    if (shift>0) {
+        if (!unchanged) objc_setAssociatedObject(label,ReaderShelfStockFrameKey,RectBox(stock),1);
+        if (!unchanged || !SameRect(current,wanted))
+            objc_setAssociatedObject(label,ReaderShelfStyledFrameKey,RectBox(wanted),1);
+    } else if (styledValue) {
+        objc_setAssociatedObject(label,ReaderShelfStockFrameKey,0,1);
+        objc_setAssociatedObject(label,ReaderShelfStyledFrameKey,0,1);
+    }
+    return (Rect){bounds.x-6-shift,bounds.y+(bounds.height-36)*0.5,bounds.width+12+2*shift,36};
 }
 typedef enum { IconNone, IconGeneric, IconReaderBack, IconReaderMore, IconReaderSearch,
     IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconReaderShelf, IconShelfSearch, IconShelfMore } IconRole;
@@ -521,7 +576,6 @@ static void Icon(Obj view,IconRole role) {
         material=(Rect){bounds.x-6,bounds.y+(bounds.height-height)*0.5,bounds.width+12,height};
     }
     if (!VisibleRect(material)) { RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return; }
-    Rect placed=readerText ? Convert(view,material,holder) : material;
     if (!glass) {
         Obj config=O0(Lookup("UIButtonConfiguration"),"glassButtonConfiguration");
         if (config) glass=O0(GlassClass(),"new");
@@ -534,6 +588,8 @@ static void Icon(Obj view,IconRole role) {
         V0(glass,"release");
         ObservePress(view,glass,1);
     }
+    if (readerText && role==IconReaderShelf) material=ReaderShelfMaterial(view,holder,bounds);
+    Rect placed=readerText ? Convert(view,material,holder) : material;
     Obj lastRect=objc_getAssociatedObject(view,IconRectKey);
     // Compare the requested layout, not UIKit's transient pressed geometry.
     B move=!lastRect || !SameRect(UnboxRect(lastRect),placed);
@@ -1214,6 +1270,15 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     Obj button=Get(self,"filterButton");
     if (Belongs(button,self)) ShelfActionGlass(button);
 }
+static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
+    Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
+        "fqx185_originalInlineFilterInsets:layout:section:"))(self,cmd,collection,layout,section);
+    Obj header=Get(self,"superview");
+    // The native inline row starts at 20pt. Align its cells with the upper title row.
+    if (Enabled() && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==self)
+        insets.y-=4;
+    return insets;
+}
 static void ProfileScanKey(void) {}
 static void ProfileNightKey(void) {}
 static void ProfileMenuKey(void) {}
@@ -1281,16 +1346,18 @@ static void ProfileEntryGlass(Obj self,B order) {
     }
     if (objc_getAssociatedObject(content,GlyphViewKey)!=glyph) RestoreProfileEntryGlyph(content);
     Rect b=Bounds(content),label=Frame(caption),icon=Frame(glyph);
-    double bottom=__builtin_fmin(b.y+b.height-2,label.y-3);
-    double diameter=__builtin_fmin(34,__builtin_fmin(b.width-4,bottom-b.y-2));
-    if (diameter<20 || !VisibleRect(icon) || !VisibleRect(label)) {
+    double bottom=__builtin_fmin(b.y+b.height-2,label.y-2);
+    double height=__builtin_fmin(36,__builtin_fmin(b.width-4,bottom-b.y));
+    if (height<20 || !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntryGlyph(content);
         PageRestore(content);
         return;
     }
-    double x=__builtin_fmax(b.x+2,__builtin_fmin(icon.x+(icon.width-diameter)*0.5,b.x+b.width-diameter-2));
-    double y=__builtin_fmax(b.y+2,__builtin_fmin(icon.y+(icon.height-diameter)*0.5,bottom-diameter));
-    ApplySurface(content,(Rect){x,y,diameter,diameter},1);
+    // Use the space above the caption and a wider capsule on compact rows.
+    double width=__builtin_fmin(b.width-4,__builtin_fmin(40,height+8));
+    double x=__builtin_fmax(b.x+2,__builtin_fmin(icon.x+(icon.width-width)*0.5,b.x+b.width-width-2));
+    double y=__builtin_fmax(b.y,__builtin_fmin(icon.y+(icon.height-height)*0.5,bottom-height));
+    ApplySurface(content,(Rect){x,y,width,height},1);
     if (!FQHSurface(content)) return;
     Rect current=icon;
     Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
@@ -1298,8 +1365,8 @@ static void ProfileEntryGlass(Obj self,B order) {
         objc_setAssociatedObject(glyph,GlyphOriginalKey,RectBox(current),1);
     Rect original=UnboxRect(objc_getAssociatedObject(glyph,GlyphOriginalKey));
     double largest=__builtin_fmax(original.width,original.height);
-    double scale=__builtin_fmin(0.75,__builtin_fmin(16,diameter-10)/largest);
-    Rect adjusted={x+(diameter-original.width*scale)*0.5,y+(diameter-original.height*scale)*0.5,
+    double scale=__builtin_fmin(0.875,__builtin_fmin(18,height-10)/largest);
+    Rect adjusted={x+(width-original.width*scale)*0.5,y+(height-original.height*scale)*0.5,
                    original.width*scale,original.height*scale};
     if (!SameRect(current,adjusted)) {
         SetFrame(glyph,adjusted);
@@ -1527,6 +1594,11 @@ static void ShelfCompactKey(void) {}
 static const double ShelfFilterOffset=12;
 static const double ShelfCompactFilterTop=2;
 static const double ShelfCompactEmptyHeight=1;
+static void ShelfStockEditLayout(Obj self,Sel cmd) {
+    Obj parent=Get(Get(self,"editButton"),"superview");
+    if (parent && objc_getAssociatedObject(parent,ShelfEditHeaderKey)==self) return;
+    ((void(*)(Obj,Sel))Original("SS525BookShelfSubHeaderView","fqx185_originalStockEditLayout"))(self,cmd);
+}
 static Rect ShelfEditFrame(Obj controller,Obj holder,Obj button) {
     Rect frame={0};
     Obj owner=Get(controller,"delegate");
@@ -1616,6 +1688,39 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
         V0(Get(Get(controller,"collectionView"),"collectionViewLayout"),"invalidateLayout");
     }
     return moved ? button : (Obj)0;
+}
+static void ShelfSaveOpeningData(Obj self,Sel cmd,Obj data,Obj index) {
+    if (objc_getAssociatedObject(self,ShelfCompactKey)) V0(Get(self,"collectionView"),"layoutIfNeeded");
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfSubViewController","fqx185_originalSaveOpeningData:index:"))(
+        self,cmd,data,index);
+}
+static Obj ShelfCoverTransitionInfo(Obj self,Sel cmd,U phase) {
+    B compact=(phase==2 || phase==3) && objc_getAssociatedObject(self,ShelfCompactKey);
+    Obj list=compact ? Get(self,"collectionView") : (Obj)0;
+    if (compact) V0(list,"layoutIfNeeded");
+    Obj info=((Obj(*)(Obj,Sel,U))Original("SSBookShelfSubViewController","fqx185_originalCoverTransition:"))(self,cmd,phase);
+    if (!compact || !objc_getAssociatedObject(self,ShelfCompactKey) ||
+        !Kind(info,"SSCoverTransitionInfo")) return info;
+    // Re-anchor the host's detached cover image to the current compact cell on both directions.
+    Obj model=Get(self,"openingModel"),book=Get(Get(model,"data"),"bookId");
+    Obj cells=Get(list,"visibleCells");
+    U count=TabCount(cells);
+    for (U i=0;book && i<count;++i) {
+        Obj cell=At(cells,i),data=O0(Get(Get(cell,"cellModel"),"collectDatas"),"firstObject");
+        Obj candidate=Get(data,"bookId");
+        if (!((B(*)(Obj,Sel,Obj))Message)(book,sel_registerName("isEqual:"),candidate)) continue;
+        Obj cover=Get(cell,"fetchCoverView"),window=Get(cover,"window");
+        if (!window) continue;
+        Rect frame=Convert(cover,Bounds(cover),window);
+        Size size=((Size(*)(Obj,Sel))Message)(cell,sel_registerName("fetchCoverSize"));
+        frame.width=size.width; frame.height=size.height;
+        if (VisibleRect(frame)) {
+            ((void(*)(Obj,Sel,Rect))Message)(info,sel_registerName("setCoverFrame:"),frame);
+            return info;
+        }
+    }
+    // With no visible matching cover, the native animator uses its standard page transition.
+    return 0;
 }
 static B ShelfFunctionSection(Obj controller,I section) {
     Obj model=Get(controller,"viewModel");
@@ -1864,6 +1969,39 @@ void FQHInstallOptionsToggles(Obj controller) {
 }
 void FQHPageStyle(Obj view) { FQHApply(view); }
 void FQHPageTint(Obj view,B selected) { ShelfTabStyle(view,Get(view,"cellModel"),selected); }
+
+static B DenyBookstorePopup(Obj self,Sel cmd) {
+    (void)self;
+    (void)cmd;
+    return 0;
+}
+
+static Obj BookstorePopupHandler(Obj self,Sel cmd,Obj group) {
+    Obj handler=((Obj(*)(Obj,Sel,Obj))Original("SSImcMessageService","fqx185_originalIMCPopup:"))(self,cmd,group);
+    if (!Kind(handler,"SSImcAdOperationMessage")) return handler;
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"ruleId",Text("bookstore_imc_popup"));
+    Put(record,"ruleType",Text("exactHostSelector"));
+    Put(record,"class",Text("SSImcMessageService"));
+    Put(record,"selector",Text("getPopupWithDataGroup:"));
+    Put(record,"result",Text("blocked"));
+    Put(record,"pageDisplay",Text("unobserved"));
+    FQDRecord("adRuleDecision",record);
+    return 0;
+}
+
+B FQHBookstoreAdInstall(void) {
+    if (!FQHCompatibleHost()) return 0;
+    Method gate=FQDResolveOwned(Lookup("SSImcAdOperationMessage"),sel_registerName("enablePopup"),0,"B16@0:8");
+    if (!gate) return 0;
+    // The request path checks enablePopup. Cached and async resources can use
+    // the unfiltered type-7 registry. Deny its ad handler before view creation.
+    Hook("SSImcMessageService","getPopupWithDataGroup:","fqx185_originalIMCPopup:","@24@0:8@16",(Imp)BookstorePopupHandler);
+    if (!Signature("SSImcMessageService","fqx185_originalIMCPopup:","@24@0:8@16")) return 0;
+    method_setImplementation(gate,(Imp)DenyBookstorePopup);
+    return 1;
+}
+
 void FQHPageInstall(void) {
     Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);
     Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);
@@ -1888,6 +2026,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilter541Cell","updateAppearance:","fqx175_originalShelfFilterAppearance:","v20@0:8B16",(Imp)PageShelfFilterAppearance);
     Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
     Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
+    Hook("SSBookShelfFilterMixRowCollectionView","collectionView:layout:insetForSectionAtIndex:","fqx185_originalInlineFilterInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfInlineFilterInsets);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
@@ -1896,6 +2035,9 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621ViewController","objectsForListAdapter:","fqx176_originalMineListObjects:","@24@0:8@16",(Imp)MineListObjects);
     Hook("SS525BookShelfSubHeaderView","setShowReadTimeView:","fqx177_originalDurationVisible:","v20@0:8B16",(Imp)ShelfDurationVisible);
     Hook("SS525BookShelfSubHeaderView","layoutSubviews","fqx177_originalDurationLayout","v16@0:8",(Imp)ShelfDurationLayout);
+    Hook("SS525BookShelfSubHeaderView","layoutEditButton","fqx185_originalStockEditLayout","v16@0:8",(Imp)ShelfStockEditLayout);
+    Hook("SSBookShelfSubViewController","saveOpeningData:indexPath:","fqx185_originalSaveOpeningData:index:","v32@0:8@16@24",(Imp)ShelfSaveOpeningData);
+    Hook("SSBookShelfSubViewController","fetchBookCoverTransitionInfo:","fqx185_originalCoverTransition:","@24@0:8Q16",(Imp)ShelfCoverTransitionInfo);
     Hook("SSBookShelfSubViewController","collectionView:layout:sizeForItemAtIndexPath:","fqx178_originalShelfFunctionSize:layout:index:","{CGSize=dd}40@0:8@16@24@32",(Imp)ShelfFunctionSize);
     Hook("SSBookShelfSubViewController","collectionView:layout:insetForSectionAtIndex:","fqx181_originalShelfInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfFunctionInsets);
     Hook("SSBookShelfFunctionCell","layoutContainerSubviews","fqx178_originalShelfFunctionLayout","v16@0:8",(Imp)ShelfFunctionLayout);
