@@ -36,7 +36,7 @@ def labels_for(data, composed, extra_labels=()):
     s = text[0]
     payload = obj[s['offset']:s['offset'] + s['size']]
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] in (0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704), 'Known feed payload directory')
+    require(words[6] in (0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704, 0x14a00), 'Known feed payload directory')
     for start, stop in ((0x800, 0x800 + words[55]),
                         (0x800 + words[4], 0x800 + words[5]),
                         (0x800 + words[60], 0x800 + words[63])):

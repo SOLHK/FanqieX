@@ -18,9 +18,13 @@ UPLOADED_SHA = '55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354
 SOURCE_SHA = '918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4'
 PREVIOUS_SHA = '8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e'
 VERSION, ENCODED = '1.6.2', 0x10602
-RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604, '1.6.5': 0x10605, '1.6.6': 0x10606, '1.6.7': 0x10607, '1.7.1': 0x10701, '1.7.2': 0x10702, '1.7.3': 0x10703, '1.7.4': 0x10704}
+RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604, '1.6.5': 0x10605,
+ '1.6.6': 0x10606, '1.6.7': 0x10607, '1.7.1': 0x10701, '1.7.2': 0x10702,
+ '1.7.3': 0x10703, '1.7.4': 0x10704, '1.74': 0x14a00}
 PRODUCT_NAME = 'FanqieX'
 BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
+SETTINGS_START, SETTINGS_VERSION, SETTINGS_END = 0xec7a, 0xec84, 0xecbc
+SETTINGS_LENGTH = 0x114b0
 NAMES = ['ratio','layout','installer','repair','strings','end','version','reserved',
  'frame','background','restore','edge_update','edge_restore','find','round','sync',
  'eligible','visible','message','install_method','busy_key','scroll_key','edge_key',
@@ -54,9 +58,9 @@ def compose_assembly(path, version=VERSION):
  extension=['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s']
  if version != VERSION:
   extension.append('hook_ownership.s')
- if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+ if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
   extension.extend(('startup_popup.s', 'tabbar_spacing.s', 'diagnostic_limits.s', 'ad_decisions.s'))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
   extension.append('home_glass.s')
  for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
                        ('EXTENSION',extension)]:
@@ -65,12 +69,12 @@ def compose_assembly(path, version=VERSION):
    parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2, 'Component boundary: '+filename)
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
-   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4') else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
+   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74') else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Native diagnostic component boundary')
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
-   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4') else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
+   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74') else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Home glass component boundary')
    code.append(parts[0]); data.append(parts[1])
   for kind, values in [('CODE',code),('DATA',data)]:
@@ -80,7 +84,7 @@ def compose_assembly(path, version=VERSION):
  return text
 
 def extension_limit(version):
- if version == RELEASES['1.7.4']:
+ if version in (RELEASES['1.7.4'], RELEASES['1.74']):
   return 0x28000
  return 0x20000 if version>=0x10604 else 0x10000
 
@@ -103,7 +107,7 @@ def build(source_path, output_path, *, version=VERSION):
  source_path=Path(source_path); output_path=Path(output_path)
  encoded=RELEASES[version]
  isolated=version != VERSION
- profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4')
+ profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74')
  need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
  uploaded=source_path.read_bytes()
  need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
@@ -138,7 +142,7 @@ def build(source_path, output_path, *, version=VERSION):
  if isolated:
   hook=e['reserved24']
   need(off+128<=hook<e['code_end'] and hook%4==0,'Hook ownership entry bounds')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
   marker=payload.index(b'FQ165HOM')
   home_gate,home_check=struct.unpack_from('<II',payload,marker+8)
   need(all(off+128<=entry<e['code_end'] and entry%4==0 for entry in (home_gate,home_check)),'Host compatibility entries in code')
@@ -164,7 +168,7 @@ def build(source_path, output_path, *, version=VERSION):
  for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
  if isolated:
   replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
   check='Validate Fanqie bundle identity' if encoded>=0x10704 else 'Validate same-build host'
   route='Enter the runtime capability installers only in Fanqie' if encoded>=0x10704 else 'Accept compatible build or replay the original UUID gate'
   replace(0x4018,bytes.fromhex('00008052'),branch(0x4018,BASE+home_check,True),check+' under the original constructor unwind frame')
@@ -208,7 +212,24 @@ def build(source_path, output_path, *, version=VERSION):
  new_install=('@rpath/'+PRODUCT_NAME+'-'+version+'.dylib').encode()+b'\0'
  need(len(new_install)<=len(old_install),'Install name fits existing command')
  replace(0x570,old_install,new_install.ljust(len(old_install),b'\0'),'FanqieX install name')
- replace(0xec84,'1.5.6'.encode('utf-16le'),version.encode('utf-16le'),'Settings version')
+ old_version='1.5.6'.encode('utf-16le')
+ display_version=version.encode('utf-16le')
+ settings_allowed=set(range(SETTINGS_VERSION,SETTINGS_VERSION+len(old_version)))
+ if len(display_version)==len(old_version):
+  replace(SETTINGS_VERSION,old_version,display_version,'Settings version')
+ else:
+  # The version is part of a fixed CFString that also contains the help text.
+  # Shift the text after the version and update the UTF-16 length in __cfstring.
+  footer=source[SETTINGS_VERSION:SETTINGS_END]
+  need(footer.startswith(old_version) and len(display_version)<len(old_version),
+       'Shorter settings version must fit the original footer')
+  new_footer=display_version+footer[len(old_version):]
+  replace(SETTINGS_VERSION,footer,new_footer.ljust(len(footer),b'\0'),'Settings footer version')
+  replace(SETTINGS_LENGTH,struct.pack('<Q',(SETTINGS_END-SETTINGS_START)//2),
+          struct.pack('<Q',(SETTINGS_VERSION-SETTINGS_START+len(new_footer))//2),
+          'Settings footer UTF-16 length')
+  settings_allowed.update(range(SETTINGS_VERSION,SETTINGS_END))
+  settings_allowed.update(range(SETTINGS_LENGTH,SETTINGS_LENGTH+8))
  uu=[o for c,o,n in macho_commands(source) if c==0x1b]; need(len(uu)==1,'One UUID')
  extension=payload[off:e['end']]
  ident=bytearray(hashlib.sha256(bytes(data[:original_signature['signature_offset']])+extension).digest()[:16])
@@ -229,12 +250,12 @@ def build(source_path, output_path, *, version=VERSION):
  # initial material style immediate and displayed version string may differ;
  # ad handling and host UUID gate
  # cannot be silently reverted during the clean rebuild.
- original_allowed=set(range(0xec84,0xec84+10))
+ original_allowed=settings_allowed
  for a,n,link in SITES:
   original_allowed.update(range(a,a+4))
  for a in (0x7848,0x7ac4,0x5d50,0x5da0,0x5dec,0x5e38,0x649c):
   original_allowed.update(range(a,a+4))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
   original_allowed.update(range(0x4018,0x4020))
  if isolated:
   original_allowed.update(range(0x4878,0x487c))

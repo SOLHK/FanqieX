@@ -53,7 +53,7 @@ PATCH_SITES = (
     (0x60B8, "sync", False), (0x6C84, "frame", True),
     (0x6CE8, "proxy_frame", True), (0x6DB4, "restore", False),
 )
-MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4")
+MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74")
 EXTENSION_PATCH_SITES = {
     "1.6.3": ((0x4878, "reserved24", False),),
     "1.6.4": ((0x4878, "reserved24", False), (0x4650, "reserved25", False),
@@ -65,6 +65,7 @@ EXTENSION_PATCH_SITES["1.7.1"] = EXTENSION_PATCH_SITES["1.6.6"]
 EXTENSION_PATCH_SITES["1.7.2"] = EXTENSION_PATCH_SITES["1.6.6"]
 EXTENSION_PATCH_SITES["1.7.3"] = EXTENSION_PATCH_SITES["1.6.6"]
 EXTENSION_PATCH_SITES["1.7.4"] = EXTENSION_PATCH_SITES["1.7.3"]
+EXTENSION_PATCH_SITES["1.74"] = EXTENSION_PATCH_SITES["1.7.4"]
 ALLOWED_SECTION_BYTES = {
     address for start in [item[0] for item in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     for address in range(start, start + 4)
@@ -191,7 +192,7 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
     patch = new.segment("__FQPATCH")
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
     capacities = (0x4000, 0x8000, 0xC000, 0x10000, 0x20000)
-    if version == "1.7.4":
+    if version in ("1.7.4", "1.74"):
         capacities += (0x24000, 0x28000)
     require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
             "Unsupported reviewed extension capacity")
@@ -224,10 +225,13 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
 def check_sections(old: Image, new: Image, version: str) -> dict:
     extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
     allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
+    settings_end = 0xECBC if version == "1.74" else 0xEC8E
+    if version == "1.74":
+        allowed |= set(range(0xEC8E, settings_end)) | set(range(0x114B0, 0x114B8))
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74"):
         allowed |= set(range(0x4018,0x4020))
     unwind = None
-    if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
+    if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74'):
         # Allow only a completely validated, compiler-frame-matching replacement
         # of this metadata slot; every original function entry stays identical.
         from unwind_audit import check_native_unwind
@@ -257,13 +261,14 @@ def check_sections(old: Image, new: Image, version: str) -> dict:
     return {"compared_sections": len(old.sections), "changed_original_section_bytes": len(changed),
             "allowed_code_sites": [hex(item[0]) for item in PATCH_SITES] + ["0x5d50", "0x5da0", "0x5dec", "0x5e38", "0x649c", "0x7848", "0x7ac4"]
             + [hex(pc) for pc in extra_sites],
-            "allowed_utf16_version_range": ["0xec84", "0xec8e"],
+            "allowed_utf16_version_range": ["0xec84", hex(settings_end)],
             "native_unwind": unwind}
 
 
 def version_word(version: str) -> int:
-    require(re.fullmatch(r"\d+\.\d+\.\d+", version) is not None, "Invalid expected version")
-    major, minor, patch = map(int, version.split("."))
+    require(re.fullmatch(r"\d+\.\d+(?:\.\d+)?", version) is not None, "Invalid expected version")
+    major, minor, *rest = map(int, version.split("."))
+    patch = rest[0] if rest else 0
     require(major < 65536 and minor < 256 and patch < 256, "Version component out of range")
     return major << 16 | minor << 8 | patch
 
@@ -367,7 +372,7 @@ def check_instructions(image: Image, tables: dict) -> dict:
     version = tables["expected_version"]
     extension_sites = EXTENSION_PATCH_SITES.get(version, ())
     addresses += [pc for pc, _, _ in extension_sites]
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74"):
         data=image.data
         require(data.count(b"FQ165HOM")==1,"One home compatibility entry table")
         at=data.index(b"FQ165HOM")
@@ -588,16 +593,21 @@ def check_commands(old: Image, new: Image, expected_version: str) -> dict:
 
 def check_versions(image: Image, version: str, tables: dict, instructions: dict, signature: dict) -> dict:
     data = image.data
-    expected = version.encode("ascii")
     require(tables["main_version"] == tables["extension_version"] == version_word(version),
             "Main/extension numeric versions differ")
-    require(data[0xEC84:0xEC8E] == version.encode("utf-16le"), "Settings UTF16 version mismatch")
+    footer = f"插件版本 {version}。开关自动保存。完全退出番茄小说再打开后生效。".encode("utf-16le")
+    require(data[0xEC7A:0xECBE] == footer.ljust(0xECBE - 0xEC7A, b"\0"),
+            "Settings footer text mismatch")
+    require(unpack("<Q", data, 0x114B0)[0] == len(footer) // 2, "Settings footer UTF-16 length mismatch")
     product = "FanqieAdBlock" if version == "1.5.8" else "FanqieX"
     require(signature["identifier"] == f"{product}-{version}.dylib", "Signature identifier version mismatch")
     constants_start = BASE + tables["main"]["strings"]
     constants_end = BASE + tables["main"]["end"]
+    # Two-component release numbers are valid. Exclude zero-prefixed decimal
+    # tuning constants such as 0.55 when scanning the displayed versions.
+    version_pattern = rb"(?<![\w.])(?:[1-9]\d*(?:\.\d+)+|0(?:\.\d+){2,})\b"
     constants = [{"address": constants_start + match.start(), "value": match.group().decode("ascii")}
-                 for match in re.finditer(rb"\b\d+\.\d+\.\d+\b", data[constants_start:constants_end])]
+                 for match in re.finditer(version_pattern, data[constants_start:constants_end])]
     require(constants and all(item["value"] == version for item in constants),
             f"Runtime/event/export version constants are inconsistent: {constants}; expected {version}")
     # 1.5.8 is an explicit negative-control option: its export says 1.5.7.  A
@@ -628,8 +638,8 @@ def check_versions(image: Image, version: str, tables: dict, instructions: dict,
     require(len(field_refs) >= 2 and len({item["dictionary_register"] for item in field_refs}) >= 2,
             "Cannot establish distinct event/export writes of the shared version")
     dotted = [{"address": match.start(), "value": match.group().decode("ascii")}
-              for match in re.finditer(rb"\b\d+\.\d+\.\d+\b", data)]
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4"):
+              for match in re.finditer(version_pattern, data)]
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74"):
         host=[item for item in dotted if data[item["address"]:item["address"]+9]==b"7.4.3.33\0"]
         require(len(host)==1,"Exactly one pinned host build identifier")
         dotted=[item for item in dotted if item not in host]

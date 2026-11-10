@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.7.4
+name: Verify FanqieX 1.74
 
 on:
   push:
@@ -38,8 +38,8 @@ jobs:
             run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then
               gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.7.4.dylib
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.7.4.validation.json
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.74.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.74.validation.json
               exit 0
             fi
             sleep 10
@@ -48,7 +48,7 @@ jobs:
           exit 1
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.7.4 --output build/ci174 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.7.4.dylib
+        run: python3 scripts/verify162.py --version 1.74 --output build/ci174 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.74.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -65,21 +65,19 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
-          # The test branch commits the previous verified package for direct
-          # download. Rebuild the runner's package from this run, replacing it
-          # only after the frozen-source verification succeeded.
-          rm -rf dist/1.7.4 verification/1.7.4
-          python3 scripts/package162.py --version 1.7.4 --verification-dir build/ci174
+          # Rebuild the committed distribution from this run after verification.
+          rm -rf dist/1.74 verification/1.74
+          python3 scripts/package162.py --version 1.74 --verification-dir build/ci174
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.7.4-${{ github.sha }}
+          name: FanqieX-1.74
           path: |
-            dist/1.7.4/FanqieX-1.7.4.dylib
-            dist/1.7.4/FanqieX-1.7.4.zip
-            dist/1.7.4/SHA256SUMS.txt
-            dist/1.7.4/VERIFICATION.json
+            dist/1.74/FanqieX-1.74.dylib
+            dist/1.74/FanqieX-1.74.zip
+            dist/1.74/SHA256SUMS.txt
+            dist/1.74/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30
