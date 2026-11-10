@@ -4,280 +4,280 @@
   "candidate_size": 222352,
   "two_builds_identical": true,
   "device_tested": false,
-  "source_manifest_sha256": "40a8e47c7ffe0a15b9c72763d867b4042f503a82d4a83faed49628b64f031e6f",
+  "source_manifest_sha256": "e9147090c92edf80a4ff9357b5a30f5e07167942332ff5126ee5699bf07c8cb7",
   "source_file_count": 244,
   "steps": [
     {
       "name": "build",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.853,
+      "seconds": 0.653,
       "log": "logs/build.log"
     },
     {
       "name": "rebuild",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.819,
+      "seconds": 0.641,
       "log": "logs/rebuild.log"
     },
     {
       "name": "extension-layout-selftest",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.135,
+      "seconds": 0.083,
       "log": "logs/extension-layout-selftest.log"
     },
     {
       "name": "independent-binary",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.165,
+      "seconds": 0.113,
       "log": "logs/independent-binary.log"
     },
     {
       "name": "independent-faults",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.986,
+      "seconds": 2.158,
       "log": "logs/independent-faults.log"
     },
     {
       "name": "native-surface",
       "passed": true,
       "returncode": 0,
-      "seconds": 8.554,
+      "seconds": 8.5,
       "log": "logs/native-surface.log"
     },
     {
       "name": "glass-interaction",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.444,
+      "seconds": 2.389,
       "log": "logs/glass-interaction.log"
     },
     {
       "name": "integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.051,
+      "seconds": 2.945,
       "log": "logs/integration.log"
     },
     {
       "name": "diagnostic-dedup",
       "passed": true,
       "returncode": 0,
-      "seconds": 34.074,
+      "seconds": 32.937,
       "log": "logs/diagnostic-dedup.log"
     },
     {
       "name": "legacy-execution",
       "passed": true,
       "returncode": 0,
-      "seconds": 29.66,
+      "seconds": 27.898,
       "log": "logs/legacy-execution.log"
     },
     {
       "name": "material-transitions160",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.16,
+      "seconds": 0.091,
       "log": "logs/material-transitions160.log"
     },
     {
       "name": "feed-viewport",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.004,
+      "seconds": 5.738,
       "log": "logs/feed-viewport.log"
     },
     {
       "name": "feed-integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 12.742,
+      "seconds": 11.979,
       "log": "logs/feed-integration.log"
     },
     {
       "name": "feed-realistic159",
       "passed": true,
       "returncode": 0,
-      "seconds": 18.672,
+      "seconds": 18.615,
       "log": "logs/feed-realistic159.log"
     },
     {
       "name": "first-frame160",
       "passed": true,
       "returncode": 0,
-      "seconds": 4.8,
+      "seconds": 4.608,
       "log": "logs/first-frame160.log"
     },
     {
       "name": "reader-diagnostics160",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.943,
+      "seconds": 2.775,
       "log": "logs/reader-diagnostics160.log"
     },
     {
       "name": "reader-original162",
       "passed": true,
       "returncode": 0,
-      "seconds": 7.033,
+      "seconds": 6.802,
       "log": "logs/reader-original162.log"
     },
     {
       "name": "shelf-first-frame162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.482,
+      "seconds": 2.315,
       "log": "logs/shelf-first-frame162.log"
     },
     {
       "name": "glass-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.569,
+      "seconds": 2.429,
       "log": "logs/glass-readability162.log"
     },
     {
       "name": "interaction-diagnostics162",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.178,
+      "seconds": 1.061,
       "log": "logs/interaction-diagnostics162.log"
     },
     {
       "name": "native-selection162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.458,
+      "seconds": 6.422,
       "log": "logs/native-selection162.log"
     },
     {
       "name": "native-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.449,
+      "seconds": 5.403,
       "log": "logs/native-readability162.log"
     },
     {
       "name": "native-orchestration162",
       "passed": true,
       "returncode": 0,
-      "seconds": 12.035,
+      "seconds": 11.806,
       "log": "logs/native-orchestration162.log"
     },
     {
       "name": "hook-ownership163",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.333,
+      "seconds": 2.292,
       "log": "logs/hook-ownership163.log"
     },
     {
       "name": "ad-decisions164",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.834,
+      "seconds": 5.797,
       "log": "logs/ad-decisions164.log"
     },
     {
       "name": "startup-popup164",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.712,
+      "seconds": 0.64,
       "log": "logs/startup-popup164.log"
     },
     {
       "name": "tabbar-spacing164",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.103,
+      "seconds": 0.05,
       "log": "logs/tabbar-spacing164.log"
     },
     {
       "name": "native-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.695,
+      "seconds": 5.484,
       "log": "logs/native-diagnostics164.log"
     },
     {
       "name": "diagnostic-limits164",
       "passed": true,
       "returncode": 0,
-      "seconds": 30.131,
+      "seconds": 30.289,
       "log": "logs/diagnostic-limits164.log"
     },
     {
       "name": "load-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.568,
+      "seconds": 1.215,
       "log": "logs/load-diagnostics164.log"
     },
     {
       "name": "native-compiler-boundaries",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.332,
+      "seconds": 0.32,
       "log": "logs/native-compiler-boundaries.log"
     },
     {
       "name": "native-unwind",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.207,
+      "seconds": 0.067,
       "log": "logs/native-unwind.log"
     },
     {
       "name": "home-glass165",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.165,
+      "seconds": 2.02,
       "log": "logs/home-glass165.log"
     },
     {
       "name": "home-compiler",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.469,
+      "seconds": 0.504,
       "log": "logs/home-compiler.log"
     },
     {
       "name": "conditional-compare",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.424,
+      "seconds": 0.071,
       "log": "logs/conditional-compare.log"
     },
     {
       "name": "alignment167",
       "passed": true,
       "returncode": 0,
-      "seconds": 21.697,
+      "seconds": 21.354,
       "log": "logs/alignment167.log"
     },
     {
       "name": "controls171",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.785,
+      "seconds": 1.654,
       "log": "logs/controls171.log"
     },
     {
       "name": "header173",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.715,
+      "seconds": 6.621,
       "log": "logs/header173.log"
     },
     {
       "name": "page-glass174",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.842,
+      "seconds": 0.748,
       "log": "logs/page-glass174.log"
     }
   ],
