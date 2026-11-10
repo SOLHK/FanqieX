@@ -1,4 +1,4 @@
-// Source SHA-256: 7c2c1228494757e404c978ed088ea295b10732c2603144b8806375f723342447
+// Source SHA-256: a42d924dbc496bcfd0ef3be67881bcfead3956ffed02bcfbb0e37b6b9cd3b45c
 .p2align	2
 LFQH_FQHCompatibleHost:
 .cfi_startproc
@@ -10929,9 +10929,9 @@ cmp	x8, #2046
 mov	w8, #2046
 ccmp	x9, x8, #2, ls
 ccmp	x10, x8, #2, ls
-b.ls	LFQH_LBB138_16
+b.ls	LFQH_LBB138_17
 LFQH_LBB138_9:
-cbz	x21, LFQH_LBB138_15
+cbz	x21, LFQH_LBB138_16
 cmp	x20, x21
 b.ne	LFQH_LBB138_12
 LFQH_Lloh1838:
@@ -10952,24 +10952,25 @@ mov	x2, x20
 mov	x3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB138_12:
-cbz	w23, LFQH_LBB138_14
 LFQH_Lloh1842:
-adr x0, LFQH_l_.str.56
-LFQH_Lloh1843:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x20, x0
-LFQH_Lloh1844:
 adr x1, LFQH_SpeechTintKey
-LFQH_Lloh1845:
+LFQH_Lloh1843:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
-mov	x2, x0
+cbz	w23, LFQH_LBB138_15
+mov	x20, x0
+cbz	x0, LFQH_LBB138_15
+LFQH_Lloh1844:
+adr x0, LFQH_l_.str.56
+LFQH_Lloh1845:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
 mov	x0, x19
-mov	x1, x20
+mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_LBB138_14:
+LFQH_LBB138_15:
 LFQH_Lloh1846:
 adr x1, LFQH_SpeechImageKey
 LFQH_Lloh1847:
@@ -10994,7 +10995,7 @@ mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_LBB138_15:
+LFQH_LBB138_16:
 LFQH_Lloh1852:
 adr x1, LFQH_SurfaceKey
 LFQH_Lloh1853:
@@ -11008,7 +11009,7 @@ ldp	x20, x19, [sp, #32]
 ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 b	LFQH_Restore
-LFQH_LBB138_16:
+LFQH_LBB138_17:
 fmov	x8, d3
 ubfx	x8, x8, #52, #11
 cmp	x8, #2046
@@ -11017,7 +11018,7 @@ fcmp	d2, #0.0
 b.le	LFQH_LBB138_9
 fcmp	d3, #0.0
 b.le	LFQH_LBB138_9
-cbnz	x21, LFQH_LBB138_21
+cbnz	x21, LFQH_LBB138_22
 LFQH_Lloh1854:
 adr x0, LFQH_l_.str.316
 LFQH_Lloh1855:
@@ -11040,7 +11041,7 @@ mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
 cbz	x0, LFQH_LBB138_1
-LFQH_LBB138_21:
+LFQH_LBB138_22:
 mov	x0, x19
 bl	LFQH_FQHApply
 LFQH_Lloh1860:
@@ -11050,7 +11051,7 @@ nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB138_1
-cbnz	w23, LFQH_LBB138_24
+cbnz	w23, LFQH_LBB138_25
 LFQH_Lloh1862:
 adr x1, LFQH_SpeechTintKey
 LFQH_Lloh1863:
@@ -11068,7 +11069,7 @@ mov	x1, x0
 mov	x0, x19
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_LBB138_24:
+LFQH_LBB138_25:
 cmp	x20, x21
 b.eq	LFQH_LBB138_1
 LFQH_Lloh1866:

@@ -435,6 +435,13 @@ def exercise(data, labels):
     require(not call(cpu, labels, "LFQH_FQHSurface", speech)["result"] and
             speech_state["images"][0] == theme_image and speech_state["tintColor"] == host_tint,
             "disabling glass restores the latest host image and original tint")
+    speech_state["tintColor"] = runtime.colors["labelColor"]
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+    send(cpu, runtime, listen, "layoutSubviews")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, listen, "layoutSubviews")
+    require(speech_state["tintColor"] == runtime.colors["labelColor"],
+            "restoration leaves an equivalent tint originally set by the host intact")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     discuss = runtime.view("SSReaderChapterEndDiscussionEntranceView", "discuss",

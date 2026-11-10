@@ -656,7 +656,8 @@ static void SpeechGlass(Obj view) {
     if (!Enabled() || !FQHGlassAvailable() || !VisibleRect(Bounds(button))) {
         if (glyph) {
             if (image==glyph) SetSpeechImage(button,objc_getAssociatedObject(button,SpeechImageKey));
-            if (hasTint) V1(button,"setTintColor:",objc_getAssociatedObject(button,SpeechTintKey));
+            Obj previousTint=objc_getAssociatedObject(button,SpeechTintKey);
+            if (hasTint && previousTint) V1(button,"setTintColor:",previousTint);
             objc_setAssociatedObject(button,SpeechImageKey,0,1);
             objc_setAssociatedObject(button,SpeechGlyphKey,0,1);
             objc_setAssociatedObject(button,SpeechTintKey,0,1);
