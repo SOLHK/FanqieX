@@ -924,6 +924,16 @@ LGedit171_other:
     ldr w8, [sp, #56]
     cmp w8, #1
     b.eq LGcontrol_original_top
+    .if FQ_VERSION >= 0x10704
+    sub w9, w8, #3
+    cmp w9, #1
+    b.hi LGcontrol_page_scope_done
+    mov x0, x19
+    bl LFQH_FQHReaderOwnsControl
+    cbnz w0, LGcontrol_too_small
+    ldr w8, [sp, #56]
+LGcontrol_page_scope_done:
+    .endif
     cmp w8, #2
     b.eq LGcontrol_visibility
     bl LRenabled

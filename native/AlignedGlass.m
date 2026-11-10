@@ -187,10 +187,12 @@ B FQHIsDuration(Obj view) {
 Obj FQHSurface(Obj view) { return objc_getAssociatedObject(view,SurfaceKey); }
 static void Restore(Obj view,Obj surface) {
     if (!surface) { RestoreHeaderOwner(view); RestoreOwner(view); return; }
-    Obj clear=O0(Lookup("UIColor"),"clearColor");
-    Obj current=O0(view,"backgroundColor");
-    if (current==clear || ((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),clear))
-        V1(view,"setBackgroundColor:",objc_getAssociatedObject(view,BackgroundKey));
+    if (objc_getAssociatedObject(view,ClipsKey) || objc_getAssociatedObject(view,HeaderClipsKey)) {
+        Obj clear=O0(Lookup("UIColor"),"clearColor");
+        Obj current=O0(view,"backgroundColor");
+        if (current==clear || ((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),clear))
+            V1(view,"setBackgroundColor:",objc_getAssociatedObject(view,BackgroundKey));
+    }
     V0(surface,"removeFromSuperview");
     objc_setAssociatedObject(view,SurfaceKey,0,1);
     objc_setAssociatedObject(view,BackgroundKey,0,1);
@@ -201,15 +203,14 @@ static void ClearBackground(Obj view,Obj clear) {
     if (value!=clear && !((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("isEqual:"),clear))
         V1(view,"setBackgroundColor:",clear);
 }
-void FQHApply(Obj view) {
-    if (!Kind(view,"UIView") || objc_getAssociatedObject(view,BusyKey)) return;
+static void ApplySurface(Obj view,Rect material,B preserveOwner) {
+    if (objc_getAssociatedObject(view,BusyKey)) return;
     objc_setAssociatedObject(view,BusyKey,view,0);
     Obj surface=objc_getAssociatedObject(view,SurfaceKey);
-    Rect bounds=((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds"));
     if (!Enabled() || !FQHGlassAvailable() ||
-        !__builtin_isfinite(bounds.x) || !__builtin_isfinite(bounds.y) ||
-        !__builtin_isfinite(bounds.width) || !__builtin_isfinite(bounds.height) ||
-        !(bounds.width>0 && bounds.height>0)) {
+        !__builtin_isfinite(material.x) || !__builtin_isfinite(material.y) ||
+        !__builtin_isfinite(material.width) || !__builtin_isfinite(material.height) ||
+        !(material.width>0 && material.height>0)) {
         Restore(view,surface);
         objc_setAssociatedObject(view,BusyKey,0,0);
         return;
@@ -228,27 +229,33 @@ void FQHApply(Obj view) {
         Q1(surface,"setAutoresizingMask:",18); // flexible width + height
         objc_setAssociatedObject(view,SurfaceKey,surface,1);
         V0(surface,"release");
-        objc_setAssociatedObject(view,BackgroundKey,O0(view,"backgroundColor"),1);
+        if (!preserveOwner) objc_setAssociatedObject(view,BackgroundKey,O0(view,"backgroundColor"),1);
     }
     Obj clear=O0(Lookup("UIColor"),"clearColor");
-    Obj current=O0(view,"backgroundColor");
-    // A host theme update owns the latest restoration color.
-    if (current!=clear && !((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),clear))
-        objc_setAssociatedObject(view,BackgroundKey,current,1);
     Obj transaction=Lookup("CATransaction");
     V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
-    if (objc_getAssociatedObject(view,HeaderKey)) PrepareHeaderOwner(view,bounds);
-    else PrepareOwner(view);
+    if (!preserveOwner) {
+        Obj current=O0(view,"backgroundColor");
+        // A host theme update owns the latest restoration color.
+        if (current!=clear && !((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),clear))
+            objc_setAssociatedObject(view,BackgroundKey,current,1);
+        if (objc_getAssociatedObject(view,HeaderKey)) PrepareHeaderOwner(view,material);
+        else PrepareOwner(view);
+        ClearBackground(view,clear);
+    }
     Rect placed=((Rect(*)(Obj,Sel))Message)(surface,sel_registerName("frame"));
-    if (placed.x!=bounds.x || placed.y!=bounds.y || placed.width!=bounds.width || placed.height!=bounds.height)
-        ((void(*)(Obj,Sel,Rect))Message)(surface,sel_registerName("setFrame:"),bounds);
+    if (placed.x!=material.x || placed.y!=material.y || placed.width!=material.width || placed.height!=material.height)
+        ((void(*)(Obj,Sel,Rect))Message)(surface,sel_registerName("setFrame:"),material);
     ClearBackground(surface,clear);
     ClearBackground(O0(surface,"contentView"),clear);
-    ClearBackground(view,clear);
     if (O0(surface,"superview")!=view)
         ((void(*)(Obj,Sel,Obj,I))Message)(view,sel_registerName("insertSubview:atIndex:"),surface,0);
     V0(transaction,"commit");
     objc_setAssociatedObject(view,BusyKey,0,0);
+}
+void FQHApply(Obj view) {
+    if (Kind(view,"UIView"))
+        ApplySurface(view,((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds")),0);
 }
 void FQHHeader(Obj view) {
     if (!Kind(view,"UIView")) return;
@@ -632,6 +639,58 @@ static void ListenLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderFloatingCommonButton","fqx171_originalLayout"))(self,cmd);
     FQHListen(self);
 }
+static void SpeechImageKey(void) {}
+static void SpeechGlyphKey(void) {}
+static void SpeechTintKey(void) {}
+static void SetSpeechImage(Obj button,Obj image) {
+    ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setImage:forState:"),image,0);
+}
+static void SpeechGlass(Obj view) {
+    Obj button=Get(view,"speechBtn");
+    if (!Kind(button,"UIButton") || !Belongs(button,view)) return;
+    Obj image=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("imageForState:"),0);
+    Obj glyph=objc_getAssociatedObject(button,SpeechGlyphKey);
+    Obj foreground=O0(Lookup("UIColor"),"labelColor");
+    Obj tint=Get(button,"tintColor");
+    B hasTint=((B(*)(Obj,Sel,Obj))Message)(tint,sel_registerName("isEqual:"),foreground);
+    if (!Enabled() || !FQHGlassAvailable() || !VisibleRect(Bounds(button))) {
+        if (glyph) {
+            if (image==glyph) SetSpeechImage(button,objc_getAssociatedObject(button,SpeechImageKey));
+            if (hasTint) V1(button,"setTintColor:",objc_getAssociatedObject(button,SpeechTintKey));
+            objc_setAssociatedObject(button,SpeechImageKey,0,1);
+            objc_setAssociatedObject(button,SpeechGlyphKey,0,1);
+            objc_setAssociatedObject(button,SpeechTintKey,0,1);
+        }
+        Restore(button,FQHSurface(button));
+        return;
+    }
+    if (!glyph) {
+        // The 56pt theme image includes the opaque disc. Use the host's
+        // transparent version of the same glyph so the material shows through.
+        Obj artwork=Get(Lookup("BDNovelNewAssetsGenerated"),"bdn_novelReaderListenButton");
+        glyph=((Obj(*)(Obj,Sel,I))Message)(artwork,sel_registerName("imageWithRenderingMode:"),2);
+        if (!glyph) return;
+    }
+    FQHApply(button);
+    if (!FQHSurface(button)) return;
+    if (!hasTint) {
+        objc_setAssociatedObject(button,SpeechTintKey,tint,1);
+        V1(button,"setTintColor:",foreground);
+    }
+    if (image!=glyph) {
+        objc_setAssociatedObject(button,SpeechImageKey,image,1);
+        objc_setAssociatedObject(button,SpeechGlyphKey,glyph,1);
+        SetSpeechImage(button,glyph);
+    }
+}
+static void SpeechLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderSaaSReaderSpeechButton","fqx175_originalSpeechLayout"))(self,cmd);
+    SpeechGlass(self);
+}
+static void SpeechTheme(Obj self,Sel cmd,Obj theme) {
+    ((void(*)(Obj,Sel,Obj))Original("FQReaderSaaSReaderSpeechButton","fqx175_originalSpeechTheme:"))(self,cmd,theme);
+    SpeechGlass(self);
+}
 // ---------------------------------------------------------------------------
 // 1.7.4 page surfaces. These are exact-class hooks. No UIView layout method is
 // replaced and every decoration is a plugin-owned, non-interactive view behind
@@ -667,24 +726,18 @@ static void PageStyle(Obj view,const char *role) {
     PageRole(view,role);
     FQHApply(view);
 }
-static void PageTint(Obj view,const char *role,B selected) {
-    PageStyle(view,role);
-    Obj surface=FQHSurface(view);
+static void ShelfTint(Obj surface,B selected,B filter) {
     if (!surface) return;
-    Obj previous=objc_getAssociatedObject(view,PageTintKey);
+    Obj previous=objc_getAssociatedObject(surface,PageTintKey);
     if (previous && BoolProp(previous,"boolValue")==selected) return;
     Obj effect=O0(Get(surface,"effect"),"copy");
     if (!effect) return;
-    if (selected) {
-        Obj blue=O0(Lookup("UIColor"),"systemBlueColor");
-        Obj tint=((Obj(*)(Obj,Sel,double))Message)(blue,sel_registerName("colorWithAlphaComponent:"),0.25);
-        V1(effect,"setTintColor:",tint);
-    } else {
-        V1(effect,"setTintColor:",0);
-    }
+    Obj color=selected ? O0(Lookup("UIColor"),filter ? "systemOrangeColor" : "labelColor") : (Obj)0;
+    Obj tint=((Obj(*)(Obj,Sel,double))Message)(color,sel_registerName("colorWithAlphaComponent:"),0.125);
+    V1(effect,"setTintColor:",tint);
     V1(surface,"setEffect:",effect);
     V0(effect,"release");
-    objc_setAssociatedObject(view,PageTintKey,BoolBox(selected),1);
+    objc_setAssociatedObject(surface,PageTintKey,BoolBox(selected),1);
 }
 static Obj EntryTitle(Obj view) {
     Obj label=Get(view,"functionType");
@@ -698,14 +751,55 @@ static B ProfileEntry(Obj view) {
     return Equal(title,"我的订单") || Equal(title,"浏览历史") || Equal(title,"我的消息") ||
            Equal(title,"创作中心") || Equal(title,"我的预约");
 }
+static B ReaderBottomItem(Obj view,Obj toolbar) {
+    return view==Get(toolbar,"chapterView") || view==Get(toolbar,"darkModeView") ||
+           view==Get(toolbar,"setttingView");
+}
+static void ReaderBottomGlass(Obj view) {
+    Rect glass=Bounds(view);
+    glass.x+=6; glass.width-=12;
+    glass.y+=4; glass.height-=8;
+    ApplySurface(view,glass,0);
+}
+// The legacy reader walker also visits the nested buttons. Only one material
+// owns each target, including when the legacy callback runs before ours.
+B FQHReaderOwnsControl(Obj view) {
+    for (int depth=0;view && depth<4;++depth,view=Get(view,"superview")) {
+        if (Kind(view,"FQReaderSaaSBottomToolItemView")) {
+            Obj toolbar=Get(view,"superview");
+            return Kind(toolbar,"FQReaderSaaSBottomToolView") && ReaderBottomItem(view,toolbar) && FQHGlassAvailable();
+        }
+        if (Kind(view,"FQReaderSaaSReaderSpeechButton")) return FQHGlassAvailable();
+    }
+    return 0;
+}
 static void PageBottomLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSReaderBottomToolButton","fqx174_originalBottom"))(self,cmd);
-    PageStyle(self,"readerBottom");
+    ((void(*)(Obj,Sel))Original("FQReaderSaaSBottomToolView","fqx175_originalBottom"))(self,cmd);
+    Obj items=Get(self,"itemViews");
+    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj view=At(items,i);
+        if (!Kind(view,"FQReaderSaaSBottomToolItemView") || !Belongs(view,self)) continue;
+        if (ReaderBottomItem(view,self)) ReaderBottomGlass(view);
+        else PageRestore(view);
+    }
 }
 static void PageProgressLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSNewProgressView","fqx174_originalProgress"))(self,cmd);
     Obj slider=Get(self,"slider");
-    PageStyle(slider ? slider : self,"readerProgress");
+    if (!Kind(slider,"BDReaderNewSlider")) return;
+    // Inset only the material. The track, thumb and gesture coordinates stay in host space.
+    Rect glass=Bounds(slider);
+    glass.x+=6; glass.width-=12;
+    glass.y+=5; glass.height-=10;
+    ApplySurface(slider,glass,1);
+}
+static void PageDivertLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderBottomToolDivertView","fqx175_originalDivert"))(self,cmd);
+    if (HasAncestor(self,"FQReaderSaaSBottomToolView") &&
+        Equal(Get(Get(self,"titleLabel"),"text"),"改编剧场"))
+        ReaderBottomGlass(self);
+    else PageRestore(self);
 }
 static void PageGiftLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderGiftView","fqx174_originalGift"))(self,cmd);
@@ -726,14 +820,60 @@ static void PageDiscussButtonLayout(Obj self,Sel cmd) {
     if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceView")) { PageRestore(self); return; }
     PageStyle(self,"readerDiscuss");
 }
-static void PageShelfCategoryLayout(Obj self,Sel cmd) {
+static void ShelfTabStyle(Obj view,Obj model,B selected) {
+    Rect bounds=Bounds(view), material=bounds;
+    // The host widths follow the title's zoom. Spend only the available gap
+    // on padding so a capsule cannot run into the next tab during a swipe.
+    double spacing=Responds(model,"cellSpacing") ?
+        ((double(*)(Obj,Sel))Message)(model,sel_registerName("cellSpacing")) : 0;
+    double room=bounds.width+(spacing>6 ? spacing-6 : 0);
+    material.width=room<42 ? room : 42;
+    material.height=bounds.height-4<28 ? bounds.height-4 : 28;
+    material.x+=(bounds.width-material.width)*0.5;
+    material.y+=(bounds.height-material.height)*0.5;
+    PageRole(view,"shelfTab");
+    ApplySurface(view,material,0);
+    ShelfTint(FQHSurface(view),selected,0);
+}
+static void PageShelfTabLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfTabSelectViewTitleCell","fqx174_originalShelfCategory"))(self,cmd);
-    PageTint(self,"shelfCategory",BoolProp(self,"hasSelected"));
+    Obj model=Get(self,"cellModel");
+    ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
+}
+static void PageShelfTabReload(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfTabSelectViewTitleCell","fqx175_originalShelfTabReload:"))(self,cmd,model);
+    ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
+}
+static void ShelfFilterStyle(Obj view) {
+    if (!HasAncestor(view,"SSBookShelfFilterMixRowCollectionView") ||
+        !HasAncestor(view,"SSBookShelfFilterHeaderView")) {
+        PageRestore(view);
+        return;
+    }
+    Rect material=Bounds(view);
+    material.x+=1; material.width-=2;
+    material.y+=1; material.height-=2;
+    PageRole(view,"shelfFilter");
+    ApplySurface(view,material,0);
+    ShelfTint(FQHSurface(view),BoolProp(view,"isSelect"),1);
+}
+static void PageShelfFilterLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterLayout"))(self,cmd);
+    ShelfFilterStyle(self);
+}
+static void PageShelfFilterAppearance(Obj self,Sel cmd,B selected) {
+    ((void(*)(Obj,Sel,B))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterAppearance:"))(self,cmd,selected);
+    ShelfFilterStyle(self);
+}
+static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterBackground:"))(self,cmd,color);
+    ShelfFilterStyle(self);
 }
 static void PageProfileBarLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserBar","fqx174_originalProfileBar"))(self,cmd);
-    Obj search=Get(self,"searchBgView");
-    if (search) PageStyle(search,"profileSearch"); else PageRestore(self);
+    // Both native carousel variants place their outgoing and incoming labels
+    // inside searchBgView. Keep the animated words clipped to that pill.
+    FQHHeader(Get(self,"searchBgView"));
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
@@ -744,11 +884,11 @@ static void PageProfileEntry621Layout(Obj self,Sel cmd) {
     if (ProfileEntry(self)) PageStyle(self,"profileEntry"); else PageRestore(self);
 }
 
-// The target game is server-provided; the host binary contains no literal
-// promotion title. Match only the exact reviewed names on game model fields.
+// The promoted game name is server-provided. Add the reviewed card without
+// changing the previous match for the 羊了个羊 campaign.
 B FQHPageTargetGame(Obj value) {
-    if (Equal(value,"羊了个羊：星球") || Equal(value,"羊了个羊:星球") ||
-        Equal(value,"羊了个羊")) return 1;
+    if (Equal(value,"抓大鹅") || Equal(value,"羊了个羊：星球") ||
+        Equal(value,"羊了个羊:星球") || Equal(value,"羊了个羊")) return 1;
     return Responds(value,"hasPrefix:") &&
            ((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("hasPrefix:"),Text("羊了个羊"));
 }
@@ -972,15 +1112,20 @@ static void HookOrAdd(const char *name,const char *selector,const char *alias,co
         class_addMethod(cls,sel_registerName(selector),imp,type);
 }
 void FQHPageStyle(Obj view) { PageStyle(view,"readerBottom"); }
-void FQHPageTint(Obj view,B selected) { PageTint(view,"shelfCategory",selected); }
+void FQHPageTint(Obj view,B selected) { ShelfTabStyle(view,Get(view,"cellModel"),selected); }
 void FQHPageInstall(void) {
-    Hook("SSReaderBottomToolButton","layoutSubviews","fqx174_originalBottom","v16@0:8",(Imp)PageBottomLayout);
+    Hook("FQReaderSaaSBottomToolView","layoutSubviews","fqx175_originalBottom","v16@0:8",(Imp)PageBottomLayout);
     Hook("FQReaderSaaSNewProgressView","layoutSubviews","fqx174_originalProgress","v16@0:8",(Imp)PageProgressLayout);
+    Hook("SSReaderBottomToolDivertView","layoutSubviews","fqx175_originalDivert","v16@0:8",(Imp)PageDivertLayout);
     Hook("SSReaderGiftView","layoutSubviews","fqx174_originalGift","v16@0:8",(Imp)PageGiftLayout);
     Hook("SSReaderBookEndUserGiftView","layoutSubviews","fqx174_originalBookGift","v16@0:8",(Imp)PageBookGiftLayout);
     Hook("SSReaderChapterEndDiscussionEntranceView","layoutSubviews","fqx174_originalDiscuss","v16@0:8",(Imp)PageDiscussLayout);
     Hook("SSReaderChapterEndDiscussionEntranceButton","layoutSubviews","fqx174_originalDiscussButton","v16@0:8",(Imp)PageDiscussButtonLayout);
-    Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfCategoryLayout);
+    Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfTabLayout);
+    Hook("SSBookShelfTabSelectViewTitleCell","reloadData:","fqx175_originalShelfTabReload:","v24@0:8@16",(Imp)PageShelfTabReload);
+    Hook("SSBookShelfFilter541Cell","layoutSubviews","fqx175_originalShelfFilterLayout","v16@0:8",(Imp)PageShelfFilterLayout);
+    Hook("SSBookShelfFilter541Cell","updateAppearance:","fqx175_originalShelfFilterAppearance:","v20@0:8B16",(Imp)PageShelfFilterAppearance);
+    Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUser621FunctionEntryItemCell","layoutSubviews","fqx174_originalProfileEntry621","v16@0:8",(Imp)PageProfileEntry621Layout);
@@ -993,6 +1138,8 @@ void FQHPageInstall(void) {
 void FQHInstall(void) {
     if (!FQHGlassAvailable()) return;
     Hook("SSReaderFloatingCommonButton","layoutSubviews","fqx171_originalLayout","v16@0:8",(Imp)ListenLayout);
+    Hook("FQReaderSaaSReaderSpeechButton","layoutSubviews","fqx175_originalSpeechLayout","v16@0:8",(Imp)SpeechLayout);
+    Hook("FQReaderSaaSReaderSpeechButton","readerInsertedViewBackgroundConfigChange:","fqx175_originalSpeechTheme:","v24@0:8@16",(Imp)SpeechTheme);
     Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
     Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
     // This is the right-hand category ENTRY, not the horizontal category tabs.
