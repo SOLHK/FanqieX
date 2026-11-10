@@ -766,10 +766,12 @@ def exercise(data, labels):
             "restoring preferences reuses the original plan")
 
     # Settings are installed on the real lazily-created table and persist before refreshing.
-    table = runtime.view("UITableView", "plugin settings", (0, 0, 390, 844), runtime.ROOT)
+    table = runtime.view("UITableView", "plugin settings", (0, 0, 0, 0), runtime.ROOT)
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 304.0),
+            "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     require(len(switches) == 6 and all(runtime.objects[item].state["isOn"] for item in switches),

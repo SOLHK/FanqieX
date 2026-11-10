@@ -1240,8 +1240,7 @@ static void TabOwnerAppear(Obj self,Sel cmd,B animated) {
     InstallTabRecovery(self);
 }
 static Obj ToggleRow(Obj container,double y,Obj title,I tag,B on,Obj observer) {
-    Rect bounds=Bounds(container);
-    double width=bounds.width>0 ? bounds.width : 320;
+    double width=Bounds(container).width;
     Obj label=O0(O0(Lookup("UILabel"),"alloc"),"init");
     if (!label) return 0;
     Rect labelFrame={16,y,width-96,30};
@@ -1277,7 +1276,9 @@ void FQHInstallOptionsToggles(Obj controller) {
     if (!observer) return;
     Obj container=O0(O0(Lookup("UIView"),"alloc"),"init");
     if (!container) { V0(observer,"release"); return; }
-    Rect frame={0,0,Bounds(table).width,304};
+    double width=Bounds(table).width;
+    // UITableView can still be unsized before its navigation controller presents it.
+    Rect frame={0,0,width>0 ? width : 320,304};
     ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
     V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
     for (I tag=StoreOption;tag<=MallOption;++tag) {
