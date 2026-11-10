@@ -25,8 +25,11 @@ EXTRA = [
     "LFQH_FQHSurface", "LFQH_FQHIconGlass", "Lrecord_named", "LGstyle_control",
 ]
 HOOKS = [
+    ("SSReaderFanClubEntryContainerView", "layoutSubviews"),
     ("FQReaderUIManager", "showBottomBarContainer:"),
     ("FQReaderUIManager", "onConfigThemeChange:context:"),
+    ("FQReaderUIManager", "refreshBottomToolbarInsertView"),
+    ("SSReaderCommunityBottomToolbarItemView", "layoutSubviews"),
     ("FQReaderSaaSBottomToolView", "layoutSubviews"),
     ("FQReaderSaaSNewProgressView", "layoutSubviews"),
     ("FQReaderSaaSNewProgressView", "updateWithConfigData:"),
@@ -48,6 +51,7 @@ HOOKS = [
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
     ("SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:"),
+    ("SSBookShelfSubViewController", "collectionView:layout:insetForSectionAtIndex:"),
     ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
@@ -74,6 +78,7 @@ class Runtime(GlassRuntime):
     SHELF_FUNCTION_LAYOUT = 0x330c3120
     SHELF_EDIT_LAYOUT = 0x330c3130
     SHELF_FUNCTION_HEIGHT = 0x330c3140
+    SHELF_FUNCTION_INSETS = 0x330c3150
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -87,13 +92,19 @@ class Runtime(GlassRuntime):
     CHAPTER_REWARD_THEME = 0x330c0b50
     READER_MENU_SHOW = 0x330c0b10
     READER_MENU_THEME = 0x330c0b20
+    READER_COMMUNITY_REFRESH = 0x330c0b70
 
     def __init__(self, data):
         super().__init__(data)
         for name, parent in (
             ("FQReaderUIManager", "NSObject"),
             ("BDReaderViewContainer", "UIView"),
+            ("BDReaderTopViewContainer", "BDReaderViewContainer"),
             ("BDReaderBottomViewContainer", "BDReaderViewContainer"),
+            ("SSReaderBottomToolbarItemContainerView", "UIView"),
+            ("SSReaderBottomToolbarItemContainerInsertObject", "NSObject"),
+            ("SSReaderCommunityBottomToolbarItemView", "UIView"),
+            ("SSReaderFanClubEntryContainerView", "UIView"),
             ("FQReaderSaaSBottomToolView", "UIView"),
             ("FQReaderSaaSBottomToolItemView", "UIView"),
             ("FQReaderSaaSBottomToolItem", "NSObject"),
@@ -176,6 +187,8 @@ class Runtime(GlassRuntime):
                   self.READER_MENU_SHOW, "v20@0:8B16")
         self._add(self.classes["FQReaderUIManager"], "onConfigThemeChange:context:",
                   self.READER_MENU_THEME, "v32@0:8@16@24")
+        self._add(self.classes["FQReaderUIManager"], "refreshBottomToolbarInsertView",
+                  self.READER_COMMUNITY_REFRESH, "v16@0:8")
         self._add(self.classes["FQReaderSaaSReaderSpeechButton"],
                   "readerInsertedViewBackgroundConfigChange:", self.SPEECH_THEME, "v24@0:8@16")
         self.speech_artwork = self.obj("UIImage", "transparent speech glyph")
@@ -189,6 +202,8 @@ class Runtime(GlassRuntime):
                   self.SHELF_EDIT_LAYOUT, "v16@0:8")
         self._add(self.classes["SSBookShelfSubViewController"], "collectionView:layout:sizeForItemAtIndexPath:",
                   self.SHELF_FUNCTION_SIZE, "{CGSize=dd}40@0:8@16@24@32")
+        self._add(self.classes["SSBookShelfSubViewController"], "collectionView:layout:insetForSectionAtIndex:",
+                  self.SHELF_FUNCTION_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
         self._add(self.classes["SSBookShelfFunctionCell"], "layoutContainerSubviews",
                   self.SHELF_FUNCTION_LAYOUT, "v16@0:8")
         self._add(self.metaclasses[self.classes["SSBookShelfFunctionCell"]], "cellHeightWithFilterExposure:",
@@ -250,6 +265,8 @@ class Runtime(GlassRuntime):
             return self.finish(cpu)
         if pc == self.SHELF_FUNCTION_SIZE:
             return self.finish(cpu, fp=(440., self.shelf_function_height))
+        if pc == self.SHELF_FUNCTION_INSETS:
+            return self.finish(cpu, fp=(0., 11., 12., 11.))
         if pc == self.SHELF_FUNCTION_HEIGHT:
             require(cpu.x[2] == 0, "the compact size reads the unexposed native row height")
             return self.finish(cpu, fp=(self.shelf_base_height,))
@@ -305,6 +322,18 @@ class Runtime(GlassRuntime):
             for view in (state["nProgressView"], state["tabBar"]):
                 self.objects[view].state["backgroundColor"] = cpu.x[2]
                 self.objects[self.objects[view].state["superview"]].state["backgroundColor"] = cpu.x[3]
+            if state.get("navigationContainer"):
+                top = self.objects[state["navigationContainer"]].state
+                top.update(backgroundColor=cpu.x[3], gradientVisible=True)
+            if state.get("bottomToolbarInsertContainer"):
+                lane = self.objects[state["bottomToolbarInsertContainer"]].state
+                lane["backgroundColor"] = cpu.x[3]
+                self.objects[lane["contentView"]].state["backgroundColor"] = cpu.x[3]
+                self.objects[state["bottomToolbarInsertTopLineView"]].state["backgroundColor"] = cpu.x[2]
+            return self.finish(cpu)
+        if pc == self.READER_COMMUNITY_REFRESH:
+            state = self.objects[receiver].state
+            state["currentBottomToolbarInsertObject"] = state["nextBottomToolbarInsertObject"]
             return self.finish(cpu)
         if pc - self.slide == 0xa5d4:
             if receiver == self.classes["UIFont"] and name == "systemFontOfSize:":
@@ -321,14 +350,20 @@ class Runtime(GlassRuntime):
                 if name == "setAlpha:":
                     state["alpha"] = cpu.fp(0)
                     return self.finish(cpu)
+                if name == "updateGradientLayer":
+                    state["gradientVisible"] = bool(state["backgroundColor"] and state["gradientBg"])
+                    return self.finish(cpu)
                 if name == "sectionTypeAtIndex:" and "section_types" in state:
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
-                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton",
+                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "lineView",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
                             "visibleCells", "viewModel", "isFiltering", "showsFilterExposure") and name in state:
                     return self.finish(cpu, state[name])
                 if name in ("model", "displayMode", "activeEntranceView", "contentBackgroundView",
                             "customBackgroundView") and name in state:
+                    return self.finish(cpu, state[name])
+                if name in ("bottomToolbarInsertContainer", "bottomToolbarInsertTopLineView",
+                            "currentBottomToolbarInsertObject", "containerView") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "invalidateLayout" and "invalidations" in state:
                     state["invalidations"] += 1
@@ -408,7 +443,7 @@ class Runtime(GlassRuntime):
                 return self.finish(cpu)
             if receiver in self.objects and name in (
                     "itemViews", "item", "type", "trackView", "speechBtn", "tintColor", "titleLabel",
-                    "leftBtn", "rightBtn", "horizonLineView", "lineView", "nProgressView", "tabBar"):
+                    "leftBtn", "rightBtn", "horizonLineView", "lineView", "nProgressView", "tabBar", "navigationContainer"):
                 return self.finish(cpu, self.objects[receiver].state.get(name, 0))
             if name == "removeObjectIdenticalTo:":
                 items = self.objects[receiver].state["items"]
@@ -731,7 +766,37 @@ def exercise(data, labels):
     tool_line = runtime.view("UIView", "tools separator", (0, 0, 400, 1), toolbar, alpha=1., hidden=True)
     runtime.objects[progress].state["horizonLineView"] = progress_line
     runtime.objects[toolbar].state["lineView"] = tool_line
-    manager = runtime.obj("FQReaderUIManager", "reader menu owner", nProgressView=progress, tabBar=toolbar)
+    top = runtime.view("BDReaderTopViewContainer", "reader menu navigation wrapper", (0, 0, 390, 90),
+                       runtime.ROOT, backgroundColor=wrapper_backdrop, gradientBg=True, gradientVisible=True)
+    nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 46, 390, 44), top)
+    top_state = runtime.objects[top].state
+    top_state["contentView"] = nav
+    manager = runtime.obj("FQReaderUIManager", "reader menu owner", nProgressView=progress, tabBar=toolbar,
+                          navigationContainer=top)
+    fan_wrapper = runtime.view("SSReaderFanClubEntryContainerView", "combined native shelf/fan club insert",
+                               (132, 11, 64, 22), nav, clipsToBounds=True)
+    fan_state = runtime.objects[fan_wrapper].state
+    bookmark = runtime.label("native shelf label", fan_wrapper, (0, 0, 64, 22), "已加书架")
+    bookmark_state = runtime.objects[bookmark].state
+    bookmark_target = (nav, runtime.sel("onBookShelfBtnClick:"))
+    bookmark_state.update(gestureRecognizers=[bookmark_target], userInteractionEnabled=True)
+    fan_state["contentView"] = bookmark
+    send(cpu, runtime, fan_wrapper, "layoutSubviews")
+    shelf_glass = call(cpu, labels, "LFQH_FQHIconGlass", bookmark)["result"]
+    require(shelf_glass and fan_state["subviews"] == [shelf_glass, bookmark] and
+            runtime.objects[shelf_glass].state["frame"] == (-6, -5, 76, 32) and
+            fan_state["hitInsets"] == (-5, -6, -5, -6) and not fan_state["clipsToBounds"],
+            "the actual combined insert exposes its shelf label and the complete capsule")
+    bookmark_state["text"] = runtime.text_object("加入书架")
+    send(cpu, runtime, fan_wrapper, "layoutSubviews")
+    require(call(cpu, labels, "LFQH_FQHIconGlass", bookmark)["result"] == shelf_glass and
+            bookmark_state["gestureRecognizers"] == [bookmark_target], "wrapped shelf label changes state with its host gesture intact")
+    runtime.reparent(bookmark, 0)
+    fan = runtime.view("UIView", "native fan club control", (0, 0, 64, 22), fan_wrapper)
+    fan_state["contentView"] = fan
+    send(cpu, runtime, fan_wrapper, "layoutSubviews")
+    require(fan_state["subviews"] == [fan] and fan_state["clipsToBounds"] and
+            fan_state["hitInsets"] == (0, 0, 0, 0), "switching to fan club removes only the old shelf decoration")
     chapter_controls = []
     for key, x, title, action in (("leftBtn", 16, "上一章", "onLastChapterBtnClick:"),
                                   ("rightBtn", 332, "下一章", "onNextChapterBtnClick:")):
@@ -780,6 +845,8 @@ def exercise(data, labels):
     send(cpu, runtime, manager, "showBottomBarContainer:", 1)
     require(backgrounds() == [backdrop, backdrop, wrapper_backdrop, wrapper_backdrop],
             "first native menu show preserves the stock panel colors by default")
+    require(top_state["backgroundColor"] == wrapper_backdrop and top_state["gradientVisible"],
+            "the visible preference leaves the native top theme intact")
     menu_preferences = runtime.objects[runtime.DEFAULTS].state["values"]
     menu_key = "FanqieX.ReaderBottomBackground.1"
     menu_preferences[menu_key] = False
@@ -788,6 +855,9 @@ def exercise(data, labels):
     require(backgrounds() == [0] * 4 and
             runtime.objects[progress_line].state["alpha"] == 0 and runtime.objects[tool_line].state["alpha"] == 0,
             "off clears all four themed fills and only the two stock separators")
+    require(not top_state["backgroundColor"] and not top_state["gradientVisible"] and
+            runtime.objects[nav].state["frame"] == (0, 46, 390, 44),
+            "off removes the exact top mask and gradient without moving navigation past its safe area")
     require(runtime.objects[tool_line].state["hidden"] and [state["frame"] for state in panel_states] == panel_frames and
             surface_for(track) == material and
             all(call(cpu, labels, "LFQH_FQHIconGlass", row[0])["result"] == glass
@@ -796,14 +866,91 @@ def exercise(data, labels):
     night_backdrop = runtime.color("reader night panel theme")
     night_wrapper = runtime.color("reader night outer theme")
     send(cpu, runtime, manager, "onConfigThemeChange:context:", night_backdrop, night_wrapper)
-    require(backgrounds() == [0] * 4, "manager theme writes are suppressed for the two panels while off")
+    require(backgrounds() == [0] * 4 and not top_state["backgroundColor"] and not top_state["gradientVisible"],
+            "manager theme writes stay transparent for the exact top and bottom panels while off")
     menu_preferences[menu_key] = True
     send(cpu, runtime, manager, "showBottomBarContainer:", 0)
     require(backgrounds() == [night_backdrop, night_backdrop, night_wrapper, night_wrapper] and
             runtime.objects[progress_line].state["alpha"] == 0.75 and runtime.objects[tool_line].state["alpha"] == 1. and
             runtime.reader_menu_calls == [1, 1, 0],
             "on restores the latest native theme and separator alpha and forwards each native menu show")
+    require(top_state["backgroundColor"] == night_wrapper and top_state["gradientVisible"],
+            "on restores latest top theme color and lets native gradient update run")
     del menu_preferences[menu_key]
+
+    community_lane = runtime.view("BDReaderViewContainer", "community menu backing",
+                                  (0, 0, 440, 52), runtime.ROOT, backgroundColor=wrapper_backdrop)
+    community_holder = runtime.view("UIView", "community insertion holder",
+                                    (0, 0, 440, 52), community_lane, backgroundColor=wrapper_backdrop)
+    community_line = runtime.view("UIView", "community separator", (0, 0, 440, 1),
+                                  community_lane, backgroundColor=backdrop)
+    community_row = runtime.view("SSReaderBottomToolbarItemContainerView", "reader community row",
+                                 (0, 0, 440, 52), community_holder)
+    insert_object = runtime.obj("SSReaderBottomToolbarItemContainerInsertObject", "community insert",
+                                containerView=community_row)
+    runtime.objects[community_lane].state["contentView"] = community_holder
+    manager_state = runtime.objects[manager].state
+    manager_state.update(bottomToolbarInsertContainer=community_lane, bottomToolbarInsertTopLineView=community_line,
+                         currentBottomToolbarInsertObject=0, nextBottomToolbarInsertObject=insert_object)
+    community_items = []
+    for x, title in ((16, "发讨论"), (224, "圈子")):
+        tap = runtime.obj("NSObject", title + " original onTap")
+        item = runtime.view("SSReaderCommunityBottomToolbarItemView", title, (x, 10, 200, 32),
+                            community_row, clipsToBounds=True, backgroundColor=backdrop, onTap=tap)
+        wrapper = runtime.view("UIView", "icon and title", (66, 6, 68, 20), item)
+        caption = runtime.label("community item caption", wrapper, (20, 0, 48, 20), title)
+        runtime.objects[item].state["titleLabel"] = caption
+        community_items.append((item, wrapper, tap))
+    runtime.objects[community_row].state["itemViews"] = runtime.obj(
+        "NSArray", "host community items", items=[row[0] for row in community_items])
+    first_item = runtime.objects[community_items[0][0]].state
+    first_item["bounds"] = (0, 0, 0, 0)
+    menu_preferences[menu_key] = False
+    send(cpu, runtime, manager, "refreshBottomToolbarInsertView")
+    lane_states = [runtime.objects[v].state for v in (community_lane, community_holder, community_line)]
+    require(all(not state["backgroundColor"] for state in lane_states),
+            "inserting the community row clears the dedicated wide lane and separator with backdrop off")
+    require(not surface_for(community_items[0][0]), "an item gets glass after its host establishes valid bounds")
+    first_item["bounds"] = (0, 0, 200, 32)
+    community_surfaces = []
+    for item, wrapper, tap in community_items:
+        send(cpu, runtime, item, "layoutSubviews")
+        surface = surface_for(item)
+        state = runtime.objects[item].state
+        require(surface and runtime.objects[surface].state["frame"] == (0, 0, 200, 32) and
+                not runtime.objects[surface].state["userInteractionEnabled"] and
+                state["subviews"] == [surface, wrapper] and state["onTap"] == tap and
+                not surface_for(wrapper),
+                "each community tap surface owns full glass behind the native title and icon")
+        community_surfaces.append(surface)
+    other_row = runtime.view("SSReaderBottomToolbarItemContainerView", "other reader insert row",
+                             (0, 60, 440, 52), runtime.ROOT)
+    character = runtime.view("SSReaderCommunityBottomToolbarItemView", "optional character item",
+                             (16, 10, 200, 32), other_row, backgroundColor=backdrop)
+    character_title = runtime.label("optional character title", character, (20, 0, 48, 20), "角色")
+    runtime.objects[character].state["titleLabel"] = character_title
+    send(cpu, runtime, character, "layoutSubviews")
+    require(not surface_for(character) and runtime.objects[character].state["backgroundColor"] == backdrop,
+            "another helper using the same item class keeps its stock appearance")
+    send(cpu, runtime, manager, "onConfigThemeChange:context:", night_backdrop, night_wrapper)
+    require(all(not state["backgroundColor"] for state in lane_states) and
+            [surface_for(item) for item, _, _ in community_items] == community_surfaces,
+            "theme repaint stays transparent and does not replace either glass surface")
+    menu_preferences[menu_key] = True
+    send(cpu, runtime, manager, "showBottomBarContainer:", 0)
+    require([state["backgroundColor"] for state in lane_states] == [night_wrapper, night_wrapper, night_backdrop] and
+            [surface_for(item) for item, _, _ in community_items] == community_surfaces,
+            "turning the backdrop on restores the latest themed lane and keeps both native glasses")
+    menu_preferences[menu_key] = False
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, manager, "showBottomBarContainer:", 0)
+    require([state["backgroundColor"] for state in lane_states] == [night_wrapper, night_wrapper, night_backdrop] and
+            all(not surface_for(item) and runtime.objects[item].state["backgroundColor"] == backdrop
+                for item, _, _ in community_items),
+            "turning glass off restores the stock lane and the original two item fills")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+    del menu_preferences[menu_key]
+
     next_track_color = runtime.color("hostTrackNight")
     send(cpu, runtime, progress, "updateWithConfigData:", next_track_color)
     require(surface_for(track) == material and runtime.objects[track].state["backgroundColor"] == clear,
@@ -1146,7 +1293,7 @@ def exercise(data, labels):
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
                      for item in switches]
     require(switch_labels == [f"底栏显示：{title}" for title in titles] +
-            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示底栏背景"] and
+            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景"] and
             all(runtime.objects[item].state["isOn"] for item in switches),
             "settings expose the current bottom entries and the shelf duration switch")
 
@@ -1194,12 +1341,13 @@ def exercise(data, labels):
     runtime.objects[secondary].state["subviews"].append(duration)
     edit_targets = [(shelf_header, runtime.sel("onClickEdit"), 64)]
     edit = runtime.view("UIButton", "original edit", (380, 4, 44, 30), secondary, control_targets=edit_targets[:])
+    separator = runtime.view("UIView", "native secondary divider", (320, 4, 1, 22), secondary)
     runtime.objects[shelf_header].state.update(
-        delegate=shelf_controller, editButton=edit, secondaryView=secondary, isFiltering=False)
+        delegate=shelf_controller, editButton=edit, secondaryView=secondary, lineView=separator, isFiltering=False)
     size_layout = runtime.obj("NSObject", "shelf collection layout", invalidations=0)
     shelf_list = runtime.view("UIView", "shelf collection", (0, 108, 440, 700), runtime.ROOT,
                              collectionViewLayout=size_layout)
-    shelf_model = runtime.obj("NSObject", "shelf section types", section_types=[0, 1, 4])
+    shelf_model = runtime.obj("NSObject", "shelf section types", section_types=[0, 1, 2, 3, 4])
     runtime.objects[shelf_controller].state.update(
         delegate=shelf_owner, functionCell=cell, searchAndMoreView=holder, searchButton=search,
         moreButton=more, collectionView=shelf_list, viewModel=shelf_model)
@@ -1215,8 +1363,9 @@ def exercise(data, labels):
     require(runtime.objects[size_layout].state["invalidations"] == 1,
             "only the transition to a compact row invalidates the list")
     function = runtime.obj("NSObject", "function index", section=1)
-    book = runtime.obj("NSObject", "book index", section=2)
+    book = runtime.obj("NSObject", "book index", section=4)
     size_selector = "collectionView:layout:sizeForItemAtIndexPath:"
+    inset_selector = "collectionView:layout:insetForSectionAtIndex:"
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
     require(cpu.fp(1) == 30., "the exposed row keeps its full 28pt filter and a 2pt top inset")
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, book)
@@ -1224,6 +1373,9 @@ def exercise(data, labels):
     send(cpu, runtime, cell, "layoutContainerSubviews")
     require(runtime.objects[clip].state["frame"] == (0., 2., 440., 28.),
             "exposed filter follows the compact row without clipping")
+    send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 1)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 11., 12., 11.),
+            "the exposed filter retains the section's stock insets")
     runtime.shelf_base_height = 34.
     runtime.shelf_function_height = 74.
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
@@ -1231,7 +1383,13 @@ def exercise(data, labels):
     runtime.objects[cell].state["showsFilterExposure"] = False
     runtime.shelf_function_height = 34.
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
-    require(cpu.fp(1) == 6., "the row collapses to a small inset when no filter is exposed")
+    require(cpu.fp(1) == 1., "only a one-point edit owner remains when the filter is a separate header")
+    send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 1)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 11., 0., 11.),
+            "the empty section drops the 12pt spacer before the independent filter header")
+    send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 4)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 11., 12., 11.),
+            "the book section keeps its native insets")
     runtime.shelf_base_height = 30.
     runtime.shelf_function_height = 70.
     runtime.objects[cell].state["showsFilterExposure"] = True
@@ -1241,6 +1399,9 @@ def exercise(data, labels):
             "showing duration restores the lower row while keeping edit in the top bar")
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
     require(cpu.fp(1) == 70., "visible duration restores the native function height")
+    send(cpu, runtime, shelf_controller, inset_selector, shelf_list, size_layout, 1)
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 11., 12., 11.),
+            "visible duration also restores the native function insets")
     send(cpu, runtime, cell, "layoutContainerSubviews")
     require(runtime.objects[clip].state["frame"] == (0., 42., 440., 28.),
             "visible duration leaves the native function and filter geometry intact")
@@ -1309,6 +1470,7 @@ def exercise(data, labels):
         "reader_controls": ["FQReaderSaaSBottomToolView", "SSReaderBottomToolDivertView",
                             "FQReaderSaaSReaderSpeechButton", "BDReaderNewSlider"],
         "reader_backdrop_and_chapter_controls": True,
+        "reader_community_full_item_surfaces": True,
         "full_chapter_discussion_and_gift_surfaces": True,
         "shelf_tabs": len(tabs),
         "shelf_filters": len(filters),

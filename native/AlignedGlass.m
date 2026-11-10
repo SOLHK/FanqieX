@@ -646,6 +646,20 @@ static void ReaderTheme(Obj self,Sel cmd,Obj theme) {
     ((void(*)(Obj,Sel,Obj))Original("FQReaderSaasNavigationView","fqx167_originalTheme:"))(self,cmd,theme);
     FQHReader(self);
 }
+static void ReaderShelfWrapperLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderFanClubEntryContainerView","fqx184_originalShelfWrapper"))(self,cmd);
+    Obj label=Get(self,"contentView");
+    // The same wrapper can display the fan-club entry instead of the shelf label.
+    if (!Kind(O0(self,"superview"),"FQReaderSaasNavigationView") || !Kind(label,"UILabel") || O0(label,"superview")!=self)
+        label=0;
+    if (label) Icon(label,IconReaderShelf);
+    Obj glass=FQHIconGlass(label);
+    TrackReaderLabel(self,ReaderShelfLabelKey,glass ? label : (Obj)0);
+    if (glass) {
+        PrepareOwner(self,Flag(self,"clipsToBounds"),Flag(self,"isOpaque"));
+        EnsureHit(self,Frame(glass));
+    } else { RestoreOwner(self); RestoreHit(self); }
+}
 static Obj ShelfEditPlacement(Obj controller,Obj holder);
 static void ShelfTopHit(Obj holder,Obj search,Obj more,Obj edit) {
     Rect area=Bounds(holder);
@@ -826,9 +840,9 @@ static B ReaderBottomBackgroundEnabled(void);
 static void ReaderBackdropAppliedKey(void) {}
 static void ReaderBackdropColorKey(void) {}
 static void ReaderBackdropAlphaKey(void) {}
-static void ReaderBackdropFill(Obj view,B visible) {
+static B ReaderBackdropFill(Obj view,B visible) {
     Obj original=objc_getAssociatedObject(view,ReaderBackdropColorKey);
-    if (visible && !original) return;
+    if (visible && !original) return 0;
     Obj current=O0(view,"backgroundColor");
     if (visible) {
         if (!current) V1(view,"setBackgroundColor:",original);
@@ -836,7 +850,8 @@ static void ReaderBackdropFill(Obj view,B visible) {
     } else if (current) {
         objc_setAssociatedObject(view,ReaderBackdropColorKey,current,1);
         V1(view,"setBackgroundColor:",0);
-    }
+    } else return 0;
+    return 1;
 }
 static void ReaderBackdrop(Obj view,B visible) {
     if (!view) return;
@@ -864,10 +879,54 @@ static void ReaderBackdrop(Obj view,B visible) {
         ((void(*)(Obj,Sel,double))Message)(line,sel_registerName("setAlpha:"),0);
     }
 }
+static B ReaderCommunityGlass(Obj item) {
+    Obj title=Get(Get(item,"titleLabel"),"text");
+    B matched=Equal(title,"发讨论") || Equal(title,"圈子");
+    if (matched) FQHApply(item);
+    else if (FQHSurface(item)) PageRestore(item);
+    return matched;
+}
+static void ReaderCommunityBackdrop(Obj manager,B visible) {
+    Obj owner=Get(manager,"bottomToolbarInsertContainer");
+    if (!Kind(owner,"BDReaderViewContainer")) return;
+    Obj holder=Get(owner,"contentView");
+    Obj row=Get(Get(manager,"currentBottomToolbarInsertObject"),"containerView");
+    Obj parent=O0(row,"superview");
+    B inside=O0(holder,"superview")==owner;
+    B matched=0;
+    if (Kind(row,"SSReaderBottomToolbarItemContainerView") &&
+        (parent==owner || (inside && parent==holder))) {
+        Obj items=Get(row,"itemViews");
+        U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+        for (U i=0;i<count;++i) {
+            Obj item=At(items,i);
+            if (Kind(item,"SSReaderCommunityBottomToolbarItemView") && O0(item,"superview")==row)
+                matched|=ReaderCommunityGlass(item);
+        }
+    }
+    visible=visible || !matched || !Enabled() || !FQHGlassAvailable();
+    ReaderBackdropFill(owner,visible);
+    if (inside) ReaderBackdropFill(holder,visible);
+    Obj line=Get(manager,"bottomToolbarInsertTopLineView");
+    if (O0(line,"superview")==owner) ReaderBackdropFill(line,visible);
+}
+static void PageReaderCommunityLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderCommunityBottomToolbarItemView","fqx181_originalReaderCommunity"))(self,cmd);
+    if (Kind(O0(self,"superview"),"SSReaderBottomToolbarItemContainerView")) ReaderCommunityGlass(self);
+    else if (FQHSurface(self)) PageRestore(self);
+}
+static void PageReaderCommunityRefresh(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderUIManager","fqx181_originalReaderCommunityRefresh"))(self,cmd);
+    ReaderCommunityBackdrop(self,ReaderBottomBackgroundEnabled());
+}
 static void ReaderMenuBackdrop(Obj manager) {
     B visible=ReaderBottomBackgroundEnabled();
+    Obj top=Get(manager,"navigationContainer");
+    if (Kind(top,"BDReaderTopViewContainer") && Kind(Get(top,"contentView"),"FQReaderSaasNavigationView") &&
+        ReaderBackdropFill(top,visible)) V0(top,"updateGradientLayer");
     ReaderBackdrop(Get(manager,"nProgressView"),visible);
     ReaderBackdrop(Get(manager,"tabBar"),visible);
+    ReaderCommunityBackdrop(manager,visible);
 }
 static void ReaderMenuShow(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("FQReaderUIManager","fqx180_originalReaderMenu:"))(self,cmd,animated);
@@ -1375,7 +1434,7 @@ static Obj PageOptionLabel(I option) {
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
-        default: label="阅读菜单显示底栏背景"; break;
+        default: label="阅读菜单显示上下栏背景"; break;
     }
     return Text(label);
 }
@@ -1467,7 +1526,7 @@ static void ShelfEditHeaderKey(void) {}
 static void ShelfCompactKey(void) {}
 static const double ShelfFilterOffset=12;
 static const double ShelfCompactFilterTop=2;
-static const double ShelfCompactEmptyHeight=6;
+static const double ShelfCompactEmptyHeight=1;
 static Rect ShelfEditFrame(Obj controller,Obj holder,Obj button) {
     Rect frame={0};
     Obj owner=Get(controller,"delegate");
@@ -1536,13 +1595,18 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
         if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
         ShelfActionGlass(button);
         if (old!=header) objc_setAssociatedObject(holder,ShelfEditHeaderKey,header,1);
-        if (!Flag(header,"showReadTimeView") && !Flag(secondary,"isHidden")) {
+        if (!Flag(header,"showReadTimeView")) {
             compact=cell;
-            Obj children=Get(secondary,"subviews");
-            U count=TabCount(children);
-            for (U i=0;i<count;++i) {
-                Obj child=At(children,i);
-                if (!Flag(child,"isHidden") && VisibleRect(Frame(child))) { compact=0; break; }
+            if (!Flag(secondary,"isHidden")) {
+                Obj line=Get(header,"lineView"),line2=Get(header,"lineView2");
+                Obj children=Get(secondary,"subviews");
+                U count=TabCount(children);
+                for (U i=0;i<count;++i) {
+                    Obj child=At(children,i);
+                    if (child==line || child==line2 || Flag(child,"isHidden")) continue;
+                    double alpha=((double(*)(Obj,Sel))Message)(child,sel_registerName("alpha"));
+                    if (alpha>0 && VisibleRect(Frame(child))) { compact=0; break; }
+                }
             }
         }
     }
@@ -1553,14 +1617,17 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
     }
     return moved ? button : (Obj)0;
 }
+static B ShelfFunctionSection(Obj controller,I section) {
+    Obj model=Get(controller,"viewModel");
+    return ((I(*)(Obj,Sel,I))Message)(model,sel_registerName("sectionTypeAtIndex:"),section)==1;
+}
 static Size ShelfFunctionSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj index) {
     Size size=((Size(*)(Obj,Sel,Obj,Obj,Obj))Original("SSBookShelfSubViewController","fqx178_originalShelfFunctionSize:layout:index:"))(
         self,cmd,collection,layout,index);
     if (objc_getAssociatedObject(self,ShelfCompactKey) && size.height>ShelfCompactEmptyHeight) {
-        Obj model=Get(self,"viewModel");
         I section=((I(*)(Obj,Sel))Message)(index,sel_registerName("section"));
         // The host's size switch uses type 1 for the function row.
-        if (((I(*)(Obj,Sel,I))Message)(model,sel_registerName("sectionTypeAtIndex:"),section)==1) {
+        if (ShelfFunctionSection(self,section)) {
             double base=((double(*)(Obj,Sel,B))Message)(Lookup("SSBookShelfFunctionCell"),
                 sel_registerName("cellHeightWithFilterExposure:"),0);
             // The host clip begins at base + 12 and fills the remaining row.
@@ -1569,6 +1636,18 @@ static Size ShelfFunctionSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj ind
         }
     }
     return size;
+}
+static Rect ShelfFunctionInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
+    Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfSubViewController",
+        "fqx181_originalShelfInsets:layout:section:"))(self,cmd,collection,layout,section);
+    Obj cell=objc_getAssociatedObject(self,ShelfCompactKey);
+    if (cell && !Flag(cell,"showsFilterExposure") && ShelfFunctionSection(self,section)) {
+        // UIEdgeInsets shares the four-double ABI. With no in-cell filter
+        // this spacer precedes the separate, pinnable filter header.
+        insets.x=0;
+        insets.width=0;
+    }
+    return insets;
 }
 static void ShelfFunctionLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFunctionCell","fqx178_originalShelfFunctionLayout"))(self,cmd);
@@ -1786,8 +1865,11 @@ void FQHInstallOptionsToggles(Obj controller) {
 void FQHPageStyle(Obj view) { FQHApply(view); }
 void FQHPageTint(Obj view,B selected) { ShelfTabStyle(view,Get(view,"cellModel"),selected); }
 void FQHPageInstall(void) {
+    Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);
     Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);
     Hook("FQReaderUIManager","onConfigThemeChange:context:","fqx180_originalReaderTheme:context:","v32@0:8@16@24",(Imp)ReaderBackdropTheme);
+    Hook("FQReaderUIManager","refreshBottomToolbarInsertView","fqx181_originalReaderCommunityRefresh","v16@0:8",(Imp)PageReaderCommunityRefresh);
+    Hook("SSReaderCommunityBottomToolbarItemView","layoutSubviews","fqx181_originalReaderCommunity","v16@0:8",(Imp)PageReaderCommunityLayout);
     Hook("FQReaderSaaSBottomToolView","layoutSubviews","fqx175_originalBottom","v16@0:8",(Imp)PageBottomLayout);
     Hook("FQReaderSaaSNewProgressView","layoutSubviews","fqx174_originalProgress","v16@0:8",(Imp)PageProgressLayout);
     Hook("FQReaderSaaSNewProgressView","updateWithConfigData:","fqx176_originalProgressTheme:","v24@0:8@16",(Imp)PageProgressTheme);
@@ -1815,6 +1897,7 @@ void FQHPageInstall(void) {
     Hook("SS525BookShelfSubHeaderView","setShowReadTimeView:","fqx177_originalDurationVisible:","v20@0:8B16",(Imp)ShelfDurationVisible);
     Hook("SS525BookShelfSubHeaderView","layoutSubviews","fqx177_originalDurationLayout","v16@0:8",(Imp)ShelfDurationLayout);
     Hook("SSBookShelfSubViewController","collectionView:layout:sizeForItemAtIndexPath:","fqx178_originalShelfFunctionSize:layout:index:","{CGSize=dd}40@0:8@16@24@32",(Imp)ShelfFunctionSize);
+    Hook("SSBookShelfSubViewController","collectionView:layout:insetForSectionAtIndex:","fqx181_originalShelfInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfFunctionInsets);
     Hook("SSBookShelfFunctionCell","layoutContainerSubviews","fqx178_originalShelfFunctionLayout","v16@0:8",(Imp)ShelfFunctionLayout);
     Hook("SSTabBarController","tabbarVCAndAttributeInit","fqx176_originalTabPlan","@16@0:8",(Imp)TabPlan);
     Hook("SSTabBarController","viewDidAppear:","fqx176_originalTabAppear:","v20@0:8B16",(Imp)TabOwnerAppear);
