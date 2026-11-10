@@ -226,6 +226,7 @@ class Runtime(GlassRuntime):
                   self.SHELF_FUNCTION_HEIGHT, "d20@0:8B16")
         for cls, selector, encoding in (
                 ("FQReaderSaaSBottomToolItem", "type", "i16@0:8"),
+                ("SSReaderBottomToolDivertView", "titleLabel", "@16@0:8"),
                 ("BDReaderTopViewContainer", "updateGradientLayer", "v16@0:8"),
                 ("SSReaderChapterEndCommunityCardViewModel", "displayMode", "q16@0:8"),
                 ("SSBookShelfTabSelectViewTitleCellModel", "cellSpacing", "d16@0:8"),
@@ -595,15 +596,16 @@ def exercise(data, labels):
         "UIView layout implementation is untouched")
 
     # The real setItems: builds itemViews without populating the legacy view properties.
-    toolbar = runtime.view("FQReaderSaaSBottomToolView", "toolbar", (0, 80, 400, 56), runtime.ROOT)
+    toolbar = runtime.view("FQReaderSaaSBottomToolView", "toolbar", (0, 80, 440, 56), runtime.ROOT)
     saved_background = runtime.color("hostGray")
     stock_hit_insets = (0.0, -10.0, 0.0, -10.0)
     items = []
     captions = []
     for index, title in enumerate(("目录", "白天", "设置", "进度")):
         model = runtime.obj("FQReaderSaaSBottomToolItem", "toolbar item", type=index+1)
-        button = runtime.view("FQReaderSaaSBottomToolItemView", "tool", (55 + index * 80, 2, 24, 40),
-                              toolbar, backgroundColor=saved_background, item=model, hitInsets=stock_hit_insets)
+        button = runtime.view("FQReaderSaaSBottomToolItemView", "tool", (55 + index * 102, 2, 24, 40),
+                              toolbar, backgroundColor=saved_background, item=model,
+                              hitInsets=stock_hit_insets, hidden=index==3)
         captions.append(runtime.label("caption", button, (0, 26, 24, 14), title))
         items.append(button)
     runtime.objects[toolbar].state["itemViews"] = runtime.obj("NSArray", "toolbar items", items=items)
@@ -611,9 +613,9 @@ def exercise(data, labels):
     require(not call(cpu, labels, "LGstyle_control", nested_button, 0)["result"],
             "legacy walker skips the nested button even before the item material is created")
     # The host attaches the adaptation extra view to the toolbar separately.
-    divert = runtime.view("SSReaderBottomToolDivertView", "adaptations", (340, 8, 40, 40),
+    divert = runtime.view("SSReaderBottomToolDivertView", "adaptations", (353, 2, 40, 40),
                           toolbar, backgroundColor=saved_background)
-    divert_caption = runtime.label("adaptations caption", divert, (-2, 26, 44, 14), "改编剧场")
+    divert_caption = runtime.label("adaptations caption", divert, (0, 27, 40, 12), "改编剧场")
     runtime.objects[divert].state["titleLabel"] = divert_caption
     send(cpu, runtime, toolbar, "layoutSubviews")
     send(cpu, runtime, divert, "layoutSubviews")
@@ -624,10 +626,11 @@ def exercise(data, labels):
             "only the four requested tools get glass")
     for item, caption, surface in zip(styled_items, [*captions[:3], divert_caption], surfaces):
         width = 40.0 if item == divert else 24.0
-        left = (width - 64.0) * 0.5
-        require(runtime.objects[surface].state["frame"] == (left, -4.0, 64.0, 48.0) and
+        material_width = 76.0 if item == divert else 64.0
+        left = (width - material_width) * 0.5
+        require(runtime.objects[surface].state["frame"] == (left, -4.0, material_width, 48.0) and
                 runtime.objects[item].state["frame"][2:] == (width, 40.0),
-                "all four tools use equal full-caption material over the host's compact frames")
+                "the adaptations caption gets extra width in the shared 48-point toolbar row")
         require(runtime.objects[surface].state["userInteractionEnabled"] == 0,
                 "decorative material cannot steal touches")
         require(runtime.objects[item].state["hitInsets"] == (-4.0, left, -4.0, left),
@@ -639,8 +642,31 @@ def exercise(data, labels):
                 "the reader tools use standard untinted glass")
     runtime.objects[divert_caption].state["text"] = runtime.text_object("更多改编")
     send(cpu, runtime, divert, "layoutSubviews")
-    require(call(cpu, labels, "LFQH_FQHSurface", divert)["result"] == surfaces[-1],
-            "the existing adaptation glass is reused when the host switches to 更多改编")
+    divert_state = runtime.objects[divert].state
+    caption_state = runtime.objects[divert_caption].state
+    material_state = runtime.objects[surfaces[-1]].state
+    require(call(cpu, labels, "LFQH_FQHSurface", divert)["result"] == surfaces[-1] and
+            caption_state["frame"] == (0, 27, 40, 12) and material_state["frame"] == (-18, -4, 76, 48),
+            "both native captions retain their frame and reuse the same padded glass")
+    # A neighboring pill and the toolbar edge each cap the optional expansion.
+    settings = runtime.objects[items[2]].state
+    settings["frame"] = (288, 2, 24, 40)
+    send(cpu, runtime, divert, "layoutSubviews")
+    require(material_state["frame"] == (-13, -4, 66, 48) and
+            divert_state["hitInsets"] == (-4, -13, -4, -13),
+            "close neighbors leave eight points before the enlarged hit area")
+    settings["frame"] = (259, 2, 24, 40)
+    runtime.objects[toolbar].state["bounds"] = (0, 0, 413, 56)
+    send(cpu, runtime, divert, "layoutSubviews")
+    require(material_state["frame"] == (-12, -4, 64, 48),
+            "narrow layout retains the standard capsule and its stock row alignment")
+    runtime.objects[toolbar].state["bounds"] = (0, 0, 440, 56)
+    send(cpu, runtime, divert, "layoutSubviews")
+    transactions = sum(event["event"] == "transaction_begin" for event in runtime.events)
+    send(cpu, runtime, divert, "layoutSubviews")
+    require(material_state["frame"] == (-18, -4, 76, 48) and
+            sum(event["event"] == "transaction_begin" for event in runtime.events) == transactions,
+            "expanded capsule returns after rotation and settled relayout makes no glass writes")
     runtime.reparent(divert, runtime.ROOT)
     send(cpu, runtime, divert, "layoutSubviews")
     require(not call(cpu, labels, "LFQH_FQHSurface", divert)["result"] and
@@ -835,7 +861,7 @@ def exercise(data, labels):
     tool_wrapper = runtime.view("BDReaderBottomViewContainer", "tool wrapper", (0, 80, 400, 56),
                                 runtime.ROOT, backgroundColor=wrapper_backdrop, contentView=toolbar)
     runtime.reparent(toolbar, tool_wrapper)
-    runtime.objects[toolbar].state.update(frame=(0, 0, 400, 56), backgroundColor=backdrop)
+    runtime.objects[toolbar].state.update(frame=(0, 0, 400, 56), bounds=(0, 0, 400, 56), backgroundColor=backdrop)
     progress_line = runtime.view("UIView", "progress separator", (0, 0, 390, 1), progress, alpha=0.75)
     tool_line = runtime.view("UIView", "tools separator", (0, 0, 400, 1), toolbar, alpha=1., hidden=True)
     runtime.objects[progress].state["horizonLineView"] = progress_line
@@ -1212,17 +1238,31 @@ def exercise(data, labels):
     ):
         row = runtime.view(row_class, "Mine shortcut row", (0, 0, 390, 64), runtime.ROOT)
         collection = runtime.view("UIView", "Mine shortcut scroller", (0, 0, 390, 64), row)
+        compact = row_class == "SSMyUserShortcutCell"
+        width, height = (60, 47) if compact else (70, 60)
         for index, title in enumerate(("我的订单", "浏览历史", "我的消息", "创作中心", "游戏中心")):
-            legacy_order = row_class == "SSMyUserShortcutCell" and index == 0
+            legacy_order = compact and index == 0
             cell_class = "SSMyUserCollectionViewOrderFunCell" if legacy_order else item_class
-            cell = runtime.view(cell_class, title, (index * 78, 0, 70, 60), collection,
+            cell_frame = (index * 78, 0, width, height)
+            cell = runtime.view(cell_class, title, cell_frame, collection,
                                 userInteractionEnabled=True)
-            content = runtime.view("UIView", "opaque contentView", (0, 0, 70, 60), cell,
+            content = runtime.view("UIView", "opaque contentView", (0, 0, width, height), cell,
                                    backgroundColor=shortcut_background)
-            stock_glyph = (22, 5, 26, 26) if legacy_order else (25, 8, 20, 20)
-            caption_frame = (0, 29 if index == 4 else 35, 70, 18)
-            material_frame = (2, 0, 66, 52) if index == 4 else (2, 0, 66, 58)
-            adjusted_glyph = (25.5, 5, 19, 19) if index == 4 else (23, 5, 24, 24)
+            stock_glyph = (17, 5, 26, 26) if legacy_order else ((width - 20) / 2, 8, 20, 20)
+            if compact:
+                caption_frame = (4, 29, 52, 14)
+                material_frame = (0, 0, 60, 47)
+                adjusted_glyph = (21.5, 3, 17, 17)
+            elif index == 4:
+                caption_frame = (0, 29, 70, 18)
+                material_frame = (0, 0, 70, 52)
+                adjusted_glyph = (26, 3, 18, 18)
+            else:
+                caption_frame = (0, 35, 70, 18)
+                material_frame = (0, 0, 70, 58)
+                adjusted_glyph = (23, 3, 24, 24)
+            x, _, label_width, label_height = caption_frame
+            adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
             label = runtime.label("original caption", content, caption_frame, title)
             cell_state = runtime.objects[cell].state
@@ -1241,11 +1281,12 @@ def exercise(data, labels):
             require(surface and runtime.objects[content].state["subviews"] == [surface] + foreground and
                     runtime.objects[surface].state["frame"] == material_frame and
                     runtime.objects[image].state["frame"] == adjusted_glyph and
-                    runtime.objects[label].state["frame"] == caption_frame and
+                    runtime.objects[label].state["frame"] == adjusted_caption and
+                    runtime.string_value(runtime.objects[label].state["text"]) == title and
                     runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
-                    cell_state["userInteractionEnabled"],
-                    "one full-size capsule contains the centered glyph and native caption within the original hit area")
+                    cell_state["userInteractionEnabled"] and cell_state["frame"] == cell_frame,
+                    "one full-size capsule leaves 10pt below the full native caption without changing its hit area")
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
@@ -1254,23 +1295,35 @@ def exercise(data, labels):
                         "the native layout copies the normalized order glyph frame to its product overlay")
             send(cpu, runtime, cell, "layoutSubviews")
             require(call(cpu, labels, "LFQH_FQHSurface", content)["result"] == surface and
-                    runtime.objects[image].state["frame"] == adjusted_glyph,
-                    "shortcut layouts reuse the native material and scale once")
+                    runtime.objects[image].state["frame"] == adjusted_glyph and
+                    runtime.objects[label].state["frame"] == adjusted_caption,
+                    "shortcut layouts reuse the native material and settle the foreground once")
             snapshots = sum(obj.name == "rect_snapshot" for obj in runtime.objects.values())
             for _ in range(5):
                 runtime.objects[image].state["frame"] = stock_glyph
+                runtime.objects[label].state["frame"] = caption_frame
                 send(cpu, runtime, cell, "layoutSubviews")
             require(sum(obj.name == "rect_snapshot" for obj in runtime.objects.values()) == snapshots and
-                    runtime.objects[image].state["frame"] == adjusted_glyph,
-                    "native relayout reuses the saved original and applied glyph rectangles")
+                    runtime.objects[image].state["frame"] == adjusted_glyph and
+                    runtime.objects[label].state["frame"] == adjusted_caption,
+                    "native relayout reuses the saved original and applied foreground rectangles")
             shortcut_count += 1
 
+    glass_preferences = runtime.objects[runtime.DEFAULTS].state["values"]
+    glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, cell, "layoutSubviews")
+    require(runtime.objects[label].state["frame"] == caption_frame and
+            runtime.objects[image].state["frame"] == stock_glyph,
+            "disabling the shortcut material restores its native icon and caption frames")
+    glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 0
+    send(cpu, runtime, cell, "layoutSubviews")
     runtime.reparent(cell, runtime.ROOT)
     send(cpu, runtime, cell, "layoutSubviews")
     require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"] and
-            runtime.objects[image].state["frame"] == (25, 8, 20, 20) and
+            runtime.objects[image].state["frame"] == stock_glyph and
+            runtime.objects[label].state["frame"] == caption_frame and
             runtime.objects[content].state["backgroundColor"] == shortcut_background,
-            "reusing the same class outside the shortcut row restores the host glyph and background")
+            "reusing the same class outside the shortcut row restores the host foreground and background")
 
     # Standalone promotions are excluded regardless of title or metadata timing.
     owner = runtime.view("SSMyUser621BaseViewController", "profile",

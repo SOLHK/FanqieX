@@ -1069,12 +1069,42 @@ static void UpdateCatalogTap(Obj view,B needed) {
     V0(gesture,"release");
     V0(observer,"release");
 }
-static void ReaderBottomGlass(Obj view) {
+static double ReaderDivertWidth(Obj view,Obj toolbar,Rect bounds) {
+    if (!InstanceABI(view,"titleLabel","@16@0:8")) return 64;
+    Obj label=O0(view,"titleLabel");
+    if (!Kind(label,"UILabel") || O0(label,"superview")!=view) return 64;
+    Rect caption=Frame(label);
+    if (!VisibleRect(caption)) return 64;
+    double center=bounds.x+bounds.width*0.5;
+    double left=center-caption.x,right=caption.x+caption.width-center;
+    // The capsule narrows at the caption baseline. Leave room for both
+    // the rounded ends and the visible padding beyond the native label.
+    double half=(left>right ? left : right)+18;
+    if (half<=32) return 64;
+
+    Rect slot=Frame(view),row=Bounds(toolbar);
+    center=slot.x+slot.width*0.5;
+    left=center-row.x-8;
+    right=row.x+row.width-center-8;
+    if (left<half) half=left;
+    if (right<half) half=right;
+    Obj items=Get(toolbar,"itemViews");
+    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    for (U i=0;i<count && half>32;++i) {
+        Obj item=At(items,i);
+        if (item==view || O0(item,"superview")!=toolbar || Flag(item,"isHidden")) continue;
+        Rect neighbor=Frame(item);
+        double occupied=neighbor.width>64 ? neighbor.width*0.5 : 32;
+        double room=__builtin_fabs(center-(neighbor.x+neighbor.width*0.5))-occupied-8;
+        if (room<half) half=room;
+    }
+    return half>32 ? half*2 : 64;
+}
+static void ReaderBottomGlass(Obj view,Obj toolbar) {
     Rect bounds=Bounds(view);
     if (!VisibleRect(bounds)) { PageRestore(view); RestoreHit(view); return; }
-    // Host items are compact icon-and-caption views. Use a common capsule
-    // centered on each view, including the separately inserted adaptations tool.
-    Rect glass={bounds.x+(bounds.width-64)*0.5,bounds.y+(bounds.height-48)*0.5,64,48};
+    double width=toolbar ? ReaderDivertWidth(view,toolbar,bounds) : 64;
+    Rect glass={bounds.x+(bounds.width-width)*0.5,bounds.y+(bounds.height-48)*0.5,width,48};
     ApplySurface(view,glass,0);
     Obj surface=FQHSurface(view);
     if (!surface) { RestoreHit(view); return; }
@@ -1104,7 +1134,7 @@ static void PageBottomLayout(Obj self,Sel cmd) {
         Obj view=At(items,i);
         if (!Kind(view,"FQReaderSaaSBottomToolItemView") || !Belongs(view,self)) continue;
         int type=ReaderBottomType(view);
-        if (type>=1 && type<=3) ReaderBottomGlass(view);
+        if (type>=1 && type<=3) ReaderBottomGlass(view,0);
         else { PageRestore(view); RestoreHit(view); }
         Obj surface=type==1 ? FQHSurface(view) : (Obj)0;
         UpdateCatalogTap(view,surface!=0);
@@ -1164,8 +1194,10 @@ static void PageProgressTheme(Obj self,Sel cmd,Obj config) {
 }
 static void PageDivertLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBottomToolDivertView","fqx175_originalDivert"))(self,cmd);
-    if (HasAncestor(self,"FQReaderSaaSBottomToolView"))
-        ReaderBottomGlass(self);
+    Obj toolbar=O0(self,"superview");
+    if (!Kind(toolbar,"FQReaderSaaSBottomToolView")) toolbar=0;
+    if (toolbar || HasAncestor(self,"FQReaderSaaSBottomToolView"))
+        ReaderBottomGlass(self,toolbar);
     else { PageRestore(self); RestoreHit(self); }
 }
 static void PageGiftLayout(Obj self,Sel cmd) {
@@ -1394,12 +1426,35 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
     ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
 }
-static void RestoreProfileEntryGlyph(Obj content) {
-    Obj glyph=objc_getAssociatedObject(content,GlyphViewKey);
-    Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
-    if (applied && !SameRect(Frame(glyph),UnboxRect(applied)))
-        objc_setAssociatedObject(glyph,GlyphOriginalKey,0,1);
-    RestoreGlyph(content);
+static void ProfileCaptionKey(void) {}
+static Rect ProfileStockFrame(Obj view,Rect current) {
+    Obj applied=objc_getAssociatedObject(view,GlyphAppliedKey);
+    return applied && SameRect(current,UnboxRect(applied)) ?
+        UnboxRect(objc_getAssociatedObject(view,GlyphOriginalKey)) : current;
+}
+static void ProfileSetFrame(Obj view,Rect current,Rect stock,Rect target) {
+    if (SameRect(current,target)) return;
+    Obj original=objc_getAssociatedObject(view,GlyphOriginalKey);
+    Obj applied=objc_getAssociatedObject(view,GlyphAppliedKey);
+    if (!original || !SameRect(stock,UnboxRect(original)))
+        objc_setAssociatedObject(view,GlyphOriginalKey,RectBox(stock),1);
+    if (!applied || !SameRect(target,UnboxRect(applied)))
+        objc_setAssociatedObject(view,GlyphAppliedKey,RectBox(target),1);
+    SetFrame(view,target);
+}
+static void RestoreProfileEntryFrame(Obj content,const void *key) {
+    Obj view=objc_getAssociatedObject(content,key);
+    if (!view) return;
+    Rect current=Frame(view),stock=ProfileStockFrame(view,current);
+    if (!SameRect(current,stock)) SetFrame(view,stock);
+    objc_setAssociatedObject(view,GlyphOriginalKey,0,1);
+    objc_setAssociatedObject(view,GlyphAppliedKey,0,1);
+    objc_setAssociatedObject(content,key,0,1);
+}
+static void RestoreProfileEntry(Obj content) {
+    RestoreProfileEntryFrame(content,GlyphViewKey);
+    RestoreProfileEntryFrame(content,ProfileCaptionKey);
+    PageRestore(content);
 }
 static void ProfileEntryGlass(Obj self,B order) {
     Obj content=Get(self,"contentView");
@@ -1408,42 +1463,38 @@ static void ProfileEntryGlass(Obj self,B order) {
     Obj glyph=shortcut && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
     Obj caption=glyph ? Get(self,order ? "functionType" : "label") : (Obj)0;
     if (!Kind(glyph,"UIImageView") || Get(glyph,"superview")!=content || Flag(glyph,"isHidden") ||
-        Get(caption,"superview")!=content) {
-        RestoreProfileEntryGlyph(content);
-        PageRestore(content);
+        !Kind(caption,"UILabel") || Get(caption,"superview")!=content) {
+        RestoreProfileEntry(content);
         return;
     }
-    if (objc_getAssociatedObject(content,GlyphViewKey)!=glyph) RestoreProfileEntryGlyph(content);
-    Rect b=Bounds(content),label=Frame(caption),icon=Frame(glyph);
+    Obj oldGlyph=objc_getAssociatedObject(content,GlyphViewKey);
+    Obj oldCaption=objc_getAssociatedObject(content,ProfileCaptionKey);
+    if (oldGlyph!=glyph) RestoreProfileEntryFrame(content,GlyphViewKey);
+    if (oldCaption!=caption) RestoreProfileEntryFrame(content,ProfileCaptionKey);
+    Rect b=Bounds(content),labelFrame=Frame(caption),iconFrame=Frame(glyph);
+    Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
     double height=__builtin_fmin(b.height,__builtin_fmax(44,label.y+label.height-b.y+5));
-    double glyphHeight=__builtin_fmin(24,label.y-b.y-10);
-    if (glyphHeight<16 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
-        RestoreProfileEntryGlyph(content);
-        PageRestore(content);
+    double textY=__builtin_fmin(label.y,b.y+height-label.height-10);
+    double glyphHeight=__builtin_fmin(__builtin_fmin(24,label.y-b.y-10),textY-b.y-6);
+    if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
+        RestoreProfileEntry(content);
         return;
     }
-    // Give the icon and its caption one complete glass control.
-    double width=b.width-4,x=b.x+2,y=b.y;
-    ApplySurface(content,(Rect){x,y,width,height},1);
-    if (!FQHSurface(content)) return;
-    Rect current=icon;
-    Obj applied=objc_getAssociatedObject(glyph,GlyphAppliedKey);
-    Obj stock=objc_getAssociatedObject(glyph,GlyphOriginalKey);
-    if ((!applied || !SameRect(current,UnboxRect(applied))) &&
-        (!stock || !SameRect(current,UnboxRect(stock))))
-        objc_setAssociatedObject(glyph,GlyphOriginalKey,RectBox(current),1);
-    Rect original=UnboxRect(objc_getAssociatedObject(glyph,GlyphOriginalKey));
-    double largest=__builtin_fmax(original.width,original.height);
-    double scale=glyphHeight/largest;
-    double glyphCenter=y+5+glyphHeight*0.5;
-    Rect adjusted={x+(width-original.width*scale)*0.5,glyphCenter-original.height*scale*0.5,
-                   original.width*scale,original.height*scale};
-    if (!SameRect(current,adjusted)) {
-        SetFrame(glyph,adjusted);
-        if (!applied || !SameRect(UnboxRect(applied),adjusted))
-            objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
+    // Move the whole caption inward, retaining its native width, height and font.
+    // Leave room for the full title at the curved end of the compact 47pt cell.
+    ApplySurface(content,(Rect){b.x,b.y,b.width,height},1);
+    if (!FQHSurface(content)) {
+        RestoreProfileEntry(content);
+        return;
     }
-    if (!applied) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
+    double scale=glyphHeight/__builtin_fmax(icon.width,icon.height);
+    double top=__builtin_fmin(b.y+5,textY-glyphHeight-3);
+    Rect adjusted={b.x+(b.width-icon.width*scale)*0.5,top+(glyphHeight-icon.height*scale)*0.5,
+                   icon.width*scale,icon.height*scale};
+    if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
+    if (oldCaption!=caption) objc_setAssociatedObject(content,ProfileCaptionKey,caption,1);
+    ProfileSetFrame(glyph,iconFrame,icon,adjusted);
+    ProfileSetFrame(caption,labelFrame,label,(Rect){label.x,textY,label.width,label.height});
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
