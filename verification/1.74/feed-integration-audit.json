@@ -1,0 +1,113 @@
+{
+  "passed": true,
+  "candidate_sha256": "e196f3127e26b457aceab2b97af2bd5aa9f1d12ebf51cf807b719725d732beff",
+  "instructions": 1597577,
+  "tests": [
+    {
+      "name": "full_repair_nested_feed_and_gray_selection",
+      "scenario": "logged_shelf",
+      "tab_index": 2,
+      "extension_points": 66,
+      "passed": true
+    },
+    {
+      "name": "full_repair_installed_posthook",
+      "scenario": "logged_shelf",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "original_tab_action_restores_nested_feed",
+      "scenario": "logged_shelf",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "observer_and_original_restore_complete_path",
+      "scenario": "logged_shelf",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "full_repair_nested_feed_and_gray_selection",
+      "scenario": "logged_my",
+      "tab_index": 3,
+      "extension_points": 74,
+      "passed": true
+    },
+    {
+      "name": "full_repair_installed_posthook",
+      "scenario": "logged_my",
+      "tab_index": 3,
+      "passed": true
+    },
+    {
+      "name": "original_tab_action_restores_nested_feed",
+      "scenario": "logged_my",
+      "tab_index": 3,
+      "passed": true
+    },
+    {
+      "name": "observer_and_original_restore_complete_path",
+      "scenario": "logged_my",
+      "tab_index": 3,
+      "passed": true
+    },
+    {
+      "name": "full_repair_nested_feed_and_gray_selection",
+      "scenario": "shelf_dynamic_after_super_and_two_pagers",
+      "tab_index": 2,
+      "extension_points": 66,
+      "passed": true
+    },
+    {
+      "name": "full_repair_installed_posthook",
+      "scenario": "shelf_dynamic_after_super_and_two_pagers",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "original_tab_action_restores_nested_feed",
+      "scenario": "shelf_dynamic_after_super_and_two_pagers",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "observer_and_original_restore_complete_path",
+      "scenario": "shelf_dynamic_after_super_and_two_pagers",
+      "tab_index": 2,
+      "passed": true
+    },
+    {
+      "name": "full_repair_nested_feed_and_gray_selection",
+      "scenario": "my_same_class_outer_and_dynamic_after_super",
+      "tab_index": 3,
+      "extension_points": 74,
+      "passed": true
+    },
+    {
+      "name": "full_repair_installed_posthook",
+      "scenario": "my_same_class_outer_and_dynamic_after_super",
+      "tab_index": 3,
+      "passed": true
+    },
+    {
+      "name": "original_tab_action_restores_nested_feed",
+      "scenario": "my_same_class_outer_and_dynamic_after_super",
+      "tab_index": 3,
+      "passed": true
+    },
+    {
+      "name": "observer_and_original_restore_complete_path",
+      "scenario": "my_same_class_outer_and_dynamic_after_super",
+      "tab_index": 3,
+      "passed": true
+    }
+  ],
+  "repair_entries_intercepted": false,
+  "device_ui_tested": false,
+  "limits": [
+    "UIKit/Foundation and original host method bodies are modeled.",
+    "No native rendering, physical touches, iOS load or installation tested."
+  ]
+}

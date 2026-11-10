@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "candidate_sha256": "e196f3127e26b457aceab2b97af2bd5aa9f1d12ebf51cf807b719725d732beff",
+  "negative_control_sha256": "2da6826d63d5e05ec6c2f20d3375d58186474490c9c92dc09c2cc734529560b1",
+  "cases": [
+    {
+      "name": "nonselected_origin_negative_control",
+      "old": {
+        "began_center": 259.0,
+        "moved_center": 361.0,
+        "routes": [
+          3
+        ]
+      },
+      "new": {
+        "began_center": 55.0,
+        "moved_center": 180.0,
+        "routes": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "all_directions_and_rtl",
+      "passed": true
+    },
+    {
+      "name": "inside_grab_offset_and_cancel",
+      "passed": true
+    },
+    {
+      "name": "regular_main_material_negative_control",
+      "passed": true
+    },
+    {
+      "name": "fallback_keeps_one_glass_and_readable_labels",
+      "passed": true
+    }
+  ],
+  "case_count": 5,
+  "device_tested": false,
+  "scope": "Actual ARM64 compatibility fallback material/gesture instructions with UIKit boundary models. No GPU refraction, Apple Store pixel identity or native press/stretch claim."
+}

@@ -1,0 +1,2 @@
+e196f3127e26b457aceab2b97af2bd5aa9f1d12ebf51cf807b719725d732beff  FanqieX-1.74.dylib
+b817af1d3cb746f02211204e6fcdace5d92b6365f1f41951cf2254e0eab304b8  FanqieX-1.74.zip

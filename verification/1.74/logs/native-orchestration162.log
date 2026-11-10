@@ -1,0 +1,66 @@
+{
+  "passed": true,
+  "candidate_sha256": "e196f3127e26b457aceab2b97af2bd5aa9f1d12ebf51cf807b719725d732beff",
+  "cases": [
+    {
+      "name": "first_mount_and_stability",
+      "passed": true,
+      "details": [
+        {
+          "slide": "0x0",
+          "material_writes": 1,
+          "original_routes": 1
+        },
+        {
+          "slide": "0x180000000",
+          "material_writes": 1,
+          "original_routes": 1
+        }
+      ]
+    },
+    {
+      "name": "fallback_to_native_during_fade",
+      "passed": true,
+      "details": {
+        "alpha_during_native_mount": 0.5,
+        "regular_base_preserved_during_transition": true
+      }
+    },
+    {
+      "name": "native_failure_and_recovery",
+      "passed": true,
+      "details": {
+        "native_to_regular_to_native": true,
+        "stale_targets": 0,
+        "original_routes": 1
+      }
+    },
+    {
+      "name": "live_monitor_and_host_sync",
+      "passed": true,
+      "details": {
+        "common_mode_monitor": true,
+        "uncommitted_preview_preserved": true,
+        "external_selection_authoritative": true,
+        "sync_hook_immediate": true,
+        "silent_host_change_recovery_ticks": 4
+      }
+    },
+    {
+      "name": "diagnostics_and_original_restore",
+      "passed": true,
+      "details": {
+        "persisted_native_renderer": true,
+        "public_host_metadata": true,
+        "original_restore_all_extensions": true
+      }
+    }
+  ],
+  "instructions": 1662112,
+  "repair_entries_intercepted": false,
+  "device_ui_tested": false,
+  "limitations": [
+    "UIKit/Foundation and host IMPs are explicit boundary fixtures.",
+    "Native thumb rendering, GPU refraction, physical touch and dyld loading are not executed."
+  ]
+}

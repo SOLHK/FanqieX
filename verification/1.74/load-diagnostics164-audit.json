@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "candidate_sha256": "e196f3127e26b457aceab2b97af2bd5aa9f1d12ebf51cf807b719725d732beff",
+  "cases": [
+    {
+      "order": {
+        "slide": "0x0",
+        "stages": 7,
+        "completion_event_once": true
+      }
+    },
+    {
+      "page_completion": {
+        "slide": "0x0",
+        "actual_page_hook": true,
+        "host_original_preserved": true
+      }
+    },
+    {
+      "order": {
+        "slide": "0x180000000",
+        "stages": 7,
+        "completion_event_once": true
+      }
+    },
+    {
+      "page_completion": {
+        "slide": "0x180000000",
+        "actual_page_hook": true,
+        "host_original_preserved": true
+      }
+    },
+    {
+      "restart": {
+        "incomplete_attempt_preserved": true,
+        "sessions_distinct": true,
+        "no_nested_history": true
+      }
+    },
+    {
+      "bounds": {
+        "stage_cap": 24,
+        "file_cap": 32768,
+        "oversize_rejected_before_read": true
+      }
+    },
+    {
+      "privacy": {
+        "exact_32k_read": true,
+        "invalid_forms": 5,
+        "private_fields_omitted": true
+      }
+    },
+    {
+      "failures": {
+        "write_failures_observed_and_recovered": [
+          "writeFailed",
+          "directoryFailed",
+          "serializationFailed"
+        ]
+      }
+    },
+    {
+      "worker_scope": {
+        "ordinary_json_requires_worker": true,
+        "other_paths_require_worker": true
+      }
+    }
+  ],
+  "device_tested": false,
+  "native_foundation_executed": false,
+  "scope": "Real ARM64 startup checkpoints with explicit Foundation boundaries"
+}

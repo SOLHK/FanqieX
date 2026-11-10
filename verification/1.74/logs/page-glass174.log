@@ -1,0 +1,45 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "pixel_rendering_tested": false,
+  "scope": "Actual candidate ARM64 instructions with explicit UIKit/Foundation boundaries",
+  "static": {
+    "exact_hooks": 40,
+    "global_uiview_layout_hook": false,
+    "startup_wired": true,
+    "model_boundary_deletion": true
+  },
+  "runtime": {
+    "reader_controls": [
+      "FQReaderSaaSBottomToolView",
+      "SSReaderBottomToolDivertView",
+      "FQReaderSaaSReaderSpeechButton",
+      "BDReaderNewSlider"
+    ],
+    "reader_backdrop_and_chapter_controls": true,
+    "reader_community_full_item_surfaces": true,
+    "full_chapter_discussion_and_gift_surfaces": true,
+    "shelf_tabs": 4,
+    "shelf_filters": 4,
+    "profile_shortcuts": 10,
+    "mine_benefits_section_toggle": true,
+    "profile_search_clips_carousel": true,
+    "profile_header_glass": 3,
+    "target_game_deleted": true,
+    "nonpromotion_mine_rows_retained": true,
+    "configured_game_plan_filtered_before_layout": true,
+    "late_game_filtered_before_list_diff": true,
+    "bottom_entries_default_on": true,
+    "bottom_entries_restored": true,
+    "shelf_duration_toggle": true,
+    "shelf_edit_top_placement_and_compaction": true,
+    "shelf_edit_single_material_owner": true,
+    "shelf_inline_filter_alignment": true,
+    "shelf_cover_transition_geometry": true,
+    "surface_reuse": true,
+    "disable_restores_host": true,
+    "host_layout_calls": 22,
+    "exact_installed_hooks": 40,
+    "incompatible_shelf_compaction_skipped": true
+  }
+}
