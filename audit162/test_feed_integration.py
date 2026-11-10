@@ -46,6 +46,9 @@ def run(data, composed):
                     outer_height=outer_height, outer_offset=outer_offset)
         # Keep the actual modeled original buttons/items connected to the
         # original selection route while using the supplied log geometry.
+        for original, host_item in zip(r.items, f['items']):
+            r.objects[original].cls = r.objects[host_item].cls
+            r.objects[original].state['type'] = r.objects[host_item].state['type']
         r.objects[r.BAR].state.update(
             items=r.obj('NSArray', 'items', items=r.items.copy()),
             selectedItem=r.items[tab])

@@ -21,7 +21,7 @@ from test_feed_viewport import labels_for
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = [
     "LFQH_FQHPageInstall", "LFQH_FQHPageStyle", "LFQH_FQHPageTint",
-    "LFQH_FQHInstallOptionsToggles", "LFQH_FQHPageTargetGame", "LFQH_FQHPageFilterMiniGame",
+    "LFQH_FQHInstallOptionsToggles", "LFQH_FQHPageFilterMiniGame",
     "LFQH_FQHSurface", "Lrecord_named", "LGstyle_control",
 ]
 HOOKS = [
@@ -38,6 +38,8 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "layoutSubviews"),
     ("SSBookShelfFilter541Cell", "updateAppearance:"),
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
+    ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
+    ("SS525BookShelfSubHeaderView", "layoutSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
     ("SSMyUser621FunctionEntryItemCell", "layoutSubviews"),
@@ -54,16 +56,17 @@ class Runtime(GlassRuntime):
     SHELF_APPEARANCE = 0x330c1100
     SHELF_BACKGROUND = 0x330c1200
     BOTTOM_ORIGINAL = 0x330c0000
+    CATALOG_CLICK = 0x330c0008
     TAB_PLAN = 0x330c0100
     TAB_APPEAR = 0x330c0200
     TAB_OPEN_OPTIONS = 0x330c0d00
+    SHELF_DURATION_VISIBLE = 0x330c3100
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
     MODEL_SETUP = 0x330c0600
     MODEL_CONFIGURED_GAME = 0x330c2400
     MODEL_LIST_OBJECTS = 0x330c2500
-    MODEL_COPY = 0x330c2600
     SPEECH_THEME = 0x330c0700
     PROGRESS_THEME = 0x330c0b00
 
@@ -87,7 +90,9 @@ class Runtime(GlassRuntime):
             ("SSBookShelfFilterHeaderView", "UIView"),
             ("SSBookShelfFilterMixRowCollectionView", "UIView"),
             ("SSBookShelfFilter541Cell", "UIView"),
+            ("SS525BookShelfSubHeaderView", "UIView"),
             ("SSMyUserBar", "UIView"),
+            ("FQReaderSaaSBaseImageView", "UIImageView"),
             ("SSMyUserCollectionViewFunCell", "UIView"),
             ("SSMyUser621FunctionEntryItemCell", "SSMyUserCollectionViewFunCell"),
             ("SSMyUser621BaseViewController", "NSObject"),
@@ -98,18 +103,20 @@ class Runtime(GlassRuntime):
             ("SSSSTimorCellInfo", "NSObject"),
             ("SSMineEcomEntranceData", "NSObject"),
             ("SSMineGameEntranceData", "NSObject"),
-            ("SSMineGameEntranceItem", "NSObject"),
             ("SSTabBarButtonItem", "NSObject"),
             ("SSTabBarController", "UIViewController"),
             ("UIApplication", "NSObject"),
             ("SSSettingViewController", "UIViewController"),
+            ("UIGestureRecognizer", "NSObject"),
             ("UILongPressGestureRecognizer", "UIGestureRecognizer"),
+            ("UITapGestureRecognizer", "UIGestureRecognizer"),
             ("UISwitch", "UIControl"),
             ("UITableView", "UIScrollView"),
         ):
             if name not in self.classes:
                 self._class(name, parent)
         self.bottom_original_calls = 0
+        self.catalog_clicks = []
         self.tab_refreshes = 0
         self.tab_settings_presenters = []
         self.colors["systemOrangeColor"] = self.color("systemOrangeColor")
@@ -123,6 +130,8 @@ class Runtime(GlassRuntime):
             self._add(self.classes[cls], selector, imp, encoding)
         self._add(self.classes["FQReaderSaaSBottomToolView"], "layoutSubviews",
                   self.BOTTOM_ORIGINAL, "v16@0:8")
+        self._add(self.classes["FQReaderSaaSBottomToolItemView"], "onBtnClick:",
+                  self.CATALOG_CLICK, "v24@0:8@16")
         self._add(self.classes["FQReaderSaaSNewProgressView"], "updateWithConfigData:",
                   self.PROGRESS_THEME, "v24@0:8@16")
         self._add(self.classes["FQReaderSaaSReaderSpeechButton"],
@@ -132,6 +141,8 @@ class Runtime(GlassRuntime):
         self._add(self.classes["SSTabBarController"], "tabbarVCAndAttributeInit", self.TAB_PLAN, "@16@0:8")
         self._add(self.classes["SSTabBarController"], "viewDidAppear:", self.TAB_APPEAR, "v20@0:8B16")
         self._add(self.classes["SSSettingViewController"], "fqab_openMenu", self.TAB_OPEN_OPTIONS, "v16@0:8")
+        self._add(self.classes["SS525BookShelfSubHeaderView"], "setShowReadTimeView:",
+                  self.SHELF_DURATION_VISIBLE, "v20@0:8B16")
         for selector, imp in (("setIsInvisible:", self.MODEL_INVISIBLE),
                               ("setIsDisabled:", self.MODEL_DISABLED)):
             self._add(self.classes["SSMyUserMiniGameEntranceCellModel"], selector, imp,
@@ -145,8 +156,6 @@ class Runtime(GlassRuntime):
                   self.MODEL_CONFIGURED_GAME, "v32@0:8@16q24")
         self._add(self.classes["SSMyUser621ViewController"], "objectsForListAdapter:",
                   self.MODEL_LIST_OBJECTS, "@24@0:8@16")
-        for cls in ("SSMineEcomEntranceData", "SSMineGameEntranceData"):
-            self._add(self.classes[cls], "bd_modelCopy", self.MODEL_COPY, "@16@0:8")
 
     def handle(self, cpu, pc):
         self.current_cpu = cpu
@@ -168,6 +177,9 @@ class Runtime(GlassRuntime):
         if pc == self.BOTTOM_ORIGINAL:
             self.bottom_original_calls += 1
             return self.finish(cpu)
+        if pc == self.CATALOG_CLICK:
+            self.catalog_clicks.append((receiver, cpu.x[2]))
+            return self.finish(cpu)
         if pc == self.TAB_PLAN:
             state = self.objects[receiver].state
             state.update(typeArray=state["host_types"], typeIndexMap=state["host_indexes"])
@@ -176,6 +188,11 @@ class Runtime(GlassRuntime):
             return self.finish(cpu)
         if pc == self.TAB_OPEN_OPTIONS:
             self.tab_settings_presenters.append(receiver)
+            return self.finish(cpu)
+        if pc == self.SHELF_DURATION_VISIBLE:
+            state = self.objects[receiver].state
+            state["showReadTimeView"] = bool(cpu.x[2])
+            self.objects[state["coinButton"]].state["hidden"] = not state["showReadTimeView"]
             return self.finish(cpu)
         if pc in (self.MODEL_INVISIBLE, self.MODEL_DISABLED):
             key = "isInvisible" if pc == self.MODEL_INVISIBLE else "isDisabled"
@@ -190,9 +207,6 @@ class Runtime(GlassRuntime):
             return self.finish(cpu)
         if pc == self.MODEL_LIST_OBJECTS:
             return self.finish(cpu, self.objects[receiver].state["list_objects"])
-        if pc == self.MODEL_COPY:
-            original = self.objects[receiver]
-            return self.finish(cpu, self.obj(self.class_names[original.cls], "copied model", **original.state))
         if pc == self.SPEECH_THEME:
             button = self.objects[receiver].state["speechBtn"]
             self.objects[button].state["images"][0] = cpu.x[2]
@@ -216,23 +230,29 @@ class Runtime(GlassRuntime):
                 state = self.objects[receiver].state
                 if name in ("typeArray", "tableView", "tableHeaderView", "keyWindow", "rootViewController"):
                     return self.finish(cpu, state.get(name, 0))
-                if name in ("customTabBar", "delegate", "state") and name in state:
+                if name == "showReadTimeView":
+                    return self.finish(cpu, int(state["showReadTimeView"]))
+                if name in ("customTabBar", "delegate", "state", "view") and name in state:
                     return self.finish(cpu, state[name])
-                if name == "initWithTarget:action:" and self.is_kind(receiver, self.classes["UILongPressGestureRecognizer"]):
+                if name == "initWithTarget:action:" and self.is_kind(receiver, self.classes["UIGestureRecognizer"]):
                     state.update(target=cpu.x[2], action=cpu.x[3], state=0)
                     return self.finish(cpu, receiver)
                 if name == "setMinimumPressDuration:":
                     return self.finish(cpu)
-                if name == "setDelegate:" and self.is_kind(receiver, self.classes["UILongPressGestureRecognizer"]):
+                if name == "setDelegate:" and self.is_kind(receiver, self.classes["UIGestureRecognizer"]):
                     state["delegate"] = cpu.x[2]
                     return self.finish(cpu)
-                if name in ("addGestureRecognizer:", "removeGestureRecognizer:") and self.is_kind(cpu.x[2], self.classes["UILongPressGestureRecognizer"]):
+                if name == "setCancelsTouchesInView:":
+                    state["cancelsTouchesInView"] = bool(cpu.x[2])
+                    return self.finish(cpu)
+                if name in ("addGestureRecognizer:", "removeGestureRecognizer:") and self.is_kind(cpu.x[2], self.classes["UIGestureRecognizer"]):
                     gesture = self.objects[cpu.x[2]].state
+                    key = "recovery_gestures" if self.is_kind(cpu.x[2], self.classes["UILongPressGestureRecognizer"]) else "catalog_gestures"
                     if name == "addGestureRecognizer:":
-                        state.setdefault("recovery_gestures", []).append(cpu.x[2])
+                        state.setdefault(key, []).append(cpu.x[2])
                         gesture["view"] = receiver
                     else:
-                        state["recovery_gestures"].remove(cpu.x[2])
+                        state[key].remove(cpu.x[2])
                         gesture["view"] = 0
                     return self.finish(cpu)
                 if name == "locationInView:" and "touch_point" in state:
@@ -285,15 +305,6 @@ class Runtime(GlassRuntime):
                 items = self.objects[receiver].state["items"]
                 items[:] = [item for item in items if item != cpu.x[2]]
                 return self.finish(cpu)
-            if name == "replaceObjectAtIndex:withObject:":
-                self.objects[receiver].state["items"][cpu.x[2]] = cpu.x[3]
-                return self.finish(cpu)
-            if receiver in self.objects and name in ("setGameItems:", "setGameEntranceData:", "setTitle:") and (
-                    self.is_kind(receiver, self.classes["SSMineGameEntranceData"]) or
-                    self.is_kind(receiver, self.classes["SSMineEcomEntranceData"])):
-                field = name[3].lower() + name[4:-1]
-                self.objects[receiver].state[field] = cpu.x[2]
-                return self.finish(cpu)
             if name == "colorWithAlphaComponent:" and cpu.fp(0) == 0.125:
                 if receiver == self.colors["labelColor"]:
                     return self.finish(cpu, self.color("shelfNeutralTint"))
@@ -309,7 +320,7 @@ class Runtime(GlassRuntime):
                     "miniGameEntranceCellModel", "models", "info", "title", "name",
                     "gameName", "gameContent", "mpName", "items", "hasSelected",
                     "giftButton", "slider", "searchBgView", "functionType", "label",
-                    "entranceType", "gameEntranceData", "gameItems",
+                    "scanQRCodeView", "darkModeImageView", "sideBarButtonView", "entranceType",
                     "text"):
                 state = self.objects[receiver].state
                 if name == "items":
@@ -383,12 +394,12 @@ def exercise(data, labels):
     captions = []
     for index, title in enumerate(("目录", "白天", "设置", "进度")):
         model = runtime.obj("FQReaderSaaSBottomToolItem", "toolbar item", type=index+1)
-        button = runtime.view("FQReaderSaaSBottomToolItemView", "tool", (20 + index * 80, 8, 40, 40),
+        button = runtime.view("FQReaderSaaSBottomToolItemView", "tool", (55 + index * 80, 2, 24, 40),
                               toolbar, backgroundColor=saved_background, item=model, hitInsets=stock_hit_insets)
-        captions.append(runtime.label("caption", button, (0, 26, 40, 14), title))
+        captions.append(runtime.label("caption", button, (0, 26, 24, 14), title))
         items.append(button)
     runtime.objects[toolbar].state["itemViews"] = runtime.obj("NSArray", "toolbar items", items=items)
-    nested_button = runtime.view("UIButton", "original click target", (24, 4, 32, 28), items[0])
+    nested_button = runtime.view("UIButton", "original click target", (0, 0, 24, 24), items[0])
     require(not call(cpu, labels, "LGstyle_control", nested_button, 0)["result"],
             "legacy walker skips the nested button even before the item material is created")
     # The host attaches the adaptation extra view to the toolbar separately.
@@ -404,22 +415,54 @@ def exercise(data, labels):
     require(all(surfaces) and not call(cpu, labels, "LFQH_FQHSurface", items[3])["result"],
             "only the four requested tools get glass")
     for item, caption, surface in zip(styled_items, [*captions[:3], divert_caption], surfaces):
-        require(runtime.objects[surface].state["frame"] == (-12.0, -4.0, 64.0, 48.0) and
-                runtime.objects[item].state["frame"][2:] == (40.0, 40.0),
+        width = 40.0 if item == divert else 24.0
+        left = (width - 64.0) * 0.5
+        require(runtime.objects[surface].state["frame"] == (left, -4.0, 64.0, 48.0) and
+                runtime.objects[item].state["frame"][2:] == (width, 40.0),
                 "all four tools use equal full-caption material over the host's compact frames")
         require(runtime.objects[surface].state["userInteractionEnabled"] == 0,
                 "decorative material cannot steal touches")
-        require(runtime.objects[item].state["hitInsets"] == (-4.0, -12.0, -4.0, -12.0),
-                "the stock tap handlers also cover the padded material")
+        require(runtime.objects[item].state["hitInsets"] == (-4.0, left, -4.0, left),
+                "the item can receive touches across its padded material")
         require(runtime.objects[item].state["subviews"][:2] == [surface, caption],
                 "material is behind the original content")
     for _ in range(20):
         send(cpu, runtime, toolbar, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHSurface", items[0])["result"] == surfaces[0],
             "settled layouts reuse one material")
+    require(runtime.objects[toolbar].state["hitInsets"] == (-2.0, 0.0, 0.0, 0.0),
+            "the toolbar admits the catalog glass above its stock top edge")
+    catalog_state = runtime.objects[items[0]].state
+    catalog_gestures = catalog_state["catalog_gestures"]
+    require(len(catalog_gestures) == 1 and all("catalog_gestures" not in runtime.objects[item].state
+                                               for item in items[1:]),
+            "only the catalog item gets one auxiliary recognizer across layouts")
+    tap = catalog_gestures[0]
+    tap_state = runtime.objects[tap].state
+    require(not tap_state["cancelsTouchesInView"], "catalog recognizer does not cancel host touches")
+    accept = "gestureRecognizer:shouldReceiveTouch:"
+    touch = runtime.obj("NSObject", "modeled touch", view=items[0], touch_point=(-14.0, 20.0))
+    def accepts(target, point):
+        runtime.objects[touch].state.update(view=target, touch_point=point)
+        return send(cpu, runtime, tap_state["delegate"], accept, tap, touch)["result"]
+    require(accepts(items[0], (-14.0, 20.0)) and accepts(items[0], (36.0, 20.0)) and
+            accepts(items[0], (12.0, -3.0)),
+            "the visible left, right and top of the catalog capsule accept otherwise unhandled taps")
+    require(not accepts(nested_button, (12.0, 12.0)) and not accepts(captions[0], (12.0, 33.0)) and
+            not accepts(items[0], (-19.0, -3.0)),
+            "native icon, native caption and points outside the capsule bypass the new handler")
+    action = runtime.selector_names[tap_state["action"]]
+    send(cpu, runtime, tap_state["target"], action, tap)
+    require(not runtime.catalog_clicks, "an unfinished gesture does not open the catalog")
+    require(accepts(items[0], (-14.0, 20.0)), "left wing gesture starts on the item")
+    tap_state["state"] = 3
+    send(cpu, runtime, tap_state["target"], action, tap)
+    require(runtime.catalog_clicks == [(items[0], tap)], "recognized wing tap calls the exact host catalog action once")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
     send(cpu, runtime, toolbar, "layoutSubviews")
     send(cpu, runtime, divert, "layoutSubviews")
+    require(not catalog_gestures and runtime.objects[toolbar].state["hitInsets"] == (0.0, 0.0, 0.0, 0.0),
+            "glass switch removes the auxiliary recognizer and restores the toolbar hit area")
     for item in styled_items:
         require(not call(cpu, labels, "LFQH_FQHSurface", item)["result"],
                 "glass switch removes the material")
@@ -620,7 +663,16 @@ def exercise(data, labels):
     carousel = runtime.view("UIView", "carouseView", (32, 0, 220, 40), search)
     current = runtime.label("currentCue", carousel, (0, 0, 220, 40), "当前提示词")
     upcoming = runtime.label("nextCue", carousel, (0, 40, 220, 40), "下一条提示词")
-    runtime.objects[profile].state["searchBgView"] = search
+    left_stack = runtime.view("UIView", "scan stack", (12, 16, 24, 24), profile)
+    scan = runtime.view("FQReaderSaaSBaseImageView", "scan", (0, 0, 24, 24), left_stack,
+                        userInteractionEnabled=True)
+    night = runtime.view("FQReaderSaaSBaseImageView", "night", (319, 16, 24, 24), profile,
+                         userInteractionEnabled=True)
+    menu = runtime.view("FQReaderSaaSBaseImageView", "menu", (360, 16, 24, 24), profile,
+                        userInteractionEnabled=True)
+    profile_state = runtime.objects[profile].state
+    profile_state.update(searchBgView=search, scanQRCodeView=scan, darkModeImageView=night,
+                         sideBarButtonView=menu)
     send(cpu, runtime, profile, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHSurface", search)["result"], "profile search glass")
     require(runtime.objects[search].state["clipsToBounds"],
@@ -628,6 +680,21 @@ def exercise(data, labels):
     require(runtime.objects[carousel].state["subviews"] == [current, upcoming] and
             runtime.objects[upcoming].state["frame"] == (0, 40, 220, 40),
             "profile carousel retains both native labels and their frames")
+    mounted = profile_state["subviews"]
+    icons = [mounted[mounted.index(anchor) - 1] for anchor in (left_stack, night, menu)]
+    for surface, frame in zip(icons, [(6, 10, 36, 36), (313, 10, 36, 36), (354, 10, 36, 36)]):
+        state = runtime.objects[surface].state
+        require(runtime.is_kind(surface, runtime.classes["UIVisualEffectView"]) and
+                state["frame"] == frame and not state["userInteractionEnabled"],
+                "passive glass sits behind each original UIImageView, including the nested scan icon")
+    send(cpu, runtime, profile, "layoutSubviews")
+    require([mounted[mounted.index(anchor) - 1] for anchor in (left_stack, night, menu)] == icons and
+            all(runtime.objects[icon].state["userInteractionEnabled"] for icon in (scan, night, menu)),
+            "profile layout reuses the three materials and preserves native tap targets")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, profile, "layoutSubviews")
+    require(not any(surface in mounted for surface in icons), "disabling glass removes the three siblings")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     order = runtime.view("SSMyUserCollectionViewFunCell", "order", (0, 0, 70, 84), runtime.ROOT)
     order_label = runtime.label("order_label", order, (0, 50, 70, 22), "我的订单")
@@ -651,7 +718,7 @@ def exercise(data, labels):
     require(not call(cpu, labels, "LFQH_FQHSurface", normal_entry)["result"],
             "unlisted profile entry is not turned into an ad or a glass card")
 
-    # Target card is deleted at the plan/model boundary; a normal card remains.
+    # Standalone promotions are excluded regardless of title or metadata timing.
     owner = runtime.view("SSMyUser621BaseViewController", "profile",
                          (0, 0, 390, 844), runtime.ROOT)
     models = runtime.obj("NSMutableArray", "models", items=[])
@@ -660,58 +727,40 @@ def exercise(data, labels):
                          info=runtime.obj("SSSSTimorCellInfo", "target_info",
                                           title=runtime.text_object("抓大鹅")),
                          isInvisible=False, isDisabled=False)
-    normal = runtime.obj("SSMyUserMiniGameEntranceCellModel", "normal",
-                         info=runtime.obj("SSSSTimorCellInfo", "normal_info",
-                                          title=runtime.text_object("抓大鹅攻略")),
-                         isInvisible=False, isDisabled=False)
-    runtime.objects[models].state["items"] = [normal]
+    shortcut_row = runtime.obj("NSObject", "original shortcuts row")
+    runtime.objects[models].state["items"] = [shortcut_row]
     runtime.objects[owner].state["miniGameEntranceCellModel"] = target
     send(cpu, runtime, owner, "setupCellMiniGameEntranceData")
     require(runtime.objects[target].state["isInvisible"] is True and
             runtime.objects[target].state["isDisabled"] is True and
-            runtime.objects[models].state["items"] == [normal],
-            "only the target card is removed from the host plan")
-    runtime.objects[owner].state["miniGameEntranceCellModel"] = normal
-    runtime.objects[models].state["items"] = []
-    send(cpu, runtime, owner, "setupCellMiniGameEntranceData")
-    require(not runtime.objects[normal].state["isInvisible"] and
-            runtime.objects[models].state["items"] == [normal],
-            "a similar title remains in the plan after native setup")
-    require(call(cpu, labels, "LFQH_FQHPageTargetGame",
-                 runtime.text_object("羊了个羊：星球"))["result"] == 1,
-            "the previously targeted game remains filtered")
+            runtime.objects[models].state["items"] == [shortcut_row],
+            "only the standalone promotion is removed from the host plan")
 
     # Modern Mine monetization cards arrive through the typed server-plan entries.
     configured = runtime.obj("SSMyUserCell2Model", "configured Mine card")
-    goose = runtime.obj("SSMineGameEntranceItem", "target game item", title=runtime.text_object("抓大鹅"))
-    unnamed_goose = runtime.obj("SSMineGameEntranceItem", "inherits target title", title=0)
-    alternate = runtime.obj("SSMineGameEntranceItem", "other game item", title=runtime.text_object("抓大鹅攻略"))
-    target_title = runtime.text_object("抓大鹅")
-    unrelated_entry = runtime.obj("SSMineEcomEntranceData", "coupon entry", entranceType=6)
-    only_game = runtime.obj("SSMineGameEntranceData", "single game", title=target_title,
-                            gameItems=runtime.obj("NSArray", "only target", items=[unnamed_goose]))
+    old_title = runtime.text_object("抓大鹅")
+    new_title = runtime.text_object("疯狂水世界")
+    old_game = runtime.obj("SSMineGameEntranceData", "old campaign", title=old_title)
+    new_game = runtime.obj("SSMineGameEntranceData", "current campaign", title=new_title)
     pure_promotion = runtime.obj("SSMineEcomEntranceData", "single-game entry", entranceType=9,
-                                 gameEntranceData=only_game)
-    original_items = runtime.obj("NSArray", "mixed games", items=[goose, alternate, goose])
-    mixed_game = runtime.obj("SSMineGameEntranceData", "mixed game", title=target_title,
-                             gameItems=original_items, isGameReverse=True)
-    mixed_promotion = runtime.obj("SSMineEcomEntranceData", "mixed-game entry", entranceType=9,
-                                  gameEntranceData=mixed_game)
-    response = runtime.obj("NSArray", "cached Mine response", items=[unrelated_entry, pure_promotion, mixed_promotion])
+                                 gameEntranceData=old_game)
+    rotating_promotion = runtime.obj("SSMineEcomEntranceData", "rotated game entry", entranceType=9,
+                                     gameEntranceData=new_game)
+    placeholder = runtime.obj("SSMineEcomEntranceData", "game slot before payload", entranceType=9)
+    unrelated_entry = runtime.obj("SSMineEcomEntranceData", "coupon entry", entranceType=2,
+                                  gameEntranceData=new_game)
+    response_items = [unrelated_entry, pure_promotion, rotating_promotion, placeholder]
+    response = runtime.obj("NSArray", "cached Mine response", items=response_items[:])
     apply_entrances = "applyConfiguredMineEcomEntranceData:mineMonetizationStyle:"
     send(cpu, runtime, configured, apply_entrances, response, 3)
     state = runtime.objects[configured].state
     entries = runtime.objects[state["configured_entries"]].state["items"]
-    require(state["configured_style"] == 3 and len(entries) == 2 and entries[0] == unrelated_entry,
-            "native style selection sees the coupon and remaining games with no standalone target row")
-    projected_game = runtime.objects[runtime.objects[entries[1]].state["gameEntranceData"]].state
-    require(runtime.objects[projected_game["gameItems"]].state["items"] == [alternate] and
-            not projected_game["title"] and projected_game["isGameReverse"],
-            "carousel keeps its other game and metadata without rendering the removed title")
-    require(runtime.objects[response].state["items"] == [unrelated_entry, pure_promotion, mixed_promotion] and
-            runtime.objects[mixed_game].state["title"] == target_title and
-            runtime.objects[original_items].state["items"] == [goose, alternate, goose],
-            "cached server models are never modified by the presentation filter")
+    require(state["configured_style"] == 3 and entries == [unrelated_entry],
+            "native layout receives the coupon and no rotating game slot, independent of title or payload")
+    require(runtime.objects[response].state["items"] == response_items and
+            runtime.objects[old_game].state["title"] == old_title and
+            runtime.objects[new_game].state["title"] == new_title,
+            "cached server plans remain intact")
     unchanged = runtime.obj("NSArray", "no target", items=[unrelated_entry])
     send(cpu, runtime, configured, apply_entrances, unchanged, 2)
     require(state["configured_entries"] == unchanged and state["configured_style"] == 2,
@@ -721,21 +770,18 @@ def exercise(data, labels):
     late_target = runtime.obj("SSMyUserMiniGameEntranceCellModel", "late model", info=0)
     combined = runtime.obj("SSMyUserShopAndMiniGameEntranceCellModel", "combined shop and game row",
                            info=runtime.objects[target].state["info"])
-    legacy_plan = runtime.obj("NSArray", "legacy adapter plan", items=[late_target, normal, combined])
+    legacy_plan = runtime.obj("NSArray", "legacy adapter plan", items=[late_target, shortcut_row, combined])
     legacy_owner = runtime.obj("SSMyUser621ViewController", "native Mine list", list_objects=legacy_plan)
-    require(send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] == legacy_plan,
-            "the legacy plan passes through before the target's title arrives")
-    runtime.objects[late_target].state["info"] = runtime.objects[target].state["info"]
     filtered_rows = send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"]
-    require(runtime.objects[filtered_rows].state["items"] == [normal, combined] and
-            runtime.objects[legacy_plan].state["items"] == [late_target, normal, combined],
-            "late data removes just the standalone game before the list diff and preserves the combined shop row")
+    require(runtime.objects[filtered_rows].state["items"] == [shortcut_row, combined] and
+            runtime.objects[legacy_plan].state["items"] == [late_target, shortcut_row, combined],
+            "the list diff excludes standalone game rows even before metadata, preserving shortcuts and shop")
 
     # The production hook filters the host controller's parallel plan and index map.
-    tab_types = (0, 7, 3, 4, 8, 9)
+    tab_types = (0, 7, 3, 4, 9)
     keys = [f"FanqieX.Bottom{key}.1" for key in (
-        "Bookstore", "Drama", "Bookshelf", "Mine", "ShortSentences", "Mall")]
-    titles = ("书城", "短剧", "书架", "我的", "短句", "商城")
+        "Bookstore", "Drama", "Bookshelf", "Mine", "Mall")]
+    titles = ("书城", "短剧", "书架", "我的", "商城")
     models = [runtime.obj("NSObject", title) for title in titles]
     boxed_types = [runtime.box(value) for value in tab_types]
     plan = runtime.obj("NSArray", "native child plan", items=models)
@@ -774,8 +820,34 @@ def exercise(data, labels):
             "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
-    require(len(switches) == 6 and all(runtime.objects[item].state["isOn"] for item in switches),
-            "four requested settings and two existing settings are real enabled UISwitches")
+    switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
+                     for item in switches]
+    require(switch_labels == [f"底栏显示：{title}" for title in titles] + ["书架显示今日看听读时长"] and
+            all(runtime.objects[item].state["isOn"] for item in switches),
+            "settings expose the current bottom entries and the shelf duration switch")
+
+    # Duration uses the host visibility setter and keeps the latest requested state.
+    duration_switch = switches[-1]
+    duration_observer, duration_action, _ = runtime.objects[duration_switch].state["control_targets"][0]
+    duration_selector = runtime.selector_names[duration_action]
+    shelf_header = runtime.view("SS525BookShelfSubHeaderView", "live shelf header", (0, 0, 390, 64),
+                                runtime.ROOT, showReadTimeView=True)
+    duration = runtime.view("UIButton", "reading duration", (20, 4, 150, 32), shelf_header)
+    runtime.objects[shelf_header].state["coinButton"] = duration
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    runtime.objects[duration_switch].state["isOn"] = False
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
+    require(prefs["FanqieX.ShelfReadingDuration.1"] is False and
+            runtime.objects[duration].state["hidden"] and not runtime.tab_refreshes,
+            "disabling duration updates the mounted control without rebuilding tabs")
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
+    require(runtime.objects[duration].state["hidden"], "host refresh respects the off preference")
+    runtime.objects[duration_switch].state["isOn"] = True
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
+    require(not runtime.objects[duration].state["hidden"], "enabling restores the host-visible control")
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
+    require(runtime.objects[duration].state["hidden"], "plugin respects the host's own hidden state")
     window = runtime.obj("UIView", "tab window", rootViewController=tab_owner)
     runtime.tab_app = runtime.obj("UIApplication", "active app", keyWindow=window)
     bar_parent = runtime.view("UIView", "bar parent", (0, 0, 390, 844), runtime.ROOT)
@@ -821,12 +893,14 @@ def exercise(data, labels):
         "shelf_filters": len(filters),
         "profile_shortcuts": 5,
         "profile_search_clips_carousel": True,
+        "profile_header_glass": len(icons),
         "target_game_deleted": True,
-        "normal_game_retained": True,
+        "nonpromotion_mine_rows_retained": True,
         "configured_game_plan_filtered_before_layout": True,
         "late_game_filtered_before_list_diff": True,
         "bottom_entries_default_on": True,
         "bottom_entries_restored": True,
+        "shelf_duration_toggle": True,
         "surface_reuse": True,
         "disable_restores_host": True,
         "host_layout_calls": 22,

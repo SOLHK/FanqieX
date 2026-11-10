@@ -450,6 +450,11 @@ class CPU:
             width = 64 if op & (1 << 22) else 32
             source = ((op >> 5) & 31) if self.condition((op >> 12) & 15) else ((op >> 16) & 31)
             self.v[op & 31] = self.v[source] & ((1 << width)-1); return
+        if op & 0xffa0fc00 == 0x7ea0d400:  # FABD scalar absolute difference
+            width = 64 if op & (1 << 22) else 32
+            a = self.fp((op >> 5) & 31, width)
+            b = self.fp((op >> 16) & 31, width)
+            self.wf(op & 31, abs(a - b), width); return
         if op & 0xff20fc00 in (0x1e200800, 0x1e201800, 0x1e202800, 0x1e203800,
                               0x1e204800, 0x1e205800, 0x1e206800, 0x1e207800):
             width = 64 if op & (1 << 22) else 32

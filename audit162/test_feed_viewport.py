@@ -85,16 +85,22 @@ def require_state(rt, f, before, why):
 
 def real_log_cases(data, entries):
     cases = []
-    for name, tab, inner, outer, outer_offset, inner_offset in (
-        ('profile_seq381', 3, 776, 850, 313, 6527),
-        ('shelf_seq306', 2, 784, 858, 597.6666666666666, 4125),
-    ):
+    scenarios = [
+        ('profile_seq381', (0, 7, 3, 4), 3, 776, 850, 313, 6527),
+        ('shelf_seq306', (0, 7, 3, 4), 2, 784, 858, 597.6666666666666, 4125),
+    ]
+    if struct.unpack_from('<I', data, 0x818)[0] >= 0x10704:
+        scenarios += [
+            ('profile_after_drama_hidden', (0, 3, 4), 2, 776, 850, 313, 750.6666666666666),
+            ('shelf_as_only_entry', (3,), 0, 784, 858, 597.6666666666666, 4125),
+        ]
+    for name, tab_types, tab, inner, outer, outer_offset, inner_offset in scenarios:
         for slide in (0, 0x180000000):
             cpu, rt = make(data, entries, slide)
-            f = fixture(rt, tab=tab, inner_height=inner, outer_height=outer,
+            f = fixture(rt, tab=tab, tab_types=tab_types, inner_height=inner, outer_height=outer,
                         outer_offset=outer_offset, inner_offset=inner_offset)
             before = baseline(rt, f)
-            require(update(cpu, rt, entries, f['feed']) == 1, 'Known logged nested feed claimed')
+            require(update(cpu, rt, entries, f['feed']) == 1, 'Known nested feed claimed: ' + name)
             st = rt.objects[f['feed']].state
             require(st['frame'] == (0, 0, 440, 850), 'Viewport reaches actual window bottom')
             require(st['bounds'][:2] == (0, inner_offset), 'Reading/scroll position preserved')
@@ -133,12 +139,18 @@ def rejected_cases(data, entries):
              'rounded_parent', 'control_parent', 'effect_parent', 'web_parent',
              'small_parent', 'too_deep', 'nan_height', 'infinite_inset')
     names += ('partially_visible_feed',)
+    if struct.unpack_from('<I', data, 0x818)[0] >= 0x10704:
+        names += ('non_feed_type_at_old_index', 'selected_feed_item_not_in_items')
     for name in names:
         cpu, rt = make(data, entries)
         f = fixture(rt)
         feed, cell, container, outer = (f[k] for k in ('feed', 'cell', 'container', 'outer'))
         if name == 'bookstore_tab': rt.objects[rt.BAR].state['selectedItem'] = f['items'][0]
         elif name == 'drama_tab': rt.objects[rt.BAR].state['selectedItem'] = f['items'][1]
+        elif name == 'non_feed_type_at_old_index':
+            rt.objects[f['items'][3]].state['type'] = 7
+        elif name == 'selected_feed_item_not_in_items':
+            rt.objects[rt.BAR].state['selectedItem'] = rt.obj('SSTabBarButtonItem', 'stale', type=4)
         elif name == 'other_class': rt.objects[feed].cls = rt.classes['UICollectionView']
         elif name == 'unrelated_subclass': rt.objects[feed].cls = rt._class('UnrelatedFeed', 'UICollectionView')
         elif name == 'hidden_feed': rt.objects[feed].state['hidden'] = True

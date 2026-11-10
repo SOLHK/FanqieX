@@ -37,6 +37,7 @@ static void ClipsKey(void) {}
 static void OpaqueKey(void) {}
 static void OwnerBusyKey(void) {}
 static void ReaderGlassKey(void) {}
+static void ReaderDownloadLabelKey(void) {}
 static void IconGlassKey(void) {}
 static void IconRectKey(void) {}
 static void ShelfRoleKey(void) {}
@@ -204,6 +205,19 @@ static void ClearBackground(Obj view,Obj clear) {
     if (value!=clear && !((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("isEqual:"),clear))
         V1(view,"setBackgroundColor:",clear);
 }
+static Obj NewGlassSurface(void) {
+    Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIGlassEffect"),sel_registerName("effectWithStyle:"),0);
+    if (!effect) return 0;
+    VB(effect,"setInteractive:",1);
+    Obj surface=O1(O0(Lookup("UIVisualEffectView"),"alloc"),"initWithEffect:",effect);
+    if (!surface) return 0;
+    V1(surface,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
+    VB(surface,"setUserInteractionEnabled:",0);
+    VB(surface,"setAccessibilityElementsHidden:",1);
+    VB(surface,"setIsAccessibilityElement:",0);
+    VB(surface,"setOpaque:",0);
+    return surface;
+}
 static void ApplySurface(Obj view,Rect material,B preserveOwner) {
     if (objc_getAssociatedObject(view,BusyKey)) return;
     objc_setAssociatedObject(view,BusyKey,view,0);
@@ -217,16 +231,8 @@ static void ApplySurface(Obj view,Rect material,B preserveOwner) {
         return;
     }
     if (!surface) {
-        Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIGlassEffect"),sel_registerName("effectWithStyle:"),0);
-        if (!effect) { objc_setAssociatedObject(view,BusyKey,0,0); return; }
-        VB(effect,"setInteractive:",1);
-        surface=O1(O0(Lookup("UIVisualEffectView"),"alloc"),"initWithEffect:",effect);
+        surface=NewGlassSurface();
         if (!surface) { objc_setAssociatedObject(view,BusyKey,0,0); return; }
-        V1(surface,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
-        VB(surface,"setUserInteractionEnabled:",0);
-        VB(surface,"setAccessibilityElementsHidden:",1);
-        VB(surface,"setIsAccessibilityElement:",0);
-        VB(surface,"setOpaque:",0);
         Q1(surface,"setAutoresizingMask:",18); // flexible width + height
         objc_setAssociatedObject(view,SurfaceKey,surface,1);
         V0(surface,"release");
@@ -408,6 +414,8 @@ static void HeaderDiagnostics(Obj view) {
 }
 static void RecordLayout(Obj view,Obj glass,Rect image,const char *role) {
     Rect frame=Frame(view),bounds=Bounds(view),material=Frame(glass);
+    Obj holder=O0(glass,"superview");
+    if (holder!=view) material=Convert(holder,material,view);
     Obj window=Get(view,"window");
     Rect screen=window ? Convert(view,bounds,window) : frame;
     Obj previous=objc_getAssociatedObject(view,LayoutKey);
@@ -475,10 +483,17 @@ static void Icon(Obj view,const char *role) {
     double diameter=shelf ? 28 : 36;
     double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(Equal(Text(role),"shelfSearch") ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
-    if (!CanExpandHit(view)) {
+    B downloadText=Kind(view,"UILabel") && Equal(Text(role),"readerDownload");
+    Obj holder=downloadText ? O0(view,"superview") : view;
+    if (!holder || !CanExpandHit(view) || (downloadText && Flag(view,"isHidden"))) {
         RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return;
     }
+    if (downloadText) {
+        // The label draws its text in its own layer. A child glass would cover it.
+        material=(Rect){bounds.x-6,bounds.y-5,bounds.width+12,bounds.height+10};
+    }
     if (!VisibleRect(material)) { RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return; }
+    Rect placed=downloadText ? Convert(view,material,holder) : material;
     if (!glass) {
         Obj config=O0(Lookup("UIButtonConfiguration"),"glassButtonConfiguration");
         if (config) glass=O0(GlassClass(),"new");
@@ -493,15 +508,19 @@ static void Icon(Obj view,const char *role) {
     }
     Obj transaction=Lookup("CATransaction");
     V0(transaction,"begin");VB(transaction,"setDisableActions:",1);
-    PrepareOwner(view);
+    if (!downloadText) PrepareOwner(view);
     Obj lastRect=objc_getAssociatedObject(view,IconRectKey);
     // Compare the requested layout, not UIKit's transient pressed geometry.
-    if (!lastRect || !SameRect(UnboxRect(lastRect),material)) {
-        SetFrame(glass,material);
-        objc_setAssociatedObject(view,IconRectKey,RectBox(material),1);
+    if (!lastRect || !SameRect(UnboxRect(lastRect),placed)) {
+        SetFrame(glass,placed);
+        objc_setAssociatedObject(view,IconRectKey,RectBox(placed),1);
     }
-    if (O0(glass,"superview")!=view)
-        ((void(*)(Obj,Sel,Obj,I))Message)(view,sel_registerName("insertSubview:atIndex:"),glass,0);
+    if (O0(glass,"superview")!=holder) {
+        if (downloadText)
+            ((void(*)(Obj,Sel,Obj,Obj))Message)(holder,sel_registerName("insertSubview:belowSubview:"),glass,view);
+        else
+            ((void(*)(Obj,Sel,Obj,I))Message)(holder,sel_registerName("insertSubview:atIndex:"),glass,0);
+    }
     if (Kind(view,"UIControl")) {
         VB(glass,"setEnabled:",Flag(view,"isEnabled"));
         VB(glass,"setSelected:",Flag(view,"isSelected"));
@@ -513,10 +532,10 @@ static void Icon(Obj view,const char *role) {
     objc_setAssociatedObject(view,BusyKey,0,0);
 }
 void FQHButton(Obj view) { Icon(view,"icon"); }
-static void IncludeGlass(Obj host,Obj parent,Rect *area) {
-    Obj glass=FQHIconGlass(host);
-    if (!glass || !Belongs(host,parent)) return;
-    Rect r=Convert(host,Frame(glass),parent);
+static void IncludeMaterial(Obj glass,Obj parent,Rect *area) {
+    Obj holder=O0(glass,"superview");
+    if (!Belongs(holder,parent)) return;
+    Rect r=Convert(holder,Frame(glass),parent);
     if (!VisibleRect(r)) return;
     double right=area->x+area->width,bottom=area->y+area->height;
     if (r.x<area->x) area->x=r.x;
@@ -544,8 +563,9 @@ void FQHReader(Obj owner) {
     Rect area=Bounds(owner);
     Obj back=Get(owner,"backBtn");
     I styled=0;
-    if (Belongs(back,owner)) { Icon(back,"readerBack"); IncludeGlass(back,owner,&area); styled=FQHIconGlass(back)!=0; }
+    if (Belongs(back,owner)) { Icon(back,"readerBack"); IncludeMaterial(FQHIconGlass(back),owner,&area); styled=FQHIconGlass(back)!=0; }
     Obj items=Get(owner,"insertObjs");
+    Obj downloadLabel=0;
     if (Kind(items,"NSArray")) {
         U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
         if (count>16) count=16;
@@ -553,8 +573,19 @@ void FQHReader(Obj owner) {
             Obj item=At(items,i); const char *role=InsertRole(item);
             if (!role) continue;
             Obj view=Get(item,"getInsertView");
-            if (Belongs(view,owner)) { Icon(view,role); IncludeGlass(view,owner,&area); styled+=FQHIconGlass(view)!=0; }
+            if (Belongs(view,owner)) {
+                Icon(view,role);
+                Obj glass=FQHIconGlass(view);
+                IncludeMaterial(glass,owner,&area);
+                styled+=glass!=0;
+                if (glass && Kind(view,"UILabel") && Equal(Text(role),"readerDownload")) downloadLabel=view;
+            }
         }
+    }
+    Obj previousLabel=objc_getAssociatedObject(owner,ReaderDownloadLabelKey);
+    if (previousLabel!=downloadLabel) {
+        if (previousLabel) RestoreIcon(previousLabel,FQHIconGlass(previousLabel));
+        objc_setAssociatedObject(owner,ReaderDownloadLabelKey,downloadLabel,1);
     }
     if (styled) EnsureHit(owner,area); else RestoreHit(owner);
     ReaderCount(owner,styled);
@@ -576,7 +607,7 @@ void FQHShelf(Obj self) {
     objc_setAssociatedObject(more,ShelfRoleKey,Text("more"),1);
     Icon(search,"shelfSearch");Icon(more,"shelfMore");
     if (Kind(parent,"UIView")) {
-        Rect area=Bounds(parent);IncludeGlass(search,parent,&area);IncludeGlass(more,parent,&area);
+        Rect area=Bounds(parent);IncludeMaterial(FQHIconGlass(search),parent,&area);IncludeMaterial(FQHIconGlass(more),parent,&area);
         if (FQHIconGlass(search) || FQHIconGlass(more)) EnsureHit(parent,area); else RestoreHit(parent);
     }
     objc_setAssociatedObject(self,OwnerBusyKey,0,0);
@@ -750,12 +781,61 @@ static B ProfileEntry(Obj view) {
     return Equal(title,"我的订单") || Equal(title,"浏览历史") || Equal(title,"我的消息") ||
            Equal(title,"创作中心") || Equal(title,"我的预约");
 }
-static B ReaderBottomItem(Obj view) {
+static int ReaderBottomType(Obj view) {
     Obj item=Get(view,"item");
     if (!Kind(item,"FQReaderSaaSBottomToolItem")) return 0;
     // FQReaderUIManager.tabbarItems uses 1 for catalog, 2 for day/night and 3 for settings.
-    int type=((int(*)(Obj,Sel))Message)(item,sel_registerName("type"));
+    return ((int(*)(Obj,Sel))Message)(item,sel_registerName("type"));
+}
+static B ReaderBottomItem(Obj view) {
+    int type=ReaderBottomType(view);
     return type>=1 && type<=3;
+}
+static void CatalogTapKey(void) {}
+static B CatalogTouch(Obj self,Sel cmd,Obj recognizer,Obj touch) {
+    (void)self; (void)cmd;
+    Obj view=O0(recognizer,"view"),surface=FQHSurface(view);
+    // Taps on the native icon or caption already have their own handlers.
+    if (!surface || O0(touch,"view")!=view) return 0;
+    Point p=((Point(*)(Obj,Sel,Obj))Message)(touch,sel_registerName("locationInView:"),view);
+    Rect r=Frame(surface);
+    double radius=r.height*0.5;
+    double dx=__builtin_fabs(p.x-(r.x+r.width*0.5))-(r.width*0.5-radius);
+    double dy=p.y-(r.y+radius);
+    if (dx<0) dx=0;
+    return dx*dx+dy*dy<=radius*radius;
+}
+static void CatalogTapped(Obj self,Sel cmd,Obj recognizer) {
+    (void)self; (void)cmd;
+    if (((I(*)(Obj,Sel))Message)(recognizer,sel_registerName("state"))!=3) return;
+    Obj view=O0(recognizer,"view");
+    if (FQHSurface(view) && ReaderBottomType(view)==1) V1(view,"onBtnClick:",recognizer);
+}
+static void UpdateCatalogTap(Obj view,B needed) {
+    Obj gesture=objc_getAssociatedObject(view,CatalogTapKey);
+    if (gesture && !needed) {
+        V1(view,"removeGestureRecognizer:",gesture);
+        objc_setAssociatedObject(view,CatalogTapKey,0,1);
+    }
+    if (gesture || !needed) return;
+    Obj cls=Lookup("FQXReaderCatalogTap");
+    if (!cls) {
+        cls=AllocateClass(Lookup("NSObject"),"FQXReaderCatalogTap",0);
+        if (!cls) return;
+        class_addMethod(cls,sel_registerName("fqx_catalogTapped:"),(Imp)CatalogTapped,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("gestureRecognizer:shouldReceiveTouch:"),(Imp)CatalogTouch,"B32@0:8@16@24");
+        RegisterClass(cls);
+    }
+    Obj observer=O0(cls,"new");
+    gesture=((Obj(*)(Obj,Sel,Obj,Sel))Message)(O0(Lookup("UITapGestureRecognizer"),"alloc"),
+        sel_registerName("initWithTarget:action:"),observer,sel_registerName("fqx_catalogTapped:"));
+    V1(gesture,"setDelegate:",observer);
+    VB(gesture,"setCancelsTouchesInView:",0);
+    objc_setAssociatedObject(gesture,CatalogTapKey,observer,1);
+    objc_setAssociatedObject(view,CatalogTapKey,gesture,1);
+    V1(view,"addGestureRecognizer:",gesture);
+    V0(gesture,"release");
+    V0(observer,"release");
 }
 static void ReaderBottomGlass(Obj view) {
     Rect bounds=Bounds(view);
@@ -786,12 +866,19 @@ static void PageBottomLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBottomToolView","fqx175_originalBottom"))(self,cmd);
     Obj items=Get(self,"itemViews");
     U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    Rect area=Bounds(self);
+    Obj catalog=0;
     for (U i=0;i<count;++i) {
         Obj view=At(items,i);
         if (!Kind(view,"FQReaderSaaSBottomToolItemView") || !Belongs(view,self)) continue;
-        if (ReaderBottomItem(view)) ReaderBottomGlass(view);
+        int type=ReaderBottomType(view);
+        if (type>=1 && type<=3) ReaderBottomGlass(view);
         else { PageRestore(view); RestoreHit(view); }
+        Obj surface=type==1 ? FQHSurface(view) : (Obj)0;
+        UpdateCatalogTap(view,surface!=0);
+        if (surface) { IncludeMaterial(surface,self,&area); catalog=view; }
     }
+    if (catalog) EnsureHit(self,area); else RestoreHit(self);
 }
 static void ReaderProgressGlass(Obj owner) {
     Obj slider=Get(owner,"slider");
@@ -913,11 +1000,51 @@ static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterBackground:"))(self,cmd,color);
     ShelfFilterStyle(self);
 }
+static void ProfileScanKey(void) {}
+static void ProfileNightKey(void) {}
+static void ProfileMenuKey(void) {}
+static void ProfileAnchorKey(void) {}
+static void ProfileIconGlass(Obj bar,Obj icon,const void *key) {
+    Obj surface=objc_getAssociatedObject(bar,key);
+    Obj foreground=Kind(icon,"UIImageView") ? icon : (Obj)0;
+    // An icon may be in the left stack. Insert below that stack, leaving the
+    // UIImageView's own image layer and gesture target intact.
+    for (int depth=0;foreground && depth<4;++depth) {
+        if (Flag(foreground,"isHidden")) { foreground=0; break; }
+        Obj parent=Get(foreground,"superview");
+        if (parent==bar) break;
+        foreground=parent;
+    }
+    Rect image={0};
+    if (foreground && Get(foreground,"superview")==bar)
+        image=Convert(icon,Bounds(icon),bar);
+    if (!VisibleRect(image)) {
+        V0(surface,"removeFromSuperview");
+        objc_setAssociatedObject(bar,key,0,1);
+        return;
+    }
+    Rect material={image.x+(image.width-36)*0.5,image.y+(image.height-36)*0.5,36,36};
+    if (!surface) {
+        surface=NewGlassSurface();
+        if (!surface) return;
+        objc_setAssociatedObject(bar,key,surface,1);
+        V0(surface,"release");
+    }
+    if (!SameRect(Frame(surface),material)) SetFrame(surface,material);
+    if (Get(surface,"superview")!=bar || objc_getAssociatedObject(surface,ProfileAnchorKey)!=foreground) {
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(bar,sel_registerName("insertSubview:belowSubview:"),surface,foreground);
+        objc_setAssociatedObject(surface,ProfileAnchorKey,foreground,1);
+    }
+}
 static void PageProfileBarLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserBar","fqx174_originalProfileBar"))(self,cmd);
     // Both native carousel variants place their outgoing and incoming labels
     // inside searchBgView. Keep the animated words clipped to that pill.
     FQHHeader(Get(self,"searchBgView"));
+    B enabled=Enabled() && FQHGlassAvailable();
+    ProfileIconGlass(self,enabled ? Get(self,"scanQRCodeView") : (Obj)0,ProfileScanKey);
+    ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
+    ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
@@ -928,24 +1055,9 @@ static void PageProfileEntry621Layout(Obj self,Sel cmd) {
     if (ProfileEntry(self)) PageStyle(self,"profileEntry"); else PageRestore(self);
 }
 
-// The promoted game name is server-provided. Add the reviewed card without
-// changing the previous match for the 羊了个羊 campaign.
-B FQHPageTargetGame(Obj value) {
-    if (Equal(value,"抓大鹅") || Equal(value,"羊了个羊：星球") ||
-        Equal(value,"羊了个羊:星球") || Equal(value,"羊了个羊")) return 1;
-    return Responds(value,"hasPrefix:") &&
-           ((B(*)(Obj,Sel,Obj))Message)(value,sel_registerName("hasPrefix:"),Text("羊了个羊"));
-}
-static B TargetModel(Obj model) {
-    if (!model) return 0;
-    Obj info=Get(model,"info");
-    if (info && (FQHPageTargetGame(Get(info,"title")) ||
-                 FQHPageTargetGame(Get(info,"name")))) return 1;
-    if (FQHPageTargetGame(Get(model,"gameName")) ||
-        FQHPageTargetGame(Get(model,"name")) ||
-        FQHPageTargetGame(Get(model,"title"))) return 1;
-    Obj content=Get(model,"gameContent");
-    return content && FQHPageTargetGame(Get(content,"mpName"));
+static B MineStandaloneGameRow(Obj model) {
+    return Kind(model,"SSMyUserMiniGameEntranceCellModel") &&
+           !Kind(model,"SSMyUserShopAndMiniGameEntranceCellModel");
 }
 static void RecordMineGameRemoval(const char *ownerClass,const char *action) {
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
@@ -958,7 +1070,7 @@ static void RecordMineGameRemoval(const char *ownerClass,const char *action) {
 B FQHPageFilterMiniGame(Obj owner) {
     if (!owner) return 0;
     Obj model=Get(owner,"miniGameEntranceCellModel");
-    if (!TargetModel(model)) return 0;
+    if (!MineStandaloneGameRow(model)) return 0;
     // The host's own card-model contract supports an invisible/disabled row.
     // Removing the object from the mutable plan is a data-level deletion, not
     // hiding a parent view or blanking a reusable cell.
@@ -975,53 +1087,18 @@ static void MiniGameSetup(Obj self,Sel cmd) {
     FQHPageFilterMiniGame(self);
 }
 
-static Obj FilterMineGameEntry(Obj entry) {
-    if (!Kind(entry,"SSMineEcomEntranceData") ||
-        ((int(*)(Obj,Sel))Message)(entry,sel_registerName("entranceType"))!=9) return entry;
-    Obj game=Get(entry,"gameEntranceData");
-    if (!Kind(game,"SSMineGameEntranceData")) return entry;
-    Obj items=Get(game,"gameItems"),kept=0;
-    B targetTitle=FQHPageTargetGame(Get(game,"title"));
-    U count=Kind(items,"NSArray") ? ((U(*)(Obj,Sel))Message)(items,sel_registerName("count")) : 0;
-    for (U i=count;i>0;--i) {
-        Obj item=At(items,i-1);
-        if (!Kind(item,"SSMineGameEntranceItem")) continue;
-        Obj title=Get(item,"title");
-        // The renderer uses the entrance title when an item has none.
-        B inheritsTitle=targetTitle && (!title || (Kind(title,"NSString") &&
-            !((U(*)(Obj,Sel))Message)(title,sel_registerName("length"))));
-        if (!inheritsTitle && !FQHPageTargetGame(title)) continue;
-        if (!kept) kept=O0(O0(items,"mutableCopy"),"autorelease");
-        Q1(kept,"removeObjectAtIndex:",i-1);
-    }
-    if (!kept && !targetTitle) return entry;
-    if (kept) {
-        items=kept;
-        count=((U(*)(Obj,Sel))Message)(kept,sel_registerName("count"));
-    }
-    if (!count) return 0;
-
-    // Other games may share the same carousel. Project just this entry with
-    // the host's model copier so the cached server response stays intact.
-    Obj gameCopy=Get(game,"bd_modelCopy"),entryCopy=Get(entry,"bd_modelCopy");
-    if (!gameCopy || gameCopy==game || !entryCopy || entryCopy==entry) return entry;
-    V1(gameCopy,"setGameItems:",items);
-    if (targetTitle) V1(gameCopy,"setTitle:",0);
-    V1(entryCopy,"setGameEntranceData:",gameCopy);
-    return entryCopy;
-}
-
 static void MineConfiguredEntrances(Obj self,Sel cmd,Obj entries,I style) {
     Obj filtered=0;
     if (Kind(entries,"NSArray")) {
         U count=((U(*)(Obj,Sel))Message)(entries,sel_registerName("count"));
         for (U i=count;i>0;--i) {
-            Obj entry=At(entries,i-1),kept=FilterMineGameEntry(entry);
-            if (kept==entry) continue;
+            Obj entry=At(entries,i-1);
+            // Type 9 is the rotating game promotion slot. Its title and
+            // gameItems can change independently of the rest of Mine.
+            if (!Kind(entry,"SSMineEcomEntranceData") ||
+                ((int(*)(Obj,Sel))Message)(entry,sel_registerName("entranceType"))!=9) continue;
             if (!filtered) filtered=O0(O0(entries,"mutableCopy"),"autorelease");
-            if (kept) {
-                ((void(*)(Obj,Sel,U,Obj))Message)(filtered,sel_registerName("replaceObjectAtIndex:withObject:"),i-1,kept);
-            } else Q1(filtered,"removeObjectAtIndex:",i-1);
+            Q1(filtered,"removeObjectAtIndex:",i-1);
         }
     }
     ((void(*)(Obj,Sel,Obj,I))Original("SSMyUserCell2Model","fqx176_originalMineEntrances:style:"))(self,cmd,filtered ? filtered : entries,style);
@@ -1035,8 +1112,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     U count=((U(*)(Obj,Sel))Message)(rows,sel_registerName("count"));
     for (U i=count;i>0;--i) {
         Obj row=At(rows,i-1);
-        if (!Kind(row,"SSMyUserMiniGameEntranceCellModel") ||
-            Kind(row,"SSMyUserShopAndMiniGameEntranceCellModel") || !TargetModel(row)) continue;
+        if (!MineStandaloneGameRow(row)) continue;
         if (!filtered) filtered=O0(O0(rows,"mutableCopy"),"autorelease");
         Q1(filtered,"removeObjectAtIndex:",i-1);
     }
@@ -1044,29 +1120,29 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     return filtered ? filtered : rows;
 }
 
-enum { StoreOption=1, DramaOption, ShelfOption, MineOption, ShortOption, MallOption };
-static Obj TabPreference(I option) {
+enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption };
+static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
         case StoreOption: key="FanqieX.BottomBookstore.1"; break;
         case DramaOption: key="FanqieX.BottomDrama.1"; break;
         case ShelfOption: key="FanqieX.BottomBookshelf.1"; break;
         case MineOption: key="FanqieX.BottomMine.1"; break;
-        case ShortOption: key="FanqieX.BottomShortSentences.1"; break;
         case MallOption: key="FanqieX.BottomMall.1"; break;
+        case ShelfDurationOption: key="FanqieX.ShelfReadingDuration.1"; break;
         default: return 0;
     }
     return Text(key);
 }
-static Obj TabOptionLabel(I option) {
+static Obj PageOptionLabel(I option) {
     const char *label;
     switch (option) {
         case StoreOption: label="底栏显示：书城"; break;
         case DramaOption: label="底栏显示：短剧"; break;
         case ShelfOption: label="底栏显示：书架"; break;
         case MineOption: label="底栏显示：我的"; break;
-        case ShortOption: label="底栏显示：短句"; break;
-        default: label="底栏显示：商城"; break;
+        case MallOption: label="底栏显示：商城"; break;
+        default: label="书架显示今日看听读时长"; break;
     }
     return Text(label);
 }
@@ -1089,7 +1165,6 @@ static I TabOption(Obj owner,Obj number) {
     if (type==7) return DramaOption;
     Obj title=((Obj(*)(Obj,Sel,int))Message)(owner,sel_registerName("titleStrWithType:"),type);
     if (Equal(title,"短剧")) return DramaOption;
-    if (Equal(title,"短句")) return ShortOption;
     if (Equal(title,"商城")) return MallOption;
     return 0;
 }
@@ -1105,7 +1180,7 @@ static Obj TabPlan(Obj self,Sel cmd) {
     U kept=0;
     for (U i=0;i<count;++i) {
         Obj number=At(types,i);
-        Obj key=TabPreference(TabOption(self,number));
+        Obj key=PagePreference(TabOption(self,number));
         if (key && !DefaultEnabled(key)) continue;
         Obj index=((Obj(*)(Obj,Sel,U))Message)(Lookup("NSNumber"),sel_registerName("numberWithUnsignedInteger:"),kept++);
         ((void(*)(Obj,Sel,Obj,Obj))Message)(indexes,sel_registerName("setObject:forKey:"),index,number);
@@ -1121,7 +1196,7 @@ static Obj TabPlan(Obj self,Sel cmd) {
         ((void(*)(Obj,Sel,Obj,Obj))Message)(indexes,sel_registerName("setObject:forKey:"),index,first);
         V1(keptTypes,"addObject:",first);
         V1(keptPlan,"addObject:",At(plan,0));
-        SetDefault(TabPreference(TabOption(self,first)),1);
+        SetDefault(PagePreference(TabOption(self,first)),1);
     }
     // Rebuild the three parallel collections before the host constructs
     // buttons and child controllers, so visible and navigation indexes agree.
@@ -1153,12 +1228,57 @@ static Obj ActiveTabOwner(void) {
     return 0;
 }
 static void InstallTabRecovery(Obj owner);
+static void ShelfDurationHeadersKey(void) {}
+static void ShelfDurationRequestedKey(void) {}
+static Obj ShelfDurationHeaders(void) {
+    Obj cls=Lookup("SS525BookShelfSubHeaderView");
+    Obj headers=objc_getAssociatedObject(cls,ShelfDurationHeadersKey);
+    if (!headers) {
+        headers=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(cls,ShelfDurationHeadersKey,headers,1);
+    }
+    return headers;
+}
+static void ApplyShelfDuration(Obj header,B visible) {
+    ((void(*)(Obj,Sel,B))Original("SS525BookShelfSubHeaderView","fqx177_originalDurationVisible:"))(
+        header,sel_registerName("setShowReadTimeView:"),visible);
+}
+static void ShelfDurationVisible(Obj self,Sel cmd,B requested) {
+    (void)cmd;
+    if (!objc_getAssociatedObject(self,ShelfDurationRequestedKey))
+        V1(ShelfDurationHeaders(),"addObject:",self);
+    objc_setAssociatedObject(self,ShelfDurationRequestedKey,BoolBox(requested),1);
+    ApplyShelfDuration(self,requested && DefaultEnabled(PagePreference(ShelfDurationOption)));
+}
+static void ShelfDurationLayout(Obj self,Sel cmd) {
+    // Some headers receive their initial state through the superclass before
+    // the duration button is mounted. Register them on their first layout.
+    if (!objc_getAssociatedObject(self,ShelfDurationRequestedKey))
+        ShelfDurationVisible(self,cmd,Flag(self,"showReadTimeView"));
+    ((void(*)(Obj,Sel))Original("SS525BookShelfSubHeaderView","fqx177_originalDurationLayout"))(self,cmd);
+}
+static void RefreshShelfDuration(B enabled) {
+    Obj cls=Lookup("SS525BookShelfSubHeaderView");
+    Obj headers=O0(objc_getAssociatedObject(cls,ShelfDurationHeadersKey),"allObjects");
+    U count=TabCount(headers);
+    for (U i=0;i<count;++i) {
+        Obj header=At(headers,i);
+        Obj requested=objc_getAssociatedObject(header,ShelfDurationRequestedKey);
+        ApplyShelfDuration(header,enabled && BoolProp(requested,"boolValue"));
+        V0(header,"setNeedsLayout");
+    }
+}
 static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
     (void)self; (void)cmd;
     I tag=((I(*)(Obj,Sel))Message)(sender,sel_registerName("tag"));
-    Obj key=TabPreference(tag);
+    Obj key=PagePreference(tag);
     if (!key) return;
     B on=BoolProp(sender,"isOn");
+    if (tag==ShelfDurationOption) {
+        SetDefault(key,on);
+        RefreshShelfDuration(on);
+        return;
+    }
     Obj owner=ActiveTabOwner();
     Obj types=Get(owner,"typeArray");
     if (!on && TabCount(types)==1 && TabOption(owner,At(types,0))==tag) {
@@ -1182,7 +1302,7 @@ static Obj RecoveryBar(Obj observer) {
 static B RecoveryTouch(Obj self,Sel cmd,Obj recognizer,Obj touch) {
     (void)cmd; (void)recognizer;
     Obj bar=RecoveryBar(self);
-    if (!bar || Flag(bar,"isHidden") || DefaultEnabled(TabPreference(MineOption))) return 0;
+    if (!bar || Flag(bar,"isHidden") || DefaultEnabled(PagePreference(MineOption))) return 0;
     Point p=((Point(*)(Obj,Sel,Obj))Message)(touch,sel_registerName("locationInView:"),bar);
     Rect b=Bounds(bar);
     return p.x>=b.x && p.x<b.x+b.width && p.y>=b.y && p.y<b.y+b.height;
@@ -1212,7 +1332,7 @@ static void InstallTabRecovery(Obj owner) {
     Obj bar=Get(owner,"customTabBar"), parent=Get(bar,"superview");
     Obj gesture=objc_getAssociatedObject(owner,TabRecoveryKey);
     Obj attached=Get(gesture,"view");
-    B needed=parent && !DefaultEnabled(TabPreference(MineOption));
+    B needed=parent && !DefaultEnabled(PagePreference(MineOption));
     if (gesture && (attached!=parent || !needed)) {
         V1(attached,"removeGestureRecognizer:",gesture);
         objc_setAssociatedObject(owner,TabRecoveryKey,0,1);
@@ -1281,9 +1401,9 @@ void FQHInstallOptionsToggles(Obj controller) {
     Rect frame={0,0,width>0 ? width : 320,304};
     ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
     V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
-    for (I tag=StoreOption;tag<=MallOption;++tag) {
-        ToggleRow(container,8+42*(tag-StoreOption),TabOptionLabel(tag),tag,
-            DefaultEnabled(TabPreference(tag)),observer);
+    for (I tag=StoreOption;tag<=ShelfDurationOption;++tag) {
+        ToggleRow(container,8+42*(tag-StoreOption),PageOptionLabel(tag),tag,
+            DefaultEnabled(PagePreference(tag)),observer);
     }
     Obj note=O0(O0(Lookup("UILabel"),"alloc"),"init");
     SetFrame(note,(Rect){16,256,frame.width-32,40});
@@ -1321,6 +1441,8 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
     Hook("SSMyUserCell2Model","applyConfiguredMineEcomEntranceData:mineMonetizationStyle:","fqx176_originalMineEntrances:style:","v32@0:8@16q24",(Imp)MineConfiguredEntrances);
     Hook("SSMyUser621ViewController","objectsForListAdapter:","fqx176_originalMineListObjects:","@24@0:8@16",(Imp)MineListObjects);
+    Hook("SS525BookShelfSubHeaderView","setShowReadTimeView:","fqx177_originalDurationVisible:","v20@0:8B16",(Imp)ShelfDurationVisible);
+    Hook("SS525BookShelfSubHeaderView","layoutSubviews","fqx177_originalDurationLayout","v16@0:8",(Imp)ShelfDurationLayout);
     Hook("SSTabBarController","tabbarVCAndAttributeInit","fqx176_originalTabPlan","@16@0:8",(Imp)TabPlan);
     Hook("SSTabBarController","viewDidAppear:","fqx176_originalTabAppear:","v20@0:8B16",(Imp)TabOwnerAppear);
 }

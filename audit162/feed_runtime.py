@@ -17,6 +17,7 @@ class Runtime(FoundationRuntime):
             ('FQFeedListCollectionView', 'UICollectionView'),
             ('OtherFeedView', 'FQFeedListCollectionView'),
             ('FQFeedPageContainer', 'UIView'), ('UICollectionViewCell', 'UIView'),
+            ('SSTabBarButtonItem', 'NSObject'),
         ):
             if name not in self.classes:
                 self._class(name, parent)
@@ -54,6 +55,8 @@ class Runtime(FoundationRuntime):
             return self.finish(cpu)
         if name == 'contentOffset':
             return self.finish(cpu, fp=state.get('bounds', (0, 0))[:2])
+        if name == 'type' and self.is_kind(receiver, self.classes['SSTabBarButtonItem']):
+            return self.finish(cpu, state['type'])
         if name == 'contentInset':
             return self.finish(cpu, fp=state.get('contentInset', (0, 0, 0, 0)))
         if name == 'setContentInset:':
@@ -88,7 +91,7 @@ def put_frame(rt, view, frame):
     state['bounds'] = (*state['bounds'][:2], *frame[2:])
 
 
-def fixture(rt, *, tab=3, inner_height=776, outer_height=850,
+def fixture(rt, *, tab=3, tab_types=(0, 7, 3, 4), inner_height=776, outer_height=850,
             outer_offset=313, inner_offset=6527, clip=True):
     """Use window/feed dimensions present in the current 1.5.8 log session.
 
@@ -99,7 +102,8 @@ def fixture(rt, *, tab=3, inner_height=776, outer_height=850,
         put_frame(rt, view, (0, 0, 440, 956))
     put_frame(rt, rt.BAR, (0, 882, 440, 74))
     put_frame(rt, rt.PROXY, (12, 0, 416, 56))
-    items = [rt.obj('NSObject', 'tab_' + str(i)) for i in range(4)]
+    items = [rt.obj('SSTabBarButtonItem', 'tab_' + str(tab_type), type=tab_type)
+             for tab_type in tab_types]
     rt.objects[rt.BAR].state['items'] = rt.obj('NSArray', 'items', items=items)
     rt.objects[rt.BAR].state['selectedItem'] = items[tab]
     rt.objects[rt.SCROLL].state['hidden'] = True

@@ -46,13 +46,15 @@ class Runtime(PreviousRuntime):
                     return self.finish(cpu,int(state.get(name[2:].lower(),False)))
                 if name in ('setHighlighted:','setSelected:','setEnabled:'):
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
-                if name=='insertSubview:atIndex:' and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
+                if name in ('insertSubview:atIndex:','insertSubview:belowSubview:') and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
-                    require(cs['frame'][2:] in ((36.,36.),(28.,28.)),'Final native background bounds before insertion')
+                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.)),'Final native background bounds before insertion')
                     conf=self.objects[cs['configuration']].state
                     require(conf['style']=='glass' and not conf.get('image') and not conf.get('title'),'Glass configuration contains no copied host image/title')
                     require(self.transaction_stack[-1]['disableActions'],'Background publication is nonanimated')
-                    self.reparent(child,r);state['subviews'].remove(child);state['subviews'].insert(cpu.x[3],child)
+                    self.reparent(child,r);state['subviews'].remove(child)
+                    index=state['subviews'].index(cpu.x[3]) if name=='insertSubview:belowSubview:' else cpu.x[3]
+                    state['subviews'].insert(index,child)
                     self.attachments.append(child)
                     return self.finish(cpu)
         return super().handle(cpu,pc)
@@ -156,6 +158,34 @@ def exercise(data,labels,baseline):
             require(not material(c,r,labels,b) and r.objects[b].state['hitInsets']==(0.,0.,0.,0.),'Disable removes owned glass and restores hit insets')
             require(r.objects[b].state['control_targets']==original_targets[b],'Disable removes only plugin observers')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=0
+        download=next(item for item in items if 'Download' in r.class_names[r.objects[item].cls])
+        download_icon=r.objects[download].state['getInsertView']
+        download_label=r.label('host_download_label',nav,(228,11,64,22),'查看下载')
+        label_state=r.objects[download_label].state
+        label_state.update(userInteractionEnabled=True,gestureRecognizers=[(download,r.sel('onDownloadBtnClick:'))])
+        label_original=copy.deepcopy(label_state)
+        r.host_views.add(download_label)
+        r.reparent(download_icon,0)
+        r.objects[download].state['getInsertView']=download_label
+        send(c,r,nav,'layoutSubviews')
+        glass=material(c,r,labels,download_label)
+        siblings=r.objects[nav].state['subviews']
+        require(glass and siblings[siblings.index(download_label)-1]==glass and not label_state['subviews'],
+                'The native lens sits below the host download label, whose text is drawn in its own layer')
+        require(r.objects[glass].state['frame']==(222.,6.,76.,32.) and hit_contains(r,download_label,(-6.,-5.,76.,32.)),
+                'The pill covers the full 64pt label and remains inside its native gesture hit area')
+        require(all(label_state[key]==label_original[key] for key in ('text','frame','gestureRecognizers','userInteractionEnabled')),
+                'Text and host download tap target survive styling')
+        require(any(event=='controlLayout167' and row['role']=='readerDownload' and row['glassRect']==[-6.,-5.,76.,32.]
+                    for event,row in r.records),'Download geometry stays in label coordinates')
+        r.reparent(download_label,0)
+        r.reparent(download_icon,nav)
+        r.objects[download].state['getInsertView']=download_icon
+        send(c,r,nav,'layoutSubviews')
+        require(glass not in siblings and not material(c,r,labels,download_label),
+                'Switching back to the icon clears the old sibling glass')
+        require(r.objects[material(c,r,labels,download_icon)].state['frame']==(-6.,-6.,36.,36.),
+                'The native icon variant keeps its round material')
         parent=r.view('UIView','shelf_header',(348,72,56,24),r.ROOT)
         search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)

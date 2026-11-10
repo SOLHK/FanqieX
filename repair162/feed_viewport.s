@@ -4,7 +4,7 @@
 //
 // Public entry points:
 //   LFbegin(bar), LFconsider(feed, bar), LFend(bar), LFrestore(bar).
-// A bar owns at most one member of the FQFeedListCollectionView family, only on tab 2 or 3.
+// A bar owns at most one member of the FQFeedListCollectionView family, on Shelf or Mine.
 // Rows: [feed, NSData(6 doubles), clipRows, immediateParent, outerScroll].
 // Scalar data: originalHeight, appliedHeight, originalInsetBottom,
 //              appliedInsetBottom, originalWidth, extensionHeight.
@@ -268,6 +268,25 @@ LFconsider:
     GET x20, LSitems
     mov x21, x0
     GET x21, Lcount
+    .if FQ_VERSION >= 0x10704
+    // Hiding an entry changes its neighbors' indices, not their host types.
+    mov x25, x0
+    GET x20, Lselected_item
+    mov x24, x0
+    cbz x24, LFconsider_no
+    mov x2, x24
+    GET x21, LSindex_identical
+    cmp x0, x25
+    b.hs LFconsider_no
+    mov x0, x24
+    adr x1, LFtab_item_class
+    bl Lpatch + (0x7394 - PATCH_BASE)
+    cbz w0, LFconsider_no
+    GET x24, LFtab_item_type
+    sub w0, w0, #3 // SSTabBarButtonItem.type: 3 = Shelf, 4 = Mine.
+    cmp w0, #1
+    b.hi LFconsider_no
+    .else
     cmp x0, #4
     b.ne LFconsider_no
     GET x20, Lselected_item
@@ -277,6 +296,7 @@ LFconsider:
     sub x0, x0, #2
     cmp x0, #1
     b.hi LFconsider_no
+    .endif
     LFSTAGE 4 // proxy is not mounted/visible
     AGET x20, Lpatch + (0xeb84 - PATCH_BASE)
     mov x1, x0
@@ -2338,6 +2358,10 @@ LFdynamic_classes_key: .byte 0
 LFdynamic_slot_key: .byte 0
 LForphan_key: .byte 0
 LFfeed_class: .asciz "FQFeedListCollectionView"
+.if FQ_VERSION >= 0x10704
+LFtab_item_class: .asciz "SSTabBarButtonItem"
+LFtab_item_type: .asciz "type"
+.endif
 LFcontrol_class: .asciz "UIControl"
 LFweb_class: .asciz "WKWebView"
 LFeffect_class: .asciz "UIVisualEffectView"
