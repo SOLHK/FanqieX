@@ -165,8 +165,10 @@ def build(source_path, output_path, *, version=VERSION):
  if isolated:
   replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
  if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4'):
-  replace(0x4018,bytes.fromhex('00008052'),branch(0x4018,BASE+home_check,True),'Validate same-build host under the original constructor unwind frame')
-  replace(0x401c,branch(0x401c,0xa5c8,True),branch(0x401c,BASE+home_gate),'Accept compatible build or replay the original UUID gate')
+  check='Validate Fanqie bundle identity' if encoded>=0x10704 else 'Validate same-build host'
+  route='Enter the runtime capability installers only in Fanqie' if encoded>=0x10704 else 'Accept compatible build or replay the original UUID gate'
+  replace(0x4018,bytes.fromhex('00008052'),branch(0x4018,BASE+home_check,True),check+' under the original constructor unwind frame')
+  replace(0x401c,branch(0x401c,0xa5c8,True),branch(0x401c,BASE+home_gate),route)
  if profile164:
   replace(0x4650,bytes.fromhex('fa67bba9'),branch(0x4650,BASE+popup),'Install startup popup rule')
   replace(0x6568,bytes.fromhex('0010651e'),branch(0x6568,BASE+tabbar),'Set symmetric tab bar safe area margins')

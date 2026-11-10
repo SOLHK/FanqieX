@@ -16,13 +16,9 @@ class AdRuntime(Runtime):
         self.completed = []
 
     def handle(self, cpu, pc):
-        if pc-self.slide == 0xa5d4:
-            selector = self.selector_names.get(cpu.x[1])
-            if selector == 'finishExecution:success:reason:':
-                self.completed.append(tuple(cpu.x[:5]))
-                return self.finish(cpu)
-            if cpu.x[0] == self.MAIN_BUNDLE and selector == 'bundleIdentifier':
-                return self.finish(cpu, 0)  # This fixture exercises only the pinned legacy rules.
+        if pc-self.slide == 0xa5d4 and self.selector_names.get(cpu.x[1]) == 'finishExecution:success:reason:':
+            self.completed.append(tuple(cpu.x[:5]))
+            return self.finish(cpu)
         return super().handle(cpu, pc)
 
 

@@ -885,6 +885,21 @@ LGstyle_control:
     .if FQ_VERSION >= 0x10606
     cmp w0, #2
     b.ne LGcontrol_166_scope
+    .if FQ_VERSION >= 0x10704
+    mov x0, x19
+    bl LFQH_FQHShelfOwnsAction
+    cbz w0, LGcontrol_shelf_duration
+    // The page hook owns this exact action. Remove only a legacy material
+    // that has already been attached, and leave the host button untouched.
+    AGET x19, LGsurface_key
+    cbz x0, LGcontrol_return
+    AGET x19, LGcontrol_busy_key
+    cbnz x0, LGcontrol_reentrant
+    ASET x19, LGcontrol_busy_key, x19, 0
+    mov x22, #1
+    b LGcontrol_too_small
+LGcontrol_shelf_duration:
+    .endif
     mov x0, x19
     bl LFQH_FQHIsDuration
     cbz w0, LGcontrol_166_scope

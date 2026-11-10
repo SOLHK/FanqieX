@@ -74,9 +74,12 @@ def exercise(data, labels):
                     require(st['frame']==r.objects[v].state['bounds'] and st.get('cornerConfiguration'),'Native glass fills the original capsule bounds')
                     require(not st['userInteractionEnabled'] and st['accessibilityElementsHidden'],'Glass cannot intercept category/search taps')
                     require(r.objects[v].state['subviews'][0]==g,'Glass is behind original text/icon')
+                settled_transactions=sum(e['event']=='transaction_begin' for e in r.events)
                 for _ in range(12):
                     call(c,r,vc,'relayout');call(c,r,cat,'layoutSubviews')
                 require(glass==[r.associations[(v,key)] for v in (s,cat)] and len(r.attachments)==2,'Repeated layout reuses exactly two surfaces')
+                require(sum(e['event']=='transaction_begin' for e in r.events)==settled_transactions,
+                        'Twenty-four unchanged header layouts skip empty Core Animation transactions')
                 # The host rewrites its theme and old 6pt crop during an interactive transition.
                 theme=r.color('updatedTheme')
                 for v in (s,cat):
@@ -87,6 +90,8 @@ def exercise(data, labels):
                     n=len(r.original_calls);call(c,r,obj,sel,1,2,3,4,fp=[0.375])
                     require(len(r.original_calls)==n+1 and r.original_calls[-1][3]==[1,2,3,4] and r.original_calls[-1][4]==0.375,'Theme ABI forwarded exactly once')
                 require(all(r.objects[v].state['clipsToBounds'] for v in (s,cat)),'Transition cannot reintroduce text overflow')
+                require(sum(e['event']=='transaction_begin' for e in r.events)==settled_transactions+2,
+                        'Real theme writes still receive one nonanimated transaction per updated surface')
                 require(all(r.objects[r.layer(v)].state['cornerRadius']==height/2 for v in (s,cat)),'Transition repairs only the owner crop')
                 require(len(r.attachments)==2,'Theme transition does not allocate duplicate surfaces')
                 r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1

@@ -24,7 +24,7 @@ class Runtime(GeometryRuntime):
         self.identity='com.dragon.read'
         self.objects[self.MAIN_BUNDLE].state['info']['CFBundleVersion']='7.4.3.33'
         for cls,parent in [(HOME,'UIViewController'),(CATEGORY,'UIView'),(SEARCH,'NSObject')]: self._class(cls,parent)
-        for cls,sel,ty in HOOKS+[(HOME,'searchBgView','@16@0:8')]:
+        for cls,sel,ty in HOOKS+[(HOME,'searchBgView','@16@0:8'),(SEARCH,'bookStoreVCContext','@16@0:8')]:
             imp=0x33040000+len(self.hosts)*0x100
             self.hosts[imp]=(cls,sel)
             self._add(self.classes[cls],sel,imp,ty)
@@ -47,8 +47,8 @@ class Runtime(GeometryRuntime):
             self.header_records.append((self.string(cpu.x[0]),self.native(cpu.x[1])))
             return self.finish(cpu)
         r,sel=cpu.x[:2]; name=self.selector_names.get(sel)
-        if pc-self.slide in (0x40b8,0x4020):
-            self.gate_result='accepted' if pc-self.slide==0x40b8 else 'original_uuid'
+        if pc-self.slide in (0x40b8,0x4020,0x40a0):
+            self.gate_result={0x40b8:'accepted',0x4020:'original_uuid',0x40a0:'rejected'}[pc-self.slide]
             cpu.pc=CPU.RETURN
             return True
         if pc-self.slide==0xa5c8: return self.finish(cpu,0x12340000)
@@ -65,7 +65,8 @@ class Runtime(GeometryRuntime):
             cls,name=self.hosts[pc]
             self.original_calls.append((cls,name,r,list(cpu.x[2:6]),cpu.fp(0)))
             require(sel==self.sel(name),'Original _cmd and typed arguments preserved')
-            if name=='searchBgView': return self.finish(cpu,self.objects[r].state['searchBgView'])
+            if name in ('searchBgView','bookStoreVCContext'):
+                return self.finish(cpu,self.objects[r].state[name])
             return self.finish(cpu)
         if pc-self.slide==0xa5d4 and r:
             if r==self.MAIN_BUNDLE and name=='bundleIdentifier': return self.finish(cpu,self.text_object(self.identity))
@@ -164,18 +165,22 @@ def run(data,labels):
         passed.append('header sizing/reuse/theme/restore; original text geometry and actions at slide '+hex(slide))
     for available in (False,True):
         c,r=fixture(data,labels,available=available)
-        require(call(c,'LFQH_FQHCompatibleHost')['result']==1,'Matching app build accepted independently of UUID and glass API')
+        bundle_only=release_version(data)=='1.7.4'
+        check='LFQH_FQHHostBundle' if bundle_only else 'LFQH_FQHCompatibleHost'
+        require(call(c,check)['result']==1,'Matching app accepted independently of UUID and glass API')
         c.run(0x4018,check_abi=False)
-        require(r.gate_result=='accepted' and r.pool_balance==0,'Actual initializer bypasses UUID only after valid identity and ABI')
+        require(r.gate_result=='accepted' and r.pool_balance==0,'Actual initializer accepts the target app')
         for key,value in [('identity','com.other.app'),('version','7.4.4.1')]:
             if key=='identity': r.identity=value
             else: r.objects[r.MAIN_BUNDLE].state['info']['CFBundleVersion']=value
-            require(call(c,'LFQH_FQHCompatibleHost')['result']==0,'Other app or uninspected release rejected')
+            alternate_build=bundle_only and key=='version'
+            require(call(c,check)['result']==int(alternate_build),'Current bundle check accepts another build of Fanqie')
             c.run(0x4018,check_abi=False)
-            require(r.gate_result=='original_uuid' and r.pool_balance==0,'Rejected alternate host returns to original UUID check')
+            wanted='accepted' if alternate_build else ('rejected' if bundle_only else 'original_uuid')
+            require(r.gate_result==wanted and r.pool_balance==0,'Actual initializer routes the target app only')
             r.identity='com.dragon.read';r.objects[r.MAIN_BUNDLE].state['info']['CFBundleVersion']='7.4.3.33'
         method=r.get_method(r.classes[HOME],r.sel('relayout'));r.methods[method]['encoding']='v20@0:8B16'
-        require(call(c,'LFQH_FQHCompatibleHost')['result']==0,'ABI drift rejected')
+        require(call(c,check)['result']==int(bundle_only),'Drifted ABI affects only the feature that depends on it')
         r.methods[method]['encoding']='v16@0:8'
         if not available:
             v=r.view('UIView','ios18_search',(0,0,280,40),r.ROOT,backgroundColor=r.color('ios18_original'))
@@ -184,6 +189,21 @@ def run(data,labels):
             require(r.objects[v].state==before and not r.attachments,'iOS 18 missing API leaves original controls intact')
             require(not any(e['event']=='method_setImplementation' for e in r.events),'No glass hooks on old system')
         passed.append('identity/ABI gates with glass '+str(available))
+    if release_version(data)=='1.7.4':
+        for missing in (False,True):
+            c,r=fixture(data,labels)
+            owner=r.classes[HOME]
+            search=r.sel('searchBgView')
+            if missing: r.own[owner].pop(search)
+            else: r.methods[r.get_method(owner,search)]['encoding']='d16@0:8'
+            layout=r.get_method(owner,r.sel('relayout'))
+            category=r.get_method(r.classes[CATEGORY],r.sel('layoutSubviews'))
+            original_layout=r.methods[layout]['imp']
+            original_category=r.methods[category]['imp']
+            call(c,'LFQH_FQHInstall')
+            require(r.methods[layout]['imp']==original_layout and r.methods[category]['imp']!=original_category,
+                    'Missing or incompatible search accessor disables search glass only')
+        passed.append('independent search accessor capability checks')
     c,r=fixture(data,labels)
     for bounds in [(0,0,0,40),(0,0,200,0),(0,0,float('nan'),40),(0,float('inf'),200,40)]:
         v=r.view('UIView','invalid',bounds,r.ROOT)
@@ -217,7 +237,9 @@ def run(data,labels):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('candidate',type=Path);p.add_argument('--report',type=Path,required=True);a=p.parse_args()
-    data=a.candidate.read_bytes();labels=labels_for(data,a.candidate.with_suffix('.composed.s'),LABELS)
+    data=a.candidate.read_bytes()
+    names=LABELS+(['LFQH_FQHHostBundle'] if release_version(data)=='1.7.4' else [])
+    labels=labels_for(data,a.candidate.with_suffix('.composed.s'),names)
     results=run(data,labels)
     report={'passed':True,'device_tested':False,'cases':results,'viewport_widths':[320,375,390,430,440,768,1024]}
     a.report.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
