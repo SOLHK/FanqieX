@@ -40,9 +40,10 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
+    ("SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:"),
+    ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
-    ("SSMyUser621FunctionEntryItemCell", "layoutSubviews"),
     ("SSMyUser621BaseViewController", "setupCellMiniGameEntranceData"),
     ("SSMyUserCell2Model", "applyConfiguredMineEcomEntranceData:mineMonetizationStyle:"),
     ("SSMyUser621ViewController", "objectsForListAdapter:"),
@@ -61,12 +62,16 @@ class Runtime(GlassRuntime):
     TAB_APPEAR = 0x330c0200
     TAB_OPEN_OPTIONS = 0x330c0d00
     SHELF_DURATION_VISIBLE = 0x330c3100
+    SHELF_FUNCTION_SIZE = 0x330c3110
+    SHELF_FUNCTION_LAYOUT = 0x330c3120
+    SHELF_EDIT_LAYOUT = 0x330c3130
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
     MODEL_SETUP = 0x330c0600
     MODEL_CONFIGURED_GAME = 0x330c2400
     MODEL_LIST_OBJECTS = 0x330c2500
+    MINE_ORDER_LAYOUT = 0x330c2600
     SPEECH_THEME = 0x330c0700
     PROGRESS_THEME = 0x330c0b00
 
@@ -91,10 +96,16 @@ class Runtime(GlassRuntime):
             ("SSBookShelfFilterMixRowCollectionView", "UIView"),
             ("SSBookShelfFilter541Cell", "UIView"),
             ("SS525BookShelfSubHeaderView", "UIView"),
+            ("SSBookShelf525ViewController", "UIViewController"),
+            ("SSBookShelfSubViewController", "UIViewController"),
+            ("SSBookShelfFunctionCell", "UIView"),
             ("SSMyUserBar", "UIView"),
             ("FQReaderSaaSBaseImageView", "UIImageView"),
             ("SSMyUserCollectionViewFunCell", "UIView"),
-            ("SSMyUser621FunctionEntryItemCell", "SSMyUserCollectionViewFunCell"),
+            ("SSMyUserCollectionViewOrderFunCell", "SSMyUserCollectionViewFunCell"),
+            ("SSMyUser621FunctionEntryItemCell", "SSMyUserCollectionViewOrderFunCell"),
+            ("SSMyUserShortcutCell", "UIView"),
+            ("SSMyUserCollectionView1Cell", "UIView"),
             ("SSMyUser621BaseViewController", "NSObject"),
             ("SSMyUser621ViewController", "SSMyUser621BaseViewController"),
             ("SSMyUserCell2Model", "NSObject"),
@@ -117,6 +128,7 @@ class Runtime(GlassRuntime):
                 self._class(name, parent)
         self.bottom_original_calls = 0
         self.catalog_clicks = []
+        self.mine_reloads = []
         self.tab_refreshes = 0
         self.tab_settings_presenters = []
         self.colors["systemOrangeColor"] = self.color("systemOrangeColor")
@@ -143,6 +155,12 @@ class Runtime(GlassRuntime):
         self._add(self.classes["SSSettingViewController"], "fqab_openMenu", self.TAB_OPEN_OPTIONS, "v16@0:8")
         self._add(self.classes["SS525BookShelfSubHeaderView"], "setShowReadTimeView:",
                   self.SHELF_DURATION_VISIBLE, "v20@0:8B16")
+        self._add(self.classes["SS525BookShelfSubHeaderView"], "layoutEditButton",
+                  self.SHELF_EDIT_LAYOUT, "v16@0:8")
+        self._add(self.classes["SSBookShelfSubViewController"], "collectionView:layout:sizeForItemAtIndexPath:",
+                  self.SHELF_FUNCTION_SIZE, "{CGSize=dd}40@0:8@16@24@32")
+        self._add(self.classes["SSBookShelfFunctionCell"], "layoutContainerSubviews",
+                  self.SHELF_FUNCTION_LAYOUT, "v16@0:8")
         for selector, imp in (("setIsInvisible:", self.MODEL_INVISIBLE),
                               ("setIsDisabled:", self.MODEL_DISABLED)):
             self._add(self.classes["SSMyUserMiniGameEntranceCellModel"], selector, imp,
@@ -156,6 +174,8 @@ class Runtime(GlassRuntime):
                   self.MODEL_CONFIGURED_GAME, "v32@0:8@16q24")
         self._add(self.classes["SSMyUser621ViewController"], "objectsForListAdapter:",
                   self.MODEL_LIST_OBJECTS, "@24@0:8@16")
+        self._add(self.classes["SSMyUserCollectionViewOrderFunCell"], "layoutSubviews",
+                  self.MINE_ORDER_LAYOUT, "v16@0:8")
 
     def handle(self, cpu, pc):
         self.current_cpu = cpu
@@ -194,6 +214,14 @@ class Runtime(GlassRuntime):
             state["showReadTimeView"] = bool(cpu.x[2])
             self.objects[state["coinButton"]].state["hidden"] = not state["showReadTimeView"]
             return self.finish(cpu)
+        if pc == self.SHELF_FUNCTION_SIZE:
+            return self.finish(cpu, fp=(440.0, 70.0))
+        if pc == self.SHELF_FUNCTION_LAYOUT:
+            self.objects[self.objects[receiver].state["filterClipView"]].state["frame"] = (0., 42., 440., 40.)
+            return self.finish(cpu)
+        if pc == self.SHELF_EDIT_LAYOUT:
+            self.objects[self.objects[receiver].state["editButton"]].state["frame"] = (380., 4., 44., 30.)
+            return self.finish(cpu)
         if pc in (self.MODEL_INVISIBLE, self.MODEL_DISABLED):
             key = "isInvisible" if pc == self.MODEL_INVISIBLE else "isDisabled"
             self.objects[receiver].state[key] = bool(cpu.x[2])
@@ -207,6 +235,10 @@ class Runtime(GlassRuntime):
             return self.finish(cpu)
         if pc == self.MODEL_LIST_OBJECTS:
             return self.finish(cpu, self.objects[receiver].state["list_objects"])
+        if pc == self.MINE_ORDER_LAYOUT:
+            method = self.get_method(self.classes["SSMyUserCollectionViewFunCell"], selector)
+            cpu.pc = self.methods[method]["imp"]
+            return True
         if pc == self.SPEECH_THEME:
             button = self.objects[receiver].state["speechBtn"]
             self.objects[button].state["images"][0] = cpu.x[2]
@@ -228,6 +260,15 @@ class Runtime(GlassRuntime):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
             if receiver in self.objects:
                 state = self.objects[receiver].state
+                if name == "sectionTypeAtIndex:" and "section_types" in state:
+                    return self.finish(cpu, state["section_types"][cpu.x[2]])
+                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton",
+                            "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
+                            "visibleCells", "viewModel", "isFiltering") and name in state:
+                    return self.finish(cpu, state[name])
+                if name == "invalidateLayout" and "invalidations" in state:
+                    state["invalidations"] += 1
+                    return self.finish(cpu)
                 if name in ("typeArray", "tableView", "tableHeaderView", "keyWindow", "rootViewController"):
                     return self.finish(cpu, state.get(name, 0))
                 if name == "showReadTimeView":
@@ -268,6 +309,9 @@ class Runtime(GlassRuntime):
                     return self.finish(cpu, state.get("titles", {}).get(cpu.x[2], 0))
                 if name == "refreshTabBar":
                     self.tab_refreshes += 1
+                    return self.finish(cpu)
+                if name == "reloadData:" and self.is_kind(receiver, self.classes["SSMyUser621ViewController"]):
+                    self.mine_reloads.append((receiver, self.string_value(cpu.x[2])))
                     return self.finish(cpu)
                 if name == "setObject:forKey:" and self.objects[cpu.x[3]].cls == self.classes["NSNumber"]:
                     state["items"][self.objects[cpu.x[3]].state["value"]] = cpu.x[2]
@@ -321,7 +365,7 @@ class Runtime(GlassRuntime):
                     "gameName", "gameContent", "mpName", "items", "hasSelected",
                     "giftButton", "slider", "searchBgView", "functionType", "label",
                     "scanQRCodeView", "darkModeImageView", "sideBarButtonView", "entranceType",
-                    "text"):
+                    "businessStyle", "isShowPersonalizedBar", "isShowFriendView", "text"):
                 state = self.objects[receiver].state
                 if name == "items":
                     return self.finish(cpu, state.get("items", 0))
@@ -696,27 +740,39 @@ def exercise(data, labels):
     require(not any(surface in mounted for surface in icons), "disabling glass removes the three siblings")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
-    order = runtime.view("SSMyUserCollectionViewFunCell", "order", (0, 0, 70, 84), runtime.ROOT)
-    order_label = runtime.label("order_label", order, (0, 50, 70, 22), "我的订单")
-    runtime.objects[order].state["label"] = order_label
-    send(cpu, runtime, order, "layoutSubviews")
-    require(call(cpu, labels, "LFQH_FQHSurface", order)["result"], "profile order short-cut glass")
+    shortcut_count = 0
+    shortcut_background = runtime.color("original shortcut content")
+    for row_class, item_class in (
+        ("SSMyUserShortcutCell", "SSMyUser621FunctionEntryItemCell"),
+        ("SSMyUserCollectionView1Cell", "SSMyUserCollectionViewFunCell"),
+    ):
+        row = runtime.view(row_class, "Mine shortcut row", (0, 0, 390, 64), runtime.ROOT)
+        collection = runtime.view("UIView", "Mine shortcut scroller", (0, 0, 390, 64), row)
+        for index, title in enumerate(("我的订单", "浏览历史", "我的消息", "创作中心", "游戏中心")):
+            cell = runtime.view(item_class, title, (index * 78, 0, 70, 60), collection,
+                                userInteractionEnabled=True)
+            content = runtime.view("UIView", "opaque contentView", (0, 0, 70, 60), cell,
+                                   backgroundColor=shortcut_background)
+            runtime.objects[cell].state["contentView"] = content
+            image = runtime.view("UIImageView", "original icon", (25, 8, 20, 20), content)
+            label = runtime.label("original caption", content, (0, 35, 70, 18), title)
+            send(cpu, runtime, cell, "layoutSubviews")
+            surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
+            require(surface and runtime.objects[content].state["subviews"] == [surface, image, label] and
+                    runtime.objects[surface].state["frame"] == (4, 2, 62, 56) and
+                    not runtime.objects[surface].state["userInteractionEnabled"] and
+                    runtime.objects[cell].state["userInteractionEnabled"],
+                    "each glass button is visible above content paint and behind native shortcut actions")
+            send(cpu, runtime, cell, "layoutSubviews")
+            require(call(cpu, labels, "LFQH_FQHSurface", content)["result"] == surface,
+                    "shortcut layouts reuse the native material")
+            shortcut_count += 1
 
-    history = runtime.view("SSMyUser621FunctionEntryItemCell", "history",
-                           (0, 0, 70, 84), runtime.ROOT)
-    history_label = runtime.label("history_label", history, (0, 50, 70, 22), "浏览历史")
-    runtime.objects[history].state["functionType"] = history_label
-    send(cpu, runtime, history, "layoutSubviews")
-    require(call(cpu, labels, "LFQH_FQHSurface", history)["result"],
-            "profile function-entry glass")
-
-    normal_entry = runtime.view("SSMyUser621FunctionEntryItemCell", "normal_entry",
-                                (0, 0, 70, 84), runtime.ROOT)
-    normal_label = runtime.label("normal_label", normal_entry, (0, 50, 70, 22), "设置")
-    runtime.objects[normal_entry].state["functionType"] = normal_label
-    send(cpu, runtime, normal_entry, "layoutSubviews")
-    require(not call(cpu, labels, "LFQH_FQHSurface", normal_entry)["result"],
-            "unlisted profile entry is not turned into an ad or a glass card")
+    runtime.reparent(cell, runtime.ROOT)
+    send(cpu, runtime, cell, "layoutSubviews")
+    require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"] and
+            runtime.objects[content].state["backgroundColor"] == shortcut_background,
+            "reusing the same class outside the shortcut row restores its own background")
 
     # Standalone promotions are excluded regardless of title or metadata timing.
     owner = runtime.view("SSMyUser621BaseViewController", "profile",
@@ -777,6 +833,27 @@ def exercise(data, labels):
             runtime.objects[legacy_plan].state["items"] == [late_target, shortcut_row, combined],
             "the list diff excludes standalone game rows even before metadata, preserving shortcuts and shop")
 
+    wallet = runtime.obj("SSMyUserCell2Model", "coins, cash and benefits", businessStyle=4)
+    treasure = runtime.obj("SSMyUserCell2Model", "coin task with cooldown", businessStyle=5)
+    legacy_wallet = runtime.obj("SSMyUserCell2Model", "legacy balance", businessStyle=0)
+    referral = runtime.obj("SSMyUserCell2Model", "legacy referral", businessStyle=0, isShowFriendView=True)
+    coupon = runtime.obj("SSMyUserCell2Model", "mixed commerce", businessStyle=3)
+    original_mine_rows = [shortcut_row, wallet, coupon, treasure, legacy_wallet, referral, combined]
+    mine_plan = runtime.obj("NSArray", "Mine section plan", items=original_mine_rows[:])
+    runtime.objects[legacy_owner].state["list_objects"] = mine_plan
+    require(send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] == mine_plan,
+            "the benefits section stays visible by default")
+    mine_benefits_key = "FanqieX.MineBenefitsCard.1"
+    mine_prefs = runtime.objects[runtime.DEFAULTS].state["values"]
+    mine_prefs[mine_benefits_key] = False
+    filtered_rows = send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"]
+    require(runtime.objects[filtered_rows].state["items"] == [shortcut_row, coupon, referral, combined] and
+            runtime.objects[mine_plan].state["items"] == original_mine_rows,
+            "disabling benefits removes complete wallet sections from the diff without mutating the host plan")
+    mine_prefs[mine_benefits_key] = True
+    require(send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] == mine_plan,
+            "re-enabling benefits restores the same section objects in their original order")
+
     # The production hook filters the host controller's parallel plan and index map.
     tab_types = (0, 7, 3, 4, 9)
     keys = [f"FanqieX.Bottom{key}.1" for key in (
@@ -816,18 +893,19 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 304.0),
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 352.0),
             "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
                      for item in switches]
-    require(switch_labels == [f"底栏显示：{title}" for title in titles] + ["书架显示今日看听读时长"] and
+    require(switch_labels == [f"底栏显示：{title}" for title in titles] +
+            ["书架显示今日看听读时长", "我的显示金币与福利卡片"] and
             all(runtime.objects[item].state["isOn"] for item in switches),
             "settings expose the current bottom entries and the shelf duration switch")
 
     # Duration uses the host visibility setter and keeps the latest requested state.
-    duration_switch = switches[-1]
+    duration_switch = switches[-2]
     duration_observer, duration_action, _ = runtime.objects[duration_switch].state["control_targets"][0]
     duration_selector = runtime.selector_names[duration_action]
     shelf_header = runtime.view("SS525BookShelfSubHeaderView", "live shelf header", (0, 0, 390, 64),
@@ -848,6 +926,71 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     require(runtime.objects[duration].state["hidden"], "plugin respects the host's own hidden state")
+    # The original edit control moves into the measured title/search gap.
+    shelf_controller = runtime.obj("SSBookShelfSubViewController", "native shelf subcontroller")
+    shelf_owner = runtime.obj("SSBookShelf525ViewController", "shelf tabs", currentTabVC=shelf_controller)
+    top = runtime.view("UIView", "top shelf chrome", (0, 64, 440, 44), runtime.ROOT)
+    title_collection = runtime.view("UIView", "shelf title collection", (0, 0, 440, 44), top)
+    category = runtime.view("SSBookShelfTabSelectViewTitleCell", "rightmost shelf title",
+                            (178, 6, 40, 32), title_collection)
+    runtime.objects[title_collection].state.update(
+        collectionView=title_collection, visibleCells=runtime.obj("NSArray", "visible titles", items=[category]))
+    holder = runtime.view("UIView", "search and more", (364, 10, 56, 24), top)
+    runtime.objects[shelf_owner].state.update(tabSelectView=title_collection, headerView=top, headerRightView=holder)
+    search = runtime.view("UIButton", "shelf search", (0, 0, 24, 24), holder)
+    more = runtime.view("UIButton", "shelf more", (32, 0, 24, 24), holder)
+    cell = runtime.view("SSBookShelfFunctionCell", "shelf function row", (0, 110, 440, 70),
+                        runtime.ROOT, delegate=shelf_controller, headerView=shelf_header)
+    clip = runtime.view("UIView", "filter exposure", (0, 42, 440, 40), cell)
+    runtime.objects[cell].state["filterClipView"] = clip
+    secondary = runtime.view("UIView", "secondary buttons", (0, 0, 440, 42), shelf_header)
+    runtime.objects[duration].state["superview"] = secondary
+    runtime.objects[secondary].state["subviews"].append(duration)
+    edit = runtime.view("UIButton", "original edit", (380, 4, 44, 30), secondary)
+    runtime.objects[shelf_header].state.update(
+        delegate=shelf_controller, editButton=edit, secondaryView=secondary, isFiltering=False)
+    size_layout = runtime.obj("NSObject", "shelf collection layout", invalidations=0)
+    shelf_list = runtime.view("UIView", "shelf collection", (0, 108, 440, 700), runtime.ROOT,
+                             collectionViewLayout=size_layout)
+    shelf_model = runtime.obj("NSObject", "shelf section types", section_types=[0, 1, 4])
+    runtime.objects[shelf_controller].state.update(
+        delegate=shelf_owner, functionCell=cell, searchAndMoreView=holder, searchButton=search,
+        moreButton=more, collectionView=shelf_list, viewModel=shelf_model)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    edit_state = runtime.objects[edit].state
+    require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 44., 30.) and
+            runtime.objects[holder].state["hitInsets"][1] <= -132.,
+            "the original edit sits between measured category and search with its entire hit rectangle")
+    require(runtime.objects[size_layout].state["invalidations"] == 1,
+            "only the transition to a compact row invalidates the list")
+    function = runtime.obj("NSObject", "function index", section=1)
+    book = runtime.obj("NSObject", "book index", section=2)
+    size_selector = "collectionView:layout:sizeForItemAtIndexPath:"
+    send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
+    require(cpu.fp(1) == 46., "the empty function row is compacted by 24pt")
+    send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, book)
+    require(cpu.fp(1) == 70., "book row geometry stays at the native size")
+    send(cpu, runtime, cell, "layoutContainerSubviews")
+    require(runtime.objects[clip].state["frame"] == (0., 18., 440., 40.),
+            "exposed filter follows the compact row without clipping")
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    require(edit_state["superview"] == holder and runtime.objects[size_layout].state["invalidations"] == 2,
+            "showing duration restores the lower row while keeping edit in the top bar")
+    runtime.objects[category].state["frame"] = (292., 6., 40., 32.)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.),
+            "a narrower title/search gap restores the original position")
+
+    benefits_switch = switches[-1]
+    benefits_observer, benefits_action, _ = runtime.objects[benefits_switch].state["control_targets"][0]
+    benefits_selector = runtime.selector_names[benefits_action]
+    for on in (False, True):
+        runtime.objects[benefits_switch].state["isOn"] = on
+        send(cpu, runtime, benefits_observer, benefits_selector, benefits_switch)
+        require(mine_prefs[mine_benefits_key] is on, "the benefits switch persists its setting")
+    require(runtime.mine_reloads == [(legacy_owner, "FanqieXMineBenefits")] * 2 and not runtime.tab_refreshes,
+            "each benefits change refreshes the mounted native Mine list without rebuilding tabs")
     window = runtime.obj("UIView", "tab window", rootViewController=tab_owner)
     runtime.tab_app = runtime.obj("UIApplication", "active app", keyWindow=window)
     bar_parent = runtime.view("UIView", "bar parent", (0, 0, 390, 844), runtime.ROOT)
@@ -891,7 +1034,8 @@ def exercise(data, labels):
                             "FQReaderSaaSReaderSpeechButton", "BDReaderNewSlider"],
         "shelf_tabs": len(tabs),
         "shelf_filters": len(filters),
-        "profile_shortcuts": 5,
+        "profile_shortcuts": shortcut_count,
+        "mine_benefits_section_toggle": True,
         "profile_search_clips_carousel": True,
         "profile_header_glass": len(icons),
         "target_game_deleted": True,
@@ -901,6 +1045,7 @@ def exercise(data, labels):
         "bottom_entries_default_on": True,
         "bottom_entries_restored": True,
         "shelf_duration_toggle": True,
+        "shelf_edit_top_placement_and_compaction": True,
         "surface_reuse": True,
         "disable_restores_host": True,
         "host_layout_calls": 22,

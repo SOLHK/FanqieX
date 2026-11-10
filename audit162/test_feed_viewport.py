@@ -85,11 +85,12 @@ def require_state(rt, f, before, why):
 
 def real_log_cases(data, entries):
     cases = []
+    reuse_rows = struct.unpack_from('<I', data, 0x818)[0] >= 0x10704
     scenarios = [
         ('profile_seq381', (0, 7, 3, 4), 3, 776, 850, 313, 6527),
         ('shelf_seq306', (0, 7, 3, 4), 2, 784, 858, 597.6666666666666, 4125),
     ]
-    if struct.unpack_from('<I', data, 0x818)[0] >= 0x10704:
+    if reuse_rows:
         scenarios += [
             ('profile_after_drama_hidden', (0, 3, 4), 2, 776, 850, 313, 750.6666666666666),
             ('shelf_as_only_entry', (3,), 0, 784, 858, 597.6666666666666, 4125),
@@ -114,18 +115,30 @@ def real_log_cases(data, entries):
             old_max = 9621 - inner + 5
             new_max = 9621 - st['frame'][3] + st['contentInset'][2]
             require(old_max == new_max, 'Last-item scroll range is preserved exactly')
-            for _ in range(15):
+            row, = records(rt, entries)
+            allocations = len(rt.objects)
+            instructions = cpu.steps
+            for index in range(15):
+                st['bounds'] = (0, inner_offset + index * 2, *st['bounds'][2:])
                 start = len(rt.events)
                 require(update(cpu, rt, entries, f['feed']) == 1, 'Repeat remains owned')
+                if reuse_rows:
+                    require(records(rt, entries) == [row], 'Stable scrolling reuses the ownership row')
                 require(not any(e['event'] in ('setFrame', 'contentInset', 'contentOffset',
                                                'clipsToBounds') for e in rt.events[start:]),
                         'Stable repeated update issues no geometry/offset/clip setters')
+            repeat_allocations = len(rt.objects) - allocations
+            repeat_instructions = cpu.steps - instructions
+            if reuse_rows:
+                require(repeat_allocations <= 15, 'At most one scope object is allocated per stable update')
             require(len(records(rt, entries)) == 1, 'One bounded ownership record')
+            before['feed']['bounds'] = (0, inner_offset + 28, *before['feed']['bounds'][2:])
             run(cpu, entries, 'LFrestore', rt.BAR)
             require_state(rt, f, before, 'Disable restores original height/insets/clipping')
             require(not records(rt, entries), 'Disable clears owned records')
             cases.append({'name': name, 'slide': hex(slide), 'extension': 850-inner,
-                          'instructions': cpu.steps, 'passed': True})
+                          'instructions': cpu.steps, 'repeat_allocations': repeat_allocations,
+                          'repeat_instructions': repeat_instructions, 'passed': True})
     return cases
 
 
@@ -201,10 +214,12 @@ def rejected_cases(data, entries):
 
 def host_changes(data, entries):
     cases = []
-    for name in ('host_relayout', 'host_new_height', 'host_new_inset', 'host_origin_move',
-                 'hidden_after_claim', 'switch_to_bookstore', 'empty_discovery',
-                 'two_matching_feeds', 'offset_adjustment', 'original_unclipped',
-                 'scroll_back_to_header'):
+    names = ('host_relayout', 'host_new_height', 'host_new_inset', 'host_origin_move',
+             'hidden_after_claim', 'switch_to_bookstore', 'empty_discovery',
+             'two_matching_feeds', 'offset_adjustment', 'original_unclipped', 'scroll_back_to_header')
+    if struct.unpack_from('<I', data, 0x818)[0] >= 0x10704:
+        names += ('host_reasserts_clip', 'same_geometry_new_clip_path')
+    for name in names:
         cpu, rt = make(data, entries)
         f = fixture(rt, clip=name != 'original_unclipped')
         feed = f['feed']
@@ -232,6 +247,23 @@ def host_changes(data, entries):
             require(rt.objects[feed].state['contentInset'] == (13, 14, 103, 16),
                     'Top/side host inset changes are retained')
             before['feed']['contentInset'] = (13, 14, 29, 16)
+        elif name == 'host_reasserts_clip':
+            row, = records(rt, entries)
+            rt.objects[f['cell']].state['clipsToBounds'] = True
+            require(update(cpu, rt, entries, feed) == 1 and records(rt, entries) == [row],
+                    'Matching restoration row is reused when a host write needs repair')
+            require(not rt.objects[f['cell']].state['clipsToBounds'], 'Reasserted clip is cleared')
+        elif name == 'same_geometry_new_clip_path':
+            row, = records(rt, entries)
+            old_cell = rt.objects[f['cell']].state
+            new_cell = rt.view('UICollectionViewCell', 'replacement_cell', old_cell['frame'],
+                               f['outer'], clipsToBounds=True)
+            rt.reparent(f['container'], new_cell)
+            require(update(cpu, rt, entries, feed) == 1 and records(rt, entries) != [row],
+                    'Matching geometry alone cannot reuse a row when clip ancestors change')
+            require(old_cell['clipsToBounds'] and not rt.objects[new_cell].state['clipsToBounds'],
+                    'Replaced ancestor is restored and the new clipping path is repaired')
+            f['cell'] = new_cell
         elif name == 'host_origin_move':
             put_frame(rt, feed, (0, 5, 440, 850))
             before['feed']['frame'] = (0, 5, 440, 776)

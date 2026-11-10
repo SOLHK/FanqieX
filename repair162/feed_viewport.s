@@ -24,6 +24,11 @@
     mov w8, #\value
     str w8, [sp, #408]
 .endm
+.if FQ_VERSION >= 0x10704
+    .set LF_OLD_SCALARS, 288
+.else
+    .set LF_OLD_SCALARS, 240
+.endif
 
 LFbegin:
     stp x29, x30, [sp, #-32]!
@@ -402,27 +407,30 @@ LFconsider:
     cbz x21, LFconsider_baseline
     mov x2, #1
     GET x21, Lobject_at
-    add x2, sp, #240
+    add x2, sp, #LF_OLD_SCALARS
     mov x3, #48
     GET x0, LFget_bytes
-    ldr d0, [sp, #272] // previous width
+    ldr d0, [sp, #(LF_OLD_SCALARS + 32)] // previous width
     ldr d1, [sp, #176]
     LFNEAR d0, d1
     b.hi LFconsider_inset_base
-    ldr d0, [sp, #248] // previously applied height
+    ldr d0, [sp, #(LF_OLD_SCALARS + 8)] // previously applied height
     LFNEAR d14, d0
     b.hi LFconsider_inset_base
-    ldr d14, [sp, #240]
+    ldr d14, [sp, #LF_OLD_SCALARS]
 LFconsider_inset_base:
-    ldr d0, [sp, #264] // previously applied inset bottom
+    ldr d0, [sp, #(LF_OLD_SCALARS + 24)] // previously applied inset bottom
     LFNEAR d15, d0
     b.hi LFconsider_old_clips
-    ldr d15, [sp, #256]
+    ldr d15, [sp, #(LF_OLD_SCALARS + 16)]
 LFconsider_old_clips:
     mov x2, #2
     GET x21, Lobject_at
     mov x27, x0
 LFconsider_baseline:
+    .if FQ_VERSION >= 0x10704
+    str x21, [sp, #416] // previous ownership row
+    .endif
     GET x19, Lcontent_size
     FINITE d0, LFconsider_no
     FINITE d1, LFconsider_no
@@ -434,8 +442,12 @@ LFconsider_baseline:
     GET x19, Lsuperview
     mov x26, x0
     mov x24, x0
+    .if FQ_VERSION >= 0x10704
+    add x25, sp, #336 // bounded path of 8 intermediate ancestors
+    .else
     bl Lnewarray
     mov x25, x0 // intermediate path, excludes the feed and enclosing scroll
+    .endif
     mov x28, #0
 LFconsider_parent_loop:
     cbz x24, LFconsider_no
@@ -469,10 +481,17 @@ LFconsider_parent_loop:
     fcmp d1, d4
     b.gt LFconsider_no
     GET x24, Llayer
+    .if FQ_VERSION >= 0x10704
+    mov x21, x0
+    GET x21, LFmask
+    cbnz x0, LFconsider_no
+    GET x21, LFcorner_radius
+    .else
     mov x28, x0
     GET x28, LFmask
     cbnz x0, LFconsider_no
     GET x28, LFcorner_radius
+    .endif
     fcmp d0, #0.0
     b.ne LFconsider_no
     mov x0, x24
@@ -480,10 +499,15 @@ LFconsider_parent_loop:
     bl Lpatch + (0x7394 - PATCH_BASE)
     cbnz w0, LFconsider_outer
 LFconsider_intermediate:
+    .if FQ_VERSION >= 0x10704
+    str x24, [x25, x28, lsl #3]
+    add x28, x28, #1
+    .else
     mov x2, x24
     GET x25, LSadd_object
     GET x25, Lcount
     mov x28, x0
+    .endif
     GET x24, Lsuperview
     mov x24, x0
     b LFconsider_parent_loop
@@ -545,9 +569,55 @@ LFconsider_outer:
     str d0, [sp, #272]
     str d4, [sp, #280]
     // All geometry/content guards complete before the first host mutation.
-    // The read-only observer was installed earlier, while content could be empty.
+    .if FQ_VERSION >= 0x10704
+    // Keep the existing restoration state if its scalars and ancestors match.
+    ldr x21, [sp, #416]
+    cbz x21, LFconsider_new_row
+    add x8, sp, #240
+    add x9, sp, #LF_OLD_SCALARS
+    mov x10, #6
+LFconsider_compare_scalars:
+    ldr x11, [x8], #8
+    ldr x12, [x9], #8
+    cmp x11, x12
+    b.ne LFconsider_new_row
+    subs x10, x10, #1
+    b.ne LFconsider_compare_scalars
+    mov x2, #3
+    GET x21, Lobject_at
+    cmp x0, x26
+    b.ne LFconsider_new_row
+    mov x2, #4
+    GET x21, Lobject_at
+    cmp x0, x24
+    b.ne LFconsider_new_row
+    GET x27, Lcount
+    cmp x0, x28
+    b.ne LFconsider_new_row
+    mov x23, #0
+LFconsider_compare_clips:
+    cmp x23, x28
+    b.hs LFconsider_reuse_row
+    mov x2, x23
+    GET x27, Lobject_at
+    mov x2, #0
+    GET x0, Lobject_at
+    ldr x8, [x25, x23, lsl #3]
+    cmp x0, x8
+    b.ne LFconsider_new_row
+    add x23, x23, #1
+    b LFconsider_compare_clips
+LFconsider_reuse_row:
+    mov x27, x21
+    b LFconsider_publish
+LFconsider_new_row:
+    mov x0, x25
+    mov x1, x28
+    mov x2, x27
+    .else
     mov x0, x25
     mov x1, x27
+    .endif
     bl LFclips_capture
     mov x28, x0
     mov x0, x27
@@ -573,6 +643,7 @@ LFconsider_outer:
     GET x27, LSadd_object
     mov x0, x27
     bl LFbackup_row
+LFconsider_publish:
     mov x2, x27
     GET x22, LSadd_object // Publish before any synchronous UIKit reentry.
     AGET x19, LFbusy_key
@@ -608,7 +679,7 @@ LFconsider_done:
     ldp x29, x30, [sp], #496
     ret
 
-LFclips_capture: // path of views, old clip rows -> new clip rows
+LFclips_capture: // path of views, path length, old clip rows -> new clip rows
     stp x29, x30, [sp, #-80]!
     mov x29, sp
     stp x19, x20, [sp, #16]
@@ -617,12 +688,24 @@ LFclips_capture: // path of views, old clip rows -> new clip rows
     stp x25, x26, [sp, #64]
     mov x19, x0
     mov x20, x1
+    .if FQ_VERSION >= 0x10704
+    mov x22, x2
+    .endif
     bl Lnewarray
     mov x21, x0
+    .if FQ_VERSION < 0x10704
     GET x19, Lcount
     mov x22, x0
+    .endif
     mov x23, #0
 LFclips_capture_loop:
+    .if FQ_VERSION >= 0x10704
+    cmp x23, x20
+    b.hs LFclips_capture_done
+    ldr x24, [x19, x23, lsl #3]
+    mov x1, x24
+    mov x0, x22
+    .else
     cmp x23, x22
     b.hs LFclips_capture_done
     mov x2, x23
@@ -630,6 +713,7 @@ LFclips_capture_loop:
     mov x24, x0
     mov x1, x24
     mov x0, x20
+    .endif
     bl LFfind
     mov x25, x0
     cbnz x25, LFclips_capture_append

@@ -426,6 +426,14 @@ class CPU:
             if not op & (1 << 16):
                 value = sx(value, source_width)
             self.wf(op & 31, float(value), 64 if op & (1 << 22) else 32); return
+        if op & 0x7f3e0000 == 0x1e020000:  # SCVTF / UCVTF fixed-point scalar
+            source_width = 64 if op >> 31 else 32
+            fraction_bits = 64 - ((op >> 10) & 63)
+            require(fraction_bits <= source_width, 'Valid fixed-point fractional width')
+            value = self.r((op >> 5) & 31, width=source_width)
+            if not op & (1 << 16):
+                value = sx(value, source_width)
+            self.wf(op & 31, math.ldexp(value, -fraction_bits), 64 if op & (1 << 22) else 32); return
         if op & 0x7f3ffc00 == 0x1e380000:  # FCVTZS scalar FP -> signed general register
             width = 64 if op >> 31 else 32
             value = self.fp((op >> 5) & 31, 64 if op & (1 << 22) else 32)

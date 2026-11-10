@@ -16,7 +16,7 @@ class Runtime(PreviousRuntime):
         self._class('FQReaderSaaSBaseButton','UIButton')
         imp=0x33090000;self.hosts[imp]=('FQReaderSaaSBaseButton','layoutSubviews')
         self._add(self.classes['FQReaderSaaSBaseButton'],'layoutSubviews',imp,'v16@0:8')
-        self.records=[];self.host_mutations=[];self.host_views=set();self.no_hit_api=False
+        self.records=[];self.host_mutations=[];self.glass_state_writes=[];self.host_views=set();self.no_hit_api=False
     def responds(self,receiver,name):
         if name in ('btd_hitTestEdgeInsets','setBtd_hitTestEdgeInsets:'):
             return not self.no_hit_api and self.is_kind(receiver,self.classes['UIView'])
@@ -45,6 +45,8 @@ class Runtime(PreviousRuntime):
                 if name in ('isSelected','isHighlighted'):
                     return self.finish(cpu,int(state.get(name[2:].lower(),False)))
                 if name in ('setHighlighted:','setSelected:','setEnabled:'):
+                    if self.class_names[self.objects[r].cls]=='FQXGlassBackground167':
+                        self.glass_state_writes.append((r,name,bool(cpu.x[2])))
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
                 if name in ('insertSubview:atIndex:','insertSubview:belowSubview:') and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
@@ -86,6 +88,12 @@ def hit_contains(r,v,rect):
     st=r.objects[v].state;x,y,w,h=st['bounds'];top,left,bottom,right=st.get('hitInsets',(0,0,0,0))
     a,b,c,d=rect
     return x+left<=a and y+top<=b and x+w-right>=a+c and y+h-bottom>=b+d
+
+def layout_cost(runtime):
+    boxes=sum(obj.name=='rect_snapshot' for obj in runtime.objects.values())
+    strings=sum(obj.cls==runtime.classes['NSString'] for obj in runtime.objects.values())
+    transactions=sum(event['event']=='transaction_begin' for event in runtime.events)
+    return boxes,strings,transactions,len(runtime.glass_state_writes)
 
 def exercise(data,labels,baseline):
     results=[]
@@ -131,6 +139,24 @@ def exercise(data,labels,baseline):
                 glass=material(c,r,labels,b)
                 send(c,r,glass,'fqx167_down:',b);require(r.objects[glass].state['highlighted'],'Native press highlight')
                 send(c,r,glass,'fqx167_up:',b);require(not r.objects[glass].state['highlighted'],'Native cancel/up highlight reset')
+        # Settle the measured image rectangle once, then count actual calls from
+        # ten equivalent layout callbacks on the same controls.
+        r.uptime+=1.01
+        send(c,r,nav,'layoutSubviews')
+        settled_cost=layout_cost(r)
+        for _ in range(10):
+            send(c,r,nav,'layoutSubviews')
+        require(layout_cost(r)==settled_cost,
+                'Steady native icon layouts allocate no string/rect objects and perform no material state writes or transactions')
+        back_state=r.objects[back].state
+        back_glass=material(c,r,labels,back)
+        back_state.update(enabled=False,selected=True,highlighted=True)
+        send(c,r,nav,'layoutSubviews')
+        require(r.glass_state_writes[-3:]==[(back_glass,'setEnabled:',False),
+                (back_glass,'setSelected:',True),(back_glass,'setHighlighted:',True)],
+                'A live host control state change still updates its native glass')
+        back_state.update(enabled=True,selected=False,highlighted=False)
+        send(c,r,nav,'layoutSubviews')
         # Safe-area/header movement belongs entirely to the host. Repeated
         # callbacks and nonzero parent origins cannot accumulate a plugin offset.
         for i in range(100):
@@ -223,7 +249,7 @@ def exercise(data,labels,baseline):
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')
         require(not material(c,r,labels,search) and not material(c,r,labels,more),'Shelf backgrounds removed on disable')
         require(r.objects[search].state['imageView']==replacement and r.objects[replacement].state['frame']==(9.,9.,16.,20.),'Disable preserves the latest host-created artwork and layout')
-        results.append('host frame/intrinsic content preservation; seven buttons; custom download; nonzero origins; 100 layouts; hit areas; events; restoration; slide '+hex(slide))
+        results.append('host frame/content preservation; download icon and text; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))
     # Execute the actual 1.6.6 predecessor as a negative control: its 36pt
     # wrapper leaves a host's 24pt child drawing at the old top-left origin.
     with tempfile.TemporaryDirectory() as folder:
