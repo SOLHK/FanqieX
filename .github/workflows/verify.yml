@@ -63,7 +63,13 @@ jobs:
 
       - name: Package the verified plugin
         if: success()
-        run: python3 scripts/package162.py --version 1.7.4 --verification-dir build/ci174
+        run: |
+          set -euo pipefail
+          # The test branch commits the previous verified package for direct
+          # download. Rebuild the runner's package from this run, replacing it
+          # only after the frozen-source verification succeeded.
+          rm -rf dist/1.7.4 verification/1.7.4
+          python3 scripts/package162.py --version 1.7.4 --verification-dir build/ci174
 
       - name: Upload the verified plugin
         if: success()
