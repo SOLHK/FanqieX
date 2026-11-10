@@ -1,0 +1,116 @@
+name: FanqieX isolated development environment
+
+on:
+  push:
+    branches: [test]
+    paths:
+      - '.github/workflows/development-environment.yml'
+      - 'scripts/inspect_reverse_archive.py'
+      - 'tests/test_reverse_archive.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fanqiex-development-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  environment:
+    if: github.ref == 'refs/heads/test'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact test commit without write credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install isolated development prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y python3 python3-venv libllvm19 clang-19 llvm-19 file unzip
+          python3 -m venv "$RUNNER_TEMP/fanqiex-venv"
+          echo "$RUNNER_TEMP/fanqiex-venv/bin" >> "$GITHUB_PATH"
+          mkdir -p build/development-environment
+      - name: Prove command, file, ZIP and LLVM execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes, hashlib, io, json, pathlib, platform, subprocess, sys, tempfile, zipfile
+          root = pathlib.Path.cwd()
+          with tempfile.TemporaryDirectory() as directory:
+              test = pathlib.Path(directory) / 'roundtrip.txt'
+              test.write_text('FanqieX environment round trip', encoding='utf-8')
+              assert test.read_text(encoding='utf-8') == 'FanqieX environment round trip'
+          buffer = io.BytesIO()
+          with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+              archive.writestr('probe.txt', b'FanqieX')
+          buffer.seek(0)
+          with zipfile.ZipFile(buffer) as archive:
+              assert archive.read('probe.txt') == b'FanqieX'
+          library = ctypes.CDLL('/lib/x86_64-linux-gnu/libLLVM.so.19.1')
+          version = [ctypes.c_uint() for _ in range(3)]
+          library.LLVMGetVersion.argtypes = [ctypes.POINTER(ctypes.c_uint)] * 3
+          library.LLVMGetVersion(*(ctypes.byref(value) for value in version))
+          result = {
+              'passed': True,
+              'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'platform': platform.platform(),
+              'python': sys.version,
+              'llvm': '.'.join(str(value.value) for value in version),
+              'file_roundtrip': True,
+              'zip_roundtrip': True,
+              'uploaded_reverse_archive_present': False,
+              'scope': 'Execution environment and existing source only; not host-app or device acceptance',
+          }
+          output = root / 'build/development-environment/environment.json'
+          output.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(result, indent=2))
+          print('Repository evidence documents:')
+          for path in sorted((root / 'docs').rglob('*')):
+              if path.is_file() and path.suffix in ('.json', '.md', '.txt'):
+                  print(path.relative_to(root).as_posix())
+          PY
+          clang-19 --version
+          llvm-objdump-19 --version | head -n 8
+      - name: Run existing compiler and unwind tests without changing assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p test_compile_diagnostics.py -v 2>&1 | tee build/development-environment/compiler-tests.log
+          python -m unittest discover -s tests -p test_home_compiler.py -v 2>&1 | tee build/development-environment/glass-compiler-tests.log
+          python -m unittest discover -s tests -p test_native_unwind.py -v 2>&1 | tee build/development-environment/unwind-tests.log
+      - name: Run archive inspector tests when implemented
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f tests/test_reverse_archive.py; then
+            python -m unittest discover -s tests -p test_reverse_archive.py -v 2>&1 | tee build/development-environment/archive-tests.log
+          else
+            echo 'Archive inspector not yet added; no archive inspection is claimed.'
+          fi
+      - name: Rebuild the unchanged 1.7.3 baseline twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python repair162/build_plugin.py baseline/FanqieAdBlock-1.5.8.dylib build/development-environment/first/FanqieX-1.7.3.dylib --version 1.7.3 2>&1 | tee build/development-environment/baseline-build.log
+          python repair162/build_plugin.py baseline/FanqieAdBlock-1.5.8.dylib build/development-environment/second/FanqieX-1.7.3.dylib --version 1.7.3 2>&1 | tee build/development-environment/baseline-rebuild.log
+          cmp build/development-environment/first/FanqieX-1.7.3.dylib build/development-environment/second/FanqieX-1.7.3.dylib
+          file build/development-environment/first/FanqieX-1.7.3.dylib
+          sha256sum build/development-environment/first/FanqieX-1.7.3.dylib > build/development-environment/BASELINE_SHA256.txt
+          cat build/development-environment/BASELINE_SHA256.txt
+      - name: Preserve environment evidence, not a new plugin release
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: development-environment-${{ github.sha }}
+          path: |
+            build/development-environment/*.json
+            build/development-environment/*.log
+            build/development-environment/*.txt
+          if-no-files-found: error
+          retention-days: 7
