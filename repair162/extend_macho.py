@@ -11,7 +11,7 @@ Public API:
     verify_signature(image_bytes) -> dict
 
 __TEXT and __DATA_CONST keep their VM addresses, file offsets, protections,
-sections, code, and pointer slots.  The 16/32 KiB RX __FQPATCH segment is inserted
+sections, code, and pointer slots.  The RX __FQPATCH segment is inserted
 at 0x14000, immediately before __LINKEDIT.  __LINKEDIT is moved by that capacity.
 No new import, entitlement, fixup target, or section number is introduced.
 
@@ -45,6 +45,7 @@ from typing import Iterable
 
 EXT_BASE = 0x14000
 PAGE = 0x4000
+REVIEWED_CAPACITIES = (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE, 9 * PAGE)
 HEADER_LIMIT = 0x800
 SEGMENT_NAME = b"__FQPATCH"
 LC_SEGMENT_64 = 0x19
@@ -328,7 +329,7 @@ def extend(input_bytes: bytes, extension_bytes: bytes, *, capacity: int | None =
     cmds, segs, old_signature = _validate_source(data)
     if capacity is None:
         capacity = align(max(len(extension), 1), PAGE)
-    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE), "Unsupported reviewed extension capacity")
+    need(capacity in REVIEWED_CAPACITIES, "Unsupported reviewed extension capacity")
     need(0 < len(extension) <= capacity and len(extension) % 4 == 0,
          "Extension must contain aligned ARM64 bytes within capacity")
     if identifier is None:
@@ -415,7 +416,7 @@ def verify_extension(input_bytes: bytes, output_bytes: bytes,
          "Unexpected output segment order")
     extension = new_segs[2]
     capacity = extension["filesize"]
-    need(capacity in (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE) and
+    need(capacity in REVIEWED_CAPACITIES and
          extension["vmaddr"] == extension["fileoff"] == EXT_BASE and
          extension["vmsize"] == capacity and extension["initprot"] == extension["maxprot"] == 5 and
          extension["nsects"] == extension["flags"] == 0,

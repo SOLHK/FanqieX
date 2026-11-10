@@ -865,6 +865,12 @@ LUIinstall:
     bl LFQD_FQDSettings
     .endif
 LUIinstall_done:
+    .if FQ_VERSION >= 0x10704
+    cbz x19, LUIinstall_return
+    mov x0, x19
+    bl LFQH_FQHInstallOptionsToggles
+LUIinstall_return:
+    .endif
     ldp x23, x24, [sp, #48]
     ldp x21, x22, [sp, #32]
     ldp x19, x20, [sp, #16]

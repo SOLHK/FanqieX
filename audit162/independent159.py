@@ -182,7 +182,7 @@ class Image:
         raise AuditError(f"Unmapped file-backed address {address:#x}+{length:#x}")
 
 
-def check_layout(old: Image, new: Image) -> dict:
+def check_layout(old: Image, new: Image, version: str) -> dict:
     require(new.header == old.header, "Original Mach-O header changed")
     require(new.sections == old.sections, "Original section metadata changed")
     for name in ("__TEXT", "__DATA_CONST"):
@@ -190,8 +190,11 @@ def check_layout(old: Image, new: Image) -> dict:
                 f"Original segment changed: {name}")
     patch = new.segment("__FQPATCH")
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
-    require(patch["vmsize"] == patch["filesize"] and
-            patch["vmsize"] in (0x4000, 0x8000, 0xC000, 0x10000, 0x20000), "Unsupported reviewed extension capacity")
+    capacities = (0x4000, 0x8000, 0xC000, 0x10000, 0x20000)
+    if version == "1.7.4":
+        capacities += (0x24000,)
+    require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
+            "Unsupported reviewed extension capacity")
     require((patch["maxprot"], patch["initprot"], patch["nsects"], patch["flags"]) == (5, 5, 0, 0),
             "Extension must be RX, sectionless, and have no flags")
     link = new.segment("__LINKEDIT")
@@ -667,7 +670,7 @@ def audit(baseline: bytes, candidate: bytes, expected_version: str = "1.6.2") ->
         report["checks"]["parse"] = {"passed": False, "error": str(error)}
         return report
     report["checks"]["parse"] = {"passed": True}
-    run("layout", lambda: check_layout(old, new))
+    run("layout", lambda: check_layout(old, new, expected_version))
     run("original_sections", lambda: check_sections(old, new, expected_version))
     run("load_commands", lambda: check_commands(old, new, expected_version))
     run("linkedit_and_chained_fixups", lambda: check_linkedit(old, new))

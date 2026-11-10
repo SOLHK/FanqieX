@@ -79,6 +79,11 @@ def compose_assembly(path, version=VERSION):
    text=text.replace(marker,'\n'.join(values))
  return text
 
+def extension_limit(version):
+ if version == RELEASES['1.7.4']:
+  return 0x24000
+ return 0x20000 if version>=0x10604 else 0x10000
+
 def directory(data, version):
  d=dict(zip(NAMES,struct.unpack_from('<64I',data)))
  need(d['version']==version and d['reserved']==0,'Repair version')
@@ -91,8 +96,7 @@ def directory(data, version):
  if version==0x10506:
   need(all(d[n]==0 for n in NAMES[60:]),'Unexpected existing extension')
  else:
-  capacity_limit=0x20000 if version>=0x10604 else 0x10000
-  need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+capacity_limit,'Extension bounds')
+  need(d['extension']==EXT_BASE-BASE and d['extension']+128<d['extension_code_end']<=d['extension_strings']<d['extension_end']<=d['extension']+extension_limit(version),'Extension bounds')
  return d
 
 def build(source_path, output_path, *, version=VERSION):
@@ -213,9 +217,9 @@ def build(source_path, output_path, *, version=VERSION):
   a=int(change['offset'],16); allowed.update(range(a,a+change['size']))
  need(not any(a!=b and i not in allowed for i,(a,b) in enumerate(zip(source,data))),'Unexpected edit before extension')
  capacity=((len(extension)+0x3fff)//0x4000)*0x4000
- if profile164 and capacity>0x10000:
+ if profile164 and 0x10000<capacity<0x20000:
   capacity=0x20000
- need(capacity<=(0x20000 if profile164 else 0x10000),'Extension exceeds reviewed release capacity')
+ need(capacity<=extension_limit(encoded),'Extension exceeds reviewed release capacity')
  out=extend(bytes(data),extension,capacity=capacity,identifier=PRODUCT_NAME+'-'+version+'.dylib')
  layout=verify_extension(bytes(data),out,extension); sig=verify_signature(out)
  # Compare actual original sections against the user's 1.5.8, independent
