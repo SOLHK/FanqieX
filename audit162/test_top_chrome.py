@@ -116,6 +116,9 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
                 return self.finish(cpu, state[name])
             if name == 'isRefreshing' and 'refresh_state' in state:
                 return self.finish(cpu, state['refresh_state'] in (3, 4))
+            if name == 'colorWithAlphaComponent:' and self.is_kind(cpu.x[0], self.classes['UIColor']):
+                color = self.obj('UIColor', 'adaptive top chrome tint', source=cpu.x[0], alpha=cpu.fp(0))
+                return self.finish(cpu, color)
             if name == 'setAlpha:':
                 state['alpha'] = cpu.fp(0)
                 return self.finish(cpu)
@@ -127,13 +130,10 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         return super().handle(cpu, pc)
 
 
-def surface(r, owner):
-    for child in r.objects[owner].state['subviews']:
-        view = r.objects[child]
-        if (r.class_names[view.cls] == 'UIVisualEffectView' and
-                r.class_names[r.objects[view.state['effect']].cls] == 'UIBlurEffect'):
-            return child
-    return 0
+def surfaces(r, owner):
+    return [child for child in r.objects[owner].state['subviews']
+            if r.is_kind(child, r.classes['UIVisualEffectView']) and
+            r.is_kind(r.objects[child].state['effect'], r.classes['UIBlurEffect'])]
 
 
 def exercise_refresh(c, r, tab, scroll, nested_view=None):
@@ -257,6 +257,9 @@ def exercise(data, labels, kind):
                     clipsToBounds=True, contentInset=stock_inset, contentOffset=(0,stock_offset))
     scroll_state = r.objects[scroll].state
     scroll_state['bounds'] = (0,stock_offset,440,scroll_height)
+    stock_edge_hidden = full_flat
+    edge = r.enable_native_top_edge(scroll, hidden=stock_edge_hidden)
+    edge_state = r.objects[edge].state
     if full_flat:
         content_viewport = scroll
     cover_parent, cover_y = scroll, 32
@@ -303,13 +306,23 @@ def exercise(data, labels, kind):
         call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
     else:
         call(c,r,owner,layout)
-    blur = surface(r,root)
+    top_surfaces = surfaces(r, root)
+    require(len(top_surfaces) == 1, 'Exactly one frame-bounded effect is active with the native scroll edge available')
+    blur = top_surfaces[0]
     root_children = r.objects[root].state['subviews']
-    require(blur and root_children.index(viewport)<root_children.index(blur)<root_children.index(header),
+    require(root_children.index(viewport)<root_children.index(blur)<root_children.index(header),
             'Effect samples the cover and keeps foreground controls above it')
-    require(r.objects[blur].state['frame']==(0,0,440,boundary) and
-            r.objects[r.objects[blur].state['effect']].state['style']==6 and
-            not r.objects[blur].state['userInteractionEnabled'], 'Passive ultra-thin material spans the toolbar')
+    blur_state = r.objects[blur].state
+    require(blur_state['frame'] == (0, 0, 440, boundary) and
+            r.objects[blur_state['effect']].state['style'] == 6 and
+            blur_state['alpha'] == 1 and not blur_state['userInteractionEnabled'],
+            'The passive ultra-thin effect remains at full opacity within the toolbar bounds')
+    tint = r.objects[blur_state['contentView']].state['backgroundColor']
+    require(tint and r.objects[tint].state == {'source': r.color('systemBackgroundColor'), 'alpha': 0.0625},
+            'The blur content has a lightly tinted system background that adapts to appearance')
+    require(edge_state['hidden'] and edge_state['style'] == r.top_edge_stock and
+            not r.objects[header].state.get('interactions'),
+            'Bounded material suppresses the separate automatic scroll edge without installing an interaction')
     applied_inset = (stock_inset[0]+boundary, *stock_inset[1:])
     applied_offset = (0,stock_offset-boundary)
     expanded = (0,0,440,viewport_frame[1]+viewport_frame[3])
@@ -336,7 +349,7 @@ def exercise(data, labels, kind):
         exercise_nested_refresh_geometry(c, r, tab, scroll, refresh_animation)
     if shelf:
         call(c,r,tab,FLOATING_LAYOUT,scroll)
-        require(surface(r,holder) and r.objects[holder].state['frame']==(0,boundary,440,36),
+        require(len(surfaces(r,holder)) == 1 and r.objects[holder].state['frame']==(0,boundary,440,36),
                 'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
         # A native write at a deeply scrolled offset must not move the anchor.
         scroll_state['contentOffset']=(0,64)
@@ -348,24 +361,33 @@ def exercise(data, labels, kind):
                 'Host mid-scroll inset rewrites do not move the visible cover')
     for _ in range(3):
         call(c,r,owner,layout)
-    require(surface(r,root)==blur and scroll_state['contentOffset']==applied_offset, 'Settled layout reuses blur and offset')
-    require(not r.objects[header].state['opaque'], 'Stock fill no longer hides the backdrop')
-    require(not r.objects[tab_strip].state['opaque'] and r.objects[artwork].state['alpha']==0.25,
+    require(surfaces(r,root) == [blur] and scroll_state['contentOffset']==applied_offset,
+            'Settled layout reuses one bounded blur and preserves the scrolled offset')
+    geometry = [record for event, record in r.header_records if event == 'topChromeGeometry']
+    require(geometry and geometry[-1]['material'] == 'systemUltraThin',
+            'Bookstore and bookshelf diagnostics report the same bounded blur as Mine')
+    clear = r.color('clearColor')
+    require(not r.objects[header].state['opaque'] and r.objects[header].state['backgroundColor'] == clear,
+            'The stock toolbar fill clears so the backdrop remains visible')
+    require(not r.objects[tab_strip].state['opaque'] and r.objects[tab_strip].state['backgroundColor'] == clear and
+            r.objects[artwork].state['alpha']==0.25,
             'Opaque tab strip and gradient artwork above the pager stop blocking the backdrop')
     if shelf:
         scroll_state['contentInset']=stock_inset
     r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
     call(c,r,owner,layout)
-    require(not surface(r,root) and r.objects[content_viewport].state['frame']==viewport_frame and
+    require(not surfaces(r,root) and r.objects[content_viewport].state['frame']==viewport_frame and
             scroll_state['contentInset']==stock_inset and scroll_state['contentOffset']==(0,stock_offset),
             'Disabling glass restores stock geometry and inset')
+    require(edge_state['hidden'] == stock_edge_hidden and edge_state['style'] == r.top_edge_stock,
+            'Disabling glass restores the originally visible or hidden stock edge without changing style')
     require(r.objects[header].state['backgroundColor']==stock_fill and r.objects[header].state['opaque'],
             'Disabling glass restores stock foreground fill and opacity hint')
     require(r.objects[tab_strip].state['backgroundColor']==stock_fill and r.objects[artwork].state['alpha']==1,
             'Disabling glass restores the exact tab strip fill and gradient artwork')
     if shelf:
         call(c, r, tab, SHELF_SCROLL, scroll)
-        require(not surface(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
+        require(not surfaces(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
                 'Disabling glass restores the original pinned-filter holder')
     require(not r.objects[refresh_animation].state['hidden'],
             'Removing the expanded viewport restores native refresh-artwork visibility')

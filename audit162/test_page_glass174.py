@@ -603,7 +603,11 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 if receiver == self.colors["systemOrangeColor"]:
                     return self.finish(cpu, self.color("shelfWarmTint"))
             if name == "colorWithAlphaComponent:" and receiver in self.objects:
-                color = self.objects[receiver].state
+                color_object = self.objects[receiver]
+                if color_object.name == "color:systemBackgroundColor":
+                    return self.finish(cpu, self.obj("UIColor", "adaptive toolbar tint",
+                                                     base_color=receiver, opacity=cpu.fp(0)))
+                color = color_object.state
                 if "pigment" in color:
                     return self.finish(cpu, self.obj("UIColor", "adjusted reader fill",
                                                      pigment=color["pigment"], opacity=cpu.fp(0)))
@@ -1440,6 +1444,11 @@ def exercise(data, labels):
     require(blur_state["frame"] == (0, 0, 440, 106) and not blur_state["userInteractionEnabled"] and
             runtime.objects[blur_state["effect"]].state["style"] == 6,
             "Mine bar uses frame-bounded adaptive ultra-thin blur")
+    blur_content = runtime.objects[blur_state["contentView"]].state
+    tint = runtime.objects.get(blur_content["backgroundColor"])
+    require(blur_state["alpha"] == 1 and tint and tint.state.get("base_color") == runtime.color("systemBackgroundColor") and
+            tint.state.get("opacity") == 0.0625,
+            "Mine toolbar uses the shared light adaptive tint without lowering blur opacity")
     require(feed_state["frame"] == (0, 0, 440, 956) and feed_state["contentOffset"] == (0, -106) and
             feed_state["contentInset"] == (106, 0, 57, 0) and feed_state["clipsToBounds"] and
             runtime.objects[nested_feed].state["frame"] == nested_frame and

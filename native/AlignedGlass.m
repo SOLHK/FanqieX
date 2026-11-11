@@ -380,9 +380,7 @@ static void TopChromeFrameKey(void) {}
 static void TopChromeScrollKey(void) {}
 static void TopChromeStockInsetKey(void) {}
 static void TopChromeInsetKey(void) {}
-static void TopChromeEdgeOwnerKey(void) {}
-static void TopChromeEdgeInteractionKey(void) {}
-static void TopChromeEdgeStyleKey(void) {}
+static void TopChromeOwnerKey(void) {}
 static void TopChromeEdgeHiddenKey(void) {}
 static void TopChromeFill(Obj view,B enabled);
 static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
@@ -394,7 +392,7 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
         return 0;
     }
     if (!surface) {
-        // Keep the effect view at full opacity and use the lighter system material.
+        // Preserve the live blur and soften the backdrop with a small adaptive fill.
         Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIBlurEffect"),sel_registerName("effectWithStyle:"),6);
         if (!effect) return 0;
         surface=O1(O0(Lookup("UIVisualEffectView"),"alloc"),"initWithEffect:",effect);
@@ -402,6 +400,9 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
         VB(surface,"setUserInteractionEnabled:",0);
         VB(surface,"setAccessibilityElementsHidden:",1);
         VB(surface,"setOpaque:",0);
+        Obj background=O0(Lookup("UIColor"),"systemBackgroundColor");
+        Obj tint=((Obj(*)(Obj,Sel,double))Message)(background,sel_registerName("colorWithAlphaComponent:"),0.0625);
+        V1(Get(surface,"contentView"),"setBackgroundColor:",tint);
         objc_setAssociatedObject(root,TopChromeSurfaceKey,surface,1);
         V0(surface,"release");
     }
@@ -412,57 +413,25 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
     }
     return 1;
 }
-static B TopChromeNativeEdge(Obj foreground,Obj scroll,B enabled) {
-    Obj interaction=objc_getAssociatedObject(foreground,TopChromeEdgeInteractionKey);
-    Obj previousScroll=Get(interaction,"scrollView");
-    Obj soft=Get(Lookup("UIScrollEdgeEffectStyle"),"softStyle");
-    Obj edge=enabled ? Get(scroll,"topEdgeEffect") : (Obj)0;
-    Obj style=Get(edge,"style");
-    B usable=style && soft && Responds(edge,"setStyle:") && Responds(edge,"setHidden:");
-    if (interaction && (!usable || previousScroll!=scroll)) {
-        Obj previous=Get(previousScroll,"topEdgeEffect");
-        Obj stock=objc_getAssociatedObject(interaction,TopChromeEdgeStyleKey);
-        if (stock && soft && SameColor(Get(previous,"style"),soft)) V1(previous,"setStyle:",stock);
-        if (objc_getAssociatedObject(interaction,TopChromeEdgeHiddenKey) && !Flag(previous,"isHidden"))
-            VB(previous,"setHidden:",1);
-        V1(foreground,"removeInteraction:",interaction);
-        objc_setAssociatedObject(foreground,TopChromeEdgeInteractionKey,0,1);
-        interaction=0;
-    }
-    if (!usable) return 0;
-    if (!interaction) {
-        Obj cls=Lookup("UIScrollEdgeElementContainerInteraction");
-        if (!cls || !Responds(foreground,"addInteraction:")) return 0;
-        interaction=O0(O0(cls,"alloc"),"init");
-        if (!interaction) return 0;
-        V1(interaction,"setScrollView:",scroll);
-        Q1(interaction,"setEdge:",1); // UIRectEdgeTop
-        V1(foreground,"addInteraction:",interaction);
-        objc_setAssociatedObject(foreground,TopChromeEdgeInteractionKey,interaction,1);
-        V0(interaction,"release");
-    }
-    if (!SameColor(style,soft)) {
-        objc_setAssociatedObject(interaction,TopChromeEdgeStyleKey,style,1);
-        V1(edge,"setStyle:",soft);
-    }
-    if (Flag(edge,"isHidden")) {
-        objc_setAssociatedObject(interaction,TopChromeEdgeHiddenKey,BoolBox(1),1);
-        VB(edge,"setHidden:",0);
-    }
-    return 1;
-}
 static B TopChromePage(Obj root,Obj foreground,Obj scroll,Rect material,B enabled) {
-    Obj old=objc_getAssociatedObject(root,TopChromeEdgeOwnerKey);
-    enabled=enabled && Kind(scroll,"UIScrollView") && Get(foreground,"superview")==root && VisibleRect(material);
-    if (old && (!enabled || old!=foreground)) {
-        TopChromeNativeEdge(old,0,0);
+    Obj old=objc_getAssociatedObject(root,TopChromeOwnerKey);
+    B installed=TopChrome(root,foreground,material,enabled && Kind(scroll,"UIScrollView"));
+    Obj owner=installed ? foreground : (Obj)0;
+    if (old!=owner) {
         TopChromeFill(old,0);
+        objc_setAssociatedObject(root,TopChromeOwnerKey,owner,1);
     }
-    B native=enabled && TopChromeNativeEdge(foreground,scroll,1);
-    B blur=TopChrome(root,foreground,material,enabled && !native);
-    Obj owner=native || blur ? foreground : (Obj)0;
-    if (old!=owner) objc_setAssociatedObject(root,TopChromeEdgeOwnerKey,owner,1);
-    return native || blur;
+    Obj edge=installed ? Get(scroll,"topEdgeEffect") : (Obj)0;
+    Obj hiddenEdge=objc_getAssociatedObject(root,TopChromeEdgeHiddenKey);
+    if (hiddenEdge && hiddenEdge!=edge) {
+        VB(hiddenEdge,"setHidden:",0);
+        objc_setAssociatedObject(root,TopChromeEdgeHiddenKey,0,1);
+    }
+    if (Responds(edge,"setHidden:") && !Flag(edge,"isHidden")) {
+        objc_setAssociatedObject(root,TopChromeEdgeHiddenKey,edge,1);
+        VB(edge,"setHidden:",1);
+    }
+    return installed;
 }
 static void TopChromeFill(Obj view,B enabled) {
     if (!Kind(view,"UIView")) return;
@@ -605,15 +574,13 @@ static void TopChromeDiagnostics(Obj owner,const char *role,Obj root,Obj viewpor
             visible=(Rect){x,y,__builtin_fmax(0,right-x),__builtin_fmax(0,bottom-y)};
         }
     }
-    Obj anchor=objc_getAssociatedObject(root,TopChromeEdgeOwnerKey);
-    B native=objc_getAssociatedObject(anchor,TopChromeEdgeInteractionKey)!=0;
-    Rect fingerprint={pager.y,visible.y,pager.height,native ? 2 : installed};
+    Rect fingerprint={pager.y,visible.y,pager.height,installed};
     Obj prior=objc_getAssociatedObject(owner,TopChromeGeometryKey);
     if (prior && SameRect(fingerprint,UnboxRect(prior))) return;
     objc_setAssociatedObject(owner,TopChromeGeometryKey,RectBox(fingerprint),1);
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"role",Text(role));
-    Put(record,"material",Text(native ? "nativeScrollEdge" : installed ? "systemUltraThin" : "stock"));
+    Put(record,"material",Text(installed ? "systemUltraThin" : "stock"));
     Put(record,"stockViewportFrame",RectArray(stock));
     Put(record,"viewportRect",RectArray(pager));
     Put(record,"scrollClipRect",RectArray(visible));
@@ -1963,7 +1930,6 @@ static void ProfileScanKey(void) {}
 static void ProfileNightKey(void) {}
 static void ProfileMenuKey(void) {}
 static void ProfileAnchorKey(void) {}
-static void ProfileHiddenEdgeKey(void) {}
 static void PublishOwnerKey(void) {}
 static void PublishBackingKey(void) {}
 static void PublishColorKey(void) {}
@@ -2116,21 +2082,8 @@ static void ProfileCollectionLayout(Obj self,Sel cmd) {
     if (!Kind(root,"UIView") || !Kind(bar,"SSMyUserBar") || !Kind(list,"FQFeedListCollectionView")) return;
     Rect material=Bounds(root), barFrame=Frame(bar);
     material.height=barFrame.y+barFrame.height-material.y;
-    B enabled=Enabled() && Kind(list,"UIScrollView") && Get(list,"superview")==root && !Flag(bar,"isHidden");
-    // The soft scroll edge extends into the account row. Keep the backdrop
-    // within the bar while the expanded list still scrolls behind it.
-    TopChromeNativeEdge(bar,0,0);
-    B installed=TopChrome(root,bar,material,enabled);
-    Obj edge=installed ? Get(list,"topEdgeEffect") : (Obj)0;
-    Obj hiddenEdge=objc_getAssociatedObject(self,ProfileHiddenEdgeKey);
-    if (hiddenEdge && hiddenEdge!=edge) {
-        VB(hiddenEdge,"setHidden:",0);
-        objc_setAssociatedObject(self,ProfileHiddenEdgeKey,0,1);
-    }
-    if (Responds(edge,"setHidden:") && !Flag(edge,"isHidden")) {
-        objc_setAssociatedObject(self,ProfileHiddenEdgeKey,edge,1);
-        VB(edge,"setHidden:",1);
-    }
+    B enabled=Enabled() && Get(list,"superview")==root && !Flag(bar,"isHidden");
+    B installed=TopChromePage(root,bar,list,material,enabled);
     TopChromeFill(bar,installed);
     TopChromeUnderlap(list,list,material.y,installed);
     TopChromeDiagnostics(self,"profile",root,list,list,installed);
