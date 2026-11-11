@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    "host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide 0x0",
+    "host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide 0x100000000",
+    "actual 1.6.6 negative control: native configuration/geometry mutate host while custom 24pt drawing stays anchored",
+    "missing API and nil factory"
+  ],
+  "limits": [
+    "UIKit layout/graphics boundaries are explicit models. No screenshot pixel acceptance or actual iOS touch routing."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "pixel_rendering_tested": false,
+  "cases": [
+    "7 widths x 3 heights: overflow/capsule/reuse/theme/disable at slide 0x0",
+    "7 widths x 3 heights: overflow/capsule/reuse/theme/disable at slide 0x100000000",
+    "ownership-aware cleanup preserves later host writes"
+  ]
+}

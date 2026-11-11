@@ -1,0 +1,400 @@
+{
+  "passed": true,
+  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "candidate_source_byte_equality": true,
+  "test_count": 69,
+  "tests": {
+    "supplied_log_geometry": [
+      {
+        "name": "profile_seq381",
+        "slide": "0x0",
+        "extension": 74,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "profile_seq381",
+        "slide": "0x180000000",
+        "extension": 74,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "shelf_seq306",
+        "slide": "0x0",
+        "extension": 66,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "shelf_seq306",
+        "slide": "0x180000000",
+        "extension": 66,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "profile_after_drama_hidden",
+        "slide": "0x0",
+        "extension": 74,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "profile_after_drama_hidden",
+        "slide": "0x180000000",
+        "extension": 74,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "shelf_as_only_entry",
+        "slide": "0x0",
+        "extension": 66,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      },
+      {
+        "name": "shelf_as_only_entry",
+        "slide": "0x180000000",
+        "extension": 66,
+        "instructions": 87330,
+        "repeat_allocations": 15,
+        "repeat_instructions": 79185,
+        "passed": true
+      }
+    ],
+    "unsafe_or_unrelated_rejection": [
+      {
+        "name": "bookstore_tab",
+        "instructions": 668,
+        "passed": true
+      },
+      {
+        "name": "drama_tab",
+        "instructions": 668,
+        "passed": true
+      },
+      {
+        "name": "other_class",
+        "instructions": 266,
+        "passed": true
+      },
+      {
+        "name": "unrelated_subclass",
+        "instructions": 266,
+        "passed": true
+      },
+      {
+        "name": "hidden_feed",
+        "instructions": 1212,
+        "passed": true
+      },
+      {
+        "name": "hidden_ancestor",
+        "instructions": 1300,
+        "passed": true
+      },
+      {
+        "name": "zero_alpha_ancestor",
+        "instructions": 1328,
+        "passed": true
+      },
+      {
+        "name": "different_window",
+        "instructions": 1623,
+        "passed": true
+      },
+      {
+        "name": "proxy_hidden",
+        "instructions": 793,
+        "passed": true
+      },
+      {
+        "name": "proxy_detached",
+        "instructions": 746,
+        "passed": true
+      },
+      {
+        "name": "bar_not_bottom",
+        "instructions": 2443,
+        "passed": true
+      },
+      {
+        "name": "root_feed",
+        "instructions": 2664,
+        "passed": true
+      },
+      {
+        "name": "horizontal_page",
+        "instructions": 2607,
+        "passed": true
+      },
+      {
+        "name": "tiny_feed",
+        "instructions": 2618,
+        "passed": true
+      },
+      {
+        "name": "non_scroll_content",
+        "instructions": 2893,
+        "passed": true
+      },
+      {
+        "name": "outer_too_short",
+        "instructions": 4253,
+        "passed": true
+      },
+      {
+        "name": "large_height_gap",
+        "instructions": 4584,
+        "passed": true
+      },
+      {
+        "name": "already_full_viewport",
+        "instructions": 3170,
+        "passed": true
+      },
+      {
+        "name": "feed_scaled",
+        "instructions": 2482,
+        "passed": true
+      },
+      {
+        "name": "ancestor_rotated",
+        "instructions": 3420,
+        "passed": true
+      },
+      {
+        "name": "ancestor_mask",
+        "instructions": 3228,
+        "passed": true
+      },
+      {
+        "name": "rounded_parent",
+        "instructions": 3256,
+        "passed": true
+      },
+      {
+        "name": "control_parent",
+        "instructions": 2953,
+        "passed": true
+      },
+      {
+        "name": "effect_parent",
+        "instructions": 2999,
+        "passed": true
+      },
+      {
+        "name": "web_parent",
+        "instructions": 2976,
+        "passed": true
+      },
+      {
+        "name": "small_parent",
+        "instructions": 3170,
+        "passed": true
+      },
+      {
+        "name": "too_deep",
+        "instructions": 6882,
+        "passed": true
+      },
+      {
+        "name": "nan_height",
+        "instructions": 2600,
+        "passed": true
+      },
+      {
+        "name": "infinite_inset",
+        "instructions": 2793,
+        "passed": true
+      },
+      {
+        "name": "partially_visible_feed",
+        "instructions": 4231,
+        "passed": true
+      },
+      {
+        "name": "non_feed_type_at_old_index",
+        "instructions": 668,
+        "passed": true
+      },
+      {
+        "name": "selected_feed_item_not_in_items",
+        "instructions": 616,
+        "passed": true
+      }
+    ],
+    "idempotence_host_changes_and_restoration": [
+      {
+        "name": "host_relayout",
+        "instructions": 13450,
+        "passed": true
+      },
+      {
+        "name": "host_new_height",
+        "instructions": 15139,
+        "passed": true
+      },
+      {
+        "name": "host_new_inset",
+        "instructions": 15124,
+        "passed": true
+      },
+      {
+        "name": "host_origin_move",
+        "instructions": 8145,
+        "passed": true
+      },
+      {
+        "name": "hidden_after_claim",
+        "instructions": 9287,
+        "passed": true
+      },
+      {
+        "name": "switch_to_bookstore",
+        "instructions": 8743,
+        "passed": true
+      },
+      {
+        "name": "empty_discovery",
+        "instructions": 8358,
+        "passed": true
+      },
+      {
+        "name": "two_matching_feeds",
+        "instructions": 13671,
+        "passed": true
+      },
+      {
+        "name": "offset_adjustment",
+        "instructions": 8201,
+        "passed": true
+      },
+      {
+        "name": "original_unclipped",
+        "instructions": 8037,
+        "passed": true
+      },
+      {
+        "name": "scroll_back_to_header",
+        "instructions": 12175,
+        "passed": true
+      },
+      {
+        "name": "host_reasserts_clip",
+        "instructions": 13451,
+        "passed": true
+      },
+      {
+        "name": "same_geometry_new_clip_path",
+        "instructions": 15989,
+        "passed": true
+      },
+      {
+        "name": "later_host_writes_survive_disable",
+        "instructions": 8084,
+        "passed": true
+      }
+    ],
+    "scoped_layout_hook_weak_ownership_and_reentry": [
+      {
+        "name": "host_relayout_immediate",
+        "callback_instructions": 8633,
+        "passed": true
+      },
+      {
+        "name": "pinned_header_repinned",
+        "callback_instructions": 23919,
+        "passed": true
+      },
+      {
+        "name": "nested_host_reentry",
+        "callback_instructions": 8679,
+        "passed": true
+      },
+      {
+        "name": "independent_feed_busy",
+        "callback_instructions": 1355,
+        "passed": true
+      },
+      {
+        "name": "existing_bar_busy",
+        "callback_instructions": 1453,
+        "passed": true
+      },
+      {
+        "name": "proxy_hidden",
+        "callback_instructions": 2591,
+        "passed": true
+      },
+      {
+        "name": "weak_owner_expired",
+        "callback_instructions": 3010,
+        "passed": true
+      },
+      {
+        "name": "unwatched_instance",
+        "callback_instructions": 8633,
+        "passed": true
+      },
+      {
+        "name": "old_hidden_page_cannot_evict_new_feed",
+        "callback_instructions": 3056,
+        "passed": true
+      }
+    ],
+    "conditional_recovery_after_weak_owner_loss": [
+      {
+        "name": "surviving_feed",
+        "instructions": 9592,
+        "passed": true
+      },
+      {
+        "name": "host_new_values",
+        "instructions": 9524,
+        "passed": true
+      },
+      {
+        "name": "missing_weak_ancestor",
+        "instructions": 9309,
+        "passed": true
+      },
+      {
+        "name": "live_owner_noop",
+        "instructions": 8190,
+        "passed": true
+      },
+      {
+        "name": "no_strong_parent_cycle",
+        "instructions": 9592,
+        "passed": true
+      },
+      {
+        "name": "snapshot_reused",
+        "instructions": 14871,
+        "passed": true
+      }
+    ]
+  },
+  "limits": [
+    "UIKit/Foundation are explicit boundary models, not a device run.",
+    "The intermediate parent classes are not present in the exported log; full-width standard and custom container fixtures are exercised.",
+    "No pixels, animation speed, dyld load, or injection acceptance were tested."
+  ]
+}

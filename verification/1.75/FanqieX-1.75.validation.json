@@ -1,0 +1,2370 @@
+{
+  "product_name": "FanqieX",
+  "version": "1.75",
+  "source_version": "1.6.1",
+  "source_sha256": "8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e",
+  "reconstruction_input_version": "1.5.8",
+  "reconstruction_input_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
+  "rebuild_base_sha256": "918313ffab725b9b4c53d030fac463f836032b164b9b30b9815720418e8d36d4",
+  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "size_bytes": 288400,
+  "changes": [
+    {
+      "offset": "0x800",
+      "size": 14180,
+      "reason": "Rebuild main repair with extension calls",
+      "old_sha256": "d3e781e9881f8715f6d52c729d971f961903f635c373302d117e3cdef470a0a9",
+      "new_sha256": "031f458b5a080ab111d3bdd7c79cfbf1d988df9d40e539b0b9c23639daaa7ce8"
+    },
+    {
+      "offset": "0x11900",
+      "size": 4984,
+      "reason": "Rebuild constants",
+      "old_sha256": "5c790fa1e66399e5b77b7df2885e69a7de981b653a68a2c5a3af848265bcd0a4",
+      "new_sha256": "10d333798de8c4d8f839c24c9d530ea156ad3290f478fb82f2e47f1760bf99ae"
+    },
+    {
+      "offset": "0x41d8",
+      "size": 4,
+      "reason": "Redirect installer",
+      "old_sha256": "297e6d593549b5ba14ee0cfe23117942640f0f17a6a792af69412efdd25843d9",
+      "new_sha256": "297e6d593549b5ba14ee0cfe23117942640f0f17a6a792af69412efdd25843d9"
+    },
+    {
+      "offset": "0x4704",
+      "size": 4,
+      "reason": "Redirect settings_boot",
+      "old_sha256": "9c094651dd415fd5a023af743cdf310c4c4ed66a2f5135d19e17758b1ebdb74c",
+      "new_sha256": "9758011618b0585c1e22c49568cc460387fa374860d0356c60bd47bc2f9d576a"
+    },
+    {
+      "offset": "0x4cbc",
+      "size": 4,
+      "reason": "Redirect ui_install",
+      "old_sha256": "aa934d021f1460eb6290446e0d8bfae5e0e8d3e6a9f4e8d44a5490e1ddad597f",
+      "new_sha256": "a0d8da852a8df875e40a990d58da8852aa2e97f04cd907327f2fc06faac8640e"
+    },
+    {
+      "offset": "0x5b94",
+      "size": 4,
+      "reason": "Redirect ratio",
+      "old_sha256": "8ee747dfda08ceb509ef386190f9656a46a5ddc0ae4c02eeeb91f700a70809ee",
+      "new_sha256": "8ee747dfda08ceb509ef386190f9656a46a5ddc0ae4c02eeeb91f700a70809ee"
+    },
+    {
+      "offset": "0x60b8",
+      "size": 4,
+      "reason": "Redirect sync",
+      "old_sha256": "0511635e28fe0ec73c2240a4f5fa77cd43a7e87094bf1aed3fd914a25e77ae54",
+      "new_sha256": "eaf25a97637bf819d34402f64e18952e0068f1ad3ba6880182708e7b0468289e"
+    },
+    {
+      "offset": "0x6c84",
+      "size": 4,
+      "reason": "Redirect frame",
+      "old_sha256": "73e8e9db200892ac49ff89ab0cafe0b6f900b8734cacbdc481b28ad1501ecc07",
+      "new_sha256": "e675c021991d7e3a7c79a579dd981a2f60c6ed6e8ae03cc9a7d3e631515e32d0"
+    },
+    {
+      "offset": "0x6ce8",
+      "size": 4,
+      "reason": "Redirect proxy_frame",
+      "old_sha256": "4679c948e754dce21b5cbe07124104d85b5735f9ed9933915caf4f61ed6d0636",
+      "new_sha256": "9b3c32bdf89d7a0f1dff3ea13c691e5d70ba4ef2e25e5b512b0d51d68bda5998"
+    },
+    {
+      "offset": "0x6db4",
+      "size": 4,
+      "reason": "Redirect restore",
+      "old_sha256": "5ab20dbfb3ce53b2c83287ed6187ce1d59f8f25a721144fe5303559bd85860ee",
+      "new_sha256": "0a50d8f04a2509dc0e1138c5766a86921996feed9a852e38f2abfe2a0890c8aa"
+    },
+    {
+      "offset": "0x4878",
+      "size": 4,
+      "reason": "Localize legacy hook methods",
+      "old_sha256": "91f7921ddcd3ae6ed3e4c358f9a1a79b8cf409911795b53423e9efcee974f4a3",
+      "new_sha256": "18faf3aaf1365625a384e4579c4d2d6f684c2202f4dfdfa52d9b042e3129f979"
+    },
+    {
+      "offset": "0x4018",
+      "size": 4,
+      "reason": "Validate Fanqie bundle identity under the original constructor unwind frame",
+      "old_sha256": "c6aeef4904b1a8fa4d188c9dfbb1a5fe55a0d12799de57cec735ace9a6d8baa8",
+      "new_sha256": "f002c1fead2dd1199e11c8de9371dd7282d8d0c057d68f728fd05961b99b66dc"
+    },
+    {
+      "offset": "0x401c",
+      "size": 4,
+      "reason": "Enter the runtime capability installers only in Fanqie",
+      "old_sha256": "2de49e2679d59cb98c60636c1b6e26951728a22f0fbfc5d267e04a357568c918",
+      "new_sha256": "a32a21b41cf5c1dcd27d6c8b27f7507e4fad1fe190fa5f86439d28f3b462997f"
+    },
+    {
+      "offset": "0x4650",
+      "size": 4,
+      "reason": "Install startup popup rule",
+      "old_sha256": "ef8e33afed6e9a0b62bba98104f460027c422690903fde62a4c473eaf07a0f37",
+      "new_sha256": "e48cdcfce58691cbdffd44e39ea84c11c92d24ba5190453885e04fb4aaa55762"
+    },
+    {
+      "offset": "0x6568",
+      "size": 4,
+      "reason": "Set symmetric tab bar safe area margins",
+      "old_sha256": "f8c3ed5279499c57aadeccb8d411a83e871516a313338d758c1d931db9f23f1e",
+      "new_sha256": "7b407063b0adefbf9b3d5da251e09b79efc455643f761e62e5cdeaba8c31a84b"
+    },
+    {
+      "offset": "0x46d8",
+      "size": 4,
+      "reason": "Record executed ad decisions",
+      "old_sha256": "9717e03754fb4316ebacdf2bc1df399ee766cc6aab57534ba4fc164ad5abde8b",
+      "new_sha256": "c945040bbb04c20d0d2d2e58a9575768a66064106f03d3dad71c5a6af8706538"
+    },
+    {
+      "offset": "0xedec",
+      "size": 4216,
+      "reason": "Link compiler-generated native exception unwind frames into the existing metadata slot",
+      "old_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
+      "new_sha256": "6786969f0ff05d6115a07cc35621d24b0b4c35f54b11f74d786ef7bd67fb53e8"
+    },
+    {
+      "offset": "0x5d50",
+      "size": 4,
+      "reason": "Replace reader navigation/menu/bottom recursive tail with bounded reader panel",
+      "old_sha256": "c2393b16bd629cdc21fd5e9c428e399df7d0d77242a4f76bd58381f4efe847bd",
+      "new_sha256": "9d77d44e6bc8e8b838f9cf2d5f386e655870c19312e0245388c19ddf414f841d"
+    },
+    {
+      "offset": "0x5da0",
+      "size": 4,
+      "reason": "Replace reader navigation/menu/bottom recursive tail with bounded reader panel",
+      "old_sha256": "abd13bc1fdb3440495a2c74f16dca261cb146fb01e166d132b208774f40ce0ed",
+      "new_sha256": "31647ab84414ce1e8730ca1722b1e0d457e1ae07d45d50ac3c752d00f8551a8f"
+    },
+    {
+      "offset": "0x5dec",
+      "size": 4,
+      "reason": "Replace reader navigation/menu/bottom recursive tail with bounded reader panel",
+      "old_sha256": "5f069c3f646f009b5e870c15c86415d22bb04a82bbbdab871a67ee6feb437986",
+      "new_sha256": "4ef6fcd3d743c2120c970ac24202c31273c19cf5effb3974c1d35289f0adf968"
+    },
+    {
+      "offset": "0x5e38",
+      "size": 4,
+      "reason": "Replace reader navigation/menu/bottom recursive tail with bounded reader panel",
+      "old_sha256": "ab9e098be6dbf93aefd8ae2279f81c2bbfe30585acab92ab5f37f3c630d53c31",
+      "new_sha256": "e06ffc6e7b09bbe7df3dae35dda4f3398a64a6b77846f64e2d5334ceb733a6e8"
+    },
+    {
+      "offset": "0x7848",
+      "size": 4,
+      "reason": "Scoped style_control with original trampoline",
+      "old_sha256": "3f07c89f3e39893d4731c5865d01df58e36cb6a0787414cf6d4da7d46a6f08b8",
+      "new_sha256": "86e29e7e0abf9b6a571b1b0081865a230e7cf8935a1bf3b120a360288cde4b3c"
+    },
+    {
+      "offset": "0x7ac4",
+      "size": 4,
+      "reason": "Scoped style_glyph with original trampoline",
+      "old_sha256": "f3344fd8a978228f0c9cdc421929084636668da1d2eee7f78cd2fa20e6031be7",
+      "new_sha256": "8c852b0d8106193480395600f896e44ff7a7ab0beb0af82e84812207d96d401e"
+    },
+    {
+      "offset": "0x649c",
+      "size": 4,
+      "reason": "Initial proxy factory uses Regular glass rather than Clear",
+      "old_sha256": "b69e8e820f69a3ee816bee8810d5cc5f92f2981c776c290bb4543d32dd90b61b",
+      "new_sha256": "8d033f1e78edcd0bdc1d7d5485cc0e92c1575e89d5094ac22b92107104107bfe"
+    },
+    {
+      "offset": "0x568",
+      "size": 4,
+      "reason": "Dylib version",
+      "old_sha256": "2dbba979b8463bae2f41eca3d8c9edbdcc523a13e5c1649785fb82a4a411cc4e",
+      "new_sha256": "8d1b98ae452222550f0078966c5190ae174f093318ea4502833ada35401718ce"
+    },
+    {
+      "offset": "0x570",
+      "size": 40,
+      "reason": "FanqieX install name",
+      "old_sha256": "49dd0d1c26ecef78a6a72495f6550a817712fd808b496b28418eaeae3ce06fd9",
+      "new_sha256": "a90f88be197ce23981956108fc1605f621f36dc88526e5cf1fa497f5194071ad"
+    },
+    {
+      "offset": "0xec84",
+      "size": 56,
+      "reason": "Settings footer version",
+      "old_sha256": "8748c22ae346026bf8c61ad730d737420fe9d65840328430e3424ada4c2ea928",
+      "new_sha256": "34342653b621fcfb4200ae7353687fc46257497563a1f653c75395d15daa8c0c"
+    },
+    {
+      "offset": "0x114b0",
+      "size": 8,
+      "reason": "Settings footer UTF-16 length",
+      "old_sha256": "5c3f166fce0a8ac78def58145f55f5027fab1433f4d333d383659e6b273f4ca9",
+      "new_sha256": "9d4ac218fb54041e3a70a8e14db1ea1af9f570f4842b4702ef9323f1ad8f0ec4"
+    },
+    {
+      "offset": "0x5a0",
+      "size": 16,
+      "reason": "Deterministic UUID",
+      "old_sha256": "282955acd1f224f7787df021bccc01e5fcbc26b39f76b89493802770b58ab0ca",
+      "new_sha256": "d5b5cd26597cf24c16a497f52d5e5c04af958fc9e9c6f5eed9fc9bbb8862840f"
+    }
+  ],
+  "signature": {
+    "signature_offset": 286016,
+    "signature_size": 2384,
+    "directory_offset": 286040,
+    "directory_size": 2360,
+    "code_limit": 286016,
+    "code_slots": 70,
+    "hash_offset": 120,
+    "identifier": "FanqieX-1.75.dylib",
+    "version": 132096,
+    "flags": 131074,
+    "exec_segment_base": 0,
+    "exec_segment_limit": 65536,
+    "exec_segment_flags": 0,
+    "page_hashes_valid": true,
+    "invalid_pages": [],
+    "sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+    "cdhash": "9692526537879cdeba6f8db67d84cafe051bd8c4",
+    "device_acceptance_tested": false
+  },
+  "extension_layout": {
+    "passed": true,
+    "extension_base": 81920,
+    "capacity": 196608,
+    "payload_bytes": 182140,
+    "source_sha256": "934afd2b11a1d04c5ef7a5f7779a2cc584e5505e0642eceaf89064649639f246",
+    "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+    "size_bytes": 288400,
+    "header_end": 1984,
+    "segments": [
+      {
+        "name": "__TEXT",
+        "vmaddr": 0,
+        "vmsize": 65536,
+        "fileoff": 0,
+        "filesize": 65536,
+        "maxprot": 5,
+        "initprot": 5,
+        "nsects": 8,
+        "flags": 0,
+        "command_offset": 32
+      },
+      {
+        "name": "__DATA_CONST",
+        "vmaddr": 65536,
+        "vmsize": 16384,
+        "fileoff": 65536,
+        "filesize": 16384,
+        "maxprot": 3,
+        "initprot": 3,
+        "nsects": 4,
+        "flags": 16,
+        "command_offset": 744
+      },
+      {
+        "name": "__FQPATCH",
+        "vmaddr": 81920,
+        "vmsize": 196608,
+        "fileoff": 81920,
+        "filesize": 196608,
+        "maxprot": 5,
+        "initprot": 5,
+        "nsects": 0,
+        "flags": 0,
+        "command_offset": 1136
+      },
+      {
+        "name": "__LINKEDIT",
+        "vmaddr": 278528,
+        "vmsize": 16384,
+        "fileoff": 278528,
+        "filesize": 9872,
+        "maxprot": 1,
+        "initprot": 1,
+        "nsects": 0,
+        "flags": 0,
+        "command_offset": 1208
+      }
+    ],
+    "original_text_data_bytes_preserved": true,
+    "original_section_numbers_preserved": true,
+    "original_fixup_slots_preserved": 656,
+    "original_import_records_preserved": 23,
+    "chained_starts_offset": 28,
+    "chained_segment_count": 4,
+    "signature": {
+      "signature_offset": 286016,
+      "signature_size": 2384,
+      "directory_offset": 286040,
+      "directory_size": 2360,
+      "code_limit": 286016,
+      "code_slots": 70,
+      "hash_offset": 120,
+      "identifier": "FanqieX-1.75.dylib",
+      "version": 132096,
+      "flags": 131074,
+      "exec_segment_base": 0,
+      "exec_segment_limit": 65536,
+      "exec_segment_flags": 0,
+      "page_hashes_valid": true,
+      "invalid_pages": [],
+      "sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+      "cdhash": "9692526537879cdeba6f8db67d84cafe051bd8c4",
+      "device_acceptance_tested": false
+    },
+    "limits": [
+      "No iOS/dyld load or signing-policy acceptance was executed.",
+      "No new unwind table or function-start metadata is supplied for the assembly extension.",
+      "ARM64 instruction/ABI and UIKit behavior require separate audits."
+    ]
+  },
+  "uuid": "4b41d5bc-dab0-5f06-b2f0-b230181d4919",
+  "main_directory": {
+    "ratio": 2304,
+    "layout": 2364,
+    "installer": 2536,
+    "repair": 3204,
+    "strings": 71936,
+    "end": 76920,
+    "version": 84736,
+    "reserved": 0,
+    "frame": 3004,
+    "background": 2448,
+    "restore": 2924,
+    "edge_update": 3568,
+    "edge_restore": 3912,
+    "find": 5408,
+    "round": 3044,
+    "sync": 2876,
+    "eligible": 4800,
+    "visible": 4664,
+    "message": 5740,
+    "install_method": 2676,
+    "busy_key": 72438,
+    "scroll_key": 72439,
+    "edge_key": 72440,
+    "hidden_key": 72441,
+    "parent_key": 72442,
+    "selected_key": 72443,
+    "sync_original": 2916,
+    "restore_original": 2996,
+    "proxy_frame": 5832,
+    "material_update": 6020,
+    "material_reset": 6704,
+    "settings_boot": 10092,
+    "ui_install": 10240,
+    "ui_export": 10488,
+    "ui_present": 10764,
+    "diagnostic_init": 11280,
+    "diagnostic_enqueue": 12140,
+    "diagnostic_tick": 12048,
+    "diagnostic_maintenance": 12072,
+    "diagnostic_observe": 9112,
+    "diagnostic_snapshot": 9116,
+    "diagnostic_snapshot_all": 9936,
+    "diagnostic_heartbeat": 9928,
+    "describe_view": 7336,
+    "describe_children": 8192,
+    "string": 6840,
+    "number": 6936,
+    "dict_set": 7012,
+    "uint": 6888,
+    "now": 7104,
+    "settings_trampoline": 10128,
+    "signature_key": 74167,
+    "bars_key": 74168,
+    "ui_busy_key": 74169,
+    "ui_sender_key": 74170,
+    "code_end": 15980,
+    "window": 2372,
+    "find_record": 4276,
+    "capture_edge": 4416,
+    "restore_removed": 4064,
+    "extension": 81920,
+    "extension_code_end": 236380,
+    "extension_strings": 236384,
+    "extension_end": 264060
+  },
+  "extension_directory": {
+    "update": 82192,
+    "restore": 82352,
+    "native_update": 82888,
+    "native_restore": 82784,
+    "same_bottom_rect": 83388,
+    "safe_tree": 83872,
+    "monitor_start": 84384,
+    "poll": 84748,
+    "snapshot": 85308,
+    "interaction_update": 88912,
+    "interaction_restore": 89736,
+    "pan": 91336,
+    "should_begin": 90568,
+    "style_control": 102208,
+    "style_glyph": 103356,
+    "code_end": 236380,
+    "strings": 236384,
+    "end": 264060,
+    "native_key": 236384,
+    "monitor_key": 236387,
+    "owner_key": 236388,
+    "timer_key": 236389,
+    "tick_key": 236390,
+    "rejected_key": 236386,
+    "reserved24": 128968,
+    "reserved25": 129312,
+    "reserved26": 129664,
+    "reserved27": 132480
+  },
+  "reader_directory": {
+    "reader_panel": 121572,
+    "walk": 122620,
+    "back_prepare": 118424,
+    "back_restore": 115912,
+    "image_alignment": 120968,
+    "layout_observe": 123072,
+    "finish": 101104,
+    "control_busy_key": 239792,
+    "busy_key": 241658,
+    "owner_back_key": 241664,
+    "back_owned_key": 241659,
+    "back_original_key": 241660,
+    "back_mode_key": 241661,
+    "last_log_key": 241665,
+    "settle_control": 115848
+  },
+  "original_unchanged": true,
+  "original_sections_compared_to_uploaded_bytes": 55096,
+  "device_ui_tested": false,
+  "limits": [
+    "Original plugin/host sources unavailable; repair sources are provided.",
+    "No iPhone, native UIKit renderer, simulator or dyld load executed.",
+    "Ad-hoc page hashes do not establish device signing/injection acceptance.",
+    "Normal IPA re-signing is still required.",
+    "Unknown/controller/scroll content in native wrapper prevents suppression.",
+    "Regular base/native gray selection, shelf first-frame composition and original reader controls have not been visually checked on a device.",
+    "Removed repeat-layout mutations are instruction-tested; real touch-to-action latency remains unmeasured.",
+    "Diagnostics observe bounded plugin state; pending writes are not crash durable."
+  ],
+  "native_unwind": {
+    "passed": true,
+    "scope": "Assembler-derived native ARM64 compact unwind; existing slot rewritten",
+    "section_offset": 60908,
+    "section_size": 4216,
+    "original_entry_count": 63,
+    "native_entry_count": 380,
+    "merged_entry_count": 444,
+    "original_limit": 42356,
+    "merged_limit": 236380,
+    "section_descriptors_unchanged": true,
+    "native_entries": [
+      {
+        "start": 132988,
+        "end": 133252,
+        "encoding": 67108867
+      },
+      {
+        "start": 133252,
+        "end": 135592,
+        "encoding": 67108895
+      },
+      {
+        "start": 135592,
+        "end": 135704,
+        "encoding": 67108867
+      },
+      {
+        "start": 135704,
+        "end": 135880,
+        "encoding": 67108871
+      },
+      {
+        "start": 135880,
+        "end": 136756,
+        "encoding": 67108895
+      },
+      {
+        "start": 136756,
+        "end": 136824,
+        "encoding": 67108865
+      },
+      {
+        "start": 136824,
+        "end": 137416,
+        "encoding": 67108867
+      },
+      {
+        "start": 137416,
+        "end": 137484,
+        "encoding": 67108865
+      },
+      {
+        "start": 137484,
+        "end": 137988,
+        "encoding": 67108871
+      },
+      {
+        "start": 137988,
+        "end": 138132,
+        "encoding": 67109121
+      },
+      {
+        "start": 138132,
+        "end": 138192,
+        "encoding": 67108865
+      },
+      {
+        "start": 138192,
+        "end": 138852,
+        "encoding": 67108895
+      },
+      {
+        "start": 138852,
+        "end": 139304,
+        "encoding": 67108879
+      },
+      {
+        "start": 139304,
+        "end": 139736,
+        "encoding": 67108879
+      },
+      {
+        "start": 139736,
+        "end": 139808,
+        "encoding": 67108865
+      },
+      {
+        "start": 139808,
+        "end": 139960,
+        "encoding": 67108867
+      },
+      {
+        "start": 139960,
+        "end": 142340,
+        "encoding": 67108871
+      },
+      {
+        "start": 142340,
+        "end": 143060,
+        "encoding": 67108879
+      },
+      {
+        "start": 143060,
+        "end": 143064,
+        "encoding": 33554432
+      },
+      {
+        "start": 143064,
+        "end": 143232,
+        "encoding": 67108871
+      },
+      {
+        "start": 143232,
+        "end": 143504,
+        "encoding": 67108867
+      },
+      {
+        "start": 143504,
+        "end": 143832,
+        "encoding": 67108867
+      },
+      {
+        "start": 143832,
+        "end": 144012,
+        "encoding": 67108867
+      },
+      {
+        "start": 144012,
+        "end": 144420,
+        "encoding": 67108879
+      },
+      {
+        "start": 144420,
+        "end": 144552,
+        "encoding": 67108867
+      },
+      {
+        "start": 144552,
+        "end": 144772,
+        "encoding": 67108867
+      },
+      {
+        "start": 144772,
+        "end": 144956,
+        "encoding": 67108867
+      },
+      {
+        "start": 144956,
+        "end": 144976,
+        "encoding": 33554432
+      },
+      {
+        "start": 144976,
+        "end": 144996,
+        "encoding": 33554432
+      },
+      {
+        "start": 144996,
+        "end": 145016,
+        "encoding": 33554432
+      },
+      {
+        "start": 145016,
+        "end": 145036,
+        "encoding": 33554432
+      },
+      {
+        "start": 145036,
+        "end": 145428,
+        "encoding": 67108879
+      },
+      {
+        "start": 145428,
+        "end": 145764,
+        "encoding": 67108871
+      },
+      {
+        "start": 145764,
+        "end": 146044,
+        "encoding": 67108871
+      },
+      {
+        "start": 146044,
+        "end": 146064,
+        "encoding": 33554432
+      },
+      {
+        "start": 146064,
+        "end": 146084,
+        "encoding": 33554432
+      },
+      {
+        "start": 146084,
+        "end": 146104,
+        "encoding": 33554432
+      },
+      {
+        "start": 146104,
+        "end": 146604,
+        "encoding": 67108895
+      },
+      {
+        "start": 146604,
+        "end": 147028,
+        "encoding": 67108879
+      },
+      {
+        "start": 147028,
+        "end": 148024,
+        "encoding": 67108895
+      },
+      {
+        "start": 148024,
+        "end": 148636,
+        "encoding": 67108895
+      },
+      {
+        "start": 148636,
+        "end": 148788,
+        "encoding": 67108867
+      },
+      {
+        "start": 148788,
+        "end": 149276,
+        "encoding": 67108895
+      },
+      {
+        "start": 149276,
+        "end": 151032,
+        "encoding": 67108895
+      },
+      {
+        "start": 151032,
+        "end": 151672,
+        "encoding": 67108895
+      },
+      {
+        "start": 151672,
+        "end": 153112,
+        "encoding": 67108895
+      },
+      {
+        "start": 153112,
+        "end": 153452,
+        "encoding": 67108871
+      },
+      {
+        "start": 153452,
+        "end": 153740,
+        "encoding": 67108871
+      },
+      {
+        "start": 153740,
+        "end": 154180,
+        "encoding": 67108871
+      },
+      {
+        "start": 154180,
+        "end": 154332,
+        "encoding": 67108867
+      },
+      {
+        "start": 154332,
+        "end": 154360,
+        "encoding": 33554432
+      },
+      {
+        "start": 154360,
+        "end": 154388,
+        "encoding": 33554432
+      },
+      {
+        "start": 154388,
+        "end": 154540,
+        "encoding": 67108867
+      },
+      {
+        "start": 154540,
+        "end": 154568,
+        "encoding": 33554432
+      },
+      {
+        "start": 154568,
+        "end": 154596,
+        "encoding": 33554432
+      },
+      {
+        "start": 154596,
+        "end": 154748,
+        "encoding": 67108867
+      },
+      {
+        "start": 154748,
+        "end": 154776,
+        "encoding": 33554432
+      },
+      {
+        "start": 154776,
+        "end": 154804,
+        "encoding": 33554432
+      },
+      {
+        "start": 154804,
+        "end": 154956,
+        "encoding": 67108867
+      },
+      {
+        "start": 154956,
+        "end": 154984,
+        "encoding": 33554432
+      },
+      {
+        "start": 154984,
+        "end": 155012,
+        "encoding": 33554432
+      },
+      {
+        "start": 155012,
+        "end": 155164,
+        "encoding": 67108867
+      },
+      {
+        "start": 155164,
+        "end": 155192,
+        "encoding": 33554432
+      },
+      {
+        "start": 155192,
+        "end": 155220,
+        "encoding": 33554432
+      },
+      {
+        "start": 155220,
+        "end": 156320,
+        "encoding": 67108895
+      },
+      {
+        "start": 156320,
+        "end": 156464,
+        "encoding": 67109121
+      },
+      {
+        "start": 156464,
+        "end": 156512,
+        "encoding": 67108864
+      },
+      {
+        "start": 156512,
+        "end": 156660,
+        "encoding": 67109123
+      },
+      {
+        "start": 156660,
+        "end": 156792,
+        "encoding": 67108865
+      },
+      {
+        "start": 156792,
+        "end": 156796,
+        "encoding": 33554432
+      },
+      {
+        "start": 156796,
+        "end": 156884,
+        "encoding": 67108865
+      },
+      {
+        "start": 156884,
+        "end": 156972,
+        "encoding": 67108865
+      },
+      {
+        "start": 156972,
+        "end": 157064,
+        "encoding": 67108867
+      },
+      {
+        "start": 157064,
+        "end": 157328,
+        "encoding": 67108867
+      },
+      {
+        "start": 157328,
+        "end": 157424,
+        "encoding": 67108865
+      },
+      {
+        "start": 157424,
+        "end": 157428,
+        "encoding": 33554432
+      },
+      {
+        "start": 157428,
+        "end": 157520,
+        "encoding": 67108867
+      },
+      {
+        "start": 157520,
+        "end": 158472,
+        "encoding": 67108879
+      },
+      {
+        "start": 158472,
+        "end": 158544,
+        "encoding": 67108865
+      },
+      {
+        "start": 158544,
+        "end": 158616,
+        "encoding": 67108865
+      },
+      {
+        "start": 158616,
+        "end": 159176,
+        "encoding": 67108879
+      },
+      {
+        "start": 159176,
+        "end": 159180,
+        "encoding": 33554432
+      },
+      {
+        "start": 159180,
+        "end": 159948,
+        "encoding": 67108895
+      },
+      {
+        "start": 159948,
+        "end": 159952,
+        "encoding": 33554432
+      },
+      {
+        "start": 159952,
+        "end": 160164,
+        "encoding": 67108871
+      },
+      {
+        "start": 160164,
+        "end": 160168,
+        "encoding": 33554432
+      },
+      {
+        "start": 160168,
+        "end": 160172,
+        "encoding": 33554432
+      },
+      {
+        "start": 160172,
+        "end": 160176,
+        "encoding": 33554432
+      },
+      {
+        "start": 160176,
+        "end": 160540,
+        "encoding": 67108879
+      },
+      {
+        "start": 160540,
+        "end": 160668,
+        "encoding": 67108865
+      },
+      {
+        "start": 160668,
+        "end": 160796,
+        "encoding": 67108867
+      },
+      {
+        "start": 160796,
+        "end": 161108,
+        "encoding": 67108867
+      },
+      {
+        "start": 161108,
+        "end": 161280,
+        "encoding": 67108865
+      },
+      {
+        "start": 161280,
+        "end": 161372,
+        "encoding": 67108867
+      },
+      {
+        "start": 161372,
+        "end": 161604,
+        "encoding": 67108879
+      },
+      {
+        "start": 161604,
+        "end": 161696,
+        "encoding": 67108867
+      },
+      {
+        "start": 161696,
+        "end": 161768,
+        "encoding": 67108865
+      },
+      {
+        "start": 161768,
+        "end": 161780,
+        "encoding": 33554432
+      },
+      {
+        "start": 161780,
+        "end": 161784,
+        "encoding": 33554432
+      },
+      {
+        "start": 161784,
+        "end": 161872,
+        "encoding": 67108865
+      },
+      {
+        "start": 161872,
+        "end": 163372,
+        "encoding": 67110687
+      },
+      {
+        "start": 163372,
+        "end": 164896,
+        "encoding": 67110687
+      },
+      {
+        "start": 164896,
+        "end": 164900,
+        "encoding": 33554432
+      },
+      {
+        "start": 164900,
+        "end": 164936,
+        "encoding": 67108864
+      },
+      {
+        "start": 164936,
+        "end": 164948,
+        "encoding": 33554432
+      },
+      {
+        "start": 164948,
+        "end": 164952,
+        "encoding": 33554432
+      },
+      {
+        "start": 164952,
+        "end": 164960,
+        "encoding": 33554432
+      },
+      {
+        "start": 164960,
+        "end": 168080,
+        "encoding": 67112735
+      },
+      {
+        "start": 168080,
+        "end": 168140,
+        "encoding": 67108865
+      },
+      {
+        "start": 168140,
+        "end": 168144,
+        "encoding": 33554432
+      },
+      {
+        "start": 168144,
+        "end": 169140,
+        "encoding": 67108895
+      },
+      {
+        "start": 169140,
+        "end": 169144,
+        "encoding": 33554432
+      },
+      {
+        "start": 169144,
+        "end": 169560,
+        "encoding": 67109639
+      },
+      {
+        "start": 169560,
+        "end": 169684,
+        "encoding": 67108867
+      },
+      {
+        "start": 169684,
+        "end": 169688,
+        "encoding": 33554432
+      },
+      {
+        "start": 169688,
+        "end": 169692,
+        "encoding": 33554432
+      },
+      {
+        "start": 169692,
+        "end": 170576,
+        "encoding": 67112707
+      },
+      {
+        "start": 170576,
+        "end": 170884,
+        "encoding": 67109635
+      },
+      {
+        "start": 170884,
+        "end": 171392,
+        "encoding": 67108871
+      },
+      {
+        "start": 171392,
+        "end": 171396,
+        "encoding": 33554432
+      },
+      {
+        "start": 171396,
+        "end": 171464,
+        "encoding": 67108865
+      },
+      {
+        "start": 171464,
+        "end": 171700,
+        "encoding": 67108871
+      },
+      {
+        "start": 171700,
+        "end": 173316,
+        "encoding": 67109663
+      },
+      {
+        "start": 173316,
+        "end": 173388,
+        "encoding": 67108865
+      },
+      {
+        "start": 173388,
+        "end": 173496,
+        "encoding": 67108865
+      },
+      {
+        "start": 173496,
+        "end": 174324,
+        "encoding": 67108871
+      },
+      {
+        "start": 174324,
+        "end": 174588,
+        "encoding": 67108871
+      },
+      {
+        "start": 174588,
+        "end": 174592,
+        "encoding": 33554432
+      },
+      {
+        "start": 174592,
+        "end": 174792,
+        "encoding": 67108865
+      },
+      {
+        "start": 174792,
+        "end": 174796,
+        "encoding": 33554432
+      },
+      {
+        "start": 174796,
+        "end": 174800,
+        "encoding": 33554432
+      },
+      {
+        "start": 174800,
+        "end": 175128,
+        "encoding": 67108867
+      },
+      {
+        "start": 175128,
+        "end": 175428,
+        "encoding": 67108879
+      },
+      {
+        "start": 175428,
+        "end": 175632,
+        "encoding": 67108865
+      },
+      {
+        "start": 175632,
+        "end": 175916,
+        "encoding": 67108865
+      },
+      {
+        "start": 175916,
+        "end": 175984,
+        "encoding": 67108865
+      },
+      {
+        "start": 175984,
+        "end": 176336,
+        "encoding": 67108871
+      },
+      {
+        "start": 176336,
+        "end": 178428,
+        "encoding": 67112735
+      },
+      {
+        "start": 178428,
+        "end": 178640,
+        "encoding": 67108865
+      },
+      {
+        "start": 178640,
+        "end": 178768,
+        "encoding": 67108865
+      },
+      {
+        "start": 178768,
+        "end": 179028,
+        "encoding": 67108865
+      },
+      {
+        "start": 179028,
+        "end": 179032,
+        "encoding": 33554432
+      },
+      {
+        "start": 179032,
+        "end": 179036,
+        "encoding": 33554432
+      },
+      {
+        "start": 179036,
+        "end": 179092,
+        "encoding": 67108865
+      },
+      {
+        "start": 179092,
+        "end": 179440,
+        "encoding": 67110659
+      },
+      {
+        "start": 179440,
+        "end": 179688,
+        "encoding": 67108871
+      },
+      {
+        "start": 179688,
+        "end": 179888,
+        "encoding": 67108871
+      },
+      {
+        "start": 179888,
+        "end": 180436,
+        "encoding": 67108867
+      },
+      {
+        "start": 180436,
+        "end": 180444,
+        "encoding": 33554432
+      },
+      {
+        "start": 180444,
+        "end": 182776,
+        "encoding": 67108895
+      },
+      {
+        "start": 182776,
+        "end": 183168,
+        "encoding": 67108867
+      },
+      {
+        "start": 183168,
+        "end": 183256,
+        "encoding": 67108867
+      },
+      {
+        "start": 183256,
+        "end": 183352,
+        "encoding": 67108867
+      },
+      {
+        "start": 183352,
+        "end": 183432,
+        "encoding": 67108865
+      },
+      {
+        "start": 183432,
+        "end": 183592,
+        "encoding": 67108865
+      },
+      {
+        "start": 183592,
+        "end": 184672,
+        "encoding": 67108895
+      },
+      {
+        "start": 184672,
+        "end": 184760,
+        "encoding": 67108865
+      },
+      {
+        "start": 184760,
+        "end": 184864,
+        "encoding": 67108867
+      },
+      {
+        "start": 184864,
+        "end": 185036,
+        "encoding": 67108865
+      },
+      {
+        "start": 185036,
+        "end": 185140,
+        "encoding": 67108865
+      },
+      {
+        "start": 185140,
+        "end": 185212,
+        "encoding": 67108865
+      },
+      {
+        "start": 185212,
+        "end": 185664,
+        "encoding": 67108867
+      },
+      {
+        "start": 185664,
+        "end": 185748,
+        "encoding": 67108865
+      },
+      {
+        "start": 185748,
+        "end": 185832,
+        "encoding": 67108865
+      },
+      {
+        "start": 185832,
+        "end": 186084,
+        "encoding": 67108867
+      },
+      {
+        "start": 186084,
+        "end": 186192,
+        "encoding": 67108865
+      },
+      {
+        "start": 186192,
+        "end": 186264,
+        "encoding": 67108865
+      },
+      {
+        "start": 186264,
+        "end": 186504,
+        "encoding": 67108871
+      },
+      {
+        "start": 186504,
+        "end": 186608,
+        "encoding": 67108865
+      },
+      {
+        "start": 186608,
+        "end": 186696,
+        "encoding": 67108867
+      },
+      {
+        "start": 186696,
+        "end": 186808,
+        "encoding": 67108865
+      },
+      {
+        "start": 186808,
+        "end": 186920,
+        "encoding": 67108867
+      },
+      {
+        "start": 186920,
+        "end": 186992,
+        "encoding": 67108865
+      },
+      {
+        "start": 186992,
+        "end": 187080,
+        "encoding": 67108867
+      },
+      {
+        "start": 187080,
+        "end": 187168,
+        "encoding": 67108867
+      },
+      {
+        "start": 187168,
+        "end": 187796,
+        "encoding": 67112719
+      },
+      {
+        "start": 187796,
+        "end": 188032,
+        "encoding": 67109639
+      },
+      {
+        "start": 188032,
+        "end": 188288,
+        "encoding": 67108865
+      },
+      {
+        "start": 188288,
+        "end": 188392,
+        "encoding": 67108867
+      },
+      {
+        "start": 188392,
+        "end": 188504,
+        "encoding": 67108867
+      },
+      {
+        "start": 188504,
+        "end": 188592,
+        "encoding": 67108867
+      },
+      {
+        "start": 188592,
+        "end": 188680,
+        "encoding": 67108867
+      },
+      {
+        "start": 188680,
+        "end": 188768,
+        "encoding": 67108867
+      },
+      {
+        "start": 188768,
+        "end": 188848,
+        "encoding": 67108865
+      },
+      {
+        "start": 188848,
+        "end": 189408,
+        "encoding": 67109639
+      },
+      {
+        "start": 189408,
+        "end": 189516,
+        "encoding": 67108865
+      },
+      {
+        "start": 189516,
+        "end": 189624,
+        "encoding": 67108865
+      },
+      {
+        "start": 189624,
+        "end": 189696,
+        "encoding": 67108865
+      },
+      {
+        "start": 189696,
+        "end": 190172,
+        "encoding": 67108895
+      },
+      {
+        "start": 190172,
+        "end": 190932,
+        "encoding": 67108895
+      },
+      {
+        "start": 190932,
+        "end": 191264,
+        "encoding": 67108867
+      },
+      {
+        "start": 191264,
+        "end": 191628,
+        "encoding": 67108871
+      },
+      {
+        "start": 191628,
+        "end": 191776,
+        "encoding": 67108867
+      },
+      {
+        "start": 191776,
+        "end": 191932,
+        "encoding": 67108871
+      },
+      {
+        "start": 191932,
+        "end": 192828,
+        "encoding": 67109663
+      },
+      {
+        "start": 192828,
+        "end": 193820,
+        "encoding": 67108895
+      },
+      {
+        "start": 193820,
+        "end": 193908,
+        "encoding": 67108867
+      },
+      {
+        "start": 193908,
+        "end": 195168,
+        "encoding": 67108867
+      },
+      {
+        "start": 195168,
+        "end": 195240,
+        "encoding": 67108865
+      },
+      {
+        "start": 195240,
+        "end": 195312,
+        "encoding": 67108865
+      },
+      {
+        "start": 195312,
+        "end": 195400,
+        "encoding": 67108867
+      },
+      {
+        "start": 195400,
+        "end": 195492,
+        "encoding": 67108865
+      },
+      {
+        "start": 195492,
+        "end": 195600,
+        "encoding": 67108867
+      },
+      {
+        "start": 195600,
+        "end": 195696,
+        "encoding": 67108867
+      },
+      {
+        "start": 195696,
+        "end": 195852,
+        "encoding": 67108865
+      },
+      {
+        "start": 195852,
+        "end": 196024,
+        "encoding": 67108867
+      },
+      {
+        "start": 196024,
+        "end": 196392,
+        "encoding": 67109639
+      },
+      {
+        "start": 196392,
+        "end": 196552,
+        "encoding": 67109127
+      },
+      {
+        "start": 196552,
+        "end": 196624,
+        "encoding": 67108865
+      },
+      {
+        "start": 196624,
+        "end": 196760,
+        "encoding": 67109127
+      },
+      {
+        "start": 196760,
+        "end": 196904,
+        "encoding": 67108865
+      },
+      {
+        "start": 196904,
+        "end": 196976,
+        "encoding": 67108865
+      },
+      {
+        "start": 196976,
+        "end": 197072,
+        "encoding": 67108867
+      },
+      {
+        "start": 197072,
+        "end": 197144,
+        "encoding": 67108865
+      },
+      {
+        "start": 197144,
+        "end": 197280,
+        "encoding": 67108867
+      },
+      {
+        "start": 197280,
+        "end": 197380,
+        "encoding": 67108865
+      },
+      {
+        "start": 197380,
+        "end": 197572,
+        "encoding": 67108871
+      },
+      {
+        "start": 197572,
+        "end": 197660,
+        "encoding": 67108867
+      },
+      {
+        "start": 197660,
+        "end": 197732,
+        "encoding": 67108865
+      },
+      {
+        "start": 197732,
+        "end": 197860,
+        "encoding": 67108867
+      },
+      {
+        "start": 197860,
+        "end": 197988,
+        "encoding": 67108867
+      },
+      {
+        "start": 197988,
+        "end": 198060,
+        "encoding": 67108865
+      },
+      {
+        "start": 198060,
+        "end": 198148,
+        "encoding": 67108867
+      },
+      {
+        "start": 198148,
+        "end": 198272,
+        "encoding": 67108865
+      },
+      {
+        "start": 198272,
+        "end": 198276,
+        "encoding": 33554432
+      },
+      {
+        "start": 198276,
+        "end": 198656,
+        "encoding": 67108867
+      },
+      {
+        "start": 198656,
+        "end": 198732,
+        "encoding": 67108865
+      },
+      {
+        "start": 198732,
+        "end": 198736,
+        "encoding": 33554432
+      },
+      {
+        "start": 198736,
+        "end": 199372,
+        "encoding": 67109639
+      },
+      {
+        "start": 199372,
+        "end": 199672,
+        "encoding": 67108867
+      },
+      {
+        "start": 199672,
+        "end": 199676,
+        "encoding": 33554432
+      },
+      {
+        "start": 199676,
+        "end": 199680,
+        "encoding": 33554432
+      },
+      {
+        "start": 199680,
+        "end": 199684,
+        "encoding": 33554432
+      },
+      {
+        "start": 199684,
+        "end": 199688,
+        "encoding": 33554432
+      },
+      {
+        "start": 199688,
+        "end": 199764,
+        "encoding": 67109121
+      },
+      {
+        "start": 199764,
+        "end": 199768,
+        "encoding": 33554432
+      },
+      {
+        "start": 199768,
+        "end": 199772,
+        "encoding": 33554432
+      },
+      {
+        "start": 199772,
+        "end": 199776,
+        "encoding": 33554432
+      },
+      {
+        "start": 199776,
+        "end": 199780,
+        "encoding": 33554432
+      },
+      {
+        "start": 199780,
+        "end": 199888,
+        "encoding": 67109633
+      },
+      {
+        "start": 199888,
+        "end": 200016,
+        "encoding": 67108871
+      },
+      {
+        "start": 200016,
+        "end": 200416,
+        "encoding": 67109639
+      },
+      {
+        "start": 200416,
+        "end": 200524,
+        "encoding": 33554432
+      },
+      {
+        "start": 200524,
+        "end": 200992,
+        "encoding": 67109635
+      },
+      {
+        "start": 200992,
+        "end": 200996,
+        "encoding": 33554432
+      },
+      {
+        "start": 200996,
+        "end": 201232,
+        "encoding": 67109635
+      },
+      {
+        "start": 201232,
+        "end": 201236,
+        "encoding": 33554432
+      },
+      {
+        "start": 201236,
+        "end": 201240,
+        "encoding": 33554432
+      },
+      {
+        "start": 201240,
+        "end": 201300,
+        "encoding": 67108865
+      },
+      {
+        "start": 201300,
+        "end": 201472,
+        "encoding": 67108865
+      },
+      {
+        "start": 201472,
+        "end": 201648,
+        "encoding": 67108867
+      },
+      {
+        "start": 201648,
+        "end": 203120,
+        "encoding": 67112735
+      },
+      {
+        "start": 203120,
+        "end": 203124,
+        "encoding": 33554432
+      },
+      {
+        "start": 203124,
+        "end": 204892,
+        "encoding": 67112711
+      },
+      {
+        "start": 204892,
+        "end": 205108,
+        "encoding": 33554432
+      },
+      {
+        "start": 205108,
+        "end": 205112,
+        "encoding": 33554432
+      },
+      {
+        "start": 205112,
+        "end": 205116,
+        "encoding": 33554432
+      },
+      {
+        "start": 205116,
+        "end": 205408,
+        "encoding": 67108867
+      },
+      {
+        "start": 205408,
+        "end": 205412,
+        "encoding": 33554432
+      },
+      {
+        "start": 205412,
+        "end": 205416,
+        "encoding": 33554432
+      },
+      {
+        "start": 205416,
+        "end": 205468,
+        "encoding": 67108865
+      },
+      {
+        "start": 205468,
+        "end": 205520,
+        "encoding": 67108865
+      },
+      {
+        "start": 205520,
+        "end": 205524,
+        "encoding": 33554432
+      },
+      {
+        "start": 205524,
+        "end": 205528,
+        "encoding": 33554432
+      },
+      {
+        "start": 205528,
+        "end": 205532,
+        "encoding": 33554432
+      },
+      {
+        "start": 205532,
+        "end": 206156,
+        "encoding": 67109127
+      },
+      {
+        "start": 206156,
+        "end": 206280,
+        "encoding": 67108865
+      },
+      {
+        "start": 206280,
+        "end": 206284,
+        "encoding": 33554432
+      },
+      {
+        "start": 206284,
+        "end": 206912,
+        "encoding": 67112707
+      },
+      {
+        "start": 206912,
+        "end": 208296,
+        "encoding": 67112735
+      },
+      {
+        "start": 208296,
+        "end": 208468,
+        "encoding": 67108865
+      },
+      {
+        "start": 208468,
+        "end": 208472,
+        "encoding": 33554432
+      },
+      {
+        "start": 208472,
+        "end": 208476,
+        "encoding": 33554432
+      },
+      {
+        "start": 208476,
+        "end": 208592,
+        "encoding": 67108865
+      },
+      {
+        "start": 208592,
+        "end": 209912,
+        "encoding": 67108895
+      },
+      {
+        "start": 209912,
+        "end": 210140,
+        "encoding": 67108865
+      },
+      {
+        "start": 210140,
+        "end": 210424,
+        "encoding": 67109123
+      },
+      {
+        "start": 210424,
+        "end": 210492,
+        "encoding": 67108865
+      },
+      {
+        "start": 210492,
+        "end": 210604,
+        "encoding": 67108867
+      },
+      {
+        "start": 210604,
+        "end": 210848,
+        "encoding": 67108865
+      },
+      {
+        "start": 210848,
+        "end": 211576,
+        "encoding": 67108871
+      },
+      {
+        "start": 211576,
+        "end": 211580,
+        "encoding": 33554432
+      },
+      {
+        "start": 211580,
+        "end": 211584,
+        "encoding": 33554432
+      },
+      {
+        "start": 211584,
+        "end": 211696,
+        "encoding": 67108865
+      },
+      {
+        "start": 211696,
+        "end": 211752,
+        "encoding": 67108865
+      },
+      {
+        "start": 211752,
+        "end": 211756,
+        "encoding": 33554432
+      },
+      {
+        "start": 211756,
+        "end": 211960,
+        "encoding": 67108871
+      },
+      {
+        "start": 211960,
+        "end": 211964,
+        "encoding": 33554432
+      },
+      {
+        "start": 211964,
+        "end": 211968,
+        "encoding": 33554432
+      },
+      {
+        "start": 211968,
+        "end": 212380,
+        "encoding": 67108871
+      },
+      {
+        "start": 212380,
+        "end": 212832,
+        "encoding": 67109123
+      },
+      {
+        "start": 212832,
+        "end": 212836,
+        "encoding": 33554432
+      },
+      {
+        "start": 212836,
+        "end": 212840,
+        "encoding": 33554432
+      },
+      {
+        "start": 212840,
+        "end": 212844,
+        "encoding": 33554432
+      },
+      {
+        "start": 212844,
+        "end": 213084,
+        "encoding": 67108867
+      },
+      {
+        "start": 213084,
+        "end": 213156,
+        "encoding": 67108865
+      },
+      {
+        "start": 213156,
+        "end": 213384,
+        "encoding": 67108867
+      },
+      {
+        "start": 213384,
+        "end": 214004,
+        "encoding": 67108871
+      },
+      {
+        "start": 214004,
+        "end": 214636,
+        "encoding": 67108895
+      },
+      {
+        "start": 214636,
+        "end": 214640,
+        "encoding": 33554432
+      },
+      {
+        "start": 214640,
+        "end": 214644,
+        "encoding": 33554432
+      },
+      {
+        "start": 214644,
+        "end": 214648,
+        "encoding": 33554432
+      },
+      {
+        "start": 214648,
+        "end": 214788,
+        "encoding": 67108865
+      },
+      {
+        "start": 214788,
+        "end": 215988,
+        "encoding": 67112735
+      },
+      {
+        "start": 215988,
+        "end": 215992,
+        "encoding": 33554432
+      },
+      {
+        "start": 215992,
+        "end": 216148,
+        "encoding": 67108865
+      },
+      {
+        "start": 216148,
+        "end": 216416,
+        "encoding": 67109123
+      },
+      {
+        "start": 216416,
+        "end": 216848,
+        "encoding": 67108867
+      },
+      {
+        "start": 216848,
+        "end": 217484,
+        "encoding": 67108871
+      },
+      {
+        "start": 217484,
+        "end": 217488,
+        "encoding": 33554432
+      },
+      {
+        "start": 217488,
+        "end": 217492,
+        "encoding": 33554432
+      },
+      {
+        "start": 217492,
+        "end": 217668,
+        "encoding": 67108871
+      },
+      {
+        "start": 217668,
+        "end": 218452,
+        "encoding": 67109151
+      },
+      {
+        "start": 218452,
+        "end": 218456,
+        "encoding": 33554432
+      },
+      {
+        "start": 218456,
+        "end": 218816,
+        "encoding": 67108867
+      },
+      {
+        "start": 218816,
+        "end": 219468,
+        "encoding": 67109663
+      },
+      {
+        "start": 219468,
+        "end": 219472,
+        "encoding": 33554432
+      },
+      {
+        "start": 219472,
+        "end": 219476,
+        "encoding": 33554432
+      },
+      {
+        "start": 219476,
+        "end": 219480,
+        "encoding": 33554432
+      },
+      {
+        "start": 219480,
+        "end": 219788,
+        "encoding": 67108867
+      },
+      {
+        "start": 219788,
+        "end": 219976,
+        "encoding": 67108865
+      },
+      {
+        "start": 219976,
+        "end": 220796,
+        "encoding": 67109647
+      },
+      {
+        "start": 220796,
+        "end": 220800,
+        "encoding": 33554432
+      },
+      {
+        "start": 220800,
+        "end": 220804,
+        "encoding": 33554432
+      },
+      {
+        "start": 220804,
+        "end": 220808,
+        "encoding": 33554432
+      },
+      {
+        "start": 220808,
+        "end": 220812,
+        "encoding": 33554432
+      },
+      {
+        "start": 220812,
+        "end": 221308,
+        "encoding": 67108871
+      },
+      {
+        "start": 221308,
+        "end": 221312,
+        "encoding": 33554432
+      },
+      {
+        "start": 221312,
+        "end": 221556,
+        "encoding": 67108867
+      },
+      {
+        "start": 221556,
+        "end": 222048,
+        "encoding": 67108871
+      },
+      {
+        "start": 222048,
+        "end": 222328,
+        "encoding": 67108867
+      },
+      {
+        "start": 222328,
+        "end": 222332,
+        "encoding": 33554432
+      },
+      {
+        "start": 222332,
+        "end": 222336,
+        "encoding": 33554432
+      },
+      {
+        "start": 222336,
+        "end": 222504,
+        "encoding": 67108865
+      },
+      {
+        "start": 222504,
+        "end": 222944,
+        "encoding": 67109639
+      },
+      {
+        "start": 222944,
+        "end": 223524,
+        "encoding": 67108871
+      },
+      {
+        "start": 223524,
+        "end": 224380,
+        "encoding": 67112711
+      },
+      {
+        "start": 224380,
+        "end": 225564,
+        "encoding": 67112735
+      },
+      {
+        "start": 225564,
+        "end": 225568,
+        "encoding": 33554432
+      },
+      {
+        "start": 225568,
+        "end": 226492,
+        "encoding": 67109639
+      },
+      {
+        "start": 226492,
+        "end": 226496,
+        "encoding": 33554432
+      },
+      {
+        "start": 226496,
+        "end": 226500,
+        "encoding": 33554432
+      },
+      {
+        "start": 226500,
+        "end": 226504,
+        "encoding": 33554432
+      },
+      {
+        "start": 226504,
+        "end": 226508,
+        "encoding": 33554432
+      },
+      {
+        "start": 226508,
+        "end": 226512,
+        "encoding": 33554432
+      },
+      {
+        "start": 226512,
+        "end": 226696,
+        "encoding": 67109633
+      },
+      {
+        "start": 226696,
+        "end": 226700,
+        "encoding": 33554432
+      },
+      {
+        "start": 226700,
+        "end": 226828,
+        "encoding": 67108867
+      },
+      {
+        "start": 226828,
+        "end": 226832,
+        "encoding": 33554432
+      },
+      {
+        "start": 226832,
+        "end": 227668,
+        "encoding": 67112707
+      },
+      {
+        "start": 227668,
+        "end": 228196,
+        "encoding": 67109123
+      },
+      {
+        "start": 228196,
+        "end": 228200,
+        "encoding": 33554432
+      },
+      {
+        "start": 228200,
+        "end": 228204,
+        "encoding": 33554432
+      },
+      {
+        "start": 228204,
+        "end": 228208,
+        "encoding": 33554432
+      },
+      {
+        "start": 228208,
+        "end": 228212,
+        "encoding": 33554432
+      },
+      {
+        "start": 228212,
+        "end": 228216,
+        "encoding": 33554432
+      },
+      {
+        "start": 228216,
+        "end": 229428,
+        "encoding": 67112727
+      },
+      {
+        "start": 229428,
+        "end": 229488,
+        "encoding": 67108865
+      },
+      {
+        "start": 229488,
+        "end": 229492,
+        "encoding": 33554432
+      },
+      {
+        "start": 229492,
+        "end": 229796,
+        "encoding": 67112707
+      },
+      {
+        "start": 229796,
+        "end": 229996,
+        "encoding": 67109633
+      },
+      {
+        "start": 229996,
+        "end": 230480,
+        "encoding": 67112707
+      },
+      {
+        "start": 230480,
+        "end": 230788,
+        "encoding": 67109127
+      },
+      {
+        "start": 230788,
+        "end": 231052,
+        "encoding": 67109639
+      },
+      {
+        "start": 231052,
+        "end": 231380,
+        "encoding": 67110657
+      },
+      {
+        "start": 231380,
+        "end": 231488,
+        "encoding": 67108865
+      },
+      {
+        "start": 231488,
+        "end": 232400,
+        "encoding": 67108871
+      },
+      {
+        "start": 232400,
+        "end": 232404,
+        "encoding": 33554432
+      },
+      {
+        "start": 232404,
+        "end": 232408,
+        "encoding": 33554432
+      },
+      {
+        "start": 232408,
+        "end": 232412,
+        "encoding": 33554432
+      },
+      {
+        "start": 232412,
+        "end": 233800,
+        "encoding": 67112735
+      },
+      {
+        "start": 233800,
+        "end": 233876,
+        "encoding": 67108865
+      },
+      {
+        "start": 233876,
+        "end": 234392,
+        "encoding": 67109127
+      },
+      {
+        "start": 234392,
+        "end": 234396,
+        "encoding": 33554432
+      },
+      {
+        "start": 234396,
+        "end": 234400,
+        "encoding": 33554432
+      },
+      {
+        "start": 234400,
+        "end": 234996,
+        "encoding": 67110671
+      },
+      {
+        "start": 234996,
+        "end": 235932,
+        "encoding": 67112719
+      },
+      {
+        "start": 235932,
+        "end": 236068,
+        "encoding": 67109123
+      },
+      {
+        "start": 236068,
+        "end": 236136,
+        "encoding": 67108865
+      },
+      {
+        "start": 236136,
+        "end": 236380,
+        "encoding": 67108867
+      }
+    ],
+    "original_sha256": "5c20aa46d8463fecc929ecf2e58ca376022759a2df7bc61c06f070065ae20631",
+    "merged_sha256": "6786969f0ff05d6115a07cc35621d24b0b4c35f54b11f74d786ef7bd67fb53e8"
+  }
+}

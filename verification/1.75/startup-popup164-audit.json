@@ -1,0 +1,176 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    {
+      "slide": "0x0",
+      "case": "owned",
+      "instructions": 13819
+    },
+    {
+      "slide": "0x0",
+      "case": "inherited",
+      "instructions": 13872
+    },
+    {
+      "slide": "0x0",
+      "case": "disabled",
+      "instructions": 7973
+    },
+    {
+      "slide": "0x0",
+      "case": "missing_class",
+      "instructions": 8628
+    },
+    {
+      "slide": "0x0",
+      "case": "missing_method",
+      "instructions": 8674
+    },
+    {
+      "slide": "0x0",
+      "case": "wrong_encoding",
+      "instructions": 8680
+    },
+    {
+      "slide": "0x180000000",
+      "case": "owned",
+      "instructions": 13819
+    },
+    {
+      "slide": "0x180000000",
+      "case": "inherited",
+      "instructions": 13872
+    },
+    {
+      "slide": "0x180000000",
+      "case": "disabled",
+      "instructions": 7973
+    },
+    {
+      "slide": "0x180000000",
+      "case": "missing_class",
+      "instructions": 8628
+    },
+    {
+      "slide": "0x180000000",
+      "case": "missing_method",
+      "instructions": 8674
+    },
+    {
+      "slide": "0x180000000",
+      "case": "wrong_encoding",
+      "instructions": 8680
+    },
+    {
+      "slide": "0x0",
+      "case": "launch_only",
+      "instructions": 15798
+    },
+    {
+      "slide": "0x0",
+      "case": "bookstore_only",
+      "instructions": 15797
+    },
+    {
+      "slide": "0x0",
+      "case": "both",
+      "instructions": 15854
+    },
+    {
+      "slide": "0x0",
+      "case": "disabled",
+      "instructions": 7973
+    },
+    {
+      "slide": "0x0",
+      "case": "other_option",
+      "instructions": 8030
+    },
+    {
+      "slide": "0x0",
+      "case": "alternate_build",
+      "instructions": 15854
+    },
+    {
+      "slide": "0x0",
+      "case": "modern_only",
+      "instructions": 12462
+    },
+    {
+      "slide": "0x0",
+      "case": "legacy_only",
+      "instructions": 13401
+    },
+    {
+      "slide": "0x0",
+      "case": "missing_imc_class",
+      "instructions": 8126
+    },
+    {
+      "slide": "0x0",
+      "case": "wrong_gate_abi",
+      "instructions": 8261
+    },
+    {
+      "slide": "0x0",
+      "case": "wrong_lookup_abi",
+      "instructions": 8421
+    },
+    {
+      "slide": "0x180000000",
+      "case": "launch_only",
+      "instructions": 15798
+    },
+    {
+      "slide": "0x180000000",
+      "case": "bookstore_only",
+      "instructions": 15797
+    },
+    {
+      "slide": "0x180000000",
+      "case": "both",
+      "instructions": 15854
+    },
+    {
+      "slide": "0x180000000",
+      "case": "disabled",
+      "instructions": 7973
+    },
+    {
+      "slide": "0x180000000",
+      "case": "other_option",
+      "instructions": 8030
+    },
+    {
+      "slide": "0x180000000",
+      "case": "alternate_build",
+      "instructions": 15854
+    },
+    {
+      "slide": "0x180000000",
+      "case": "modern_only",
+      "instructions": 12462
+    },
+    {
+      "slide": "0x180000000",
+      "case": "legacy_only",
+      "instructions": 13401
+    },
+    {
+      "slide": "0x180000000",
+      "case": "missing_imc_class",
+      "instructions": 8126
+    },
+    {
+      "slide": "0x180000000",
+      "case": "wrong_gate_abi",
+      "instructions": 8261
+    },
+    {
+      "slide": "0x180000000",
+      "case": "wrong_lookup_abi",
+      "instructions": 8421
+    }
+  ]
+}

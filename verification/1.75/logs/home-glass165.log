@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": [
+    "header sizing/reuse/theme/restore; original text geometry and actions at slide 0x0",
+    "header sizing/reuse/theme/restore; original text geometry and actions at slide 0x100000000",
+    "identity/ABI gates with glass False",
+    "identity/ABI gates with glass True",
+    "independent search accessor capability checks",
+    "invalid layout and nil factory",
+    "actual initializer routing, unwind return address and generic ARM64 deployment metadata"
+  ],
+  "viewport_widths": [
+    320,
+    375,
+    390,
+    430,
+    440,
+    768,
+    1024
+  ]
+}

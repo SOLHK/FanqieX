@@ -1,0 +1,6 @@
+test_register_immediate_width_overflow_and_false_conditions (test_conditional_compare.ConditionalCompare.test_register_immediate_width_overflow_and_false_conditions) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.018s
+
+OK

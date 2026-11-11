@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "failed_checks": {},
+  "report": "/home/runner/work/FanqieX/FanqieX/build/ci175/independent-audit.json"
+}

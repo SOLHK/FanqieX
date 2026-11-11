@@ -1,0 +1,46 @@
+RUN named_event_payloads
+RUN bounded_pending
+RUN schedule_recovery
+RUN retention_and_bytes
+RUN size_guard_and_sessions
+RUN exports_and_disk_errors
+{
+  "passed": true,
+  "device_tested": false,
+  "cases": {
+    "named_event_payloads": {
+      "startup_null_preserved": true,
+      "scalar_preserved": true,
+      "explicit_correlation_preserved": true,
+      "generated_correlations": 3
+    },
+    "bounded_pending": {
+      "accepted": 2048,
+      "dropped": 1,
+      "coalesced_worker": true,
+      "export_failure_callback": true
+    },
+    "schedule_recovery": {
+      "allocation_retry": true,
+      "empty_queue_race": true
+    },
+    "retention_and_bytes": {
+      "retained_cap": 8192,
+      "serialized_cap_bytes": 8388608,
+      "single_oversized_record_rejected": true
+    },
+    "size_guard_and_sessions": {
+      "pre_read_size_guard": true,
+      "session_stable": true,
+      "restart_session_changed": true,
+      "explicit_correlation_preserved": true
+    },
+    "exports_and_disk_errors": {
+      "immutable_exports": 8,
+      "expired_cleanup": true,
+      "export_failure_reported": true,
+      "disk_failure_latched_after_retry": true
+    }
+  },
+  "scope": "ARM64 logger with Foundation, scheduling, file and JSON boundary models"
+}

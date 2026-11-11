@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "edit_widths": [
+    320,
+    390,
+    440,
+    768
+  ],
+  "listen_regular_material": true,
+  "foreground_restored": true,
+  "settled_layouts": 100,
+  "settled_material_frame_writes": 0
+}

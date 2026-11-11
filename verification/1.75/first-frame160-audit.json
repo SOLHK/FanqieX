@@ -1,0 +1,207 @@
+{
+  "passed": true,
+  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "baseline_sha256": "e4435d143a22e21991ae753bca5af3f2d945dd6cd6ac3ab514c71d2a5e4d0810",
+  "test_count": 39,
+  "tests": {
+    "actual_159_negative_controls": [
+      {
+        "name": "159_empty_feed_then_loaded_layout",
+        "old_result": "still_short",
+        "passed": true
+      },
+      {
+        "name": "159_late_SSNestedContainerScrollView",
+        "old_result": "edge_unmanaged",
+        "passed": true
+      },
+      {
+        "name": "159_late_SSBookStoreUnlimitedContainerView",
+        "old_result": "edge_unmanaged",
+        "passed": true
+      }
+    ],
+    "feed_first_callbacks": [
+      {
+        "name": "empty_then_loaded",
+        "passed": true,
+        "slide": "0x0"
+      },
+      {
+        "name": "first_attach_no_scan",
+        "passed": true,
+        "slide": "0x0"
+      },
+      {
+        "name": "early_bar_frame",
+        "passed": true,
+        "slide": "0x0"
+      },
+      {
+        "name": "runtime_after_super",
+        "passed": true,
+        "slide": "0x0"
+      },
+      {
+        "name": "runtime_no_super",
+        "passed": true,
+        "slide": "0x0"
+      },
+      {
+        "name": "nonzero_slide",
+        "passed": true,
+        "slide": "0x180000000"
+      }
+    ],
+    "bookstore_late_content": [
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "late_first_layout",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "empty_then_loaded",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "host_reopens_edge",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "edge_replaced",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "hidden_then_visible",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "host_original_hidden",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "disable_then_layout",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "runtime_after_super",
+        "passed": true
+      },
+      {
+        "class": "SSNestedContainerScrollView",
+        "name": "lexical_inheritance",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "late_first_layout",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "empty_then_loaded",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "host_reopens_edge",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "edge_replaced",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "hidden_then_visible",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "host_original_hidden",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "disable_then_layout",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "runtime_after_super",
+        "passed": true
+      },
+      {
+        "class": "SSBookStoreUnlimitedContainerView",
+        "name": "lexical_inheritance",
+        "passed": true
+      }
+    ],
+    "scope_restore_and_reentry": [
+      {
+        "name": "other_window",
+        "passed": true
+      },
+      {
+        "name": "proxy_hidden",
+        "passed": true
+      },
+      {
+        "name": "bar_hidden",
+        "passed": true
+      },
+      {
+        "name": "horizontal_offscreen",
+        "passed": true
+      },
+      {
+        "name": "small_carousel",
+        "passed": true
+      },
+      {
+        "name": "ambiguous_bars",
+        "passed": true
+      },
+      {
+        "name": "unrelated_scroll_class",
+        "passed": true
+      },
+      {
+        "name": "original_abi_unchanged",
+        "passed": true
+      },
+      {
+        "name": "foreign_layout_encoding",
+        "passed": true
+      },
+      {
+        "name": "bar_reentry",
+        "passed": true
+      },
+      {
+        "name": "no_parent_retention",
+        "passed": true
+      },
+      {
+        "name": "two_scrolls_independent",
+        "passed": true
+      }
+    ]
+  },
+  "candidate_source_byte_equality": true,
+  "baseline_source_byte_equality": true,
+  "device_ui_tested": false,
+  "limits": [
+    "Executes actual ARM64 against modeled UIKit/Foundation/host boundaries.",
+    "No native UIKit frame scheduling, CoreAnimation composition, physical iPhone, or injection acceptance was tested.",
+    "Old negative controls prove missing synchronous coverage, not exact wall-clock visible flash duration."
+  ]
+}

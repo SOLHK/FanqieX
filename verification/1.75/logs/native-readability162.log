@@ -1,0 +1,79 @@
+{
+  "passed": true,
+  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "negative_control_sha256": "8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e",
+  "case_groups": 4,
+  "cases": [
+    {
+      "name": "released_161_negative_control",
+      "passed": true,
+      "detail": {
+        "released_missing_track_reproduced": true,
+        "released_default_selection_shade_reproduced": true,
+        "released_hidden_contents_reproduced": true,
+        "candidate_regular_track_and_semantic_gray": true
+      }
+    },
+    {
+      "name": "content_coordinates_and_replacement",
+      "passed": true,
+      "detail": [
+        {
+          "slide": "0x0",
+          "bound_variants": 4,
+          "replacement_content_restored": true
+        },
+        {
+          "slide": "0x180000000",
+          "bound_variants": 4,
+          "replacement_content_restored": true
+        }
+      ]
+    },
+    {
+      "name": "ancestor_input_and_restore",
+      "passed": true,
+      "detail": [
+        {
+          "original_proxy_input": false,
+          "original_content_input": false,
+          "modeled_native_hit": true
+        },
+        {
+          "original_proxy_input": false,
+          "original_content_input": true,
+          "modeled_native_hit": true
+        },
+        {
+          "original_proxy_input": true,
+          "original_content_input": false,
+          "modeled_native_hit": true
+        },
+        {
+          "original_proxy_input": true,
+          "original_content_input": true,
+          "modeled_native_hit": true
+        }
+      ]
+    },
+    {
+      "name": "existing_content_and_stable_material",
+      "passed": true,
+      "detail": {
+        "material_writes": 1,
+        "fade_and_tracking_variants": 5,
+        "existing_content_preserved": true,
+        "actual_host_icons_restored": false
+      }
+    }
+  ],
+  "scope": "Actual ARM64 including complete repair, with public UIKit/Foundation and hit-test boundaries.",
+  "device_tested": false,
+  "gpu_refraction_tested": false,
+  "physical_hit_testing_tested": false,
+  "limits": [
+    "No native UIKit/GPU pixel rendering or physical drag executed.",
+    "The fixture images demonstrate non-destruction only; the pinned legacy builder is title-only.",
+    "Semantic colors are requested through public API; actual device colors/contrast remain unmeasured."
+  ]
+}

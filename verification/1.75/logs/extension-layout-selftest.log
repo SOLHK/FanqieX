@@ -1,0 +1,297 @@
+{
+  "passed": true,
+  "fixture_only": "NOP/RET bytes are never executed",
+  "valid_layouts": [
+    {
+      "passed": true,
+      "candidate_sha256": "6def0e7beb54015476a82cea3dd69aad4b0284c0ce04608366d8a3e4f5885f5a",
+      "extension_capacity": 16384,
+      "file_bytes": 106768,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 105792,
+        "size": 976,
+        "pages": 26,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "4440ce5bc84224f85801b8b0d11f0aa0f32d1861"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "4e08c4d64c5a57c2b6f31a3e8635e4b7f0216b381432d737423b80a702ed8191",
+      "extension_capacity": 32768,
+      "file_bytes": 123280,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 122176,
+        "size": 1104,
+        "pages": 30,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "3c7239d9a1146c33ab0121ab382e37598a0d2922"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "8eda7c84cac264775200137da46afd39285895f8aec3e56163b9d49cc69bb09a",
+      "extension_capacity": 49152,
+      "file_bytes": 139792,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 138560,
+        "size": 1232,
+        "pages": 34,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "053340fb5bde42c1c3670cece81b3edc62b6a0e6"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "bb07470415ddc1350837450ff6878558f937ea3357f5fe7c01d8e48842b42ab7",
+      "extension_capacity": 65536,
+      "file_bytes": 156304,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 154944,
+        "size": 1360,
+        "pages": 38,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "12304eb2707e639b0f22b4d623c959b20f3a43c6"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "3faad3447f178f6853427b36272a8bd0647482f9555015bcdfee4e3d662b3bf6",
+      "extension_capacity": 131072,
+      "file_bytes": 222352,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 220480,
+        "size": 1872,
+        "pages": 54,
+        "identifier": "FanqieAdBlock-1.5.7.dylib",
+        "cdhash": "e1aad6be56b700018b31ece581251b035cd93cb0"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "5ba405bcef4195dcf0394c7b7aca590946ca1fc9d3606640f9f9cc4095b47361",
+      "extension_capacity": 65536,
+      "file_bytes": 156304,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 154944,
+        "size": 1360,
+        "pages": 38,
+        "identifier": "FanqieAdBlock-1.5.6.dylib",
+        "cdhash": "1f9222db5fdb4db588ba4aa5377ca0398e426112"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "0993635e70d80e40d2e7ce9866d08256105787dd1cab0d7e8cf24728df453148",
+      "extension_capacity": 147456,
+      "file_bytes": 238864,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 236864,
+        "size": 2000,
+        "pages": 58,
+        "identifier": "FanqieAdBlock-1.5.6.dylib",
+        "cdhash": "b4537cc54951cee85196b40437dfbd96679c29c1"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "fad1a65c064150e9e0a74342f82678038172eb019619ce2eae4d48ba7aadee26",
+      "extension_capacity": 163840,
+      "file_bytes": 255376,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 253248,
+        "size": 2128,
+        "pages": 62,
+        "identifier": "FanqieAdBlock-1.5.6.dylib",
+        "cdhash": "fbe2647014e574b21faef1c55a22bb33dc808611"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "9960929475536d6c8a8c6f2828f15d9590b70cb91ed3a7d67e33ce06695fcf29",
+      "extension_capacity": 180224,
+      "file_bytes": 271888,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 269632,
+        "size": 2256,
+        "pages": 66,
+        "identifier": "FanqieAdBlock-1.5.6.dylib",
+        "cdhash": "343904d862d06b1e7eacbf85eb72f8f616d3ec67"
+      },
+      "device_tested": false
+    },
+    {
+      "passed": true,
+      "candidate_sha256": "853a3987665da013d3c006a745b5ab02613d2f0c9edf3e8ffa8b5d34fea499fa",
+      "extension_capacity": 196608,
+      "file_bytes": 288400,
+      "header_end": 1984,
+      "unchanged_original_fixups": 656,
+      "unchanged_import_records": 23,
+      "signature": {
+        "offset": 286016,
+        "size": 2384,
+        "pages": 70,
+        "identifier": "FanqieAdBlock-1.5.6.dylib",
+        "cdhash": "d88d87c6903684430e55bad4bf7b16d369b3ee21"
+      },
+      "device_tested": false
+    }
+  ],
+  "negative_controls": [
+    {
+      "case": "new_rx_code_not_signed",
+      "rejected": true,
+      "rehashed": false,
+      "reason": "signed page 20"
+    },
+    {
+      "case": "chained_segment_count_not_updated",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "starts segment count"
+    },
+    {
+      "case": "new_segment_is_writable",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "patch permissions/map"
+    },
+    {
+      "case": "old_pointer_slot_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "original mapped bytes"
+    },
+    {
+      "case": "old_code_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "original mapped bytes"
+    },
+    {
+      "case": "original_import_table_changed",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "LINKEDIT payload changed"
+    },
+    {
+      "case": "original_indirect_symbol_offset_not_moved",
+      "rejected": true,
+      "rehashed": true,
+      "reason": "dysymtab relocation"
+    },
+    {
+      "case": "signature_code_slots_too_small",
+      "rejected": true,
+      "rehashed": false,
+      "reason": "CodeDirectory length/count"
+    },
+    {
+      "case": "already_extended",
+      "rejected": true,
+      "reason": "Input already extended or has unfamiliar segments"
+    },
+    {
+      "case": "unaligned_payload",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "payload_over_capacity",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "unsupported_capacity",
+      "rejected": true,
+      "reason": "Unsupported reviewed extension capacity"
+    },
+    {
+      "case": "over_reviewed_capacity",
+      "rejected": true,
+      "reason": "Unsupported reviewed extension capacity"
+    },
+    {
+      "case": "four_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "eight_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "nine_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "ten_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "eleven_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "twelve_page_overflow",
+      "rejected": true,
+      "reason": "Extension must contain aligned ARM64 bytes within capacity"
+    },
+    {
+      "case": "thirteen_page_capacity",
+      "rejected": true,
+      "reason": "Unsupported reviewed extension capacity"
+    },
+    {
+      "case": "occupied_header_padding",
+      "rejected": true,
+      "reason": "No unused header padding for one segment load command"
+    },
+    {
+      "case": "encrypted_input",
+      "rejected": true,
+      "reason": "Unsupported encryption range or nonzero cryptid"
+    }
+  ],
+  "device_tested": false
+}

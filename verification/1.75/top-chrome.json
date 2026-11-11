@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "device_tested": false,
+  "pixel_rendering_tested": false,
+  "cases": [
+    "bookstore",
+    "nested bookstore",
+    "bookstore in full pager",
+    "shelf"
+  ]
+}
