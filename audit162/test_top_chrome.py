@@ -14,11 +14,14 @@ from top_chrome_runtime import TopChromeRuntime
 
 SHELF = 'SSBookShelf525ViewController'
 SHELF_LIST = 'SSBookShelfSubViewController'
+DOUBLE_ROW = 'SSBookStoreDoubleRowViewController'
+DOUBLE_ROW_SCROLL = 'storeTabScrollViewDidScroll:'
 UPDATE_INSET = 'updateCollectionViewInsets'
 FLOATING_LAYOUT = 'updateFullGenreFloatingViewWithScrollView:'
 PROPERTIES = (
     'contentView', 'simpleHeader', 'currentTabVC', 'containerView', 'collectionView',
-    'doubleRowNestContainerScrollView', 'listView', 'headerView', 'tabSelectView',
+    'currentSelectedListViewController', 'doubleRowNestContainerScrollView', 'listView',
+    'delegate', 'backgroundView', 'headerBgImgView', 'headerView', 'tabSelectView',
     'headerBackgroundView', 'fullGenreFloatingContainerView', 'functionCell',
     'layoutContainerView', 'filterView', 'tabContainer', 'simpleTabView', 'view',
 )
@@ -28,7 +31,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
     def __init__(self, data):
         super().__init__(data)
         self.dispatch_methods = True
-        for cls in (SHELF, SHELF_LIST):
+        for cls in (SHELF, SHELF_LIST, DOUBLE_ROW):
             self._class(cls, 'UIViewController')
         self._class('UICollectionView', 'UIScrollView')
         self._class('SSNestedContainerScrollView', 'UIScrollView')
@@ -36,12 +39,16 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self._class('FQRJXCategoryListContainerView', 'UIView')
         self.original_update_inset = 0x3304e200
         self.original_float_layout = 0x3304e300
+        self.original_double_row_scroll = 0x3304e400
         self.hosts[0x3304e100] = (SHELF, 'viewLayout')
         self._add(self.classes[SHELF], 'viewLayout', 0x3304e100, 'v16@0:8')
         self._add(self.classes[SHELF_LIST], UPDATE_INSET, self.original_update_inset, 'v16@0:8')
         self._add(self.classes[SHELF_LIST], FLOATING_LAYOUT, self.original_float_layout, 'v24@0:8@16')
+        self._add(self.classes[DOUBLE_ROW], DOUBLE_ROW_SCROLL, self.original_double_row_scroll, 'v24@0:8@16')
 
     def handle(self, cpu, pc):
+        if pc == self.original_double_row_scroll:
+            return self.finish(cpu)
         if pc in (self.original_update_inset, self.original_float_layout):
             tab = self.objects[cpu.x[0]].state
             if pc == self.original_update_inset:
@@ -55,6 +62,14 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             name = self.selector_names.get(cpu.x[1])
             if name in PROPERTIES and name in state:
                 return self.finish(cpu, state[name])
+            if name == 'setAlpha:':
+                state['alpha'] = cpu.fp(0)
+                return self.finish(cpu)
+            if name == 'setContentOffset:' and 'pinnedInnerScroll' in state:
+                inner = self.objects[state['pinnedInnerScroll']].state
+                y = cpu.fp(1)
+                inner['frame'] = (0, y, *inner['frame'][2:])
+                inner['bounds'] = (0, y - 370, *inner['bounds'][2:])
         return super().handle(cpu, pc)
 
 
@@ -75,32 +90,43 @@ def exercise(data, labels, kind):
     c.pointers.update(r.rebase_pointers)
     c.run(labels['LFQH_FQHInstall'], max_steps=1500000)
 
-    shelf = kind == 'shelf'
+    shelf, nested = kind == 'shelf', kind == 'nested bookstore'
     boundary = 106 if shelf else 144
     viewport_frame = (0, boundary, 440, 956-boundary)
     root = r.view('UIView', 'page', (0,0,440,956), r.ROOT)
     viewport = r.view('FQRJXCategoryListContainerView', 'pager', viewport_frame, root)
     horizontal = r.view('UIScrollView', 'horizontal pager', (0,0,440,956-boundary), viewport, clipsToBounds=True)
     page = r.view('UIView', 'active page', (0,0,440,956-boundary), horizontal)
-    scroll_class = 'SSNestedContainerScrollView' if kind == 'nested bookstore' else 'UICollectionView'
-    stock_inset = (6, 3, 32, 5)
-    scroll = r.view(scroll_class, 'vertical feed', (0,0,440,956-boundary), page,
-                    clipsToBounds=True, contentInset=stock_inset, contentOffset=(0, 72))
+    scroll_class = 'SSNestedContainerScrollView' if nested else 'UICollectionView'
+    stock_inset = (44 if nested else 6, 3, 32, 5)
+    stock_offset = 650 if nested else 72
+    scroll_y = -44 if nested else 0
+    scroll = r.view(scroll_class, 'vertical feed', (0,scroll_y,440,956-boundary-scroll_y), page,
+                    clipsToBounds=True, contentInset=stock_inset, contentOffset=(0,stock_offset))
     scroll_state = r.objects[scroll].state
-    scroll_state['bounds'] = (0, 72, 440, 956-boundary)
-    cover = r.view('UIView', 'cover', (12,32,144,180), scroll)
+    scroll_state['bounds'] = (0,stock_offset,440,956-boundary-scroll_y)
+    cover_parent, cover_y = scroll, 32
     stock_fill = r.color('host top bar')
-    header = r.view('UIView', 'header controls', (0,0,440,boundary), root,
+    artwork = r.view('UIImageView', 'gradient artwork above pager', (0,0,440,boundary), root)
+    header = r.view('UIView', 'header controls', (0,0,440,boundary-8), root,
                     backgroundColor=stock_fill, opaque=True)
     tabs = r.view('UIView', 'host tabs', (0,boundary-36,440,36), header)
+    tab_strip = r.view('UICollectionView', 'host opaque tab strip', (0,0,440,36), tabs,
+                       backgroundColor=stock_fill, opaque=True)
+    r.objects[tabs].state['collectionView'] = tab_strip
     tab_state = {'collectionView': scroll, 'view': page}
-    if kind == 'nested bookstore':
-        # The nested coordinator is the vertical scroll, while the child list's
-        # padding must continue to be managed by the host.
-        inner = r.view('UICollectionView', 'nested feed list', (0,125,440,300), scroll,
+    if nested:
+        # The device logged a -44pt coordinator within the y144 horizontal
+        # pager, and the unlimited list pins to the coordinator's scroll top.
+        inner = r.view('UICollectionView', 'nested feed list', (0,stock_offset,440,857), scroll,
                        clipsToBounds=True, contentInset=(4, 0, 32, 0))
+        r.objects[inner].state['bounds'] = (0,stock_offset-370,440,857)
+        scroll_state['pinnedInnerScroll'] = inner
+        cover_parent, cover_y = inner, 254
         tab_state.update(doubleRowNestContainerScrollView=scroll, collectionView=inner)
-    tab = r.obj(SHELF_LIST if shelf else 'SSBookStoreTabViewController', 'active tab', **tab_state)
+    cover = r.view('UIView', 'cover', (12,cover_y,144,180), cover_parent)
+    tab = r.obj(SHELF_LIST if shelf else DOUBLE_ROW if nested else 'SSBookStoreTabViewController',
+                'active tab', **tab_state)
     if shelf:
         holder = r.view('UIView', 'native pinned filter holder', (0,0,440,36), page,
                         backgroundColor=stock_fill, clipsToBounds=True)
@@ -109,48 +135,66 @@ def exercise(data, labels, kind):
         r.objects[tab].state.update(fullGenreFloatingContainerView=holder, functionCell=cell,
                                    stockInset=stock_inset)
         owner = r.obj(SHELF, 'shelf', view=root, headerView=header, tabSelectView=tabs,
-                      containerView=viewport, currentTabVC=tab)
+                      containerView=viewport, currentTabVC=tab, headerBgImgView=artwork)
         layout = 'viewLayout'
     else:
         owner = r.obj(HOME, 'bookstore', contentView=root, simpleHeader=header, simpleTabView=tabs,
-                      containerView=viewport, currentTabVC=tab, searchBgView=0)
+                      containerView=viewport, currentTabVC=0 if nested else tab, searchBgView=0,
+                      backgroundView=artwork)
         layout = 'relayout'
     require(drawn_rect(r,cover)[1] == boundary, 'Stock clipping stops the cover at the toolbar edge')
-    call(c,r,owner,layout)
+    if nested:
+        r.objects[tab].state['delegate'] = owner
+        r.objects[viewport].state['currentSelectedListViewController'] = tab
+        call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
+    else:
+        call(c,r,owner,layout)
     blur = surface(r,root)
     root_children = r.objects[root].state['subviews']
     require(blur and root_children.index(viewport)<root_children.index(blur)<root_children.index(header),
             'Effect samples the cover and keeps foreground controls above it')
     require(r.objects[blur].state['frame']==(0,0,440,boundary) and
-            r.objects[r.objects[blur].state['effect']].state['style']==7 and
-            not r.objects[blur].state['userInteractionEnabled'], 'Passive adaptive thin material spans the toolbar')
-    require(r.objects[viewport].state['frame']==(0,boundary-56,440,956-boundary+56) and
-            scroll_state['contentOffset']==(0,16) and scroll_state['contentInset']==(62,3,32,5),
+            r.objects[r.objects[blur].state['effect']].state['style']==6 and
+            not r.objects[blur].state['userInteractionEnabled'], 'Passive ultra-thin material spans the toolbar')
+    applied_inset = (stock_inset[0]+boundary, *stock_inset[1:])
+    applied_offset = (0,stock_offset-boundary)
+    require(r.objects[viewport].state['frame']==(0,0,440,956) and
+            scroll_state['contentOffset']==applied_offset and scroll_state['contentInset']==applied_inset,
             'Expanded viewport and matching inset preserve scroll anchor and stock bottom')
-    require(drawn_rect(r,cover)[1] == boundary-40 and r.objects[horizontal].state['clipsToBounds'],
+    expected_cover = boundary-70 if nested else boundary-40
+    require(drawn_rect(r,cover)[1] == expected_cover and r.objects[horizontal].state['clipsToBounds'],
             'The same scrolling cover can now draw behind the toolbar without opening horizontal clipping')
-    if kind == 'nested bookstore':
+    if nested:
         require(r.objects[inner].state['contentInset']==(4,0,32,0), 'Nested feed receives no duplicate padding')
     if shelf:
         call(c,r,tab,FLOATING_LAYOUT,scroll)
-        require(surface(r,holder) and r.objects[holder].state['frame']==(0,56,440,36),
+        require(surface(r,holder) and r.objects[holder].state['frame']==(0,boundary,440,36),
                 'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
+        # A native write at a deeply scrolled offset must not move the anchor.
+        scroll_state['contentOffset']=(0,64)
+        scroll_state['bounds']=(0,64,*scroll_state['bounds'][2:])
+        applied_offset=(0,64)
+        stock_offset=64+boundary
         call(c,r,tab,UPDATE_INSET)
-        require(scroll_state['contentOffset']==(0,16) and scroll_state['contentInset']==(62,3,32,5),
+        require(scroll_state['contentOffset']==applied_offset and scroll_state['contentInset']==applied_inset,
                 'Host mid-scroll inset rewrites do not move the visible cover')
     for _ in range(3):
         call(c,r,owner,layout)
-    require(surface(r,root)==blur and scroll_state['contentOffset']==(0,16), 'Settled layout reuses blur and offset')
+    require(surface(r,root)==blur and scroll_state['contentOffset']==applied_offset, 'Settled layout reuses blur and offset')
     require(not r.objects[header].state['opaque'], 'Stock fill no longer hides the backdrop')
+    require(not r.objects[tab_strip].state['opaque'] and r.objects[artwork].state['alpha']==0.25,
+            'Opaque tab strip and gradient artwork above the pager stop blocking the backdrop')
     if shelf:
         scroll_state['contentInset']=stock_inset
     r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
     call(c,r,owner,layout)
     require(not surface(r,root) and r.objects[viewport].state['frame']==viewport_frame and
-            scroll_state['contentInset']==stock_inset and scroll_state['contentOffset']==(0,72),
+            scroll_state['contentInset']==stock_inset and scroll_state['contentOffset']==(0,stock_offset),
             'Disabling glass restores stock geometry and inset')
     require(r.objects[header].state['backgroundColor']==stock_fill and r.objects[header].state['opaque'],
             'Disabling glass restores stock foreground fill and opacity hint')
+    require(r.objects[tab_strip].state['backgroundColor']==stock_fill and r.objects[artwork].state['alpha']==1,
+            'Disabling glass restores the exact tab strip fill and gradient artwork')
     if shelf:
         require(not surface(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
                 'Disabling glass restores the original pinned-filter holder')

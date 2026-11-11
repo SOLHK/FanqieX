@@ -371,22 +371,29 @@ static void TopChromeSurfaceKey(void) {}
 static void TopChromeAnchorKey(void) {}
 static void TopChromeColorKey(void) {}
 static void TopChromeOpaqueKey(void) {}
+static void TopChromeArtworkAlphaKey(void) {}
+static void TopChromeGeometryKey(void) {}
 static void TopChromeStockFrameKey(void) {}
 static void TopChromeFrameKey(void) {}
 static void TopChromeScrollKey(void) {}
 static void TopChromeStockInsetKey(void) {}
 static void TopChromeInsetKey(void) {}
+static void TopChromeEdgeOwnerKey(void) {}
+static void TopChromeEdgeInteractionKey(void) {}
+static void TopChromeEdgeStyleKey(void) {}
+static void TopChromeEdgeHiddenKey(void) {}
+static void TopChromeFill(Obj view,B enabled);
 static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
     Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
     if (!enabled || !root || Get(foreground,"superview")!=root || !VisibleRect(material)) {
         V0(surface,"removeFromSuperview");
+        objc_setAssociatedObject(surface,TopChromeAnchorKey,0,1);
         objc_setAssociatedObject(root,TopChromeSurfaceKey,0,1);
         return 0;
     }
     if (!surface) {
-        // UIVisualEffectView must stay at full opacity for the backdrop to sample
-        // the covers. A thin, adaptive material controls the amount of tint.
-        Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIBlurEffect"),sel_registerName("effectWithStyle:"),7);
+        // Keep the effect view at full opacity and use the lighter system material.
+        Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIBlurEffect"),sel_registerName("effectWithStyle:"),6);
         if (!effect) return 0;
         surface=O1(O0(Lookup("UIVisualEffectView"),"alloc"),"initWithEffect:",effect);
         if (!surface) return 0;
@@ -402,6 +409,58 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
         objc_setAssociatedObject(surface,TopChromeAnchorKey,foreground,1);
     }
     return 1;
+}
+static B TopChromeNativeEdge(Obj foreground,Obj scroll,B enabled) {
+    Obj interaction=objc_getAssociatedObject(foreground,TopChromeEdgeInteractionKey);
+    Obj previousScroll=Get(interaction,"scrollView");
+    Obj soft=Get(Lookup("UIScrollEdgeEffectStyle"),"softStyle");
+    Obj edge=enabled ? Get(scroll,"topEdgeEffect") : (Obj)0;
+    Obj style=Get(edge,"style");
+    B usable=style && soft && Responds(edge,"setStyle:") && Responds(edge,"setHidden:");
+    if (interaction && (!usable || previousScroll!=scroll)) {
+        Obj previous=Get(previousScroll,"topEdgeEffect");
+        Obj stock=objc_getAssociatedObject(interaction,TopChromeEdgeStyleKey);
+        if (stock && soft && SameColor(Get(previous,"style"),soft)) V1(previous,"setStyle:",stock);
+        if (objc_getAssociatedObject(interaction,TopChromeEdgeHiddenKey) && !Flag(previous,"isHidden"))
+            VB(previous,"setHidden:",1);
+        V1(foreground,"removeInteraction:",interaction);
+        objc_setAssociatedObject(foreground,TopChromeEdgeInteractionKey,0,1);
+        interaction=0;
+    }
+    if (!usable) return 0;
+    if (!interaction) {
+        Obj cls=Lookup("UIScrollEdgeElementContainerInteraction");
+        if (!cls || !Responds(foreground,"addInteraction:")) return 0;
+        interaction=O0(O0(cls,"alloc"),"init");
+        if (!interaction) return 0;
+        V1(interaction,"setScrollView:",scroll);
+        Q1(interaction,"setEdge:",1); // UIRectEdgeTop
+        V1(foreground,"addInteraction:",interaction);
+        objc_setAssociatedObject(foreground,TopChromeEdgeInteractionKey,interaction,1);
+        V0(interaction,"release");
+    }
+    if (!SameColor(style,soft)) {
+        objc_setAssociatedObject(interaction,TopChromeEdgeStyleKey,style,1);
+        V1(edge,"setStyle:",soft);
+    }
+    if (Flag(edge,"isHidden")) {
+        objc_setAssociatedObject(interaction,TopChromeEdgeHiddenKey,BoolBox(1),1);
+        VB(edge,"setHidden:",0);
+    }
+    return 1;
+}
+static B TopChromePage(Obj root,Obj foreground,Obj scroll,Rect material,B enabled) {
+    Obj old=objc_getAssociatedObject(root,TopChromeEdgeOwnerKey);
+    enabled=enabled && Kind(scroll,"UIScrollView") && Get(foreground,"superview")==root && VisibleRect(material);
+    if (old && (!enabled || old!=foreground)) {
+        TopChromeNativeEdge(old,0,0);
+        TopChromeFill(old,0);
+    }
+    B native=enabled && TopChromeNativeEdge(foreground,scroll,1);
+    B blur=TopChrome(root,foreground,material,enabled && !native);
+    Obj owner=native || blur ? foreground : (Obj)0;
+    if (old!=owner) objc_setAssociatedObject(root,TopChromeEdgeOwnerKey,owner,1);
+    return native || blur;
 }
 static void TopChromeFill(Obj view,B enabled) {
     if (!Kind(view,"UIView")) return;
@@ -421,6 +480,32 @@ static void TopChromeFill(Obj view,B enabled) {
     } else if (!enabled && stock) {
         if (SameColor(color,clear)) V1(view,"setBackgroundColor:",stock);
         objc_setAssociatedObject(view,TopChromeColorKey,0,1);
+    }
+}
+static B TopChromeContains(Obj viewport,Obj scroll) {
+    if (!viewport || !Kind(scroll,"UIScrollView")) return 0;
+    for (Obj view=scroll;view;view=Get(view,"superview"))
+        if (view==viewport) return 1;
+    return 0;
+}
+static void TopChromeArtwork(Obj artwork,Obj viewport,B enabled) {
+    if (!Kind(artwork,"UIView")) return;
+    Obj parent=Get(artwork,"superview");
+    if (enabled && parent && Get(viewport,"superview")==parent) {
+        Obj siblings=Get(parent,"subviews");
+        Sel index=sel_registerName("indexOfObjectIdenticalTo:");
+        U artworkIndex=((U(*)(Obj,Sel,Obj))Message)(siblings,index,artwork);
+        U viewportIndex=((U(*)(Obj,Sel,Obj))Message)(siblings,index,viewport);
+        enabled=artworkIndex>viewportIndex;
+    } else enabled=0;
+    double alpha=((double(*)(Obj,Sel))Message)(artwork,sel_registerName("alpha"));
+    Obj stock=objc_getAssociatedObject(artwork,TopChromeArtworkAlphaKey);
+    if (enabled && alpha>0.25) {
+        objc_setAssociatedObject(artwork,TopChromeArtworkAlphaKey,Number(alpha),1);
+        ((void(*)(Obj,Sel,double))Message)(artwork,sel_registerName("setAlpha:"),0.25);
+    } else if (!enabled && stock) {
+        if (alpha==0.25) ((void(*)(Obj,Sel,double))Message)(artwork,sel_registerName("setAlpha:"),Double(stock));
+        objc_setAssociatedObject(artwork,TopChromeArtworkAlphaKey,0,1);
     }
 }
 static void TopChromeInsets(Obj scroll,double overlap) {
@@ -456,17 +541,22 @@ static void TopChromeInsets(Obj scroll,double overlap) {
             ((void(*)(Obj,Sel,Point))Message)(scroll,sel_registerName("setContentOffset:"),offset);
     }
 }
-static void TopChromeUnderlap(Obj viewport,Obj scroll,double top,B enabled) {
-    if (!Kind(viewport,"UIView")) return;
-    Rect current=Frame(viewport),stock=current;
+static Rect TopChromeStockFrame(Obj viewport,Rect current) {
     Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
+    Rect stock=current;
     if (applied && current.y==UnboxRect(applied).y) {
         stock.y=UnboxRect(objc_getAssociatedObject(viewport,TopChromeStockFrameKey)).y;
         stock.height+=current.y-stock.y;
     }
+    return stock;
+}
+static void TopChromeUnderlap(Obj viewport,Obj scroll,double top,B enabled) {
+    if (!Kind(viewport,"UIView")) return;
+    Rect current=Frame(viewport),stock=TopChromeStockFrame(viewport,current);
+    Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
     double overlap=0;
-    if (enabled && Kind(scroll,"UIScrollView") && Belongs(scroll,viewport) && VisibleRect(stock))
-        overlap=__builtin_fmin(56,__builtin_fmax(0,stock.y-top));
+    if (enabled && TopChromeContains(viewport,scroll) && VisibleRect(stock))
+        overlap=__builtin_fmax(0,stock.y-top);
     Rect target={stock.x,stock.y-overlap,stock.width,stock.height+overlap};
     Obj previous=objc_getAssociatedObject(viewport,TopChromeScrollKey);
     if (applied && !previous) previous=viewport;
@@ -485,21 +575,68 @@ static void TopChromeUnderlap(Obj viewport,Obj scroll,double top,B enabled) {
     if (!SameRect(current,target)) SetFrame(viewport,target);
     if (overlap>0) TopChromeInsets(scroll,overlap);
 }
-static void BookstoreTopChrome(Obj controller) {
-    Obj root=Get(controller,"contentView"),header=Get(controller,"simpleHeader");
-    Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
+static void Put(Obj dict,const char *key,Obj value);
+static Obj RectArray(Rect rect);
+static void TopChromeDiagnostics(Obj owner,const char *role,Obj root,Obj viewport,Obj scroll,B installed) {
+    if (!root || !viewport || !Get(root,"window")) return;
+    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
+    Rect pager=Convert(viewport,Bounds(viewport),root),visible={0};
+    if (scroll) {
+        visible=Convert(scroll,Bounds(scroll),root);
+        for (Obj view=Get(scroll,"superview");view && view!=root;view=Get(view,"superview")) {
+            if (!Flag(view,"clipsToBounds")) continue;
+            Rect clip=Convert(view,Bounds(view),root);
+            double x=__builtin_fmax(clip.x,visible.x),y=__builtin_fmax(clip.y,visible.y);
+            double right=__builtin_fmin(clip.x+clip.width,visible.x+visible.width);
+            double bottom=__builtin_fmin(clip.y+clip.height,visible.y+visible.height);
+            visible=(Rect){x,y,__builtin_fmax(0,right-x),__builtin_fmax(0,bottom-y)};
+        }
+    }
+    Obj anchor=objc_getAssociatedObject(root,TopChromeEdgeOwnerKey);
+    B native=objc_getAssociatedObject(anchor,TopChromeEdgeInteractionKey)!=0;
+    Rect fingerprint={pager.y,visible.y,pager.height,native ? 2 : installed};
+    Obj prior=objc_getAssociatedObject(owner,TopChromeGeometryKey);
+    if (prior && SameRect(fingerprint,UnboxRect(prior))) return;
+    objc_setAssociatedObject(owner,TopChromeGeometryKey,RectBox(fingerprint),1);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"role",Text(role));
+    Put(record,"material",Text(native ? "nativeScrollEdge" : installed ? "systemUltraThin" : "stock"));
+    Put(record,"stockViewportFrame",RectArray(stock));
+    Put(record,"viewportRect",RectArray(pager));
+    Put(record,"scrollClipRect",RectArray(visible));
+    FQDRecord("topChromeGeometry",record);
+}
+static Obj BookstoreScroll(Obj tab,Obj viewport) {
     Obj scroll=Get(tab,"doubleRowNestContainerScrollView");
-    if (!Kind(scroll,"UIScrollView")) scroll=Get(tab,"collectionView");
-    if (!Kind(scroll,"UIScrollView")) scroll=Get(tab,"listView");
+    if (TopChromeContains(viewport,scroll)) return scroll;
+    scroll=Get(tab,"collectionView");
+    if (TopChromeContains(viewport,scroll)) return scroll;
+    scroll=Get(tab,"doubleRowUnlimitedCollectionView");
+    if (TopChromeContains(viewport,scroll)) return scroll;
+    scroll=Get(tab,"listView");
+    return TopChromeContains(viewport,scroll) ? scroll : (Obj)0;
+}
+static void BookstoreTopChrome(Obj controller) {
+    Obj header=Get(controller,"simpleHeader"),root=Get(header,"superview");
+    Obj viewport=Get(controller,"containerView"),parent=Get(viewport,"superview");
+    Obj tabs=Get(controller,"simpleTabView");
+    Obj scroll=BookstoreScroll(Get(viewport,"currentSelectedListViewController"),viewport);
+    if (!scroll) scroll=BookstoreScroll(Get(controller,"currentTabVC"),viewport);
     Rect frame=Frame(header),bounds=Bounds(root);
-    double height=frame.y+frame.height-bounds.y;
-    B enabled=Enabled() && Get(viewport,"superview")==root && Kind(scroll,"UIScrollView") &&
-        Belongs(scroll,viewport) && !Flag(header,"isHidden");
-    B installed=TopChrome(root,header,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+    Rect tabFrame=Convert(tabs,Bounds(tabs),root);
+    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
+    double bottom=__builtin_fmax(frame.y+frame.height,tabFrame.y+tabFrame.height);
+    if (parent==root) bottom=__builtin_fmax(bottom,stock.y);
+    B enabled=root && Enabled() && Belongs(viewport,root) && scroll && !Flag(header,"isHidden");
+    B installed=TopChromePage(root,header,scroll,(Rect){bounds.x,bounds.y,bounds.width,bottom-bounds.y},enabled);
     TopChromeFill(header,installed);
     TopChromeFill(Get(controller,"tabContainer"),installed);
-    TopChromeFill(Get(controller,"simpleTabView"),installed);
-    TopChromeUnderlap(viewport,scroll,bounds.y,installed);
+    TopChromeFill(Get(controller,"signBgView"),installed);
+    TopChromeFill(tabs,installed);
+    TopChromeFill(Get(tabs,"collectionView"),installed);
+    TopChromeArtwork(Get(controller,"backgroundView"),viewport,installed);
+    TopChromeUnderlap(viewport,scroll,Convert(root,bounds,parent).y,installed);
+    TopChromeDiagnostics(controller,"bookstore",root,viewport,scroll,installed);
 }
 static void BookstoreTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookStoreNewViewController","fqx186_originalStoreSelected:index:"))(self,cmd,category,index);
@@ -509,6 +646,24 @@ static void BookstoreCollectionLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreTabViewController","fqx186_originalStoreCollectionLayout"))(self,cmd);
     Obj controller=Get(self,"delegate");
     if (Kind(controller,"SSBookStoreNewViewController") && Get(controller,"currentTabVC")==self)
+        BookstoreTopChrome(controller);
+}
+static void BookstoreDoubleRowLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookStoreDoubleRowViewController","fqx187_originalStoreDoubleRowLayout"))(self,cmd);
+    Obj controller=Get(self,"delegate");
+    Obj viewport=Get(controller,"containerView");
+    if (Kind(controller,"SSBookStoreNewViewController") &&
+        (Get(viewport,"currentSelectedListViewController")==self || Get(controller,"currentTabVC")==self))
+        BookstoreTopChrome(controller);
+}
+static void BookstoreDoubleRowScroll(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookStoreDoubleRowViewController","fqx187_originalStoreDoubleRowScroll:"))(self,cmd,scroll);
+    Obj controller=Get(self,"delegate");
+    if (!Kind(controller,"SSBookStoreNewViewController")) return;
+    Obj viewport=Get(controller,"containerView");
+    Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
+    if ((!applied || !SameRect(Frame(viewport),UnboxRect(applied))) &&
+        (Get(viewport,"currentSelectedListViewController")==self || Get(controller,"currentTabVC")==self))
         BookstoreTopChrome(controller);
 }
 static double TopChromeOverlap(Obj scroll) {
@@ -544,16 +699,21 @@ static void BookshelfTopChrome(Obj controller) {
     Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
     Obj scroll=Get(tab,"collectionView");
     Rect frame=Frame(header),bounds=Bounds(root);
-    double height=frame.y+frame.height-bounds.y;
+    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
+    double height=__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y;
     B enabled=Enabled() && Kind(tab,"SSBookShelfSubViewController") &&
-        Get(viewport,"superview")==root && Kind(scroll,"UIScrollView") && Belongs(scroll,viewport);
-    B installed=TopChrome(root,header,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+        Get(viewport,"superview")==root && TopChromeContains(viewport,scroll);
+    B installed=TopChromePage(root,header,scroll,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+    Obj tabs=Get(controller,"tabSelectView");
     TopChromeFill(header,installed);
-    TopChromeFill(Get(controller,"tabSelectView"),installed);
+    TopChromeFill(tabs,installed);
+    TopChromeFill(Get(tabs,"collectionView"),installed);
     TopChromeFill(Get(controller,"headerBackgroundView"),installed);
+    TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed);
     TopChromeUnderlap(viewport,scroll,bounds.y,installed);
     if (Kind(tab,"SSBookShelfSubViewController"))
         BookshelfFloatingChrome(tab,TopChromeOverlap(scroll));
+    TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
 static void BookshelfTopLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx186_originalShelfTopLayout"))(self,cmd);
@@ -1721,14 +1881,17 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
 static void ProfileCollectionLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUser621BaseViewController","fqx186_originalProfileCollectionLayout"))(self,cmd);
     if (!Kind(self,"SSMyUser621ViewController")) return;
+    Obj sidebar=Get(self,"sidebarAdapter");
+    if (BoolProp(sidebar,"isSidebarOpen") || BoolProp(sidebar,"isSidebarTransitioning")) return;
     Obj root=Get(self,"view"), bar=Get(self,"myUserBar"), list=Get(self,"collectionView");
     if (!Kind(root,"UIView") || !Kind(bar,"SSMyUserBar") || !Kind(list,"FQFeedListCollectionView")) return;
     Rect material=Bounds(root), barFrame=Frame(bar);
     material.height=barFrame.y+barFrame.height-material.y;
     B enabled=Enabled() && Get(list,"superview")==root && !Flag(bar,"isHidden");
-    B installed=TopChrome(root,bar,material,enabled);
+    B installed=TopChromePage(root,bar,list,material,enabled);
     TopChromeFill(bar,installed);
     TopChromeUnderlap(list,list,material.y,installed);
+    TopChromeDiagnostics(self,"profile",root,list,list,installed);
 }
 static void ProfileCaptionKey(void) {}
 static Rect ProfileStockFrame(Obj view,Rect current) {
@@ -2021,13 +2184,44 @@ static Obj ActiveTabOwner(void) {
 }
 static void InstallTabRecovery(Obj owner);
 static void ShelfEditHeaderKey(void) {}
+static void ShelfEditInsetsKey(void) {}
 static void ShelfCompactKey(void) {}
 static const double ShelfFilterOffset=12;
 static const double ShelfCompactFilterTop=2;
 static const double ShelfCompactEmptyHeight=1;
+static Rect ShelfEditPaddedInsets(Rect insets) {
+    // UIEdgeInsets shares the four-double ABI with Rect.
+    double horizontal=__builtin_fmax(12,__builtin_fmax(insets.y,insets.height));
+    insets.y=horizontal;
+    insets.height=horizontal;
+    return insets;
+}
+static void ShelfEditPadding(Obj button) {
+    if (!Kind(button,"UIButton")) return;
+    Obj saved=objc_getAssociatedObject(button,ShelfEditInsetsKey);
+    B styled=Enabled() && FQHGlassAvailable();
+    if (!saved && !styled) return;
+    Rect current=((Rect(*)(Obj,Sel))Message)(button,sel_registerName("contentEdgeInsets"));
+    Rect stock=current;
+    if (saved) {
+        Rect previous=UnboxRect(saved);
+        if (SameRect(current,ShelfEditPaddedInsets(previous))) stock=previous;
+    }
+    Rect wanted=styled ? ShelfEditPaddedInsets(stock) : stock;
+    if (styled && !SameRect(stock,wanted)) {
+        if (!saved || !SameRect(stock,UnboxRect(saved)))
+            objc_setAssociatedObject(button,ShelfEditInsetsKey,RectBox(stock),1);
+    } else if (saved) {
+        objc_setAssociatedObject(button,ShelfEditInsetsKey,0,1);
+    }
+    if (!SameRect(current,wanted))
+        ((void(*)(Obj,Sel,Rect))Message)(button,sel_registerName("setContentEdgeInsets:"),wanted);
+}
 static void ShelfStockEditLayout(Obj self,Sel cmd) {
-    Obj parent=Get(Get(self,"editButton"),"superview");
+    Obj button=Get(self,"editButton"),parent=Get(button,"superview");
     if (parent && objc_getAssociatedObject(parent,ShelfEditHeaderKey)==self) return;
+    // The host fits the native title and anchors the button's right edge.
+    ShelfEditPadding(button);
     ((void(*)(Obj,Sel))Original("SS525BookShelfSubHeaderView","fqx185_originalStockEditLayout"))(self,cmd);
 }
 static Rect ShelfEditFrame(Obj controller,Obj holder,Obj button) {
@@ -2060,10 +2254,10 @@ static Rect ShelfEditFrame(Obj controller,Obj holder,Obj button) {
         if (!found || edge>left) left=edge;
         found=1;
     }
-    double width=Bounds(button).width;
-    if (width<44) width=44;
+    Size fit=((Size(*)(Obj,Sel,Size))Message)(button,sel_registerName("sizeThatFits:"),(Size){__DBL_MAX__,__DBL_MAX__});
+    double width=__builtin_fmax(44,fit.width),height=__builtin_fmax(30,fit.height);
     if (!found || !VisibleRect(right) || right.x-left<width+20) return frame;
-    Rect target={left+10,right.y+right.height*0.5-15,width,30};
+    Rect target={left+10,right.y+(right.height-height)*0.5,width,height};
     Rect inHeader=Convert(holder,target,header),bounds=Bounds(header);
     if (inHeader.x<bounds.x || inHeader.y<bounds.y ||
         inHeader.x+inHeader.width>bounds.x+bounds.width ||
@@ -2084,8 +2278,10 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
         button=Get(header,"editButton");
         secondary=Get(header,"secondaryView");
         Obj parent=Get(button,"superview");
-        if (secondary && (parent==secondary || parent==holder) && !Flag(button,"isHidden"))
+        if (secondary && (parent==secondary || parent==holder) && Kind(button,"UIButton") && !Flag(button,"isHidden")) {
+            ShelfEditPadding(button);
             frame=ShelfEditFrame(controller,holder,button);
+        }
     }
     B moved=VisibleRect(frame);
     if (old && (!moved || old!=header)) {
@@ -2517,6 +2713,8 @@ void FQHInstall(void) {
         Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
         Hook("SSBookStoreNewViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalStoreSelected:index:","v32@0:8@16q24",(Imp)BookstoreTabSelected);
         Hook("SSBookStoreTabViewController","setupLayout","fqx186_originalStoreCollectionLayout","v16@0:8",(Imp)BookstoreCollectionLayout);
+        Hook("SSBookStoreDoubleRowViewController","viewWillLayoutSubviews","fqx187_originalStoreDoubleRowLayout","v16@0:8",(Imp)BookstoreDoubleRowLayout);
+        Hook("SSBookStoreDoubleRowViewController","storeTabScrollViewDidScroll:","fqx187_originalStoreDoubleRowScroll:","v24@0:8@16",(Imp)BookstoreDoubleRowScroll);
         if (Signature("SSBookStoreSearchBarComponent","bookStoreVCContext","@16@0:8"))
             Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
     }

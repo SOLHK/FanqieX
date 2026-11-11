@@ -5,8 +5,9 @@
 
 _Static_assert(UIGlassEffectStyleRegular == 0,
                "The main navigation capsule uses the readable regular variant");
-_Static_assert(UIBlurEffectStyleSystemThinMaterial == 7,
-               "The full-width top bars use adaptive thin material");
+_Static_assert(UIBlurEffectStyleSystemUltraThinMaterial == 6,
+               "The full-width top bars use adaptive ultra-thin material when needed");
+_Static_assert(UIRectEdgeTop == 1, "The native scroll effect attaches to the top edge");
 _Static_assert(UIControlEventValueChanged == 4096,
                "The native selection bridge observes only value changes");
 _Static_assert(UIControlEventTouchDown == 1 && UIControlEventTouchUpInside == 64 &&
@@ -122,6 +123,15 @@ void FQSetListenForeground(UILabel *label) {
 
 void FQSuppressOwnedScrollEdge(UIScrollView *scrollView) {
     scrollView.bottomEdgeEffect.hidden = YES;
+}
+
+void FQAttachPublicTopEdge(UIView *header, UIScrollView *scrollView) {
+    UIScrollEdgeElementContainerInteraction *interaction = [UIScrollEdgeElementContainerInteraction new];
+    interaction.scrollView = scrollView;
+    interaction.edge = UIRectEdgeTop;
+    [header addInteraction:interaction];
+    scrollView.topEdgeEffect.style = UIScrollEdgeEffectStyle.softStyle;
+    scrollView.topEdgeEffect.hidden = NO;
 }
 
 // 1.6.6 uses the real UIButton configuration system for native icon buttons.

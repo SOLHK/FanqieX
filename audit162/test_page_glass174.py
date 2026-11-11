@@ -276,6 +276,12 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self._add(self.classes["SSMyUserCollectionViewOrderFunCell"], "layoutSubviews",
                   self.MINE_ORDER_LAYOUT, "v16@0:8")
 
+    @staticmethod
+    def edit_fitting_size(state):
+        width, height = state.get("edit_title_size", (44., 30.))
+        top, left, bottom, right = state.get("contentEdgeInsets", (0., 0., 0., 0.))
+        return width + left + right, height + top + bottom
+
     def handle(self, cpu, pc):
         self.current_cpu = cpu
         receiver, selector = cpu.x[:2]
@@ -340,7 +346,10 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             self.objects[self.objects[receiver].state["filterClipView"]].state["frame"] = frame
             return self.finish(cpu)
         if pc == self.SHELF_EDIT_LAYOUT:
-            self.objects[self.objects[receiver].state["editButton"]].state["frame"] = (380., 4., 44., 30.)
+            edit = self.objects[self.objects[receiver].state["editButton"]].state
+            width, height = self.edit_fitting_size(edit)
+            edit.update(frame=(424. - width, 19. - height / 2, width, height),
+                        bounds=(0., 0., width, height))
             return self.finish(cpu)
         if pc in (self.MODEL_INVISIBLE, self.MODEL_DISABLED):
             key = "isInvisible" if pc == self.MODEL_INVISIBLE else "isDisabled"
@@ -417,6 +426,14 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
             if receiver in self.objects:
                 state = self.objects[receiver].state
+                if "edit_title_size" in state:
+                    if name == "sizeThatFits:":
+                        return self.finish(cpu, fp=self.edit_fitting_size(state))
+                    if name == "contentEdgeInsets":
+                        return self.finish(cpu, fp=state.get(name, (0., 0., 0., 0.)))
+                    if name == "setContentEdgeInsets:":
+                        state["contentEdgeInsets"] = tuple(cpu.fp(i) for i in range(4))
+                        return self.finish(cpu)
                 if name == "setAlpha:":
                     state["alpha"] = cpu.fp(0)
                     return self.finish(cpu)
@@ -460,7 +477,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                     return self.finish(cpu, state.get(name, 0))
                 if name == "showReadTimeView":
                     return self.finish(cpu, int(state["showReadTimeView"]))
-                if name in ("customTabBar", "delegate", "state", "view", "myUserBar") and name in state:
+                if name in ("customTabBar", "delegate", "state", "view", "myUserBar", "sidebarAdapter",
+                            "isSidebarOpen", "isSidebarTransitioning") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "initWithTarget:action:" and self.is_kind(receiver, self.classes["UIGestureRecognizer"]):
                     state.update(target=cpu.x[2], action=cpu.x[3], state=0)
@@ -1347,10 +1365,10 @@ def exercise(data, labels):
     profile_blur = siblings[1]
     blur_state = runtime.objects[profile_blur].state
     require(blur_state["frame"] == (0, 0, 440, 106) and not blur_state["userInteractionEnabled"] and
-            runtime.objects[blur_state["effect"]].state["style"] == 7,
-            "Mine bar uses one passive adaptive thin blur from the status area to the header bottom")
-    require(feed_state["frame"] == (0, 50, 440, 906) and feed_state["contentOffset"] == (0, 174) and
-            feed_state["contentInset"] == (56, 0, 57, 0) and feed_state["clipsToBounds"] and
+            runtime.objects[blur_state["effect"]].state["style"] == 6,
+            "Mine bar uses adaptive ultra-thin blur when the native scroll edge is unavailable")
+    require(feed_state["frame"] == (0, 0, 440, 956) and feed_state["contentOffset"] == (0, 124) and
+            feed_state["contentInset"] == (106, 0, 57, 0) and feed_state["clipsToBounds"] and
             runtime.objects[nested_feed].state["frame"] == nested_frame,
             "Only the outer viewport expands, preserving the scroll anchor, lower edge and nested feed")
     require(runtime.objects[profile_chrome].state["backgroundColor"] == clear and
@@ -1358,15 +1376,41 @@ def exercise(data, labels):
             runtime.objects[profile_chrome].state["userInteractionEnabled"],
             "The host bar retains touch while its opaque backing is removed")
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
-    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 174),
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 124),
             "Repeated profile layout reuses blur and never reapplies the scroll delta")
+    native_edge = runtime.enable_native_top_edge(profile_feed)
+    bar_state = runtime.objects[profile_chrome].state
+    edge_state = runtime.objects[native_edge].state
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    interaction, = bar_state["interactions"]
+    edge_interaction = runtime.objects[interaction].state
+    require(siblings == [profile_feed, profile_chrome] and edge_interaction["scrollView"] == profile_feed and
+            edge_interaction["edge"] == 1 and edge_state["style"] == runtime.top_edge_soft and
+            not edge_state["hidden"],
+            "The public top-edge interaction replaces the background blur and targets the actual scrolling list")
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    require(bar_state["interactions"] == [interaction] and feed_state["contentOffset"] == (0, 124),
+            "The official effect stays attached once during repeated layout")
+    sidebar = runtime.obj("NSObject", "Mine sidebar adapter", isSidebarOpen=1, isSidebarTransitioning=0)
+    runtime.objects[profile_controller].state["sidebarAdapter"] = sidebar
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    require(bar_state["interactions"] == [interaction] and feed_state["frame"] == (0, 0, 440, 956),
+            "Mine sidebar owns geometry while it is open")
+    runtime.objects[sidebar].state["isSidebarOpen"] = 0
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
     require(siblings == [profile_feed, profile_chrome] and feed_state["frame"] == (0, 106, 440, 850) and
             feed_state["contentInset"] == (0, 0, 57, 0) and feed_state["contentOffset"] == (0, 230) and
             runtime.objects[profile_chrome].state["backgroundColor"] == original_bar_color and
             runtime.objects[profile_chrome].state["opaque"],
             "Disabling glass restores Mine geometry, scroll position, and native bar color")
+    require(not bar_state["interactions"] and edge_state["style"] == runtime.top_edge_stock and edge_state["hidden"],
+            "Disabling restores the original native scroll edge style and visibility")
+    geometry = [record for event, record in runtime.records
+                if event == "topChromeGeometry" and record["role"] == "profile"]
+    require([record["material"] for record in geometry] == ["systemUltraThin", "nativeScrollEdge", "stock"] and
+            geometry[1]["scrollClipRect"] == [0, 0, 440, 956],
+            "Profile diagnostics report mode and visible list bounds without repeating settled layouts")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     shortcut_count = 0
@@ -1639,7 +1683,8 @@ def exercise(data, labels):
     runtime.objects[duration].state["superview"] = secondary
     runtime.objects[secondary].state["subviews"].append(duration)
     edit_targets = [(shelf_header, runtime.sel("onClickEdit"), 64)]
-    edit = runtime.view("UIButton", "original edit", (380, 4, 44, 30), secondary, control_targets=edit_targets[:])
+    edit = runtime.view("UIButton", "original edit", (394, 4, 30, 30), secondary,
+                        edit_title_size=(30., 30.), control_targets=edit_targets[:])
     edit_title = runtime.label("native edit title", edit, (0, 5, 30, 20), "编辑")
     separator = runtime.view("UIView", "native secondary divider", (320, 4, 1, 22), secondary)
     runtime.objects[shelf_header].state.update(
@@ -1662,11 +1707,13 @@ def exercise(data, labels):
     edit_background = runtime.color("native shelf edit background")
     runtime.objects[edit].state["backgroundColor"] = edit_background
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
+    send(cpu, runtime, shelf_header, "layoutEditButton")
     send(cpu, runtime, shelf_header, "layoutSubviews")
     edit_state = runtime.objects[edit].state
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.) and
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.) and
+            edit_state["contentEdgeInsets"] == (0., 12., 0., 12.) and
             runtime.objects[size_layout].state["invalidations"] == 0,
-            "duration on keeps Edit at the right of its original row")
+            "duration on keeps Edit's native right edge and reserves 12pt per side of the title")
     edit_glass = surface_for(edit)
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
     send(cpu, runtime, shelf_header, "layoutSubviews")
@@ -1676,11 +1723,11 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = False
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 44., 30.) and
+    require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 54., 30.) and
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
     require(edit_glass and surface_for(edit) == edit_glass and
-            runtime.objects[edit_glass].state["frame"] == (0., 1., 44., 28.) and
+            runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 28.) and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
     edit_frame = edit_state["frame"]
@@ -1688,6 +1735,13 @@ def exercise(data, labels):
     require(edit_state["frame"] == edit_frame and edit_state["subviews"].count(edit_glass) == 1,
             "native secondary-row layout cannot reposition the moved edit or its glass")
     require(edit_state["subviews"] == [edit_glass, edit_title], "the moved edit has exactly one capsule")
+    edit_state["edit_title_size"] = (46., 32.)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    require(edit_state["frame"] == (-132., -4., 70., 32.) and
+            runtime.objects[edit_glass].state["frame"] == (0., 1., 70., 30.) and
+            edit_state["control_targets"] == edit_targets,
+            "the existing Edit action and upper glass fit a longer or larger title")
+    edit_state["edit_title_size"] = (30., 30.)
     require(runtime.objects[size_layout].state["invalidations"] == 1,
             "only the transition to a compact row invalidates the list")
     function = runtime.obj("NSObject", "function index", section=1)
@@ -1763,7 +1817,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = True
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.) and
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.) and
             runtime.objects[size_layout].state["invalidations"] == 2,
             "re-enabling duration restores Edit and the stock row in the same layout pass")
     require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info,
@@ -1780,7 +1834,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = False
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.),
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.),
             "a narrower title/search gap restores the original position")
     require(surface_for(edit) == edit_glass and edit_state["control_targets"] == edit_targets,
             "the original lower placement keeps its glass and edit target")
@@ -1789,8 +1843,11 @@ def exercise(data, labels):
     glass_preferences = runtime.objects[runtime.DEFAULTS].state["values"]
     glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 1
     cpu.run(0x7fb0, args=(shelf_header, runtime.sel("layoutSubviews")), max_steps=1_500_000)
+    send(cpu, runtime, shelf_header, "layoutEditButton")
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["subviews"] == [edit_title] and edit_state["backgroundColor"] == edit_background and
+            edit_state["contentEdgeInsets"] == (0., 0., 0., 0.) and
+            edit_state["frame"] == (394., 4., 30., 30.) and
             edit_state["control_targets"] == edit_targets, "glass off restores native Edit with neither material")
     glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 0
 
@@ -1900,7 +1957,7 @@ def incompatible_shelf_compaction(data, labels):
     header = runtime.view("SS525BookShelfSubHeaderView", "shelf header", (0, 0, 440, 64),
                           runtime.ROOT, delegate=controller, isFiltering=False, showReadTimeView=False)
     secondary = runtime.view("UIView", "secondary row", (0, 0, 440, 42), header)
-    edit = runtime.view("UIButton", "edit", (380, 4, 44, 30), secondary)
+    edit = runtime.view("UIButton", "edit", (380, 4, 44, 30), secondary, edit_title_size=(44., 30.))
     duration = runtime.view("UIButton", "duration", (20, 4, 150, 32), secondary)
     runtime.objects[header].state.update(secondaryView=secondary, editButton=edit, coinButton=duration)
     cell = runtime.view("SSBookShelfFunctionCell", "function cell", (0, 110, 440, 70), runtime.ROOT,
