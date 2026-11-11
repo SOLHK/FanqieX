@@ -21,10 +21,10 @@ def require(test, detail):
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
     require(version in (0x10602, 0x10603, 0x10604, 0x10605, 0x10606, 0x10607,
-                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00),
+                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00),
             'Expected a recognized FanqieX release candidate')
-    if version == 0x14a00:
-        return '1.74'
+    if version in (0x14a00, 0x14b00):
+        return f'{version >> 16}.{(version >> 8) & 0xff}'
     return f'{version >> 16}.{(version >> 8) & 0xff}.{version & 0xff}'
 
 

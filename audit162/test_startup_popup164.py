@@ -82,7 +82,7 @@ def read_decisions(rt):
 
 def check_case(data, slide, mode):
     rt = Runtime(data, slide)
-    if release_version(data) in ('1.7.4', '1.74'):
+    if release_version(data) in ('1.7.4', '1.74', '1.75'):
         rt.imc_host()
     cpu = make_cpu(rt)
     cpu.ranges.append((0x7394, 0x746c))
@@ -223,7 +223,7 @@ def main():
     data = args.candidate.read_bytes()
     cases = [check_case(data, slide, mode) for slide in (0, 0x180000000)
              for mode in ('owned', 'inherited', 'disabled', 'missing_class', 'missing_method', 'wrong_encoding')]
-    if release_version(data) in ('1.7.4', '1.74'):
+    if release_version(data) in ('1.7.4', '1.74', '1.75'):
         cases.extend(check_imc(data, slide, mode, options) for slide in (0, 0x180000000)
                      for mode, options in (('launch_only', 1), ('bookstore_only', 1 << 6), ('both', 0x41),
                                            ('disabled', 0), ('other_option', 1 << 5),

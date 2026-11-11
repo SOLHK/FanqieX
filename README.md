@@ -2,18 +2,17 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.74
+## FanqieX 1.75
 
-本版包含阅读页、书架和个人页的液态玻璃、文字留白和交互调整，以及书城弹窗和个人页
-游戏推广卡的拦截。插件会检查宿主的类和方法签名，再逐项启用匹配的功能。
+本版调整阅读页、书城、书架和「我的」的液态玻璃，修复书城下拉刷新后留下的空白。
+插件会检查宿主的类和方法签名，再逐项启用匹配的功能。
 
-- [修复说明](docs/REPAIR_1.74.md)
+- [修复说明和设备观察点](docs/REPAIR_1.75.md)
 - [逆向材料核对证据](docs/REVERSE_ARCHIVE_174_EVIDENCE.json)
-- [设备观察点](docs/DEVICE_ACCEPTANCE_174.md)
-- [插件](dist/1.74/FanqieX-1.74.dylib)
-- [插件包](dist/1.74/FanqieX-1.74.zip)
-- [SHA-256 校验值](dist/1.74/SHA256SUMS.txt)
-- [验证记录](verification/1.74/ci-summary.json)
+- [插件](dist/1.75/FanqieX-1.75.dylib)
+- [插件包](dist/1.75/FanqieX-1.75.zip)
+- [SHA-256 校验值](dist/1.75/SHA256SUMS.txt)
+- [验证记录](verification/1.75/ci-summary.json)
 - [GitHub Actions](https://github.com/SOLHK/FanqieX/actions)
 
 宿主身份已按本次上传的 IPA 逆向 ZIP 重新核对：
@@ -32,9 +31,9 @@ Mach-O 元数据、Info.plist、Frameworks 和 Swift 元数据列表。缺失项
 
 ## 主要修改
 
-- 阅读页调整工具按钮、进度条、本章讨论和礼物入口的玻璃，给「改编剧场」和「更多改编」增加文字留白。
-- 书架调整编辑按钮、分类行和封面转场。
-- 个人页调整搜索栏和快捷入口，给快捷入口的标题增加底部留白。
+- 阅读页的章末讨论与作者说共用整张玻璃卡片，新书的「听书」与「左滑开始阅读」入口采用玻璃样式。
+- 书城与书架的顶栏允许封面从后方透出。书城刷新后恢复列表位置，书架编辑按钮随今日看听读时长的显示状态切换位置。
+- 书城与「我的」右下角写作按钮采用液态玻璃。「我的」将顶部模糊限制在工具栏内。
 - 广告过滤覆盖书城传统弹窗、IMC 入口及缓存和个人页游戏推广卡。
 - 「短句」和「商城」可以在插件设置中独立开启或关闭。
 
@@ -70,14 +69,14 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.74 --output build/ci174
+python3 scripts/verify162.py --version 1.75 --output build/ci175
 ```
 
 macOS / Xcode 27.2 构建：
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
-python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.74
+python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.75
 ```
 
 Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建检查：
@@ -85,7 +84,7 @@ Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建�
 ```powershell
 $env:FQ_ASSEMBLER = "clang"
 $env:FQ_CLANG = "C:\Program Files\LLVM\bin\clang.exe"
-python scripts/verify162.py --version 1.74 --output build/ci174
+python scripts/verify162.py --version 1.75 --output build/ci175
 ```
 
 该 Windows 路径不替代 Xcode 27.2 发布构建；它只用于执行同一套 ARM64 指令、结构审计和回归测试。
