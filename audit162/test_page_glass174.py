@@ -774,8 +774,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         return super().handle(cpu, pc)
 
 
-def make(data):
-    runtime = Runtime(data)
+def make(data, runtime_class=Runtime):
+    runtime = runtime_class(data)
     words = struct.unpack_from("<64I", data, 0x800)
     cpu = CPU(data, runtime, 0,
               ranges=[(0x800, 0x4000), (0x4878, 0x48d0), (0x702c, 0x7d00),
@@ -2309,7 +2309,8 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
     selector = runtime.selector_names[action]
     for width, height in ((956, 440), (812, 375)):
         canvas = (0., 0., float(width), float(height))
-        stock = (80., 0., width - 160., float(height))
+        frame_width = height * (16 / 9)
+        stock = ((width - frame_width) / 2, 0., frame_width, float(height))
         window = runtime.view("UIWindow", "landscape window", canvas)
         cell = runtime.view("FQVShortVideoLandscapePlayerCellView", "landscape cell",
                             canvas, window, isInPlayerScaleMode=False)
@@ -2330,8 +2331,8 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         toggle["isOn"] = True
         send(cpu, runtime, observer, selector, switch)
         send(cpu, runtime, player, "layoutSubviews")
-        require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 2,
-                "each phone fills its own landscape viewport in aspect-fill mode")
+        require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 3,
+                "each phone uses native stretch to show the entire frame across its landscape viewport")
 
         runtime.objects[cell].state["isInPlayerScaleMode"] = True
         send(cpu, runtime, player, "layoutSubviews")
@@ -2340,13 +2341,13 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         runtime.objects[cell].state["isInPlayerScaleMode"] = False
         send(cpu, runtime, player, "layoutSubviews")
 
-        replacement = runtime.obj("TTVideoEngine", "replacement engine", scaleMode=0)
+        replacement = runtime.obj("TTVideoEngine", "replacement engine", scaleMode=2)
         send(cpu, runtime, player, "setVideoEngine:", replacement)
         require(engine_state["scaleMode"] == 1, "the pooled engine is restored before replacement")
         send(cpu, runtime, player, "layoutSubviews")
-        require(runtime.objects[replacement].state["scaleMode"] == 2, "replacement engine fills its viewport")
+        require(runtime.objects[replacement].state["scaleMode"] == 3, "replacement engine fills its viewport")
         send(cpu, runtime, player, "setIsFullScreen:", 0)
-        require(displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 0,
+        require(displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
                 "leaving fullscreen restores the new engine's original scale")
 
         send(cpu, runtime, player, "setIsFullScreen:", 1)
@@ -2366,11 +2367,11 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         runtime.objects[next_cell].state.update(playerSuperView=next_holder, vPlayer=next_player)
 
         send(cpu, runtime, next_player, "layoutSubviews")
-        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 2,
-                "a full-width cell can prepare aspect fill offscreen with fractional layout rounding")
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 3,
+                "an offscreen cell can prepare stretch with fractional layout rounding")
         info = runtime.obj("NSObject", "next video info")
         send(cpu, runtime, next_player, "prepareWithVideoInfo:async:", info, 1)
-        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 2,
+        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 3,
                 "fill is restored after native prepare resets the renderer scale")
         require(next_engine_state["resolution"] == "native adaptive",
                 "fill preserves the native resolution selection")
@@ -2378,13 +2379,13 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         next_engine_state["scaleMode"] = 1
         previous_updates = next_state["playerLayoutUpdates"]
         send(cpu, runtime, next_player, "videoEngineReadyToDisPlay:", next_engine)
-        require(next_state["readySnapshot"] == (2, previous_updates + 1),
+        require(next_state["readySnapshot"] == (3, previous_updates + 1),
                 "the engine and frame are ready before the host reveals the first frame")
 
         runtime.objects[next_cell].state["frame"] = canvas
         next_engine_state["scaleMode"] = 1
         send(cpu, runtime, next_cell, "modelDidDisplay")
-        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 2,
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 3,
                 "paging to an already-ready cell restores fill without a new player layout or ready callback")
         scale_writes = list(next_engine_state["scaleWrites"])
         send(cpu, runtime, next_cell, "modelDidDisplay")
@@ -2394,7 +2395,7 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         toggle["isOn"] = False
         send(cpu, runtime, observer, selector, switch)
         send(cpu, runtime, player, "layoutSubviews")
-        require(not prefs[key] and displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 0,
+        require(not prefs[key] and displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
                 "turning off fill restores fullscreen framing and scale")
 
 
@@ -2550,6 +2551,74 @@ def exercise_drama_glass(data, labels):
     return True
 
 
+def exercise_drama_dock_backdrop(data, labels):
+    config_class = "FQVShortVideoListConfig"
+    color_selector = "listVCBackgroundColor"
+    rgb_selector = "getRed:green:blue:alpha:"
+    white_selector = "getWhite:alpha:"
+
+    class BackdropRuntime(Runtime):
+        COLOR_METHOD = 0x33250020
+
+        def __init__(self, binary):
+            super().__init__(binary)
+            self._class(config_class, "NSObject")
+            for cls, selector, abi in (
+                (config_class, "feedType", "q16@0:8"),
+                (config_class, color_selector, "@16@0:8"),
+                ("UIColor", rgb_selector, "B48@0:8^d16^d24^d32^d40"),
+                ("UIColor", white_selector, "B32@0:8^d16^d24"),
+            ):
+                self._add(self.classes[cls], selector, self.COLOR_METHOD, abi)
+            self._add(self.metaclasses[self.classes["UIColor"]], "blackColor",
+                      self.COLOR_METHOD, "@16@0:8")
+
+        def handle(self, cpu, pc):
+            if pc != self.COLOR_METHOD:
+                return super().handle(cpu, pc)
+            receiver, selector = cpu.x[:2]
+            name = self.selector_names[selector]
+            if name == "blackColor":
+                return self.finish(cpu, self.color(name))
+            state = self.objects[receiver].state
+            if name in (rgb_selector, white_selector):
+                values = state.get(name, ())
+                for address, value in zip(cpu.x[2:], values):
+                    cpu.write(address, 8, struct.unpack("<Q", struct.pack("<d", value))[0])
+                return self.finish(cpu, bool(values))
+            return self.finish(cpu, state[name])
+
+    cpu, runtime = make(data, BackdropRuntime)
+    runtime.labels = labels
+    call(cpu, labels, "LFQH_FQHPageInstall")
+    black = runtime.color("blackColor")
+    channel = 29/255
+    rgb = runtime.obj("UIColor", "opaque stock gray", **{rgb_selector: (channel,)*3 + (1.,)})
+    gray = runtime.obj("UIColor", "monochrome stock gray", **{white_selector: (channel, 1.)})
+    other = runtime.obj("UIColor", "non-stock gray", **{rgb_selector: (28/255,)*3 + (1.,)})
+
+    def check(stock, feed_type, expected):
+        config = runtime.obj(config_class, "native feed config", feedType=feed_type,
+                             listVCBackgroundColor=stock)
+        for _ in range(2):
+            require(send(cpu, runtime, config, color_selector)["result"] == expected,
+                    "the feed canvas and corner masks obtain the same configured paint")
+        require(runtime.objects[config].state[color_selector] == stock, "native config storage stays intact")
+
+    check(rgb, 4, black)
+    check(gray, 4, black)
+    check(rgb, 5, rgb)
+    check(other, 4, other)
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = True
+    check(rgb, 4, rgb)
+    require([record for event, record in runtime.records if event == "dramaDockBackdropInstall"]
+            == [{"installed": True}], "hook installation is recorded")
+    require([record for event, record in runtime.records if event == "dramaDockBackdrop"]
+            == [{"feedType": 4., "stock": "#1D1D1D", "applied": "#000000"}]*2,
+            "background substitution is recorded once per matching config")
+    return True
+
+
 def exercise_reader_glass_appearance(data, labels):
     cpu, runtime = make(data)
     runtime.labels = labels
@@ -2589,6 +2658,7 @@ def main():
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
     runtime["short_drama_clear_glass_and_reuse"] = exercise_drama_glass(data, labels)
+    runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)
     result = {"passed": True, "device_tested": False, "pixel_rendering_tested": False,
               "scope": "Actual candidate ARM64 instructions with explicit UIKit/Foundation boundaries",

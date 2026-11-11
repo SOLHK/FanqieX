@@ -3106,60 +3106,48 @@ static void InstallTabRecovery(Obj owner) {
     V0(gesture,"release");
     V0(observer,"release");
 }
-static void DramaShiftOffset(Obj ui,const char *getter,const char *setter,double delta) {
-    Obj offset=O0(ui,getter);
-    if (offset) V1(ui,setter,Number(Double(offset)-delta));
+static void DramaDockLogKey(void) {}
+
+static B DramaDockStockChannel(double value) {
+    return value>=0 && value<=1 && (int)(value*256+0.5)==29;
 }
 
-static void DramaFeedCanvas(Obj config) {
-    if (!Kind(config,"FQVShortVideoListConfig") ||
-        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))!=4) return;
-    Obj color=O0(config,"listVCBackgroundColor");
+static B DramaDockStockColor(Obj color) {
     double red=0,green=0,blue=0,alpha=0;
-    if (!((B(*)(Obj,Sel,double *,double *,double *,double *))Message)(color,
-        sel_registerName("getRed:green:blue:alpha:"),&red,&green,&blue,&alpha) || alpha!=1 ||
-        (int)(red*256+0.5)!=29 || (int)(green*256+0.5)!=29 || (int)(blue*256+0.5)!=29) return;
-
-    // The stock #1D1D1D player canvas is painted around the shortened viewport.
-    // Extend the viewport to the screen edge while reserving the dock for controls.
-    Rect portrait=((Rect(*)(Obj,Sel))Message)(O0(Lookup("UIScreen"),"mainScreen"),sel_registerName("fqv_portraitBounds"));
-    Size stock=((Size(*)(Obj,Sel))Message)(config,sel_registerName("portraitVideoSize"));
-    Obj ui=O0(config,"uiConfig");
-    double delta=portrait.height-stock.height;
-    if (!ui || stock.width<=0 || stock.height<=0 || __builtin_fabs(stock.width-portrait.width)>1 || delta<40 || delta>120) return;
-    ((void(*)(Obj,Sel,Size))Message)(config,sel_registerName("setPortraitVideoSize:"),(Size){stock.width,portrait.height});
-    double bottom=((double(*)(Obj,Sel))Message)(ui,sel_registerName("safeBottom"));
-    ((void(*)(Obj,Sel,double))Message)(ui,sel_registerName("setSafeBottom:"),bottom+delta);
-    DramaShiftOffset(ui,"infoViewOffsetY","setInfoViewOffsetY:",delta);
-    DramaShiftOffset(ui,"bottomGradientOffsetY","setBottomGradientOffsetY:",delta);
-    DramaShiftOffset(ui,"progressContainerViewOffsetY","setProgressContainerViewOffsetY:",delta);
-    V1(config,"setListVCBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
-    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
-    Put(record,"stockHeight",Number(stock.height));
-    Put(record,"appliedHeight",Number(portrait.height));
-    FQDRecord("dramaDockGeometry",record);
+    if (((B(*)(Obj,Sel,double *,double *,double *,double *))Message)(color,
+        sel_registerName("getRed:green:blue:alpha:"),&red,&green,&blue,&alpha))
+        return alpha==1 && DramaDockStockChannel(red) && DramaDockStockChannel(green) && DramaDockStockChannel(blue);
+    double white=0;
+    return ((B(*)(Obj,Sel,double *,double *))Message)(color,sel_registerName("getWhite:alpha:"),&white,&alpha) &&
+        alpha==1 && DramaDockStockChannel(white);
 }
 
-static void DramaFeedSetup(Obj self,Sel cmd) {
-    // The host sizes the paging viewport and draws its corners from this config
-    // after the feed factory has finalized it.
-    if (Enabled()) DramaFeedCanvas(Get(Get(self,"listVCContext"),"config"));
-    ((void(*)(Obj,Sel))Original("FQVShortVideoListVCUIComponent","fqx192_originalDramaFeedSetup"))(self,cmd);
+static Obj DramaDockBackground(Obj self,Sel cmd) {
+    Obj stock=((Obj(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx193_originalDramaDockColor"))(self,cmd);
+    if (!stock || ((I(*)(Obj,Sel))Message)(self,sel_registerName("feedType"))!=4 ||
+        !DramaDockStockColor(stock) || !Enabled()) return stock;
+
+    // The feed root and both sets of rounded corner images all read this color.
+    if (!objc_getAssociatedObject(self,DramaDockLogKey)) {
+        objc_setAssociatedObject(self,DramaDockLogKey,BoolBox(1),1);
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"feedType",Number(4));
+        Put(record,"stock",Text("#1D1D1D"));
+        Put(record,"applied",Text("#000000"));
+        FQDRecord("dramaDockBackdrop",record);
+    }
+    return O0(Lookup("UIColor"),"blackColor");
 }
 
 static void DramaBackdropInstall(void) {
-    const char *config="FQVShortVideoListConfig";
-    const char *ui="FQVShortVideoListUIConfig";
-    if (!FQHGlassAvailable() ||
-        !Signature("UIScreen","fqv_portraitBounds","{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") ||
-        !Signature(config,"feedType","q16@0:8") || !Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") ||
-        !Signature(config,"setPortraitVideoSize:","v32@0:8{CGSize=dd}16") || !Signature(config,"uiConfig","@16@0:8") ||
-        !Signature(config,"listVCBackgroundColor","@16@0:8") || !Signature(config,"setListVCBackgroundColor:","v24@0:8@16") ||
-        !Signature(ui,"safeBottom","d16@0:8") || !Signature(ui,"setSafeBottom:","v24@0:8d16") ||
-        !Signature(ui,"infoViewOffsetY","@16@0:8") || !Signature(ui,"setInfoViewOffsetY:","v24@0:8@16") ||
-        !Signature(ui,"bottomGradientOffsetY","@16@0:8") || !Signature(ui,"setBottomGradientOffsetY:","v24@0:8@16") ||
-        !Signature(ui,"progressContainerViewOffsetY","@16@0:8") || !Signature(ui,"setProgressContainerViewOffsetY:","v24@0:8@16")) return;
-    Hook("FQVShortVideoListVCUIComponent","setupVideoSizes","fqx192_originalDramaFeedSetup","v16@0:8",(Imp)DramaFeedSetup);
+    const char *config="FQVShortVideoListConfig", *alias="fqx193_originalDramaDockColor";
+    Obj owner=Lookup(config);
+    if (!owner) return;
+    if (FQHGlassAvailable() && Signature(config,"feedType","q16@0:8"))
+        Hook(config,"listVCBackgroundColor",alias,"@16@0:8",(Imp)DramaDockBackground);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"installed",BoolBox(class_getInstanceMethod(owner,sel_registerName(alias))!=0));
+    FQDRecord("dramaDockBackdropInstall",record);
 }
 
 static void ReaderThemeLaunchKey(void) {}
@@ -3338,7 +3326,8 @@ void FQHInstallOptionsToggles(Obj controller) {
 }
 
 static void FullscreenScaleBaselineKey(void) {}
-enum { FullscreenAspectFillMode=2 };
+// TTVideoEngine's Fill mode resizes the entire frame to the viewport.
+enum { FullscreenStretchMode=3 };
 
 static B FullscreenFillViewport(Obj player,Rect *viewport) {
     if (!Flag(player,"isFullScreen") || !FullscreenFillEnabled()) return 0;
@@ -3369,14 +3358,14 @@ static void FullscreenScale(Obj engine,B fill) {
     Obj baseline=objc_getAssociatedObject(engine,FullscreenScaleBaselineKey);
     if (!fill && !baseline) return;
     I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode"));
-    if (fill && mode!=FullscreenAspectFillMode) {
+    if (fill && mode!=FullscreenStretchMode) {
         Obj box=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),mode);
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,box,1);
-        Q1(engine,"setScaleMode:",FullscreenAspectFillMode);
+        Q1(engine,"setScaleMode:",FullscreenStretchMode);
     } else if (!fill) {
         I previous=((I(*)(Obj,Sel))Message)(baseline,sel_registerName("integerValue"));
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,0,1);
-        if (mode==FullscreenAspectFillMode) Q1(engine,"setScaleMode:",previous);
+        if (mode==FullscreenStretchMode) Q1(engine,"setScaleMode:",previous);
     }
 }
 
