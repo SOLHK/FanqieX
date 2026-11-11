@@ -50,6 +50,10 @@ static void StateKey(void) {
 }
 static void LoadStateKey(void) {
 }
+static void EnhancedKey(void) {
+}
+static void ModelDetailKey(void) {
+}
 extern Obj objc_allocateClassPair(Obj, const char *, U);
 extern void objc_registerClassPair(Obj);
 
@@ -111,11 +115,13 @@ static B Kind(Obj o, const char *name) {
 static I Count(Obj o, const char *s) {
     return Responds(o, s) ? Q0(o, s) : -1;
 }
-static Obj Clock(void) {
-    double t = ((double (*)(Obj, Sel))objc_msgSend)(
+static double Uptime(void) {
+    return ((double (*)(Obj, Sel))objc_msgSend)(
         O0(objc_getClass("NSProcessInfo"), "processInfo"), sel_registerName("systemUptime"));
+}
+static Obj Clock(void) {
     return ((Obj (*)(Obj, Sel, double))objc_msgSend)(objc_getClass("NSNumber"),
-                                                     sel_registerName("numberWithDouble:"), t);
+                                                     sel_registerName("numberWithDouble:"), Uptime());
 }
 static Obj Elapsed(Obj start) {
     double now = ((double (*)(Obj, Sel))objc_msgSend)(Clock(), sel_registerName("doubleValue"));
@@ -124,9 +130,30 @@ static Obj Elapsed(Obj start) {
         objc_getClass("NSNumber"), sel_registerName("numberWithDouble:"), now - before);
 }
 static B Enhanced(void) {
-    return ((B (*)(Obj, Sel, Obj))objc_msgSend)(
-        O0(objc_getClass("NSUserDefaults"), "standardUserDefaults"),
-        sel_registerName("boolForKey:"), Text("FanqieX.EnhancedDiagnostics.1"));
+    Obj defaults = O0(objc_getClass("NSUserDefaults"), "standardUserDefaults");
+    Obj key = objc_getAssociatedObject(defaults, EnhancedKey);
+    if (!key) {
+        key = Text("FanqieX.EnhancedDiagnostics.1");
+        objc_setAssociatedObject(defaults, EnhancedKey, key, 0x301);
+    }
+    return B1(defaults, "boolForKey:", key);
+}
+
+static B TakeCommentSample(const void *key) {
+    // Four observations per quarter second per event family and thread.
+    // A single counter encodes the window base plus its used slots, so a
+    // burst cannot queue more snapshots or contend on the logger's lock.
+    const I limit = 4;
+    I base = (I)(Uptime() * 4.0) * (limit + 1);
+    Obj thread = O0(objc_getClass("NSThread"), "currentThread");
+    I used = Q0(objc_getAssociatedObject(thread, key), "longLongValue");
+    if (used >= base + limit)
+        return 0;
+    objc_setAssociatedObject(thread, key, Num((used < base ? base : used) + 1), 0x301);
+    return 1;
+}
+static B CommentDetail(const void *key) {
+    return Enhanced() && TakeCommentSample(key);
 }
 
 // This small journal is separate from the asynchronous diagnostic logger. It
@@ -396,25 +423,31 @@ static Imp Original(Obj self, const char *alias) {
 }
 
 static void Bind(Obj self, Sel cmd, Obj model) {
-    Obj d = Dict();
-    Put(d, "before", Values(Get(self, "model")));
-    Put(d, "afterInput", Values(model));
+    Obj d = CommentDetail(Bind) ? Dict() : 0;
+    if (d) {
+        Put(d, "before", Values(Get(self, "model")));
+        Put(d, "afterInput", Values(model));
+    }
     Imp original = Original(self, "fqx164_bind");
     if (original)
         ((void (*)(Obj, Sel, Obj))original)(self, cmd, model);
-    Put(d, "after", Values(Get(self, "model")));
-    Emit("commentBubbleBind", "FQCReaderParagraphEndView", self, Context(), d);
+    if (d) {
+        Put(d, "after", Values(Get(self, "model")));
+        Emit("commentBubbleBind", "FQCReaderParagraphEndView", self, Context(), d);
+    }
 }
 static void BubbleUpdate(Obj self, Sel cmd) {
-    Obj d = Dict();
-    Obj model = Get(self, "model");
-    Put(d, "before", Values(model));
+    Obj d = CommentDetail(BubbleUpdate) ? Dict() : 0;
+    if (d)
+        Put(d, "before", Values(Get(self, "model")));
     Imp original = Original(self, "fqx164_bubbleUpdate");
     if (original)
         ((void (*)(Obj, Sel))original)(self, cmd);
-    Put(d, "after", Values(Get(self, "model")));
-    Put(d, "hidden", Num(B0(self, "isHidden")));
-    Emit("commentBubbleCountUI", "FQCReaderParagraphEndView", self, Context(), d);
+    if (d) {
+        Put(d, "after", Values(Get(self, "model")));
+        Put(d, "hidden", Num(B0(self, "isHidden")));
+        Emit("commentBubbleCountUI", "FQCReaderParagraphEndView", self, Context(), d);
+    }
 }
 static void BubbleTap(Obj self, Sel cmd) {
     Obj correlation = UUID();
@@ -426,77 +459,85 @@ static void BubbleTap(Obj self, Sel cmd) {
         ((void (*)(Obj, Sel))original)(self, cmd);
 }
 static void Hidden(Obj self, Sel cmd, B hidden) {
-    Obj d = Values(Get(self, "model"));
-    Put(d, "beforeHidden", Num(B0(self, "isHidden")));
-    Put(d, "requestedHidden", Num(hidden));
+    Obj d = CommentDetail(Hidden) ? Values(Get(self, "model")) : 0;
+    if (d) {
+        Put(d, "beforeHidden", Num(B0(self, "isHidden")));
+        Put(d, "requestedHidden", Num(hidden));
+    }
     Imp original = Original(self, "fqx164_hidden");
     if (original)
         ((void (*)(Obj, Sel, B))original)(self, cmd, hidden);
-    Put(d, "afterHidden", Num(B0(self, "isHidden")));
-    Emit("commentBubbleHidden", "FQCReaderParagraphEndView", self, Context(), d);
+    if (d) {
+        Put(d, "afterHidden", Num(B0(self, "isHidden")));
+        Emit("commentBubbleHidden", "FQCReaderParagraphEndView", self, Context(), d);
+    }
 }
 static void Removed(Obj self, Sel cmd) {
-    Obj d = Values(Get(self, "model"));
+    Obj d = CommentDetail(Removed) ? Values(Get(self, "model")) : 0;
     Imp original = Original(self, "fqx164_removed");
     if (original)
         ((void (*)(Obj, Sel))original)(self, cmd);
-    Emit("commentBubbleRemoved", "FQCReaderParagraphEndView", self, Context(), d);
+    if (d)
+        Emit("commentBubbleRemoved", "FQCReaderParagraphEndView", self, Context(), d);
 }
 static void Window(Obj self, Sel cmd) {
     Imp original = Original(self, "fqx164_window");
     if (original)
         ((void (*)(Obj, Sel))original)(self, cmd);
-    Obj d = Values(Get(self, "model"));
-    Put(d, "attached", Num(Get(self, "window") != 0));
-    Emit("commentBubbleAttachment", "FQCReaderParagraphEndView", self, Context(), d);
+    if (CommentDetail(Window)) {
+        Obj d = Values(Get(self, "model"));
+        Put(d, "attached", Num(Get(self, "window") != 0));
+        Emit("commentBubbleAttachment", "FQCReaderParagraphEndView", self, Context(), d);
+    }
 }
 static void Released(Obj self, Sel cmd) {
-    if (objc_getAssociatedObject(self, ObjectKey))
+    if (objc_getAssociatedObject(self, ObjectKey) && CommentDetail(Released))
         Emit("commentBubbleDealloc", "FQCReaderParagraphEndView", self, Context(), Dict());
     Imp original = Original(self, "fqx164_dealloc");
     if (original)
         ((void (*)(Obj, Sel))original)(self, cmd);
 }
-static void ModelCount(Obj self, Sel cmd, I value, const char *alias, const char *cls) {
-    const char *getter=B1(Text(alias),"isEqualToString:",Text("fqx164_entranceOrigin")) ? "ideaOriginCount" :
-        B1(Text(alias),"isEqualToString:",Text("fqx164_dataRaw")) ? "_ideaCount" : "ideaCount";
-    if (Count(self,getter)==value) {
-        Imp original=Original(self,alias);
-        if (original) ((void(*)(Obj,Sel,I))original)(self,cmd,value);
-        return;
+static void ModelCount(Obj self, Sel cmd, I value, const char *alias, const char *getter, const char *cls) {
+    Obj d = Enhanced() && Count(self, getter) != value && TakeCommentSample(ModelDetailKey) ? Dict() : 0;
+    if (d) {
+        Put(d, "before", Values(self));
+        Put(d, "newValue", Num(value));
     }
-    Obj d = Dict();
-    Put(d, "before", Values(self));
-    Put(d, "newValue", Num(value));
     Imp original = Original(self, alias);
     if (original)
         ((void (*)(Obj, Sel, I))original)(self, cmd, value);
-    Put(d, "after", Values(self));
-    Put(d, "source", Text("modelSetter"));
-    Emit("commentCountChanged", cls, self, Context(), d);
+    if (d) {
+        Put(d, "after", Values(self));
+        Put(d, "source", Text("modelSetter"));
+        Emit("commentCountChanged", cls, self, Context(), d);
+    }
 }
 static void EntranceCount(Obj o, Sel s, I n) {
-    ModelCount(o, s, n, "fqx164_entranceCount", "FQCParagraphEntranceViewModel");
+    ModelCount(o, s, n, "fqx164_entranceCount", "ideaCount", "FQCParagraphEntranceViewModel");
 }
 static void EntranceOrigin(Obj o, Sel s, I n) {
-    ModelCount(o, s, n, "fqx164_entranceOrigin", "FQCParagraphEntranceViewModel");
+    ModelCount(o, s, n, "fqx164_entranceOrigin", "ideaOriginCount", "FQCParagraphEntranceViewModel");
 }
 static void DataCount(Obj o, Sel s, I n) {
-    ModelCount(o, s, n, "fqx164_dataCount", "SSParagraphIdeaDataVal");
+    ModelCount(o, s, n, "fqx164_dataCount", "ideaCount", "SSParagraphIdeaDataVal");
 }
 static void DataRaw(Obj o, Sel s, I n) {
-    ModelCount(o, s, n, "fqx164_dataRaw", "SSParagraphIdeaDataVal");
+    ModelCount(o, s, n, "fqx164_dataRaw", "_ideaCount", "SSParagraphIdeaDataVal");
 }
 static void BubbleData(Obj self, Sel cmd, Obj value) {
-    Obj d = Dict();
-    Put(d, "before", Values(self));
-    Put(d, "incomingPresent", Num(value != 0));
-    Put(d, "incomingCount", Num(Count(value, "count")));
+    Obj d = CommentDetail(ModelDetailKey) ? Dict() : 0;
+    if (d) {
+        Put(d, "before", Values(self));
+        Put(d, "incomingPresent", Num(value != 0));
+        Put(d, "incomingCount", Num(Count(value, "count")));
+    }
     Imp original = Original(self, "fqx164_bubbleData");
     if (original)
         ((void (*)(Obj, Sel, Obj))original)(self, cmd, value);
-    Put(d, "after", Values(self));
-    Emit("commentDataReplaced", "SSParagraphIdeaDataVal", self, Context(), d);
+    if (d) {
+        Put(d, "after", Values(self));
+        Emit("commentDataReplaced", "SSParagraphIdeaDataVal", self, Context(), d);
+    }
 }
 static void Open(Obj self, Sel cmd, Obj params) {
     Obj correlation = Context();

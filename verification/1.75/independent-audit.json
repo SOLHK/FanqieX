@@ -1,7 +1,7 @@
 {
   "schema": "fanqiex.independent159.v1",
   "baseline_sha256": "55a2c02e5962ad740816aaf2f8f2f6d9269eb9ecce37c69402897ff3776a4354",
-  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "candidate_sha256": "bca62e000f0e887f1847e3e9e0f5ab07c955d0b22b70b21cc8c4683a26a3fba0",
   "candidate_size": 288400,
   "expected_version": "1.75",
   "passed": true,
@@ -27,7 +27,7 @@
       "passed": true,
       "details": {
         "compared_sections": 12,
-        "changed_original_section_bytes": 2260,
+        "changed_original_section_bytes": 2302,
         "allowed_code_sites": [
           "0x41d8",
           "0x4704",
@@ -56,15 +56,15 @@
         "native_unwind": {
           "passed": true,
           "original_entries_preserved": 63,
-          "native_functions": 380,
-          "frame_prologues_checked": 268,
-          "leaf_functions_checked": 112,
-          "native_code_references_checked": 1971,
+          "native_functions": 389,
+          "frame_prologues_checked": 271,
+          "leaf_functions_checked": 118,
+          "native_code_references_checked": 2021,
           "old_sentinel_zero": true,
           "section_descriptor_unchanged": true,
           "all_unused_table_bytes_zero": true,
           "function_gaps_bounded": true,
-          "table_sha256": "6786969f0ff05d6115a07cc35621d24b0b4c35f54b11f74d786ef7bd67fb53e8",
+          "table_sha256": "0e7451737282a75b605c6945b129da18fe63c9a5a66c7e4138d50ca379338907",
           "scope": "Independent compact-unwind decoding and emitted ARM64 frame-layout audit"
         }
       }
@@ -79,7 +79,7 @@
           "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
           "/System/Library/Frameworks/UIKit.framework/UIKit"
         ],
-        "uuid": "4b41d5bcdab05f06b2f0b230181d4919",
+        "uuid": "44afa657cfc05c8f994c0f77c552caf0",
         "install_name": "@rpath/FanqieX-1.75.dylib"
       }
     },
@@ -295,7 +295,7 @@
         "hash_offset": 120,
         "identifier": "FanqieX-1.75.dylib",
         "all_page_hashes_valid": true,
-        "cdhash": "9692526537879cdeba6f8db67d84cafe051bd8c4",
+        "cdhash": "8d6df1052673c68762c39e4ef3cb7411e1ab49cf",
         "device_acceptance_tested": false
       }
     },
@@ -364,9 +364,9 @@
           "capture_edge": 2368,
           "restore_removed": 2016,
           "extension": 79872,
-          "extension_code_end": 234332,
-          "extension_strings": 234336,
-          "extension_end": 262012
+          "extension_code_end": 235636,
+          "extension_strings": 235640,
+          "extension_end": 263460
         },
         "extension": {
           "update": 80144,
@@ -384,15 +384,15 @@
           "should_begin": 88520,
           "style_control": 100160,
           "style_glyph": 101308,
-          "code_end": 234332,
-          "strings": 234336,
-          "end": 262012,
-          "native_key": 234336,
-          "monitor_key": 234339,
-          "owner_key": 234340,
-          "timer_key": 234341,
-          "tick_key": 234342,
-          "rejected_key": 234338,
+          "code_end": 235636,
+          "strings": 235640,
+          "end": 263460,
+          "native_key": 235640,
+          "monitor_key": 235643,
+          "owner_key": 235644,
+          "timer_key": 235645,
+          "tick_key": 235646,
+          "rejected_key": 235642,
           "reserved24": 126920,
           "reserved25": 127264,
           "reserved26": 127616,
@@ -406,19 +406,19 @@
           "image_alignment": 118920,
           "layout_observe": 121024,
           "finish": 99056,
-          "control_busy_key": 237744,
-          "busy_key": 239610,
-          "owner_back_key": 239616,
-          "back_owned_key": 239611,
-          "back_original_key": 239612,
-          "back_mode_key": 239613,
-          "last_log_key": 239617,
+          "control_busy_key": 239048,
+          "busy_key": 240914,
+          "owner_back_key": 240920,
+          "back_owned_key": 240915,
+          "back_original_key": 240916,
+          "back_mode_key": 240917,
+          "last_log_key": 240921,
           "settle_control": 113800
         },
         "expected_version": "1.75",
         "main_version": 84736,
         "extension_version": 84736,
-        "reader_table_address": 241168,
+        "reader_table_address": 242472,
         "code_ranges": [
           [
             2304,
@@ -426,7 +426,7 @@
           ],
           [
             82048,
-            236380
+            237684
           ]
         ]
       }
@@ -434,19 +434,19 @@
     "instruction_addresses": {
       "passed": true,
       "details": {
-        "instruction_words_checked": 42023,
+        "instruction_words_checked": 42349,
         "direct_reference_counts": {
-          "BL": 7083,
-          "CBZ/CBNZ": 1568,
-          "B": 753,
-          "ADR": 5557,
-          "B.cond": 1095,
+          "BL": 7141,
+          "CBZ/CBNZ": 1603,
+          "B": 764,
+          "ADR": 5609,
+          "B.cond": 1098,
           "LDR-literal": 30,
-          "TBZ/TBNZ": 84
+          "TBZ/TBNZ": 93
         },
-        "branch_target_count": 10583,
+        "branch_target_count": 10699,
         "scope": "All direct branches/ADR/ADRP/literal addresses in emitted repair code; not a full ISA proof",
-        "adr_reference_count": 5557
+        "adr_reference_count": 5609
       }
     },
     "version_consistency": {

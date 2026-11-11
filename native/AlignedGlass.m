@@ -370,11 +370,14 @@ static inline __attribute__((always_inline)) B Belongs(Obj view,Obj owner) {
 }
 static void TopChromeSurfaceKey(void) {}
 static void TopChromeAnchorKey(void) {}
+static void TopChromeTintKey(void) {}
 static void TopChromeColorKey(void) {}
 static void TopChromeOpaqueKey(void) {}
 static void TopChromeArtworkAlphaKey(void) {}
 static void TopChromeGeometryKey(void) {}
 static void BookstoreViewportKey(void) {}
+static void BookstoreUnexpandedFrameKey(void) {}
+static void BookstoreUnexpandedScrollKey(void) {}
 static void TopChromeStockFrameKey(void) {}
 static void TopChromeFrameKey(void) {}
 static void TopChromeScrollKey(void) {}
@@ -403,6 +406,7 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
         Obj background=O0(Lookup("UIColor"),"systemBackgroundColor");
         Obj tint=((Obj(*)(Obj,Sel,double))Message)(background,sel_registerName("colorWithAlphaComponent:"),0.0625);
         V1(Get(surface,"contentView"),"setBackgroundColor:",tint);
+        objc_setAssociatedObject(surface,TopChromeTintKey,tint,1);
         objc_setAssociatedObject(root,TopChromeSurfaceKey,surface,1);
         V0(surface,"release");
     }
@@ -639,6 +643,18 @@ static void BookstoreTopChrome(Obj controller) {
         V0(previous,"release");
     }
     TopChromeUnderlap(viewport,scroll,Convert(root,bounds,parent).y,installed);
+    Obj unexpandedScroll=objc_getAssociatedObject(controller,BookstoreUnexpandedScrollKey);
+    if (installed && !objc_getAssociatedObject(viewport,TopChromeFrameKey)) {
+        Rect frame=Frame(viewport);
+        Obj remembered=objc_getAssociatedObject(controller,BookstoreUnexpandedFrameKey);
+        if (!remembered || !SameRect(frame,UnboxRect(remembered)))
+            objc_setAssociatedObject(controller,BookstoreUnexpandedFrameKey,RectBox(frame),1);
+        if (unexpandedScroll!=scroll)
+            objc_setAssociatedObject(controller,BookstoreUnexpandedScrollKey,scroll,1);
+    } else if (unexpandedScroll) {
+        objc_setAssociatedObject(controller,BookstoreUnexpandedFrameKey,0,1);
+        objc_setAssociatedObject(controller,BookstoreUnexpandedScrollKey,0,1);
+    }
     TopChromeRefreshVisibility(scroll);
     TopChromeDiagnostics(controller,"bookstore",root,viewport,scroll,installed);
 }
@@ -669,45 +685,84 @@ static void BookstoreDoubleRowScroll(Obj self,Sel cmd,Obj scroll) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookStoreDoubleRowViewController","fqx187_originalStoreDoubleRowScroll:"))(self,cmd,scroll);
     Obj controller=Get(self,"delegate");
     if (!Kind(controller,"SSBookStoreNewViewController")) return;
+    Obj nested=Get(self,"doubleRowNestContainerScrollView");
     Obj viewport=objc_getAssociatedObject(controller,BookstoreViewportKey);
     Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
-    if ((!applied || !SameRect(Frame(viewport),UnboxRect(applied))) &&
-        BookstoreCurrentTab(controller,Get(controller,"containerView"))==self)
+    B repair;
+    if (applied) {
+        repair=!SameRect(Frame(viewport),UnboxRect(applied));
+    } else if (viewport) {
+        // A viewport that already fills the page has no applied frame. Reuse
+        // its last geometry only while the same nested scroll stays mounted.
+        Obj remembered=objc_getAssociatedObject(controller,BookstoreUnexpandedFrameKey);
+        repair=!remembered || !nested || nested!=objc_getAssociatedObject(controller,BookstoreUnexpandedScrollKey) ||
+            !SameRect(Frame(viewport),UnboxRect(remembered)) || !Enabled();
+    } else {
+        repair=Enabled();
+    }
+    if (repair && BookstoreCurrentTab(controller,Get(controller,"containerView"))==self) {
         BookstoreTopChrome(controller);
-    if (Get(self,"doubleRowNestContainerScrollView")==scroll) TopChromeRefreshVisibility(scroll);
+        nested=Get(self,"doubleRowNestContainerScrollView");
+    }
+    if (nested==scroll) TopChromeRefreshVisibility(scroll);
 }
 static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
         Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
 }
-static void BookshelfFloatingChrome(Obj tab,double overlap) {
-    Obj holder=Get(tab,"fullGenreFloatingContainerView");
-    if (!Kind(holder,"UIView")) return;
-    Obj cell=Get(tab,"functionCell"),foreground=Get(cell,"layoutContainerView");
-    B visible=Get(holder,"superview")==Get(tab,"view") && !Flag(holder,"isHidden");
-    B installed=TopChrome(holder,foreground,Bounds(holder),visible && overlap>0);
-    Rect current=Frame(holder),stock=current;
-    Obj applied=objc_getAssociatedObject(holder,TopChromeFrameKey);
-    if (applied && SameRect(current,UnboxRect(applied)))
-        stock=UnboxRect(objc_getAssociatedObject(holder,TopChromeStockFrameKey));
-    Rect target=stock;
-    if (installed) target.y+=overlap; // UIKit pins the floating row to the moved list's top.
-    if (!SameRect(current,target)) SetFrame(holder,target);
-    if (installed && (!applied || !SameRect(target,UnboxRect(applied)))) {
-        objc_setAssociatedObject(holder,TopChromeStockFrameKey,RectBox(stock),1);
-        objc_setAssociatedObject(holder,TopChromeFrameKey,RectBox(target),1);
-    } else if (!installed && applied) {
-        objc_setAssociatedObject(holder,TopChromeStockFrameKey,0,1);
-        objc_setAssociatedObject(holder,TopChromeFrameKey,0,1);
+static void ShelfPinnedLayoutKey(void) {}
+static void BookshelfSectionPinning(Obj tab) {
+    if (!Kind(tab,"SSBookShelfSubViewController")) return;
+    // Use the same layout getter as configFlowLayout, including before the
+    // collection view is created. The filter is this list's section header.
+    Obj layout=Get(tab,"collectionViewLayout");
+    Obj saved=objc_getAssociatedObject(tab,ShelfPinnedLayoutKey);
+    B enabled=Enabled() && FQHGlassAvailable() && Kind(layout,"UICollectionViewFlowLayout");
+    if (saved && (!enabled || saved!=layout)) {
+        if (!Flag(saved,"sectionHeadersPinToVisibleBounds")) {
+            VB(saved,"setSectionHeadersPinToVisibleBounds:",1);
+            V0(saved,"invalidateLayout");
+        }
+        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,0,1);
     }
-    TopChromeFill(holder,installed);
-    TopChromeFill(foreground,installed);
-    TopChromeFill(Get(cell,"filterView"),installed);
+    if (enabled && Flag(layout,"sectionHeadersPinToVisibleBounds")) {
+        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,layout,1);
+        VB(layout,"setSectionHeadersPinToVisibleBounds:",0);
+        V0(layout,"invalidateLayout");
+    }
+}
+static void BookshelfFlowLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx186_originalShelfFlowLayout"))(self,cmd);
+    BookshelfSectionPinning(self);
+}
+static void BookshelfRestingTint(Obj tab,Obj scroll) {
+    Obj owner=Get(tab,"delegate");
+    if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
+    Obj root=Get(owner,"view"),surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
+    Obj content=Get(surface,"contentView");
+    if (!content) return;
+    Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+    Rect inset=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
+    // At rest the empty strip behind the blur samples the header artwork, while
+    // the first row uses the shelf canvas. Blend back to live glass as books enter.
+    double distance=__builtin_fabs(offset.y+inset.x);
+    double blend=distance<16 && !Flag(Get(scroll,"mj_header"),"isRefreshing") ? 1-distance/16 : 0;
+    Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
+    if (blend>0) {
+        Obj colors=Lookup("UIColor"),canvas=Get(Get(Get(tab,"viewModel"),"uiConfigParams"),"backgroundColor");
+        if (!canvas && Responds(colors,"fq_reader_saas_ColorWithName:"))
+            canvas=O1(colors,"fq_reader_saas_ColorWithName:",Text("SS_COLOR_BG_FF"));
+        if (!canvas) canvas=O0(colors,"systemBackgroundColor");
+        tint=blend==1 ? canvas : ((Obj(*)(Obj,Sel,double))Message)(canvas,
+            sel_registerName("colorWithAlphaComponent:"),0.0625+0.9375*blend);
+    }
+    if (!SameColor(Get(content,"backgroundColor"),tint)) V1(content,"setBackgroundColor:",tint);
 }
 static void BookshelfTopChrome(Obj controller) {
     Obj root=Get(controller,"view"),header=Get(controller,"headerView");
     Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
     Obj scroll=Get(tab,"collectionView");
+    BookshelfSectionPinning(tab);
     Rect frame=Frame(header),bounds=Bounds(root);
     Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
     double height=__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y;
@@ -720,9 +775,12 @@ static void BookshelfTopChrome(Obj controller) {
     TopChromeFill(Get(tabs,"collectionView"),installed);
     TopChromeFill(Get(controller,"headerBackgroundView"),installed);
     TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed);
+    B owned=objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0;
     TopChromeUnderlap(viewport,scroll,bounds.y,installed);
-    if (Kind(tab,"SSBookShelfSubViewController"))
-        BookshelfFloatingChrome(tab,TopChromeOverlap(scroll));
+    if (owned!=(objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0) &&
+        Responds(tab,"fqx186_originalShelfFloating:"))
+        V1(tab,"updateFullGenreFloatingViewWithScrollView:",scroll);
+    if (installed) BookshelfRestingTint(tab,scroll);
     TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
 static void BookshelfTopLayout(Obj self,Sel cmd) {
@@ -743,8 +801,10 @@ static void BookshelfUpdateInsets(Obj self,Sel cmd) {
     RestoreBookshelfTopInset(self);
 }
 static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
+    // The host treats an absent scroll view as a reset to its inline row.
+    if (scroll && objc_getAssociatedObject(scroll,TopChromeInsetKey) &&
+        scroll==Get(self,"collectionView") && Enabled()) scroll=0;
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx186_originalShelfFloating:"))(self,cmd,scroll);
-    if (scroll==Get(self,"collectionView")) BookshelfFloatingChrome(self,TopChromeOverlap(scroll));
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }
@@ -1178,9 +1238,10 @@ static void TopChromeRefreshHeaderVisibility(Obj header) {
     Obj scroll=Get(header,"superview"),owner=Get(scroll,"delegate");
     if (Get(scroll,"mj_header")!=header) return;
     if ((Kind(owner,"SSBookShelfSubViewController") || Kind(owner,"SSBookStoreTabViewController")) &&
-        Get(owner,"collectionView")==scroll)
+        Get(owner,"collectionView")==scroll) {
         TopChromeRefreshVisibility(scroll);
-    else if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll &&
+        if (Kind(owner,"SSBookShelfSubViewController")) BookshelfRestingTint(owner,scroll);
+    } else if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll &&
              Get(owner,"refreshHeader")==header)
         TopChromeRefreshVisibility(scroll);
 }
@@ -1202,13 +1263,19 @@ static void TopChromeRefreshHostHidden(Obj self,Sel cmd,B hidden) {
 }
 static void ShelfScroll(Obj self,Sel cmd,Obj scroll) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx187_originalShelfScroll:"))(self,cmd,scroll);
-    if (Get(self,"collectionView")==scroll) TopChromeRefreshVisibility(scroll);
+    if (Get(self,"collectionView")==scroll) {
+        TopChromeRefreshVisibility(scroll);
+        BookshelfRestingTint(self,scroll);
+    }
 }
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
+    BookshelfSectionPinning(self);
     FQHShelf(self);
     RestoreBookshelfTopInset(self);
-    TopChromeRefreshVisibility(Get(self,"collectionView"));
+    Obj scroll=Get(self,"collectionView");
+    TopChromeRefreshVisibility(scroll);
+    BookshelfRestingTint(self,scroll);
 }
 static void ShelfButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
@@ -2387,7 +2454,10 @@ static const double ShelfCompactEmptyHeight=1;
 static Rect ShelfEditPaddedInsets(Rect insets) {
     // UIEdgeInsets shares the four-double ABI with Rect.
     double horizontal=__builtin_fmax(12,__builtin_fmax(insets.y,insets.height));
+    double vertical=__builtin_fmax(7,__builtin_fmax(insets.x,insets.width));
+    insets.x=vertical;
     insets.y=horizontal;
+    insets.width=vertical;
     insets.height=horizontal;
     return insets;
 }
@@ -2928,14 +2998,15 @@ void FQHInstall(void) {
     Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
     Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
+    Hook("SSBookShelfSubViewController","configFlowLayout","fqx186_originalShelfFlowLayout","v16@0:8",(Imp)BookshelfFlowLayout);
     Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
+    Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);
     if (Signature("SSNewRefreshHeader","animationView","@16@0:8") &&
         Signature("SSNewRefreshHeader","isRefreshing","B16@0:8")) {
         Hook("SSNewRefreshHeader","setAnimationHidden:","fqx188_originalRefreshHidden:","v20@0:8B16",(Imp)TopChromeRefreshHostHidden);
         Hook("SSNewRefreshHeader","setState:","fqx188_originalRefreshState:","v24@0:8q16",(Imp)TopChromeRefreshState);
         Hook("SSNewRefreshHeader","placeSubviews","fqx188_originalRefreshAnimationLayout","v16@0:8",(Imp)TopChromeRefreshAnimationLayout);
-        Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);
         Hook("SSBookStoreTabViewController","scrollViewDidScroll:","fqx188_originalStoreCollectionScroll:","v24@0:8@16",(Imp)BookstoreCollectionScroll);
     }
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);

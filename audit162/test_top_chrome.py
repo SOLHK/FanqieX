@@ -14,6 +14,8 @@ from top_chrome_runtime import TopChromeRuntime
 
 SHELF = 'SSBookShelf525ViewController'
 SHELF_LIST = 'SSBookShelfSubViewController'
+SHELF_FUNCTION_CELL = 'SSBookShelfFunctionCell'
+SHELF_SUBHEADER = 'SS525BookShelfSubHeaderView'
 REFRESH_HEADER = 'SSNewRefreshHeader'
 FLAT_STORE = 'SSBookStoreTabViewController'
 SHELF_SCROLL = 'scrollViewDidScroll:'
@@ -22,14 +24,15 @@ DOUBLE_ROW_SCROLL = 'storeTabScrollViewDidScroll:'
 DOUBLE_ROW_LAYOUT = 'viewWillLayoutSubviews'
 UPDATE_INSET = 'updateCollectionViewInsets'
 FLOATING_LAYOUT = 'updateFullGenreFloatingViewWithScrollView:'
+FLOW_LAYOUT = 'configFlowLayout'
 PROPERTIES = (
-    'contentView', 'simpleHeader', 'currentTabVC', 'containerView', 'collectionView',
+    'contentView', 'simpleHeader', 'currentTabVC', 'containerView', 'collectionView', 'collectionViewLayout',
     'currentSelectedListViewController', 'doubleRowNestContainerScrollView', 'listView',
     'nestedView', 'viewIfLoaded',
     'delegate', 'backgroundView', 'headerBgImgView', 'headerView', 'tabSelectView',
     'headerBackgroundView', 'fullGenreFloatingContainerView', 'functionCell',
     'layoutContainerView', 'filterView', 'tabContainer', 'simpleTabView', 'view',
-    'containerScrollView', 'refreshHeader',
+    'containerScrollView', 'refreshHeader', 'viewModel', 'uiConfigParams',
 )
 
 
@@ -39,12 +42,16 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.dispatch_methods = True
         for cls in (SHELF, SHELF_LIST, DOUBLE_ROW):
             self._class(cls, 'UIViewController')
+        for cls in (SHELF_FUNCTION_CELL, SHELF_SUBHEADER):
+            self._class(cls, 'UIView')
         self._class('UICollectionView', 'UIScrollView')
+        self._class('UICollectionViewFlowLayout', 'NSObject')
         self._class('SSNestedContainerScrollView', 'UIScrollView')
         self._class('SSBookStoreNestedTabView', 'UIView')
         self._class(FLAT_STORE, 'UIViewController')
         self._class('FQRJXCategoryListContainerView', 'UIView')
         self._class(REFRESH_HEADER, 'UIView')
+        self.bookstore_header_reads = 0
         self.original_update_inset = 0x3304e200
         self.original_float_layout = 0x3304e300
         self.original_double_row_scroll = 0x3304e400
@@ -59,7 +66,9 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.original_refresh_state = 0x3304e610
         self.original_refresh_visibility = 0x3304e620
         self.original_flat_store_scroll = 0x3304e630
+        self.original_flow_layout = 0x3304e640
         for cls, selector, address, encoding in (
+                (SHELF_LIST, FLOW_LAYOUT, self.original_flow_layout, 'v16@0:8'),
                 (SHELF_LIST, SHELF_SCROLL, self.original_shelf_scroll, 'v24@0:8@16'),
                 (FLAT_STORE, 'scrollViewDidScroll:', self.original_flat_store_scroll, 'v24@0:8@16'),
                 (REFRESH_HEADER, 'setState:', self.original_refresh_state, 'v24@0:8q16'),
@@ -70,6 +79,14 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             self._add(self.classes[cls], selector, address, encoding)
 
     def handle(self, cpu, pc):
+        if pc == self.original_flow_layout:
+            tab = self.objects[cpu.x[0]].state
+            layout = self.objects[tab['collectionViewLayout']].state
+            # Inspected host configFlowLayout explicitly enables UIKit pinning,
+            # independently of the fullGenreFloatingContainerView path below.
+            layout['sectionHeadersPinToVisibleBounds'] = True
+            layout['host_configurations'] = layout.get('host_configurations', 0) + 1
+            return self.finish(cpu)
         if pc == self.original_shelf_scroll:
             self.event('shelf_scroll', cpu.x[0])
             return self.finish(cpu)
@@ -99,17 +116,41 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             nested['frame'] = tab['stockNestedFrame']
             nested['bounds'] = (0, 0, *nested['frame'][2:])
             return self.finish(cpu)
-        if pc in (self.original_update_inset, self.original_float_layout):
+        if pc == self.original_update_inset:
             tab = self.objects[cpu.x[0]].state
-            if pc == self.original_update_inset:
-                self.objects[tab['collectionView']].state['contentInset'] = tab['stockInset']
-            else:
-                holder = self.objects[tab['fullGenreFloatingContainerView']].state
-                holder['frame'] = (0, 0, 440, 36)
+            self.objects[tab['collectionView']].state['contentInset'] = tab['stockInset']
+            return self.finish(cpu)
+        if pc == self.original_float_layout:
+            tab = self.objects[cpu.x[0]].state
+            scroll = tab['collectionView']
+            holder = tab['fullGenreFloatingContainerView']
+            cell = self.objects[tab['functionCell']].state
+            list_state = self.objects[scroll].state
+            # Stock reparents the same layout container after the inline row
+            # crosses the leading edge, and takes its inline cleanup on nil.
+            should_pin = cpu.x[2] == scroll and (
+                list_state['contentOffset'][1] + list_state['contentInset'][0] > cell['frame'][1])
+            parent = holder if should_pin else cell['contentView']
+            row = cell['layoutContainerView']
+            if self.objects[row].state['superview'] != parent:
+                self.reparent(row, parent)
+            self.objects[holder].state.update(frame=(0, 0, 440, 36), hidden=not should_pin)
+            self.event('shelf_floating_layout', cpu.x[0], scroll=cpu.x[2])
             return self.finish(cpu)
         if pc-self.slide == 0xa5d4 and cpu.x[0] in self.objects:
             state = self.objects[cpu.x[0]].state
             name = self.selector_names.get(cpu.x[1])
+            if name == 'simpleHeader':
+                self.bookstore_header_reads += 1
+            if self.is_kind(cpu.x[0], self.classes['UICollectionViewFlowLayout']):
+                if name == 'sectionHeadersPinToVisibleBounds':
+                    return self.finish(cpu, state[name])
+                if name == 'setSectionHeadersPinToVisibleBounds:':
+                    state['sectionHeadersPinToVisibleBounds'] = bool(cpu.x[2])
+                    return self.finish(cpu)
+                if name == 'invalidateLayout':
+                    state['invalidations'] += 1
+                    return self.finish(cpu)
             if name in PROPERTIES and name in state:
                 return self.finish(cpu, state[name])
             if name in ('mj_header', 'animationView', 'isDragging') and name in state:
@@ -225,6 +266,169 @@ def exercise_nested_refresh_geometry(c, r, tab, scroll, animation):
     state.update(contentOffset=original_offset, bounds=(*original_offset, *state['bounds'][2:]))
 
 
+def exercise_nested_scroll_repair(c, r, tab, root, viewport, scroll, edge):
+    preferences = r.objects[r.DEFAULTS].state['values']
+    reads = r.bookstore_header_reads
+    call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(r.bookstore_header_reads == reads,
+            'Scrolling with glass disabled does not recalculate bookstore header geometry')
+
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 0
+    _, _, width, height = r.objects[viewport].state['frame']
+    r.objects[viewport].state['frame'] = (0, 0, width, height)
+    call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(len(surfaces(r, root)) == 1 and r.objects[edge].state['hidden'],
+            'The first scroll still installs glass for a late full-height viewport')
+    reads = r.bookstore_header_reads
+    for _ in range(3):
+        call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(r.bookstore_header_reads == reads,
+            'A settled full-height viewport does not recalculate bookstore header geometry')
+
+    new_scroll = r.view('SSNestedContainerScrollView', 'replacement vertical feed', (0, 0, width, height),
+                        viewport, clipsToBounds=True, contentInset=(0, 0, 0, 0), contentOffset=(0, 0))
+    new_edge = r.enable_native_top_edge(new_scroll, hidden=False)
+    r.objects[tab].state['doubleRowNestContainerScrollView'] = new_scroll
+    call(c, r, tab, DOUBLE_ROW_SCROLL, new_scroll)
+    require(not r.objects[edge].state['hidden'] and r.objects[new_edge].state['hidden'],
+            'Replacing the nested scroll view restores the previous edge and styles the new one')
+
+    r.objects[viewport].state['frame'] = (0, 20, width, height - 20)
+    call(c, r, tab, DOUBLE_ROW_SCROLL, new_scroll)
+    require(r.objects[viewport].state['frame'] == (0, 0, width, height) and
+            r.objects[new_scroll].state['contentInset'] == (20, 0, 0, 0),
+            'A stock frame rewrite still re-expands the viewport and anchors its content')
+
+
+def exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config):
+    state = r.objects[scroll].state
+    bounds, offset, inset = state['bounds'], state['contentOffset'], state['contentInset']
+    rest = -inset[0]
+    blur_state = r.objects[blur].state
+    content = r.objects[blur_state['contentView']].state
+    palette = r.objects[config].state
+    shelf_canvas = palette['backgroundColor']
+    common_canvas = r.color('systemBackgroundColor')
+
+    def position(y):
+        state.update(contentOffset=(0, y), bounds=(0, y, *bounds[2:]))
+
+    def tint():
+        color = content['backgroundColor']
+        color_state = r.objects[color].state
+        return color_state.get('source', color), color_state.get('alpha', 1)
+
+    position(rest)
+    call(c, r, owner, 'viewLayout')
+    require(tint() == (shelf_canvas, 1), 'At rest the toolbar exactly matches the host shelf canvas')
+    position(rest + 8)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(0.0625 < tint()[1] < 1, 'The shelf canvas fades during the first points of scrolling')
+    position(rest + 24)
+    owner_state = r.objects[owner].state
+    prior_tint = tint()
+    owner_state['currentTabVC'] = 0
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == prior_tint, 'A noncurrent shelf tab cannot repaint the top bar')
+    owner_state['currentTabVC'] = tab
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == (common_canvas, 0.0625), 'Scrolled shelf uses the common lightly tinted blur')
+    position(rest)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == (shelf_canvas, 1), 'Returning to the top removes the color seam without a relayout')
+
+    palette['backgroundColor'] = r.color('host shelf dark canvas')
+    call(c, r, owner, 'viewLayout')
+    require(tint() == (palette['backgroundColor'], 1), 'Resting shelf follows the host theme color after relayout')
+    header = state['mj_header']
+    call(c, r, header, 'setState:', 3)
+    require(tint() == (common_canvas, 0.0625), 'The active refresh restores the regular tint on state change')
+    call(c, r, header, 'setState:', 1)
+    require(tint() == (palette['backgroundColor'], 1), 'The resting color returns immediately after refresh')
+    require(surfaces(r, r.objects[owner].state['view']) == [blur] and blur_state['alpha'] == 1 and
+            not blur_state['hidden'] and state['contentInset'] == inset and state['contentOffset'] == (0, rest),
+            'Only the owned tint changes while the native blur and shelf scroll geometry are retained')
+    palette['backgroundColor'] = shelf_canvas
+    state.update(contentOffset=offset, bounds=bounds)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+
+
+def exercise_shelf_section_headers(c, r, owner, tab, scroll):
+    state = r.objects[scroll].state
+    offset, bounds = state['contentOffset'], state['bounds']
+    layout = r.objects[tab].state['collectionViewLayout']
+    flow = r.objects[layout].state
+    preferences = r.objects[r.DEFAULTS].state['values']
+    header = r.view('UIView', 'native supplementary filter header', (0, 76, 440, 36), scroll,
+                    userInteractionEnabled=True)
+    book = r.view('UIView', 'book in the same section', (12, 112, 100, 260), scroll)
+    section_end = 470
+
+    def position(y):
+        state.update(contentOffset=(0, y), bounds=(0, y, *bounds[2:]))
+        # Model UIKit's supplementary header clamp, separately from the host's
+        # custom floating-container logic. Pinning ends when its section ends.
+        top = min(max(76, y + state['contentInset'][0]), section_end - 36) if (
+            flow['sectionHeadersPinToVisibleBounds']) else 76
+        r.objects[header].state['frame'] = (0, top, 440, 36)
+
+    require(not flow['sectionHeadersPinToVisibleBounds'] and flow['invalidations'] == 1,
+            'The mounted shelf also disables the separate UIKit supplementary-header pinning')
+    initial_layout = r.obj('UICollectionViewFlowLayout', 'layout before collection creation',
+                           sectionHeadersPinToVisibleBounds=False, invalidations=0)
+    initial_tab = r.obj(SHELF_LIST, 'not yet mounted shelf', collectionViewLayout=initial_layout)
+    call(c, r, initial_tab, FLOW_LAYOUT)
+    require(r.objects[initial_layout].state['host_configurations'] == 1 and
+            not r.objects[initial_layout].state['sectionHeadersPinToVisibleBounds'],
+            'Initial host layout configuration is handled before its collection view exists')
+    rest = -state['contentInset'][0]
+    for delta in (0, 24, 140, 260):
+        position(rest + delta)
+        call(c, r, tab, SHELF_SCROLL, scroll)
+        require(r.objects[header].state['frame'] == (0, 76, 440, 36),
+                'The supplementary filter stays at its content origin throughout the book section')
+    require(drawn_rect(r, header)[3] == 0 and drawn_rect(r, book)[3] > 0,
+            'The filter has scrolled out while books in its own section are still visible')
+    for _ in range(3):
+        call(c, r, owner, 'viewLayout')
+    require(flow['invalidations'] == 1, 'Settled layouts do not repeatedly invalidate the shelf')
+    call(c, r, tab, FLOW_LAYOUT)
+    require(flow['host_configurations'] == 1 and not flow['sectionHeadersPinToVisibleBounds'] and
+            flow['invalidations'] == 2, 'A host reconfiguration cannot reinstate section-header pinning')
+
+    replacement = r.obj('UICollectionViewFlowLayout', 'replacement shelf flow layout',
+                        sectionHeadersPinToVisibleBounds=True, invalidations=0)
+    r.objects[tab].state['collectionViewLayout'] = replacement
+    state['collectionViewLayout'] = replacement
+    call(c, r, owner, 'viewLayout')
+    require(flow['sectionHeadersPinToVisibleBounds'] and
+            not r.objects[replacement].state['sectionHeadersPinToVisibleBounds'],
+            'Replacing a layout restores the old one and updates only the current shelf layout')
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 1
+    call(c, r, owner, 'viewLayout')
+    require(r.objects[replacement].state['sectionHeadersPinToVisibleBounds'],
+            'Disabling glass restores native supplementary-header pinning')
+
+    # An originally unpinned layout must stay unpinned after enable/disable.
+    r.objects[replacement].state['sectionHeadersPinToVisibleBounds'] = False
+    invalidations = r.objects[replacement].state['invalidations']
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 0
+    call(c, r, owner, 'viewLayout')
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 1
+    call(c, r, owner, 'viewLayout')
+    require(not r.objects[replacement].state['sectionHeadersPinToVisibleBounds'] and
+            r.objects[replacement].state['invalidations'] == invalidations,
+            'An originally unpinned layout is never made sticky by teardown')
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 0
+    r.objects[tab].state['collectionViewLayout'] = layout
+    state['collectionViewLayout'] = layout
+    call(c, r, owner, 'viewLayout')
+    position(rest)
+    require(drawn_rect(r, header)[3] == 36 and r.objects[header].state['userInteractionEnabled'],
+            'Returning to the top leaves the native filter header visible and interactive')
+    state.update(contentOffset=offset, bounds=bounds)
+
+
 def exercise(data, labels, kind):
     r = Runtime(data)
     r.labels = labels
@@ -272,6 +476,14 @@ def exercise(data, labels, kind):
                        backgroundColor=stock_fill, opaque=True)
     r.objects[tabs].state['collectionView'] = tab_strip
     tab_state = {'collectionView': scroll, 'view': page, 'viewIfLoaded': page}
+    unrelated_layout = r.obj('UICollectionViewFlowLayout', 'unrelated tab-strip layout',
+                             sectionHeadersPinToVisibleBounds=True, invalidations=0)
+    r.objects[tab_strip].state['collectionViewLayout'] = unrelated_layout
+    if shelf:
+        shelf_layout = r.obj('UICollectionViewFlowLayout', 'native shelf flow layout',
+                             sectionHeadersPinToVisibleBounds=True, invalidations=0)
+        tab_state['collectionViewLayout'] = shelf_layout
+        scroll_state['collectionViewLayout'] = shelf_layout
     if nested:
         # The unlimited list pins to the coordinator's scroll top.
         inner = r.view('UICollectionView', 'nested feed list', (0,stock_offset,440,857), scroll,
@@ -287,12 +499,20 @@ def exercise(data, labels, kind):
     if shelf:
         holder = r.view('UIView', 'native pinned filter holder', (0,0,440,36), page,
                         backgroundColor=stock_fill, clipsToBounds=True)
-        filter_view = r.view('UIView', 'native filter controls', (0,0,440,36), holder)
-        cell = r.obj('UIViewController', 'shelf function row', layoutContainerView=filter_view)
+        cell = r.view(SHELF_FUNCTION_CELL, 'shelf function row', (0, 20, 440, 36), scroll)
+        inline_parent = r.view('UIView', 'inline function-cell content', (0, 0, 440, 36), cell)
+        row = r.view('UIView', 'already pinned native filter controls', (0,0,440,36), holder)
+        subheader = r.view(SHELF_SUBHEADER, 'shelf subheader', (0, 0, 440, 36), row)
+        filter_button = r.view('UIButton', 'native filter button', (365, 4, 62, 28), subheader,
+                               userInteractionEnabled=True, enabled=True)
+        r.objects[cell].state.update(contentView=inline_parent, layoutContainerView=row, headerView=subheader)
+        config = r.obj('NSObject', 'native shelf theme', backgroundColor=r.color('host shelf light canvas'))
+        model = r.obj('NSObject', 'shelf view model', uiConfigParams=config)
         r.objects[tab].state.update(fullGenreFloatingContainerView=holder, functionCell=cell,
-                                   stockInset=stock_inset)
+                                   stockInset=stock_inset, viewModel=model)
         owner = r.obj(SHELF, 'shelf', view=root, headerView=header, tabSelectView=tabs,
                       containerView=viewport, currentTabVC=tab, headerBgImgView=artwork)
+        r.objects[tab].state['delegate'] = owner
         layout = 'viewLayout'
     else:
         owner = r.obj(HOME, 'bookstore', contentView=root, simpleHeader=header, simpleTabView=tabs,
@@ -306,6 +526,9 @@ def exercise(data, labels, kind):
         call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
     else:
         call(c,r,owner,layout)
+    if shelf:
+        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
+                not surfaces(r, holder), 'The first owned shelf layout returns any pinned controls to their inline cell')
     top_surfaces = surfaces(r, root)
     require(len(top_surfaces) == 1, 'Exactly one frame-bounded effect is active with the native scroll edge available')
     blur = top_surfaces[0]
@@ -348,9 +571,26 @@ def exercise(data, labels, kind):
     if nested:
         exercise_nested_refresh_geometry(c, r, tab, scroll, refresh_animation)
     if shelf:
-        call(c,r,tab,FLOATING_LAYOUT,scroll)
-        require(len(surfaces(r,holder)) == 1 and r.objects[holder].state['frame']==(0,boundary,440,36),
-                'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
+        exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config)
+        exercise_shelf_section_headers(c, r, owner, tab, scroll)
+        # The restore cases intentionally disable/re-enable glass, replacing
+        # its surface. Subsequent steady-state checks use that new instance.
+        require(len(surfaces(r, root)) == 1, 'Re-enabling shelf glass installs one surface')
+        blur = surfaces(r, root)[0]
+        require(r.objects[unrelated_layout].state['sectionHeadersPinToVisibleBounds'] and
+                r.objects[unrelated_layout].state['invalidations'] == 0,
+                'The native top tab strip keeps its unrelated layout policy')
+        rest = -applied_inset[0]
+        scroll_state.update(contentOffset=(0, rest), bounds=(0, rest, *scroll_state['bounds'][2:]))
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        resting_filter = drawn_rect(r, filter_button)
+        require(resting_filter[1] > boundary and resting_filter[3] == 28 and
+                r.objects[filter_button].state['enabled'] and r.objects[filter_button].state['userInteractionEnabled'],
+                'The native filter stays visible and interactive inline at rest')
+        scroll_state.update(contentOffset=(0, rest + 12), bounds=(0, rest + 12, *scroll_state['bounds'][2:]))
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(drawn_rect(r, filter_button)[1] == resting_filter[1] - 12,
+                'The filter moves by the same amount as the book list')
         # A native write at a deeply scrolled offset must not move the anchor.
         scroll_state['contentOffset']=(0,64)
         scroll_state['bounds']=(0,64,*scroll_state['bounds'][2:])
@@ -359,6 +599,10 @@ def exercise(data, labels, kind):
         call(c,r,tab,UPDATE_INSET)
         require(scroll_state['contentOffset']==applied_offset and scroll_state['contentInset']==applied_inset,
                 'Host mid-scroll inset rewrites do not move the visible cover')
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
+                not surfaces(r, holder) and drawn_rect(r, filter_button)[3] == 0,
+                'The filter leaves the viewport on deep scroll without showing a fixed material')
     for _ in range(3):
         call(c,r,owner,layout)
     require(surfaces(r,root) == [blur] and scroll_state['contentOffset']==applied_offset,
@@ -386,11 +630,16 @@ def exercise(data, labels, kind):
     require(r.objects[tab_strip].state['backgroundColor']==stock_fill and r.objects[artwork].state['alpha']==1,
             'Disabling glass restores the exact tab strip fill and gradient artwork')
     if shelf:
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(not surfaces(r, holder) and not r.objects[holder].state['hidden'] and
+                r.objects[holder].state['frame'] == (0, 0, 440, 36) and
+                r.objects[row].state['superview'] == holder,
+                'With glass disabled, the host again pins the same native controls')
         call(c, r, tab, SHELF_SCROLL, scroll)
-        require(not surfaces(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
-                'Disabling glass restores the original pinned-filter holder')
     require(not r.objects[refresh_animation].state['hidden'],
             'Removing the expanded viewport restores native refresh-artwork visibility')
+    if nested:
+        exercise_nested_scroll_repair(c, r, tab, root, content_viewport, scroll, edge)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 {
   "candidate": "/home/runner/work/FanqieX/FanqieX/build/ci175/FanqieX-1.75.dylib",
-  "sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "sha256": "bca62e000f0e887f1847e3e9e0f5ab07c955d0b22b70b21cc8c4683a26a3fba0",
   "shadow": {
     "passed": true,
     "runs": [
@@ -410,7 +410,7 @@
       "clock_rollback_future_preserved": true,
       "restart_read_from_real_plist": true,
       "unique_export_files": true,
-      "instructions": 48870
+      "instructions": 48888
     },
     "full_export": {
       "passed": true,
@@ -418,7 +418,7 @@
       "export_record_count": 1027,
       "export_bytes": 180044,
       "all_nested_fields_compared": true,
-      "instructions": 745570,
+      "instructions": 745579,
       "scope": "1025 restored synthetic records plus real new enqueue/bootstrap events, not 1025 enqueue benchmark"
     },
     "diagnostic_UI_and_IO": {
@@ -432,7 +432,7 @@
       "retry_full_persist": true,
       "failed_export_error_UI": true,
       "corrupt_restart_reported": true,
-      "instructions": 50269
+      "instructions": 50287
     },
     "producer_interleaving": {
       "passed": true,
@@ -450,7 +450,7 @@
           "glass_disabled": 0,
           "ASLR_slide": "0x0",
           "passed": true,
-          "instructions": 4786,
+          "instructions": 4795,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         },
@@ -458,7 +458,7 @@
           "glass_disabled": 1,
           "ASLR_slide": "0x0",
           "passed": true,
-          "instructions": 4786,
+          "instructions": 4795,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         },
@@ -466,7 +466,7 @@
           "glass_disabled": 0,
           "ASLR_slide": "0x100000000",
           "passed": true,
-          "instructions": 4786,
+          "instructions": 4795,
           "done_and_export_coexist": true,
           "original_dismiss_executed": true
         }
@@ -524,7 +524,7 @@
   "input_data": "Synthetic modeled native objects and generated test log records; no device logs",
   "actual_patch_entries_stubbed": false,
   "instruction_execution": {
-    "candidate_total_steps": 4396447,
+    "candidate_total_steps": 4396519,
     "baseline_control_total_steps": 0,
     "candidate_payload_unique_instructions_observed": 3275,
     "scope": "Candidate-only observed addresses are separated from uploaded-baseline controls; no claim that instruction coverage proves UIKit behavior"

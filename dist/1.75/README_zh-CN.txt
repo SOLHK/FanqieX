@@ -10,5 +10,5 @@
 
 交付文件来自 Xcode 27.2 构建。自动校验覆盖 Mach-O 结构、签名和 ARM64 回归。iPhone 上仍需确认连续下拉的回弹、明暗模式的玻璃效果、触控和注入。
 
-交付 SHA-256: 1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76
+交付 SHA-256: bca62e000f0e887f1847e3e9e0f5ab07c955d0b22b70b21cc8c4683a26a3fba0
 大小: 288400 bytes

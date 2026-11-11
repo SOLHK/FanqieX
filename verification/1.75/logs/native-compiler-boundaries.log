@@ -4,6 +4,6 @@ test_source_and_generated_component_are_current (test_compile_diagnostics.Diagno
 test_unsupported_machine_code_dependencies_fail_closed (test_compile_diagnostics.DiagnosticsCompilerTests.test_unsupported_machine_code_dependencies_fail_closed) ... ok
 
 ----------------------------------------------------------------------
-Ran 4 tests in 0.259s
+Ran 4 tests in 0.275s
 
 OK

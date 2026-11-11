@@ -9,297 +9,297 @@
       "name": "build",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.86,
+      "seconds": 0.907,
       "log": "logs/build.log"
     },
     {
       "name": "rebuild",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.861,
+      "seconds": 0.872,
       "log": "logs/rebuild.log"
     },
     {
       "name": "extension-layout-selftest",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.108,
+      "seconds": 0.116,
       "log": "logs/extension-layout-selftest.log"
     },
     {
       "name": "independent-binary",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.139,
+      "seconds": 0.146,
       "log": "logs/independent-binary.log"
     },
     {
       "name": "independent-faults",
       "passed": true,
       "returncode": 0,
-      "seconds": 3.028,
+      "seconds": 3.146,
       "log": "logs/independent-faults.log"
     },
     {
       "name": "native-surface",
       "passed": true,
       "returncode": 0,
-      "seconds": 8.7,
+      "seconds": 8.767,
       "log": "logs/native-surface.log"
     },
     {
       "name": "glass-interaction",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.382,
+      "seconds": 2.411,
       "log": "logs/glass-interaction.log"
     },
     {
       "name": "integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.94,
+      "seconds": 2.963,
       "log": "logs/integration.log"
     },
     {
       "name": "diagnostic-dedup",
       "passed": true,
       "returncode": 0,
-      "seconds": 33.004,
+      "seconds": 33.259,
       "log": "logs/diagnostic-dedup.log"
     },
     {
       "name": "legacy-execution",
       "passed": true,
       "returncode": 0,
-      "seconds": 27.764,
+      "seconds": 28.476,
       "log": "logs/legacy-execution.log"
     },
     {
       "name": "material-transitions160",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.081,
+      "seconds": 0.087,
       "log": "logs/material-transitions160.log"
     },
     {
       "name": "feed-viewport",
       "passed": true,
       "returncode": 0,
-      "seconds": 7.595,
+      "seconds": 7.572,
       "log": "logs/feed-viewport.log"
     },
     {
       "name": "feed-integration",
       "passed": true,
       "returncode": 0,
-      "seconds": 12.05,
+      "seconds": 12.27,
       "log": "logs/feed-integration.log"
     },
     {
       "name": "feed-realistic159",
       "passed": true,
       "returncode": 0,
-      "seconds": 17.514,
+      "seconds": 17.68,
       "log": "logs/feed-realistic159.log"
     },
     {
       "name": "first-frame160",
       "passed": true,
       "returncode": 0,
-      "seconds": 4.683,
+      "seconds": 4.75,
       "log": "logs/first-frame160.log"
     },
     {
       "name": "reader-diagnostics160",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.913,
+      "seconds": 2.996,
       "log": "logs/reader-diagnostics160.log"
     },
     {
       "name": "reader-original162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.777,
+      "seconds": 6.821,
       "log": "logs/reader-original162.log"
     },
     {
       "name": "shelf-first-frame162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.294,
+      "seconds": 2.311,
       "log": "logs/shelf-first-frame162.log"
     },
     {
       "name": "glass-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.379,
+      "seconds": 2.397,
       "log": "logs/glass-readability162.log"
     },
     {
       "name": "interaction-diagnostics162",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.055,
+      "seconds": 1.057,
       "log": "logs/interaction-diagnostics162.log"
     },
     {
       "name": "native-selection162",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.44,
+      "seconds": 6.49,
       "log": "logs/native-selection162.log"
     },
     {
       "name": "native-readability162",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.245,
+      "seconds": 5.368,
       "log": "logs/native-readability162.log"
     },
     {
       "name": "native-orchestration162",
       "passed": true,
       "returncode": 0,
-      "seconds": 12.017,
+      "seconds": 11.955,
       "log": "logs/native-orchestration162.log"
     },
     {
       "name": "hook-ownership163",
       "passed": true,
       "returncode": 0,
-      "seconds": 4.566,
+      "seconds": 4.581,
       "log": "logs/hook-ownership163.log"
     },
     {
       "name": "ad-decisions164",
       "passed": true,
       "returncode": 0,
-      "seconds": 6.039,
+      "seconds": 6.101,
       "log": "logs/ad-decisions164.log"
     },
     {
       "name": "startup-popup164",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.125,
+      "seconds": 2.203,
       "log": "logs/startup-popup164.log"
     },
     {
       "name": "tabbar-spacing164",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.049,
+      "seconds": 0.052,
       "log": "logs/tabbar-spacing164.log"
     },
     {
       "name": "native-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.628,
+      "seconds": 7.032,
       "log": "logs/native-diagnostics164.log"
     },
     {
       "name": "diagnostic-limits164",
       "passed": true,
       "returncode": 0,
-      "seconds": 30.263,
+      "seconds": 30.979,
       "log": "logs/diagnostic-limits164.log"
     },
     {
       "name": "load-diagnostics164",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.392,
+      "seconds": 1.396,
       "log": "logs/load-diagnostics164.log"
     },
     {
       "name": "native-compiler-boundaries",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.349,
+      "seconds": 0.327,
       "log": "logs/native-compiler-boundaries.log"
     },
     {
       "name": "native-unwind",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.064,
+      "seconds": 0.069,
       "log": "logs/native-unwind.log"
     },
     {
       "name": "home-glass165",
       "passed": true,
       "returncode": 0,
-      "seconds": 2.851,
+      "seconds": 2.848,
       "log": "logs/home-glass165.log"
     },
     {
       "name": "home-compiler",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.965,
+      "seconds": 1.005,
       "log": "logs/home-compiler.log"
     },
     {
       "name": "conditional-compare",
       "passed": true,
       "returncode": 0,
-      "seconds": 0.068,
+      "seconds": 0.073,
       "log": "logs/conditional-compare.log"
     },
     {
       "name": "alignment167",
       "passed": true,
       "returncode": 0,
-      "seconds": 24.08,
+      "seconds": 24.576,
       "log": "logs/alignment167.log"
     },
     {
       "name": "controls171",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.812,
+      "seconds": 1.844,
       "log": "logs/controls171.log"
     },
     {
       "name": "header173",
       "passed": true,
       "returncode": 0,
-      "seconds": 9.691,
+      "seconds": 9.803,
       "log": "logs/header173.log"
     },
     {
       "name": "page-glass174",
       "passed": true,
       "returncode": 0,
-      "seconds": 5.137,
+      "seconds": 5.013,
       "log": "logs/page-glass174.log"
     },
     {
       "name": "top-chrome",
       "passed": true,
       "returncode": 0,
-      "seconds": 1.562,
+      "seconds": 1.973,
       "log": "logs/top-chrome.log"
     }
   ],
   "scope": "Reproducible ARM64 build, binary integrity and explicit Objective-C boundary models",
-  "source_manifest_sha256": "4ce3cc69202677186dc800b1f655b02d6c43211e2b313ca9c3c8df1c38768fe3",
+  "source_manifest_sha256": "0a7d027518661789827f36178698821385acee74106132ead28df4c85ec3aab8",
   "source_file_count": 246,
   "llvm": {
     "version": "19.1.1",
     "library_sha256": "7e016cffd3eb077fa338b8ec08a7ab500e43c7460223d4b1f5c6b1bf10274b24"
   },
-  "git_head_at_start": "4e5a43fd4e87fc1a7c07847ae7f054cdf3986107",
+  "git_head_at_start": "79fb7b4acd0642ca408af0f9049e2f5a8ddc6146",
   "git_working_tree_clean_at_start": true,
-  "candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
+  "candidate_sha256": "bca62e000f0e887f1847e3e9e0f5ab07c955d0b22b70b21cc8c4683a26a3fba0",
   "candidate_size": 288400,
   "two_builds_identical": true,
-  "linux_candidate_sha256": "1433b37e4c837e4804e253ce7ea5ca78d23d5485e53df655ccd05f9f63c87e76",
-  "xcode_validation_sha256": "af69873776e9c0c362a8b77d899e5fbf7ffda9feef7be42bb16d222c5980722c",
+  "linux_candidate_sha256": "bca62e000f0e887f1847e3e9e0f5ab07c955d0b22b70b21cc8c4683a26a3fba0",
+  "xcode_validation_sha256": "bfdb8bbf03287a460985b5d775b8ea9aefde352f40aed4ef5d92b6f56c7290d7",
   "candidate_source": "same-commit Xcode 27.2 validated build",
   "source_files_unchanged_during_verification": true
 }

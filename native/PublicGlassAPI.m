@@ -133,6 +133,11 @@ void FQConfigureTopChrome(UIVisualEffectView *surface, UIScrollView *scrollView)
     scrollView.topEdgeEffect.hidden = YES;
 }
 
+void FQKeepShelfFilterInline(UICollectionViewFlowLayout *layout) {
+    layout.sectionHeadersPinToVisibleBounds = NO;
+    [layout invalidateLayout];
+}
+
 // 1.6.6 uses the real UIButton configuration system for native icon buttons.
 // Host target/action, per-state artwork and interaction stay on the same button.
 void FQConfigureNativeIconButton(UIButton *button) {
