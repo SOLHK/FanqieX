@@ -29,7 +29,7 @@ PROPERTIES = (
     'delegate', 'backgroundView', 'headerBgImgView', 'headerView', 'tabSelectView',
     'headerBackgroundView', 'fullGenreFloatingContainerView', 'functionCell',
     'layoutContainerView', 'filterView', 'tabContainer', 'simpleTabView', 'view',
-    'containerScrollView', 'refreshHeader',
+    'containerScrollView', 'refreshHeader', 'viewModel', 'uiConfigParams',
 )
 
 
@@ -225,6 +225,59 @@ def exercise_nested_refresh_geometry(c, r, tab, scroll, animation):
     state.update(contentOffset=original_offset, bounds=(*original_offset, *state['bounds'][2:]))
 
 
+def exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config):
+    state = r.objects[scroll].state
+    bounds, offset, inset = state['bounds'], state['contentOffset'], state['contentInset']
+    rest = -inset[0]
+    blur_state = r.objects[blur].state
+    content = r.objects[blur_state['contentView']].state
+    palette = r.objects[config].state
+    shelf_canvas = palette['backgroundColor']
+    common_canvas = r.color('systemBackgroundColor')
+
+    def position(y):
+        state.update(contentOffset=(0, y), bounds=(0, y, *bounds[2:]))
+
+    def tint():
+        color = content['backgroundColor']
+        color_state = r.objects[color].state
+        return color_state.get('source', color), color_state.get('alpha', 1)
+
+    position(rest)
+    call(c, r, owner, 'viewLayout')
+    require(tint() == (shelf_canvas, 1), 'At rest the toolbar exactly matches the host shelf canvas')
+    position(rest + 8)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(0.0625 < tint()[1] < 1, 'The shelf canvas fades during the first points of scrolling')
+    position(rest + 24)
+    owner_state = r.objects[owner].state
+    prior_tint = tint()
+    owner_state['currentTabVC'] = 0
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == prior_tint, 'A noncurrent shelf tab cannot repaint the top bar')
+    owner_state['currentTabVC'] = tab
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == (common_canvas, 0.0625), 'Scrolled shelf uses the common lightly tinted blur')
+    position(rest)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+    require(tint() == (shelf_canvas, 1), 'Returning to the top removes the color seam without a relayout')
+
+    palette['backgroundColor'] = r.color('host shelf dark canvas')
+    call(c, r, owner, 'viewLayout')
+    require(tint() == (palette['backgroundColor'], 1), 'Resting shelf follows the host theme color after relayout')
+    header = state['mj_header']
+    call(c, r, header, 'setState:', 3)
+    require(tint() == (common_canvas, 0.0625), 'The active refresh restores the regular tint on state change')
+    call(c, r, header, 'setState:', 1)
+    require(tint() == (palette['backgroundColor'], 1), 'The resting color returns immediately after refresh')
+    require(surfaces(r, r.objects[owner].state['view']) == [blur] and blur_state['alpha'] == 1 and
+            not blur_state['hidden'] and state['contentInset'] == inset and state['contentOffset'] == (0, rest),
+            'Only the owned tint changes while the native blur and shelf scroll geometry are retained')
+    palette['backgroundColor'] = shelf_canvas
+    state.update(contentOffset=offset, bounds=bounds)
+    call(c, r, tab, SHELF_SCROLL, scroll)
+
+
 def exercise(data, labels, kind):
     r = Runtime(data)
     r.labels = labels
@@ -289,10 +342,13 @@ def exercise(data, labels, kind):
                         backgroundColor=stock_fill, clipsToBounds=True)
         filter_view = r.view('UIView', 'native filter controls', (0,0,440,36), holder)
         cell = r.obj('UIViewController', 'shelf function row', layoutContainerView=filter_view)
+        config = r.obj('NSObject', 'native shelf theme', backgroundColor=r.color('host shelf light canvas'))
+        model = r.obj('NSObject', 'shelf view model', uiConfigParams=config)
         r.objects[tab].state.update(fullGenreFloatingContainerView=holder, functionCell=cell,
-                                   stockInset=stock_inset)
+                                   stockInset=stock_inset, viewModel=model)
         owner = r.obj(SHELF, 'shelf', view=root, headerView=header, tabSelectView=tabs,
                       containerView=viewport, currentTabVC=tab, headerBgImgView=artwork)
+        r.objects[tab].state['delegate'] = owner
         layout = 'viewLayout'
     else:
         owner = r.obj(HOME, 'bookstore', contentView=root, simpleHeader=header, simpleTabView=tabs,
@@ -348,6 +404,7 @@ def exercise(data, labels, kind):
     if nested:
         exercise_nested_refresh_geometry(c, r, tab, scroll, refresh_animation)
     if shelf:
+        exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config)
         call(c,r,tab,FLOATING_LAYOUT,scroll)
         require(len(surfaces(r,holder)) == 1 and r.objects[holder].state['frame']==(0,boundary,440,36),
                 'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
