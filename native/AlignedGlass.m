@@ -1174,6 +1174,57 @@ static void ReaderTheme(Obj self,Sel cmd,Obj theme) {
     ((void(*)(Obj,Sel,Obj))Original("FQReaderSaasNavigationView","fqx167_originalTheme:"))(self,cmd,theme);
     FQHReader(self);
 }
+
+static void ReaderStyleOriginalKey(void) {}
+static void ReaderStyleAppliedKey(void) {}
+
+static void ApplyReaderGlassStyle(Obj controller,Obj theme) {
+    Obj applied=objc_getAssociatedObject(controller,ReaderStyleAppliedKey);
+    B decorate=Enabled() && Kind(theme,"BDReaderThemeConfig");
+    if (!applied && !decorate) return;
+    I current=((I(*)(Obj,Sel))Message)(controller,sel_registerName("overrideUserInterfaceStyle"));
+    I previous=((I(*)(Obj,Sel))Message)(applied,sel_registerName("integerValue"));
+    if (!decorate) {
+        Obj original=objc_getAssociatedObject(controller,ReaderStyleOriginalKey);
+        I originalStyle=((I(*)(Obj,Sel))Message)(original,sel_registerName("integerValue"));
+        objc_setAssociatedObject(controller,ReaderStyleAppliedKey,0,1);
+        objc_setAssociatedObject(controller,ReaderStyleOriginalKey,0,1);
+        if (current==previous) Q1(controller,"setOverrideUserInterfaceStyle:",originalStyle);
+        return;
+    }
+    // UIKit resolves materials and semantic foregrounds within this reader
+    // controller's traits. The app window keeps following the system.
+    enum { LightStyle=1, DarkStyle=2, ReaderDarkTheme=1 };
+    U readerTheme=((U(*)(Obj,Sel))Message)(theme,sel_registerName("themeStyle"));
+    I wanted=readerTheme==ReaderDarkTheme ? DarkStyle : LightStyle;
+    if (current==wanted) return;
+    Obj numbers=Lookup("NSNumber");
+    Sel integer=sel_registerName("numberWithInteger:");
+    if (!applied || current!=previous)
+        objc_setAssociatedObject(controller,ReaderStyleOriginalKey,((Obj(*)(Obj,Sel,I))Message)(numbers,integer,current),1);
+    objc_setAssociatedObject(controller,ReaderStyleAppliedKey,((Obj(*)(Obj,Sel,I))Message)(numbers,integer,wanted),1);
+    Q1(controller,"setOverrideUserInterfaceStyle:",wanted);
+}
+
+static void ReaderGlassWillAppear(Obj self,Sel cmd,B animated) {
+    ApplyReaderGlassStyle(self,Get(Get(Get(self,"readerModel"),"config"),"themeConfig"));
+    ((void(*)(Obj,Sel,B))Original("BDReaderViewController","fqx192_originalReaderWillAppear:"))(self,cmd,animated);
+}
+
+static void ReaderGlassThemeChanged(Obj self,Sel cmd,Obj theme) {
+    ApplyReaderGlassStyle(self,theme);
+    ((void(*)(Obj,Sel,Obj))Original("BDReaderViewController","fqx192_originalReaderTheme:"))(self,cmd,theme);
+}
+
+static void ReaderGlassStyleInstall(void) {
+    const char *reader="BDReaderViewController";
+    if (!FQHGlassAvailable() || !Signature("BDReaderThemeConfig","themeStyle","Q16@0:8") ||
+        !Signature(reader,"overrideUserInterfaceStyle","q16@0:8") ||
+        !Signature(reader,"setOverrideUserInterfaceStyle:","v24@0:8q16")) return;
+    Hook("BDReaderViewController","viewWillAppear:","fqx192_originalReaderWillAppear:","v20@0:8B16",(Imp)ReaderGlassWillAppear);
+    Hook("BDReaderViewController","onConfigThemeChange:","fqx192_originalReaderTheme:","v24@0:8@16",(Imp)ReaderGlassThemeChanged);
+}
+
 static void ReaderShelfWrapperLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderFanClubEntryContainerView","fqx184_originalShelfWrapper"))(self,cmd);
     Obj label=Get(self,"contentView");
@@ -1981,7 +2032,9 @@ static void RestoreDramaWatch(Obj owner,Obj content) {
 
 static void DramaWatchGlass(Obj owner,Obj model) {
     Obj previous=objc_getAssociatedObject(owner,DramaWatchContentKey);
-    if (!Equal(Get(Get(model,"bottomBar"),"bottomBarType"),"short_play") || !Enabled() || !FQHGlassAvailable()) {
+    Obj type=Get(Get(model,"bottomBar"),"bottomBarType");
+    if ((!Equal(type,"short_play") && !Equal(type,"unreal_short_play") && !Equal(type,"album")) ||
+        !Enabled() || !FQHGlassAvailable()) {
         RestoreDramaWatch(owner,previous);
         return;
     }
@@ -2025,6 +2078,20 @@ static void DramaWatchLayout(Obj self,Sel cmd) {
 static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchRender:"))(self,cmd,model);
     DramaWatchGlass(self,model);
+}
+
+static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout"))(self,cmd);
+    Obj content=Get(self,"containerView");
+    if (O0(content,"superview")!=self) return;
+    Rect bounds=Bounds(content);
+    Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
+    if (Enabled() && FQHGlassAvailable() && Get(self,"albumDetailInfo") && VisibleRect(material)) {
+        if (PlaceDramaGlass(content,content,0,material)) DramaClearBackground(content,1);
+    } else {
+        RemoveDramaGlass(content);
+        DramaClearBackground(content,0);
+    }
 }
 
 static void ShelfTitleGlassFontKey(void) {}
@@ -2170,14 +2237,18 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
         SetFrame(gradient,fade);
     }
 }
-static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj order) {
-    // The host can hide the action while it is showing selected genre tags.
-    // Let it own that decision before applying the user's display preference.
+static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj option) {
+    // Genre selection hides the action; option-model refresh shows it again.
+    // Preserve whichever native visibility the current configuration requests.
+    const char *original=cmd==sel_registerName("configOptionModel:filterOption:") ?
+        "fqx192_originalShelfFilterOption:filter:" : "fqx191_originalShelfFilterConfig:order:";
     RestoreShelfFilterButton(Get(self,"filterButton"));
-    ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfFilterHeaderView","fqx191_originalShelfFilterConfig:order:"))(
-        self,cmd,model,order);
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfFilterHeaderView",original))(self,cmd,model,option);
     Obj button=Get(self,"filterButton");
-    if (Belongs(button,self)) ApplyShelfFilterButton(button,ShelfFilterVisible());
+    if (Belongs(button,self)) {
+        ShelfRememberFilterHeader(self);
+        ApplyShelfFilterButton(button,ShelfFilterVisible());
+    }
 }
 static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
     Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
@@ -3035,67 +3106,60 @@ static void InstallTabRecovery(Obj owner) {
     V0(gesture,"release");
     V0(observer,"release");
 }
-static void DramaFeedFactoryKey(void) {}
-
-static Obj DramaFeedFactory(Obj self,Sel cmd,I feedType,Obj params) {
-    Obj thread=O0(Lookup("NSThread"),"currentThread");
-    Obj previous=objc_getAssociatedObject(thread,DramaFeedFactoryKey);
-    // Feed type 4 is the outer player. Bottom item type 7 is the drama tab.
-    B active=feedType==4 && Enabled() && Kind(params,"SSShortVideoOpenParams") &&
-        ((int(*)(Obj,Sel))Message)(params,sel_registerName("bottomTabBarItemType"))==7;
-    objc_setAssociatedObject(thread,DramaFeedFactoryKey,active ? thread : 0,0);
-    Obj result=((Obj(*)(Obj,Sel,I,Obj))Original("SSShortVideoCreatePlayerViewControllerComponent",
-        "fqx191_originalDramaFeedFactory:params:"))(self,cmd,feedType,params);
-    objc_setAssociatedObject(thread,DramaFeedFactoryKey,previous,0);
-    return result;
-}
-
 static void DramaShiftOffset(Obj ui,const char *getter,const char *setter,double delta) {
     Obj offset=O0(ui,getter);
     if (offset) V1(ui,setter,Number(Double(offset)-delta));
 }
 
-static void DramaFeedCanvas(Obj config,Sel cmd,Obj color) {
-    Obj thread=O0(Lookup("NSThread"),"currentThread");
-    if (objc_getAssociatedObject(thread,DramaFeedFactoryKey) &&
-        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4 &&
-        SameColor(color,O1(Lookup("UIColor"),"btd_colorWithHexString:",Text("#1D1D1D")))) {
-        // This factory computes the stock portrait height from these same screen
-        // bounds minus the tab dock. Restore that area to the paging viewport.
-        Rect portrait=((Rect(*)(Obj,Sel))Message)(O0(Lookup("UIScreen"),"mainScreen"),sel_registerName("fqv_portraitBounds"));
-        Size stock=((Size(*)(Obj,Sel))Message)(config,sel_registerName("portraitVideoSize"));
-        Obj ui=O0(config,"uiConfig");
-        double delta=portrait.height-stock.height;
-        if (ui && stock.width>0 && stock.height>0 && __builtin_fabs(stock.width-portrait.width)<=1 && delta>=40 && delta<=120) {
-            ((void(*)(Obj,Sel,Size))Message)(config,sel_registerName("setPortraitVideoSize:"),(Size){stock.width,portrait.height});
-            double bottom=((double(*)(Obj,Sel))Message)(ui,sel_registerName("safeBottom"));
-            ((void(*)(Obj,Sel,double))Message)(ui,sel_registerName("setSafeBottom:"),bottom+delta);
-            DramaShiftOffset(ui,"infoViewOffsetY","setInfoViewOffsetY:",delta);
-            DramaShiftOffset(ui,"bottomGradientOffsetY","setBottomGradientOffsetY:",delta);
-            DramaShiftOffset(ui,"progressContainerViewOffsetY","setProgressContainerViewOffsetY:",delta);
-            // The list paints this color in the dock strip and uses the same
-            // color to tint its template bottom corner decorations.
-            color=O0(Lookup("UIColor"),"clearColor");
-        }
-    }
-    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListConfig","fqx191_originalDramaFeedCanvas:"))(config,cmd,color);
+static void DramaFeedCanvas(Obj config) {
+    if (!Kind(config,"FQVShortVideoListConfig") ||
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))!=4) return;
+    Obj color=O0(config,"listVCBackgroundColor");
+    double red=0,green=0,blue=0,alpha=0;
+    if (!((B(*)(Obj,Sel,double *,double *,double *,double *))Message)(color,
+        sel_registerName("getRed:green:blue:alpha:"),&red,&green,&blue,&alpha) || alpha!=1 ||
+        (int)(red*256+0.5)!=29 || (int)(green*256+0.5)!=29 || (int)(blue*256+0.5)!=29) return;
+
+    // The stock #1D1D1D player canvas is painted around the shortened viewport.
+    // Extend the viewport to the screen edge while reserving the dock for controls.
+    Rect portrait=((Rect(*)(Obj,Sel))Message)(O0(Lookup("UIScreen"),"mainScreen"),sel_registerName("fqv_portraitBounds"));
+    Size stock=((Size(*)(Obj,Sel))Message)(config,sel_registerName("portraitVideoSize"));
+    Obj ui=O0(config,"uiConfig");
+    double delta=portrait.height-stock.height;
+    if (!ui || stock.width<=0 || stock.height<=0 || __builtin_fabs(stock.width-portrait.width)>1 || delta<40 || delta>120) return;
+    ((void(*)(Obj,Sel,Size))Message)(config,sel_registerName("setPortraitVideoSize:"),(Size){stock.width,portrait.height});
+    double bottom=((double(*)(Obj,Sel))Message)(ui,sel_registerName("safeBottom"));
+    ((void(*)(Obj,Sel,double))Message)(ui,sel_registerName("setSafeBottom:"),bottom+delta);
+    DramaShiftOffset(ui,"infoViewOffsetY","setInfoViewOffsetY:",delta);
+    DramaShiftOffset(ui,"bottomGradientOffsetY","setBottomGradientOffsetY:",delta);
+    DramaShiftOffset(ui,"progressContainerViewOffsetY","setProgressContainerViewOffsetY:",delta);
+    V1(config,"setListVCBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"stockHeight",Number(stock.height));
+    Put(record,"appliedHeight",Number(portrait.height));
+    FQDRecord("dramaDockGeometry",record);
+}
+
+static void DramaFeedSetup(Obj self,Sel cmd) {
+    // The host sizes the paging viewport and draws its corners from this config
+    // after the feed factory has finalized it.
+    if (Enabled()) DramaFeedCanvas(Get(Get(self,"listVCContext"),"config"));
+    ((void(*)(Obj,Sel))Original("FQVShortVideoListVCUIComponent","fqx192_originalDramaFeedSetup"))(self,cmd);
 }
 
 static void DramaBackdropInstall(void) {
     const char *config="FQVShortVideoListConfig";
     const char *ui="FQVShortVideoListUIConfig";
-    if (!FQHGlassAvailable() || !Responds(Lookup("UIColor"),"btd_colorWithHexString:") ||
+    if (!FQHGlassAvailable() ||
         !Signature("UIScreen","fqv_portraitBounds","{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") ||
-        !Signature("SSShortVideoOpenParams","bottomTabBarItemType","i16@0:8") ||
         !Signature(config,"feedType","q16@0:8") || !Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") ||
         !Signature(config,"setPortraitVideoSize:","v32@0:8{CGSize=dd}16") || !Signature(config,"uiConfig","@16@0:8") ||
+        !Signature(config,"listVCBackgroundColor","@16@0:8") || !Signature(config,"setListVCBackgroundColor:","v24@0:8@16") ||
         !Signature(ui,"safeBottom","d16@0:8") || !Signature(ui,"setSafeBottom:","v24@0:8d16") ||
         !Signature(ui,"infoViewOffsetY","@16@0:8") || !Signature(ui,"setInfoViewOffsetY:","v24@0:8@16") ||
         !Signature(ui,"bottomGradientOffsetY","@16@0:8") || !Signature(ui,"setBottomGradientOffsetY:","v24@0:8@16") ||
         !Signature(ui,"progressContainerViewOffsetY","@16@0:8") || !Signature(ui,"setProgressContainerViewOffsetY:","v24@0:8@16")) return;
-    Hook(config,"setListVCBackgroundColor:","fqx191_originalDramaFeedCanvas:","v24@0:8@16",(Imp)DramaFeedCanvas);
-    Hook("SSShortVideoCreatePlayerViewControllerComponent","getShortVideoListVCWithFeedType:params:",
-        "fqx191_originalDramaFeedFactory:params:","@32@0:8q16@24",(Imp)DramaFeedFactory);
+    Hook("FQVShortVideoListVCUIComponent","setupVideoSizes","fqx192_originalDramaFeedSetup","v16@0:8",(Imp)DramaFeedSetup);
 }
 
 static void ReaderThemeLaunchKey(void) {}
@@ -3278,17 +3342,24 @@ enum { FullscreenAspectFillMode=2 };
 
 static B FullscreenFillViewport(Obj player,Rect *viewport) {
     if (!Flag(player,"isFullScreen") || !FullscreenFillEnabled()) return 0;
-    Obj cell=Get(Get(player,"superview"),"superview");
-    if (Kind(cell,"FQVShortVideoLandscapePlayerCellView") && BoolProp(cell,"isInPlayerScaleMode")) return 0;
+    Obj holder=Get(player,"superview"), cell=Get(holder,"superview");
+    B landscapeCell=Kind(cell,"FQVShortVideoLandscapePlayerCellView");
+    if (landscapeCell && Flag(cell,"isInPlayerScaleMode")) return 0;
     Obj window=Get(player,"window");
     if (!window) return 0;
     Rect bounds=Bounds(player), screen=Bounds(window);
     if (bounds.width<=bounds.height || bounds.height<=0) return 0;
-    // Compare in the window's coordinate space to handle either rotation direction.
-    // A player narrowed for a landscape side panel must keep the host's layout.
+    // Compare the dimensions in window coordinates to handle either rotation direction.
     Rect placement=Convert(player,bounds,window);
-    if (__builtin_fabs(placement.x-screen.x)>1 || __builtin_fabs(placement.y-screen.y)>1 ||
-        __builtin_fabs(placement.width-screen.width)>1 || __builtin_fabs(placement.height-screen.height)>1) return 0;
+    if (__builtin_fabs(placement.width-screen.width)>1 || __builtin_fabs(placement.height-screen.height)>1) return 0;
+    // A paged cell moves in the window without necessarily relaying out its player.
+    if (landscapeCell) {
+        if (Get(cell,"playerSuperView")!=holder) return 0;
+        placement=Convert(player,bounds,cell);
+        screen=Bounds(cell);
+        if (__builtin_fabs(placement.width-screen.width)>1 || __builtin_fabs(placement.height-screen.height)>1) return 0;
+    }
+    if (__builtin_fabs(placement.x-screen.x)>1 || __builtin_fabs(placement.y-screen.y)>1) return 0;
     *viewport=bounds;
     return 1;
 }
@@ -3333,21 +3404,44 @@ static void FullscreenPlayerEngine(Obj self,Sel cmd,Obj engine) {
     ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerEngine:"))(self,cmd,engine);
 }
 
-static void FullscreenPlayerReady(Obj self,Sel cmd,Obj engine) {
-    ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerReady:"))(self,cmd,engine);
+static void FullscreenRefresh(Obj player) {
     Rect viewport;
-    if (FullscreenFillViewport(self,&viewport)) V0(self,"setNeedsLayout");
+    B fill=FullscreenFillViewport(player,&viewport);
+    FullscreenScale(O0(player,"videoEngine"),fill);
+    if (fill) V0(player,"updatePlayerLayout");
+}
+
+static void FullscreenPlayerPrepare(Obj self,Sel cmd,Obj info,B async) {
+    ((void(*)(Obj,Sel,Obj,B))Original("FQVPlayer","fqx190_originalPlayerPrepare:async:"))(self,cmd,info,async);
+    FullscreenRefresh(self);
+}
+
+static void FullscreenPlayerReady(Obj self,Sel cmd,Obj engine) {
+    if (engine && engine==O0(self,"videoEngine")) FullscreenRefresh(self);
+    ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerReady:"))(self,cmd,engine);
+}
+
+static void FullscreenCellDisplay(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapePlayerCellView","fqx190_originalLandscapeDisplay"))(self,cmd);
+    Obj player=O0(self,"vPlayer");
+    if (player) FullscreenRefresh(player);
 }
 
 static void FullscreenFillInstall(void) {
-    const char *player="FQVPlayer";
+    const char *player="FQVPlayer", *cell="FQVShortVideoLandscapePlayerCellView";
     if (!Signature(player,"isFullScreen","B16@0:8") ||
         !Signature(player,"videoEngine","@16@0:8") ||
         !Signature(player,"landscapePlayerViewFrame","{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") ||
         !Signature(player,"layoutSubviews","v16@0:8") ||
         !Signature(player,"setIsFullScreen:","v20@0:8B16") ||
         !Signature(player,"setVideoEngine:","v24@0:8@16") ||
+        !Signature(player,"updatePlayerLayout","v16@0:8") ||
+        !Signature(player,"prepareWithVideoInfo:async:","v28@0:8@16B24") ||
         !Signature(player,"videoEngineReadyToDisPlay:","v24@0:8@16") ||
+        !Signature(cell,"vPlayer","@16@0:8") ||
+        !Signature(cell,"playerSuperView","@16@0:8") ||
+        !Signature(cell,"isInPlayerScaleMode","B16@0:8") ||
+        !Signature(cell,"modelDidDisplay","v16@0:8") ||
         !Signature("TTVideoEngine","scaleMode","q16@0:8") ||
         !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16")) return;
     Hook("FQVPlayer","landscapePlayerViewFrame","fqx190_originalLandscapeFrame",
@@ -3355,7 +3449,11 @@ static void FullscreenFillInstall(void) {
     Hook("FQVPlayer","layoutSubviews","fqx190_originalPlayerLayout","v16@0:8",(Imp)FullscreenPlayerLayout);
     Hook("FQVPlayer","setIsFullScreen:","fqx190_originalPlayerFullscreen:","v20@0:8B16",(Imp)FullscreenPlayerState);
     Hook("FQVPlayer","setVideoEngine:","fqx190_originalPlayerEngine:","v24@0:8@16",(Imp)FullscreenPlayerEngine);
+    Hook("FQVPlayer","prepareWithVideoInfo:async:","fqx190_originalPlayerPrepare:async:",
+         "v28@0:8@16B24",(Imp)FullscreenPlayerPrepare);
     Hook("FQVPlayer","videoEngineReadyToDisPlay:","fqx190_originalPlayerReady:","v24@0:8@16",(Imp)FullscreenPlayerReady);
+    Hook("FQVShortVideoLandscapePlayerCellView","modelDidDisplay","fqx190_originalLandscapeDisplay",
+         "v16@0:8",(Imp)FullscreenCellDisplay);
 }
 
 void FQHPageStyle(Obj view) { FQHApply(view); }
@@ -3412,11 +3510,13 @@ static void ShelfCompactInstall(void) {
 }
 
 void FQHPageInstall(void) {
+    ReaderGlassStyleInstall();
     ReaderThemeIsolationInstall();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
     Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
+    Hook("SSShortVideoAlbumSeriesBottomInsertView","layoutSubviews","fqx192_originalDramaWatchAlbumLayout","v16@0:8",(Imp)DramaWatchAlbumLayout);
     FullscreenFillInstall();
     Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);
     Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);
@@ -3445,6 +3545,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
     Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
     Hook("SSBookShelfFilterHeaderView","configFullGenreSelectedModel:categoryOrder:","fqx191_originalShelfFilterConfig:order:","v32@0:8@16@24",(Imp)ShelfFilterHeaderConfigure);
+    Hook("SSBookShelfFilterHeaderView","configOptionModel:filterOption:","fqx192_originalShelfFilterOption:filter:","v32@0:8@16@24",(Imp)ShelfFilterHeaderConfigure);
     Hook("SSBookShelfFilterMixRowCollectionView","collectionView:layout:insetForSectionAtIndex:","fqx185_originalInlineFilterInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfInlineFilterInsets);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
     Hook("SSCommunityPublishButton","layoutSubviews","fqx188_originalPublishLayout","v16@0:8",(Imp)PublishLayout);

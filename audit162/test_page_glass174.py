@@ -32,7 +32,10 @@ HOOKS = [
     ("SSShortVideoRightInteractionLikeView", "updateLikeIconHidden:"),
     ("SSShortVideoBottomDistributionView", "layoutSubviews"),
     ("SSShortVideoBottomDistributionView", "renderWithModel:"),
+    ("SSShortVideoAlbumSeriesBottomInsertView", "layoutSubviews"),
     ("SSReaderFanClubEntryContainerView", "layoutSubviews"),
+    ("BDReaderViewController", "viewWillAppear:"),
+    ("BDReaderViewController", "onConfigThemeChange:"),
     ("FQReaderUIManager", "showBottomBarContainer:"),
     ("FQReaderUIManager", "onConfigThemeChange:context:"),
     ("FQReaderUIManager", "refreshBottomToolbarInsertView"),
@@ -59,6 +62,7 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
     ("SSBookShelfFilterHeaderView", "layoutSubviews"),
     ("SSBookShelfFilterHeaderView", "configFullGenreSelectedModel:categoryOrder:"),
+    ("SSBookShelfFilterHeaderView", "configOptionModel:filterOption:"),
     ("SSBookShelfFilterMixRowCollectionView", "collectionView:layout:insetForSectionAtIndex:"),
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
@@ -90,7 +94,9 @@ HOOKS = [
     ("FQVPlayer", "layoutSubviews"),
     ("FQVPlayer", "setIsFullScreen:"),
     ("FQVPlayer", "setVideoEngine:"),
+    ("FQVPlayer", "prepareWithVideoInfo:async:"),
     ("FQVPlayer", "videoEngineReadyToDisPlay:"),
+    ("FQVShortVideoLandscapePlayerCellView", "modelDidDisplay"),
 ]
 
 
@@ -115,6 +121,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
     SHELF_FILTER_HEADER_LAYOUT = 0x330c3190
     SHELF_FILTER_HEADER_CONFIG = 0x330c31a0
     SHELF_FILTER_LEGACY_VISIBILITY = 0x330c31b0
+    SHELF_FILTER_OPTION_CONFIG = 0x330c31c0
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -134,10 +141,13 @@ class Runtime(TopChromeRuntime, GlassRuntime):
     VIDEO_PLAYER_ORIGINAL = 0x330c3200
     DRAMA_WATCH_RENDER = 0x330c3300
     DRAMA_LIKE_VISIBILITY = 0x330c3310
+    READER_APPEARANCE = 0x330c3400
 
     def __init__(self, data):
         super().__init__(data)
         for name, parent in (
+            ("BDReaderViewController", "UIViewController"),
+            ("BDReaderThemeConfig", "NSObject"),
             ("FQReaderUIManager", "NSObject"),
             ("BDReaderViewContainer", "UIView"),
             ("BDReaderTopViewContainer", "BDReaderViewContainer"),
@@ -218,6 +228,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             ("SSShortVideoRightInteractionShareView", "UIView"),
             ("SSShortVideoBottomDistributionView", "UIView"),
             ("SSShortVideoDistributionContentView", "UIView"),
+            ("SSShortVideoAlbumSeriesBottomInsertView", "UIView"),
         ):
             if name not in self.classes:
                 self._class(name, parent)
@@ -228,6 +239,13 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self.tab_refreshes = 0
         self.tab_settings_presenters = []
         self.colors["systemOrangeColor"] = self.color("systemOrangeColor")
+        for cls, selector, encoding in (
+                ("UIViewController", "overrideUserInterfaceStyle", "q16@0:8"),
+                ("UIViewController", "setOverrideUserInterfaceStyle:", "v24@0:8q16"),
+                ("BDReaderViewController", "viewWillAppear:", "v20@0:8B16"),
+                ("BDReaderViewController", "onConfigThemeChange:", "v24@0:8@16"),
+                ("BDReaderThemeConfig", "themeStyle", "Q16@0:8")):
+            self._add(self.classes[cls], selector, self.READER_APPEARANCE, encoding)
         for cls, selector, imp, encoding in (
                 ("SSBookShelfTabSelectViewTitleCell", "reloadData:",
                  self.SHELF_RELOAD, "v24@0:8@16"),
@@ -275,6 +293,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                   self.SHELF_FILTER_HEADER_LAYOUT, "v16@0:8")
         self._add(self.classes["SSBookShelfFilterHeaderView"], "configFullGenreSelectedModel:categoryOrder:",
                   self.SHELF_FILTER_HEADER_CONFIG, "v32@0:8@16@24")
+        self._add(self.classes["SSBookShelfFilterHeaderView"], "configOptionModel:filterOption:",
+                  self.SHELF_FILTER_OPTION_CONFIG, "v32@0:8@16@24")
         self._add(self.classes["SS525BookShelfSubHeaderView"], "updateFilterShow:",
                   self.SHELF_FILTER_LEGACY_VISIBILITY, "v20@0:8B16")
         self._add(self.classes["SSBookShelfSubViewController"], "saveOpeningData:indexPath:",
@@ -339,7 +359,13 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 ("FQVPlayer", "setIsFullScreen:", "v20@0:8B16"),
                 ("FQVPlayer", "videoEngine", "@16@0:8"),
                 ("FQVPlayer", "setVideoEngine:", "v24@0:8@16"),
+                ("FQVPlayer", "updatePlayerLayout", "v16@0:8"),
+                ("FQVPlayer", "prepareWithVideoInfo:async:", "v28@0:8@16B24"),
                 ("FQVPlayer", "videoEngineReadyToDisPlay:", "v24@0:8@16"),
+                ("FQVShortVideoLandscapePlayerCellView", "vPlayer", "@16@0:8"),
+                ("FQVShortVideoLandscapePlayerCellView", "playerSuperView", "@16@0:8"),
+                ("FQVShortVideoLandscapePlayerCellView", "isInPlayerScaleMode", "B16@0:8"),
+                ("FQVShortVideoLandscapePlayerCellView", "modelDidDisplay", "v16@0:8"),
                 ("TTVideoEngine", "scaleMode", "q16@0:8"),
                 ("TTVideoEngine", "setScaleMode:", "v24@0:8q16")):
             self._add(self.classes[cls], selector, self.VIDEO_PLAYER_ORIGINAL, encoding)
@@ -362,6 +388,16 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self.current_cpu = cpu
         receiver, selector = cpu.x[:2]
         name = self.selector_names.get(selector)
+        if pc == self.READER_APPEARANCE:
+            state = self.objects[receiver].state
+            if name == "setOverrideUserInterfaceStyle:":
+                state["overrideUserInterfaceStyle"] = cpu.x[2]
+                state.setdefault("styleWrites", []).append(cpu.x[2])
+                return self.finish(cpu)
+            if name in ("viewWillAppear:", "onConfigThemeChange:"):
+                state.setdefault("originalAppearance", []).append((name, state["overrideUserInterfaceStyle"]))
+                return self.finish(cpu)
+            return self.finish(cpu, state.get(name, 0))
         if pc == self.CONFIG_FACTORY and name == "clearGlassButtonConfiguration":
             return self.finish(cpu, self.obj("UIButtonConfiguration", "clear glass configuration", style="clearGlass"))
         if pc == self.DRAMA_WATCH_RENDER:
@@ -378,6 +414,20 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             if name in ("setScaleMode:", "setIsFullScreen:", "setVideoEngine:"):
                 key = name[3].lower() + name[4:-1]
                 state[key] = cpu.x[2]
+                if name == "setScaleMode:":
+                    state.setdefault("scaleWrites", []).append(cpu.x[2])
+                return self.finish(cpu)
+            if name == "prepareWithVideoInfo:async:":
+                state["prepareArguments"] = tuple(cpu.x[2:4])
+                engine = self.objects[state["videoEngine"]].state
+                engine["scaleMode"] = state["nativeScaleMode"]
+                return self.finish(cpu)
+            if name == "updatePlayerLayout":
+                state["playerLayoutUpdates"] = state.get("playerLayoutUpdates", 0) + 1
+                return self.finish(cpu)
+            if name == "videoEngineReadyToDisPlay:":
+                engine = self.objects[state["videoEngine"]].state
+                state["readySnapshot"] = (engine["scaleMode"], state.get("playerLayoutUpdates", 0))
                 return self.finish(cpu)
             return self.finish(cpu, state.get(name, 0))
         if pc == self.PUBLISH_SET:
@@ -434,6 +484,11 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             state = self.objects[receiver].state
             hidden = bool(cpu.x[2]) if pc == self.SHELF_FILTER_HEADER_CONFIG else not cpu.x[2]
             self.objects[state["filterButton"]].state["hidden"] = hidden
+            return self.finish(cpu)
+        if pc == self.SHELF_FILTER_OPTION_CONFIG:
+            state = self.objects[receiver].state
+            state["nativeFilterOption"] = (cpu.x[2], cpu.x[3])
+            self.objects[state["filterButton"]].state["hidden"] = False
             return self.finish(cpu)
         if pc == self.SHELF_SAVE_OPENING:
             state = self.objects[receiver].state
@@ -574,6 +629,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                     return self.finish(cpu)
                 if name == "firstObject" and "items" in state:
                     return self.finish(cpu, next(iter(state["items"]), 0))
+                if name in ("readerModel", "config", "themeConfig") and name in state:
+                    return self.finish(cpu, state[name])
                 if name == "initWithFrame:" and self.objects[receiver].cls == self.classes["UIButton"]:
                     frame = tuple(cpu.fp(i) for i in range(4))
                     state.update(frame=frame, bounds=(0., 0., *frame[2:]), superview=0, subviews=[], hidden=False)
@@ -583,6 +640,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                         cpu.write(address, 8, struct.unpack("<Q", struct.pack("<d", value))[0])
                     return self.finish(cpu, 1)
                 if name in ("defaultContentView", "lastRenderModel", "bottomBar", "bottomBarType",
+                            "containerView", "albumDetailInfo",
                             "starIcon", "commentIcon", "likeIcon", "shareIcon") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "fetchCoverSize" and "cover_size" in state:
@@ -1916,6 +1974,12 @@ def exercise(data, labels):
             "disabling hides only the mounted filter actions in both shelf layouts")
     select_model = runtime.obj("NSObject", "host active filter model")
     send(cpu, runtime, filter_header, "configFullGenreSelectedModel:categoryOrder:", select_model, 0)
+    filter_option = runtime.obj("NSObject", "native category option")
+    send(cpu, runtime, pinned_header, "configFullGenreSelectedModel:categoryOrder:", select_model, 0)
+    send(cpu, runtime, pinned_header, "configOptionModel:filterOption:", select_model, filter_option)
+    require(hidden(pinned_button) and not surface_for(pinned_button) and
+            runtime.objects[pinned_header].state["nativeFilterOption"] == (select_model, filter_option),
+            "a native option refresh cannot reveal the stock button between layouts")
     send(cpu, runtime, legacy_header, "updateFilterShow:", 0)
     send(cpu, runtime, pinned_header, "layoutSubviews")
     require(all(hidden(button) for button in actions), "host reconfiguration respects the off setting")
@@ -2226,6 +2290,7 @@ def exercise(data, labels):
         "shelf_duration_toggle": True,
         "shelf_filter_visibility_toggle": True,
         "landscape_fill_toggle_and_engine_restore": True,
+        "landscape_fill_across_paging_and_prepare": True,
         "shelf_edit_top_placement_and_compaction": True,
         "shelf_edit_single_material_owner": True,
         "shelf_inline_filter_alignment": True,
@@ -2253,9 +2318,10 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         engine_state = runtime.objects[engine].state
         player = runtime.view("FQVPlayer", "video player", canvas, holder,
                               isFullScreen=True, videoEngine=engine, landscapePlayerViewFrame=stock)
+        runtime.objects[cell].state.update(playerSuperView=holder, vPlayer=player)
 
-        def displayed():
-            send(cpu, runtime, player, "landscapePlayerViewFrame")
+        def displayed(target=player):
+            send(cpu, runtime, target, "landscapePlayerViewFrame")
             return tuple(cpu.fp(i) for i in range(4))
 
         send(cpu, runtime, player, "layoutSubviews")
@@ -2285,6 +2351,46 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
 
         send(cpu, runtime, player, "setIsFullScreen:", 1)
         send(cpu, runtime, player, "layoutSubviews")
+
+        next_cell = runtime.view("FQVShortVideoLandscapePlayerCellView", "preloaded landscape cell",
+                                 (0., float(height), float(width), float(height)), window,
+                                 isInPlayerScaleMode=False)
+        next_holder = runtime.view("UIView", "next player holder",
+                                   (0.5, 0., float(width), float(height)), next_cell)
+        next_engine = runtime.obj("TTVideoEngine", "next engine", scaleMode=1, resolution="native adaptive")
+        next_player = runtime.view("FQVPlayer", "next player", canvas, next_holder,
+                                   isFullScreen=True, videoEngine=next_engine, nativeScaleMode=1,
+                                   landscapePlayerViewFrame=stock)
+        next_state = runtime.objects[next_player].state
+        next_engine_state = runtime.objects[next_engine].state
+        runtime.objects[next_cell].state.update(playerSuperView=next_holder, vPlayer=next_player)
+
+        send(cpu, runtime, next_player, "layoutSubviews")
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 2,
+                "a full-width cell can prepare aspect fill offscreen with fractional layout rounding")
+        info = runtime.obj("NSObject", "next video info")
+        send(cpu, runtime, next_player, "prepareWithVideoInfo:async:", info, 1)
+        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 2,
+                "fill is restored after native prepare resets the renderer scale")
+        require(next_engine_state["resolution"] == "native adaptive",
+                "fill preserves the native resolution selection")
+
+        next_engine_state["scaleMode"] = 1
+        previous_updates = next_state["playerLayoutUpdates"]
+        send(cpu, runtime, next_player, "videoEngineReadyToDisPlay:", next_engine)
+        require(next_state["readySnapshot"] == (2, previous_updates + 1),
+                "the engine and frame are ready before the host reveals the first frame")
+
+        runtime.objects[next_cell].state["frame"] = canvas
+        next_engine_state["scaleMode"] = 1
+        send(cpu, runtime, next_cell, "modelDidDisplay")
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 2,
+                "paging to an already-ready cell restores fill without a new player layout or ready callback")
+        scale_writes = list(next_engine_state["scaleWrites"])
+        send(cpu, runtime, next_cell, "modelDidDisplay")
+        require(next_engine_state["scaleWrites"] == scale_writes,
+                "the renderer mode remains stable when the cell is displayed again")
+
         toggle["isOn"] = False
         send(cpu, runtime, observer, selector, switch)
         send(cpu, runtime, player, "layoutSubviews")
@@ -2413,10 +2519,63 @@ def exercise_drama_glass(data, labels):
     runtime.objects[content].state["bounds"] = (0, 0, 375, 40)
     send(cpu, runtime, owner, "layoutSubviews")
     check_glass(glass, (8, 3, 359, 34))
-    send(cpu, runtime, owner, "renderWithModel:", 0)
+    for row_type in ("album", "unreal_short_play", "short_play"):
+        runtime.objects[bar].state["bottomBarType"] = runtime.text_object(row_type)
+        send(cpu, runtime, owner, "renderWithModel:", model)
+        require(backing(content) == [glass], "all three host series types reuse the same glass")
+    runtime.objects[bar].state["bottomBarType"] = runtime.text_object("original_novel")
+    send(cpu, runtime, owner, "renderWithModel:", model)
     require(not backing(content) and runtime.objects[content].state["backgroundColor"] == base_color and
             runtime.objects[shade].state["backgroundColor"] == shade_color,
             "reusing the view for another bottom row restores both host colors")
+
+    album = runtime.view("SSShortVideoAlbumSeriesBottomInsertView", "album insert", (0, 0, 375, 40), runtime.ROOT)
+    album_content = runtime.view("UIView", "album tap target", (0, 0, 375, 40), album,
+                                 backgroundColor=shade_color, gesture_action="album action")
+    album_caption = runtime.label("album label", album_content, (16, 0, 300, 40), "合集 · 《长安布棋》 · 更新至21集")
+    album_state = runtime.objects[album].state
+    album_state.update(containerView=album_content, albumDetailInfo=runtime.obj("NSObject", "album detail"))
+    send(cpu, runtime, album, "layoutSubviews")
+    album_glass, = backing(album_content)
+    check_glass(album_glass, (8, 3, 359, 34))
+    content_state = runtime.objects[album_content].state
+    require(content_state["subviews"] == [album_glass, album_caption] and content_state["backgroundColor"] == clear and
+            content_state["gesture_action"] == "album action", "the separate album owner keeps the host label and tap target")
+    send(cpu, runtime, album, "layoutSubviews")
+    require(backing(album_content) == [album_glass], "repeated album layout retains a single material")
+    album_state["albumDetailInfo"] = 0
+    send(cpu, runtime, album, "layoutSubviews")
+    require(not backing(album_content) and content_state["backgroundColor"] == shade_color,
+            "removing the album model restores the stock shade")
+    return True
+
+
+def exercise_reader_glass_appearance(data, labels):
+    cpu, runtime = make(data)
+    runtime.labels = labels
+    call(cpu, labels, "LFQH_FQHPageInstall")
+    prefs = runtime.objects[runtime.DEFAULTS].state["values"]
+    dark = runtime.obj("BDReaderThemeConfig", "black reading palette", themeStyle=1)
+    light = runtime.obj("BDReaderThemeConfig", "light reading palette", themeStyle=0)
+    config = runtime.obj("NSObject", "reader config", themeConfig=dark)
+    model = runtime.obj("NSObject", "book model", config=config)
+    reader = runtime.obj("BDReaderViewController", "reader", readerModel=model, overrideUserInterfaceStyle=0)
+    shelf = runtime.obj("SSBookShelf525ViewController", "system-light shelf", overrideUserInterfaceStyle=0)
+    state = runtime.objects[reader].state
+
+    send(cpu, runtime, reader, "viewWillAppear:", 1)
+    require(state["styleWrites"] == [2] and state["originalAppearance"][-1] == ("viewWillAppear:", 2),
+            "a saved dark palette supplies dark UIKit traits before reader appearance")
+    send(cpu, runtime, reader, "onConfigThemeChange:", dark)
+    require(state["styleWrites"] == [2], "the same palette does not write the trait again")
+    send(cpu, runtime, reader, "onConfigThemeChange:", light)
+    require(state["styleWrites"] == [2, 1] and state["originalAppearance"][-1] == ("onConfigThemeChange:", 1),
+            "a new light palette reaches the native theme update with light UIKit traits")
+    require(runtime.objects[shelf].state["overrideUserInterfaceStyle"] == 0 and not runtime.objects[shelf].state.get("styleWrites"),
+            "the bookshelf never receives the reader's style")
+    prefs["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, reader, "onConfigThemeChange:", dark)
+    require(state["styleWrites"] == [2, 1, 0], "disabling glass restores the host override")
     return True
 
 
@@ -2430,6 +2589,7 @@ def main():
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
     runtime["short_drama_clear_glass_and_reuse"] = exercise_drama_glass(data, labels)
+    runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)
     result = {"passed": True, "device_tested": False, "pixel_rendering_tested": False,
               "scope": "Actual candidate ARM64 instructions with explicit UIKit/Foundation boundaries",
               "static": static_checks(), "runtime": runtime}
