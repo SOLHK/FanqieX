@@ -48,6 +48,10 @@ UIVisualEffectView *FQMakePublicGlassSurface(CGRect frame) {
     return surface;
 }
 
+void FQSetChapterCardCorners(UIVisualEffectView *surface) {
+    surface.cornerConfiguration = [UICornerConfiguration capsuleConfigurationWithMaximumRadius:18.0];
+}
+
 // One Regular surface remains present in both native and fallback modes.
 // The native selector lives in its contentView. Existing icon/title buttons
 // are presentation-only siblings above it, preserving actual font rendering.

@@ -193,7 +193,7 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
     capacities = (0x4000, 0x8000, 0xC000, 0x10000, 0x20000)
     if version in ("1.7.4", "1.74"):
-        capacities += (0x24000, 0x28000, 0x2c000)
+        capacities += (0x24000, 0x28000, 0x2c000, 0x30000)
     require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
             "Unsupported reviewed extension capacity")
     require((patch["maxprot"], patch["initprot"], patch["nsects"], patch["flags"]) == (5, 5, 0, 0),

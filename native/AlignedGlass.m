@@ -313,6 +313,7 @@ static Imp Original(const char *cls,const char *alias) {
     return method_getImplementation(class_getInstanceMethod(Lookup(cls),sel_registerName(alias)));
 }
 static void BookstoreTopChrome(Obj controller);
+static void TopChromeRefreshVisibility(Obj scroll);
 static void HomeLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreNewViewController","fqx165_originalRelayout"))(self,cmd);
     FQHHeader(Get(self,"searchBgView"));
@@ -561,7 +562,10 @@ static void TopChromeUnderlap(Obj viewport,Obj scroll,double top,B enabled) {
     Rect target={stock.x,stock.y-overlap,stock.width,stock.height+overlap};
     Obj previous=objc_getAssociatedObject(viewport,TopChromeScrollKey);
     if (applied && !previous) previous=viewport;
-    if (previous && (previous!=scroll || overlap==0)) TopChromeInsets(previous,0);
+    if (previous && (previous!=scroll || overlap==0)) {
+        TopChromeInsets(previous,0);
+        TopChromeRefreshVisibility(previous);
+    }
     if (overlap>0) {
         if (previous!=scroll) objc_setAssociatedObject(viewport,TopChromeScrollKey,scroll==viewport ? (Obj)0 : scroll,1);
         if (!applied || !SameRect(UnboxRect(applied),target)) {
@@ -656,10 +660,11 @@ static void BookstoreTopChrome(Obj controller) {
     if (previous!=owned) {
         V0(previous,"retain");
         objc_setAssociatedObject(controller,BookstoreViewportKey,owned,1);
-        if (previous && previous!=viewport) TopChromeUnderlap(previous,0,0,0);
+        if (previous) TopChromeUnderlap(previous,0,0,0);
         V0(previous,"release");
     }
     TopChromeUnderlap(viewport,scroll,Convert(root,bounds,parent).y,installed);
+    TopChromeRefreshVisibility(scroll);
     TopChromeDiagnostics(controller,"bookstore",root,viewport,scroll,installed);
 }
 static void BookstoreTabSelected(Obj self,Sel cmd,Obj category,I index) {
@@ -672,6 +677,10 @@ static void BookstoreCollectionLayout(Obj self,Sel cmd) {
     if (Kind(controller,"SSBookStoreNewViewController") &&
         BookstoreCurrentTab(controller,Get(controller,"containerView"))==self)
         BookstoreTopChrome(controller);
+}
+static void BookstoreCollectionScroll(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookStoreTabViewController","fqx188_originalStoreCollectionScroll:"))(self,cmd,scroll);
+    if (Get(self,"collectionView")==scroll) TopChromeRefreshVisibility(scroll);
 }
 static void BookstoreDoubleRowLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreDoubleRowViewController","fqx187_originalStoreDoubleRowLayout"))(self,cmd);
@@ -690,6 +699,7 @@ static void BookstoreDoubleRowScroll(Obj self,Sel cmd,Obj scroll) {
     if ((!applied || !SameRect(Frame(viewport),UnboxRect(applied))) &&
         BookstoreCurrentTab(controller,Get(controller,"containerView"))==self)
         BookstoreTopChrome(controller);
+    if (Get(self,"doubleRowNestContainerScrollView")==scroll) TopChromeRefreshVisibility(scroll);
 }
 static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
@@ -1163,14 +1173,14 @@ void FQHShelf(Obj self) {
     if (Kind(parent,"UIView")) ShelfTopHit(parent,search,more,ShelfEditPlacement(self,parent));
     objc_setAssociatedObject(self,OwnerBusyKey,0,0);
 }
-static void ShelfRefreshHiddenKey(void) {}
-static void ShelfRefreshVisibility(Obj scroll) {
+static void TopChromeRefreshHiddenKey(void) {}
+static void TopChromeRefreshVisibility(Obj scroll) {
     Obj header=Get(scroll,"mj_header");
-    if (!Responds(header,"fqx187_originalShelfRefreshHidden:") ||
+    if (!Responds(header,"fqx188_originalRefreshHidden:") ||
         Get(header,"superview")!=scroll) return;
     Obj animation=Get(header,"animationView");
     if (!Kind(animation,"UIView") || Get(animation,"superview")!=header) return;
-    Obj stockHidden=objc_getAssociatedObject(animation,ShelfRefreshHiddenKey);
+    Obj stockHidden=objc_getAssociatedObject(animation,TopChromeRefreshHiddenKey);
     B suppress=objc_getAssociatedObject(scroll,TopChromeInsetKey) && !Flag(header,"isRefreshing");
     if (suppress && Flag(scroll,"isDragging")) {
         Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
@@ -1181,44 +1191,49 @@ static void ShelfRefreshVisibility(Obj scroll) {
     // the list. Leave the refresh header, pull threshold and animation state to MJRefresh.
     if (suppress) {
         B hidden=Flag(animation,"isHidden");
-        if (!stockHidden) objc_setAssociatedObject(animation,ShelfRefreshHiddenKey,BoolBox(hidden),1);
+        if (!stockHidden) objc_setAssociatedObject(animation,TopChromeRefreshHiddenKey,BoolBox(hidden),1);
         if (!hidden) VB(animation,"setHidden:",1);
     } else if (stockHidden) {
         B hidden=Flag(stockHidden,"boolValue");
-        objc_setAssociatedObject(animation,ShelfRefreshHiddenKey,0,1);
+        objc_setAssociatedObject(animation,TopChromeRefreshHiddenKey,0,1);
         if (Flag(animation,"isHidden")!=hidden) VB(animation,"setHidden:",hidden);
     }
 }
-static void ShelfRefreshHeaderVisibility(Obj header) {
+static void TopChromeRefreshHeaderVisibility(Obj header) {
     Obj scroll=Get(header,"superview"),owner=Get(scroll,"delegate");
-    if (Kind(owner,"SSBookShelfSubViewController") && Get(owner,"collectionView")==scroll)
-        ShelfRefreshVisibility(scroll);
+    if (Get(scroll,"mj_header")!=header) return;
+    if ((Kind(owner,"SSBookShelfSubViewController") || Kind(owner,"SSBookStoreTabViewController")) &&
+        Get(owner,"collectionView")==scroll)
+        TopChromeRefreshVisibility(scroll);
+    else if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll &&
+             Get(owner,"refreshHeader")==header)
+        TopChromeRefreshVisibility(scroll);
 }
-static void ShelfRefreshState(Obj self,Sel cmd,I state) {
-    ((void(*)(Obj,Sel,I))Original("SSNewRefreshHeader","fqx187_originalShelfRefreshState:"))(self,cmd,state);
-    ShelfRefreshHeaderVisibility(self);
+static void TopChromeRefreshState(Obj self,Sel cmd,I state) {
+    ((void(*)(Obj,Sel,I))Original("SSNewRefreshHeader","fqx188_originalRefreshState:"))(self,cmd,state);
+    TopChromeRefreshHeaderVisibility(self);
 }
-static void ShelfRefreshAnimationLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSNewRefreshHeader","fqx187_originalShelfRefreshAnimationLayout"))(self,cmd);
-    ShelfRefreshHeaderVisibility(self);
+static void TopChromeRefreshAnimationLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSNewRefreshHeader","fqx188_originalRefreshAnimationLayout"))(self,cmd);
+    TopChromeRefreshHeaderVisibility(self);
 }
-static void ShelfRefreshHostHidden(Obj self,Sel cmd,B hidden) {
+static void TopChromeRefreshHostHidden(Obj self,Sel cmd,B hidden) {
     Obj animation=Get(self,"animationView");
-    if (objc_getAssociatedObject(animation,ShelfRefreshHiddenKey)) {
-        objc_setAssociatedObject(animation,ShelfRefreshHiddenKey,BoolBox(hidden),1);
+    if (objc_getAssociatedObject(animation,TopChromeRefreshHiddenKey)) {
+        objc_setAssociatedObject(animation,TopChromeRefreshHiddenKey,BoolBox(hidden),1);
         hidden=1;
     }
-    ((void(*)(Obj,Sel,B))Original("SSNewRefreshHeader","fqx187_originalShelfRefreshHidden:"))(self,cmd,hidden);
+    ((void(*)(Obj,Sel,B))Original("SSNewRefreshHeader","fqx188_originalRefreshHidden:"))(self,cmd,hidden);
 }
 static void ShelfScroll(Obj self,Sel cmd,Obj scroll) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx187_originalShelfScroll:"))(self,cmd,scroll);
-    if (Get(self,"collectionView")==scroll) ShelfRefreshVisibility(scroll);
+    if (Get(self,"collectionView")==scroll) TopChromeRefreshVisibility(scroll);
 }
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
     FQHShelf(self);
     RestoreBookshelfTopInset(self);
-    ShelfRefreshVisibility(Get(self,"collectionView"));
+    TopChromeRefreshVisibility(Get(self,"collectionView"));
 }
 static void ShelfButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
@@ -1710,32 +1725,58 @@ static void PageCoverGuideLayout(Obj self,Sel cmd) {
     CoverGuideGlass(Get(self,"guideView"));
 }
 static void ChapterDiscussionKey(void) {}
-static B ChapterEntranceOnly(Obj card) {
+static void ChapterCardBackingKey(void) {}
+static void ChapterCardRoundedKey(void) {}
+static I ChapterDiscussionMode(Obj card,Obj entry,Obj background) {
+    if (!Kind(entry,"SSReaderChapterEndDiscussionEntranceView") || Flag(entry,"isHidden") ||
+        Get(background,"superview")!=card || Get(card,"contentBackgroundView")!=background) return 0;
     Obj model=Get(card,"model");
-    return InstanceABI(model,"displayMode","q16@0:8") &&
-        ((I(*)(Obj,Sel))Message)(model,sel_registerName("displayMode"))==1;
+    if (!InstanceABI(model,"displayMode","q16@0:8")) return 0;
+    I mode=((I(*)(Obj,Sel))Message)(model,sel_registerName("displayMode"));
+    if (mode==1) return mode;
+    if (mode!=2 || !Responds(Lookup("UICornerConfiguration"),"capsuleConfigurationWithMaximumRadius:")) return 0;
+    Obj author=Get(card,"authorInfoView");
+    return Kind(author,"SSReaderChapterEndAuthorInfoView") &&
+        Get(author,"superview")==background && !Flag(author,"isHidden") ? mode : 0;
+}
+static void ChapterCardCorners(Obj surface,B rounded) {
+    if (rounded==(objc_getAssociatedObject(surface,ChapterCardRoundedKey)!=0)) return;
+    Obj cls=Lookup("UICornerConfiguration");
+    // Cap the native radius on the tall author card. The short discussion-only
+    // card can use the normal capsule when this backing is reused.
+    Obj corners=rounded ? ((Obj(*)(Obj,Sel,double))Message)(cls,
+        sel_registerName("capsuleConfigurationWithMaximumRadius:"),18) : O0(cls,"capsuleConfiguration");
+    V1(surface,"setCornerConfiguration:",corners);
+    objc_setAssociatedObject(surface,ChapterCardRoundedKey,rounded ? surface : (Obj)0,0);
 }
 static void ChapterDiscussionGlass(Obj card) {
-    Obj previous=objc_getAssociatedObject(card,ChapterDiscussionKey);
+    Obj previousEntry=objc_getAssociatedObject(card,ChapterDiscussionKey);
+    Obj previousBacking=objc_getAssociatedObject(card,ChapterCardBackingKey);
     Obj entry=Get(card,"activeEntranceView");
-    B discussion=Kind(entry,"SSReaderChapterEndDiscussionEntranceView") &&
-        ChapterEntranceOnly(card) && !Flag(entry,"isHidden");
-    if (!discussion && !previous) return;
-    Obj background=Get(card,"contentBackgroundView");
-    if (discussion && Get(entry,"superview")==background && Get(background,"superview")==card) {
+    Obj background=Get(entry,"superview");
+    I mode=ChapterDiscussionMode(card,entry,background);
+    Obj styled=0;
+    if (mode) {
         if (FQHSurface(entry)) PageRestore(entry);
         FQHApply(background);
-        // Keep the native discussion gesture and the title/count insets.
-        if (FQHSurface(background)) EnsureHit(entry,Convert(background,Bounds(background),entry));
-        else entry=0;
-    } else {
-        PageRestore(background);
-        entry=0;
+        Obj surface=FQHSurface(background);
+        if (surface) {
+            ChapterCardCorners(surface,mode==2);
+            styled=background;
+        }
     }
-    if (previous!=entry) {
-        RestoreHit(previous);
-        objc_setAssociatedObject(card,ChapterDiscussionKey,entry,1);
+    if (previousBacking!=styled) {
+        PageRestore(previousBacking);
+        objc_setAssociatedObject(card,ChapterCardBackingKey,styled,1);
     }
+    // Only a discussion-only card is itself the whole tap target. The author
+    // card has separate native controls above the discussion row.
+    Obj hit=styled && mode==1 ? entry : (Obj)0;
+    if (previousEntry!=hit) {
+        RestoreHit(previousEntry);
+        objc_setAssociatedObject(card,ChapterDiscussionKey,hit,1);
+    }
+    if (hit) EnsureHit(hit,Convert(background,Bounds(background),hit));
 }
 static void PageChapterCardLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCard"))(self,cmd);
@@ -1774,8 +1815,9 @@ static void PageChapterRewardTheme(Obj self,Sel cmd,Obj config) {
 }
 static void PageDiscussLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndDiscussionEntranceView","fqx174_originalDiscuss"))(self,cmd);
-    Obj card=Get(Get(self,"superview"),"superview");
-    if ((Kind(card,"SSReaderChapterEndCommunityCardView") && ChapterEntranceOnly(card)) ||
+    Obj background=Get(self,"superview"),card=Get(background,"superview");
+    if ((Kind(card,"SSReaderChapterEndCommunityCardView") && Get(card,"activeEntranceView")==self &&
+         ChapterDiscussionMode(card,self,background)) ||
         HasAncestor(self,"SSReaderChapterEndDiscussionEntranceButton")) {
         if (FQHSurface(self)) PageRestore(self);
         return;
@@ -1913,6 +1955,103 @@ static void ProfileScanKey(void) {}
 static void ProfileNightKey(void) {}
 static void ProfileMenuKey(void) {}
 static void ProfileAnchorKey(void) {}
+static void PublishOwnerKey(void) {}
+static void PublishBackingKey(void) {}
+static void PublishColorKey(void) {}
+static void PublishGradient(Obj layer,B styled) {
+    if (!Kind(layer,"CAGradientLayer")) return;
+    Obj colors=Get(layer,"colors"),stock=objc_getAssociatedObject(layer,PublishBackingKey);
+    if (styled && colors) {
+        objc_setAssociatedObject(layer,PublishBackingKey,colors,1);
+        V1(layer,"setColors:",0);
+    } else if (!styled && stock) {
+        if (!colors) V1(layer,"setColors:",stock);
+        objc_setAssociatedObject(layer,PublishBackingKey,0,1);
+    }
+}
+static void PublishBacking(Obj view,B styled) {
+    if (!view) return;
+    Obj owned=objc_getAssociatedObject(view,PublishBackingKey);
+    B hidden=Flag(view,"isHidden");
+    if (styled && !hidden) {
+        if (!owned) objc_setAssociatedObject(view,PublishBackingKey,BoolBox(1),1);
+        VB(view,"setHidden:",1);
+    } else if (!styled && owned) {
+        if (hidden) VB(view,"setHidden:",0);
+        objc_setAssociatedObject(view,PublishBackingKey,0,1);
+    }
+}
+static void PublishForeground(Obj view,Obj owner,B styled) {
+    if (!view || !Belongs(view,owner)) return;
+    B label=Kind(view,"UILabel");
+    const char *setter=label ? "setTextColor:" : "setTintColor:";
+    Obj current=Get(view,label ? "textColor" : "tintColor");
+    Obj foreground=O0(Lookup("UIColor"),"labelColor");
+    Obj stock=objc_getAssociatedObject(view,PublishColorKey);
+    if (styled && current && !SameColor(current,foreground)) {
+        objc_setAssociatedObject(view,PublishColorKey,current,1);
+        V1(view,setter,foreground);
+    } else if (!styled && stock) {
+        if (SameColor(current,foreground)) V1(view,setter,stock);
+        objc_setAssociatedObject(view,PublishColorKey,0,1);
+    }
+}
+static const char *PublishClass(Obj view) {
+    return Kind(view,"SSDoubleRowUgcProduceEntranceView")
+        ? "SSDoubleRowUgcProduceEntranceView" : "SSCommunityPublishButton";
+}
+static void PublishGlass(Obj view) {
+    if (!objc_getAssociatedObject(view,PublishOwnerKey)) return;
+    B alternate=Kind(view,"SSDoubleRowUgcProduceEntranceView");
+    Obj owner=alternate ? Get(view,"entranceView") : view;
+    if (!Kind(owner,"UIView") || !Belongs(owner,view)) return;
+    FQHApply(owner);
+    B styled=FQHSurface(owner)!=0;
+    if (alternate) {
+        PublishGradient(Get(view,"entranceBgLayer"),styled);
+        PublishForeground(Get(view,"publishIcon"),owner,styled);
+        PublishForeground(Get(view,"closeIcon"),owner,styled);
+    } else {
+        // This gradient is the button's own backing layer. Its sublayers
+        // include the quill and glass, so only remove the gradient paint.
+        PublishGradient(Get(view,"gradientLayer"),styled);
+        if (BoolProp(Get(view,"model"),"backgroundStyleOptV697")) {
+            Obj background=Get(view,"publishImageBackgroundView");
+            if (Get(background,"superview")==owner) PublishBacking(background,styled);
+        }
+        Obj mask=Get(view,"darkModeMaskView");
+        if (Get(mask,"superview")==owner) PublishBacking(mask,styled);
+        PublishForeground(Get(view,"publishImageView"),owner,styled);
+        PublishForeground(Get(view,"publishTintLabel"),owner,styled);
+    }
+}
+static void PublishLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original(PublishClass(self),"fqx188_originalPublishLayout"))(self,cmd);
+    PublishGlass(self);
+}
+static void PublishTheme(Obj self,Sel cmd,Obj previous) {
+    ((void(*)(Obj,Sel,Obj))Original(PublishClass(self),"fqx188_originalPublishTheme:"))(self,cmd,previous);
+    PublishGlass(self);
+}
+static void PublishMark(Obj view) {
+    if (!Kind(view,"SSCommunityPublishButton") && !Kind(view,"SSDoubleRowUgcProduceEntranceView")) return;
+    if (!objc_getAssociatedObject(view,PublishOwnerKey))
+        objc_setAssociatedObject(view,PublishOwnerKey,BoolBox(1),1);
+    PublishGlass(view);
+}
+static void BookstorePublishButton(Obj self,Sel cmd,Obj button) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookStoreNestedTabView","fqx188_originalStorePublishButton:"))(self,cmd,button);
+    PublishMark(button);
+}
+static void BookstoreComponentPublishButton(Obj self,Sel cmd,Obj button) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookStoreCommunityPublishEntranceComponent","fqx188_originalStoreComponentPublish:"))(self,cmd,button);
+    PublishMark(button);
+}
+static Obj ProfilePublishButton(Obj self,Sel cmd) {
+    Obj button=((Obj(*)(Obj,Sel))Original("SSMyUser621ViewController","fqx188_originalMinePublishButton"))(self,cmd);
+    PublishMark(button);
+    return button;
+}
 static void ProfileIconGlass(Obj bar,Obj icon,const void *key) {
     Obj surface=objc_getAssociatedObject(bar,key);
     Obj foreground=Kind(icon,"UIImageView") ? icon : (Obj)0;
@@ -2764,6 +2903,13 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
     Hook("SSBookShelfFilterMixRowCollectionView","collectionView:layout:insetForSectionAtIndex:","fqx185_originalInlineFilterInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfInlineFilterInsets);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
+    Hook("SSCommunityPublishButton","layoutSubviews","fqx188_originalPublishLayout","v16@0:8",(Imp)PublishLayout);
+    Hook("SSCommunityPublishButton","traitCollectionDidChange:","fqx188_originalPublishTheme:","v24@0:8@16",(Imp)PublishTheme);
+    Hook("SSDoubleRowUgcProduceEntranceView","layoutSubviews","fqx188_originalPublishLayout","v16@0:8",(Imp)PublishLayout);
+    Hook("SSDoubleRowUgcProduceEntranceView","traitCollectionDidChange:","fqx188_originalPublishTheme:","v24@0:8@16",(Imp)PublishTheme);
+    Hook("SSBookStoreNestedTabView","setPublishButtonView:","fqx188_originalStorePublishButton:","v24@0:8@16",(Imp)BookstorePublishButton);
+    Hook("SSBookStoreCommunityPublishEntranceComponent","setPublishButton:","fqx188_originalStoreComponentPublish:","v24@0:8@16",(Imp)BookstoreComponentPublishButton);
+    Hook("SSMyUser621ViewController","publishButton","fqx188_originalMinePublishButton","@16@0:8",(Imp)ProfilePublishButton);
     Hook("SSMyUser621BaseViewController","updateCollectionLayout","fqx186_originalProfileCollectionLayout","v16@0:8",(Imp)ProfileCollectionLayout);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
@@ -2806,10 +2952,11 @@ void FQHInstall(void) {
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     if (Signature("SSNewRefreshHeader","animationView","@16@0:8") &&
         Signature("SSNewRefreshHeader","isRefreshing","B16@0:8")) {
-        Hook("SSNewRefreshHeader","setAnimationHidden:","fqx187_originalShelfRefreshHidden:","v20@0:8B16",(Imp)ShelfRefreshHostHidden);
-        Hook("SSNewRefreshHeader","setState:","fqx187_originalShelfRefreshState:","v24@0:8q16",(Imp)ShelfRefreshState);
-        Hook("SSNewRefreshHeader","placeSubviews","fqx187_originalShelfRefreshAnimationLayout","v16@0:8",(Imp)ShelfRefreshAnimationLayout);
+        Hook("SSNewRefreshHeader","setAnimationHidden:","fqx188_originalRefreshHidden:","v20@0:8B16",(Imp)TopChromeRefreshHostHidden);
+        Hook("SSNewRefreshHeader","setState:","fqx188_originalRefreshState:","v24@0:8q16",(Imp)TopChromeRefreshState);
+        Hook("SSNewRefreshHeader","placeSubviews","fqx188_originalRefreshAnimationLayout","v16@0:8",(Imp)TopChromeRefreshAnimationLayout);
         Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);
+        Hook("SSBookStoreTabViewController","scrollViewDidScroll:","fqx188_originalStoreCollectionScroll:","v24@0:8@16",(Imp)BookstoreCollectionScroll);
     }
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);
     Hook("FQReaderSaasNavigationView","readerInsertedViewThemeConfigChange:","fqx167_originalTheme:","v24@0:8@16",(Imp)ReaderTheme);

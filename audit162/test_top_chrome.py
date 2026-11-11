@@ -14,7 +14,8 @@ from top_chrome_runtime import TopChromeRuntime
 
 SHELF = 'SSBookShelf525ViewController'
 SHELF_LIST = 'SSBookShelfSubViewController'
-SHELF_REFRESH = 'SSNewRefreshHeader'
+REFRESH_HEADER = 'SSNewRefreshHeader'
+FLAT_STORE = 'SSBookStoreTabViewController'
 SHELF_SCROLL = 'scrollViewDidScroll:'
 DOUBLE_ROW = 'SSBookStoreDoubleRowViewController'
 DOUBLE_ROW_SCROLL = 'storeTabScrollViewDidScroll:'
@@ -28,6 +29,7 @@ PROPERTIES = (
     'delegate', 'backgroundView', 'headerBgImgView', 'headerView', 'tabSelectView',
     'headerBackgroundView', 'fullGenreFloatingContainerView', 'functionCell',
     'layoutContainerView', 'filterView', 'tabContainer', 'simpleTabView', 'view',
+    'containerScrollView', 'refreshHeader',
 )
 
 
@@ -40,9 +42,9 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self._class('UICollectionView', 'UIScrollView')
         self._class('SSNestedContainerScrollView', 'UIScrollView')
         self._class('SSBookStoreNestedTabView', 'UIView')
-        self._class('SSBookStoreTabViewController', 'UIViewController')
+        self._class(FLAT_STORE, 'UIViewController')
         self._class('FQRJXCategoryListContainerView', 'UIView')
-        self._class(SHELF_REFRESH, 'UIView')
+        self._class(REFRESH_HEADER, 'UIView')
         self.original_update_inset = 0x3304e200
         self.original_float_layout = 0x3304e300
         self.original_double_row_scroll = 0x3304e400
@@ -56,13 +58,15 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.original_shelf_scroll = 0x3304e600
         self.original_refresh_state = 0x3304e610
         self.original_refresh_visibility = 0x3304e620
+        self.original_flat_store_scroll = 0x3304e630
         for cls, selector, address, encoding in (
                 (SHELF_LIST, SHELF_SCROLL, self.original_shelf_scroll, 'v24@0:8@16'),
-                (SHELF_REFRESH, 'setState:', self.original_refresh_state, 'v24@0:8q16'),
-                (SHELF_REFRESH, 'setAnimationHidden:', self.original_refresh_visibility, 'v20@0:8B16'),
-                (SHELF_REFRESH, 'placeSubviews', self.LAYOUT_IMP, 'v16@0:8'),
-                (SHELF_REFRESH, 'animationView', self.LAYOUT_IMP, '@16@0:8'),
-                (SHELF_REFRESH, 'isRefreshing', self.LAYOUT_IMP, 'B16@0:8')):
+                (FLAT_STORE, 'scrollViewDidScroll:', self.original_flat_store_scroll, 'v24@0:8@16'),
+                (REFRESH_HEADER, 'setState:', self.original_refresh_state, 'v24@0:8q16'),
+                (REFRESH_HEADER, 'setAnimationHidden:', self.original_refresh_visibility, 'v20@0:8B16'),
+                (REFRESH_HEADER, 'placeSubviews', self.LAYOUT_IMP, 'v16@0:8'),
+                (REFRESH_HEADER, 'animationView', self.LAYOUT_IMP, '@16@0:8'),
+                (REFRESH_HEADER, 'isRefreshing', self.LAYOUT_IMP, 'B16@0:8')):
             self._add(self.classes[cls], selector, address, encoding)
 
     def handle(self, cpu, pc):
@@ -76,7 +80,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             header = self.objects[cpu.x[0]].state
             self.objects[header['animationView']].state['hidden'] = bool(cpu.x[2])
             return self.finish(cpu)
-        if pc == self.original_double_row_scroll:
+        if pc in (self.original_double_row_scroll, self.original_flat_store_scroll):
             return self.finish(cpu)
         if pc == self.original_double_row_layout:
             tab = self.objects[cpu.x[0]].state
@@ -121,25 +125,32 @@ def surface(r, owner):
     return 0
 
 
-def exercise_shelf_refresh(c, r, tab, scroll):
+def exercise_refresh(c, r, tab, scroll, nested_view=None):
     scroll_state = r.objects[scroll].state
     original_inset, original_offset = scroll_state['contentInset'], scroll_state['contentOffset']
     header_frame = (0, -54, 440, 54)
-    header = r.view(SHELF_REFRESH, 'bookshelf refresh header', header_frame, scroll, refresh_state=1)
+    header = r.view(REFRESH_HEADER, 'native refresh header', header_frame, scroll, refresh_state=1)
     animation = r.view('UIView', 'native three-dot artwork', (199, 8, 42, 36), header)
     r.objects[header].state['animationView'] = animation
-    scroll_state.update(mj_header=header, delegate=tab, isDragging=False)
+    rest = -original_inset[0]
+    scroll_state.update(mj_header=header, delegate=nested_view or tab, isDragging=False,
+                        contentOffset=(0,rest), bounds=(0,rest,*scroll_state['bounds'][2:]))
+    selector = 'scrollViewDidScroll:'
+    if nested_view:
+        r.objects[nested_view].state.update(containerScrollView=scroll, refreshHeader=header)
+        selector = DOUBLE_ROW_SCROLL
+        require(drawn_rect(r, animation)[1] == 98 and rest == -188,
+                'The device-matched nested rest position exposes the old idle spinner under the top bar')
     call(c, r, header, 'placeSubviews')
     require(r.objects[animation].state['hidden'] and not r.objects[header].state['hidden'],
-            'The idle artwork alone is hidden in the expanded shelf viewport')
+            'The idle artwork alone is hidden in the expanded viewport')
 
-    rest = -original_inset[0]
     scroll_state.update(contentOffset=(0, rest-30), isDragging=True)
-    call(c, r, tab, SHELF_SCROLL, scroll)
+    call(c, r, tab, selector, scroll)
     require(not r.objects[animation].state['hidden'], 'A real pull reveals the original artwork')
     call(c, r, header, 'setState:', 3)
     scroll_state.update(contentOffset=(0, rest), isDragging=False)
-    call(c, r, tab, SHELF_SCROLL, scroll)
+    call(c, r, tab, selector, scroll)
     require(not r.objects[animation].state['hidden'], 'Active refreshing stays visible when dragging ends')
     call(c, r, header, 'setState:', 1)
     require(r.objects[animation].state['hidden'],
@@ -147,7 +158,7 @@ def exercise_shelf_refresh(c, r, tab, scroll):
 
     call(c, r, header, 'setAnimationHidden:', 1)
     scroll_state.update(contentOffset=(0, rest-30), isDragging=True)
-    call(c, r, tab, SHELF_SCROLL, scroll)
+    call(c, r, tab, selector, scroll)
     require(r.objects[animation].state['hidden'], 'Host-requested visibility still wins on a new pull')
     call(c, r, header, 'setAnimationHidden:', 0)
     require(not r.objects[animation].state['hidden'], 'The host can show artwork normally on a subsequent pull')
@@ -217,7 +228,7 @@ def exercise(data, labels, kind):
         tab_state.update(doubleRowNestContainerScrollView=scroll, collectionView=inner,
                          nestedView=content_viewport, stockNestedFrame=viewport_frame)
     cover = r.view('UIView', 'cover', (12,cover_y,144,180), cover_parent)
-    tab = r.obj(SHELF_LIST if shelf else DOUBLE_ROW if nested else 'SSBookStoreTabViewController',
+    tab = r.obj(SHELF_LIST if shelf else DOUBLE_ROW if nested else FLAT_STORE,
                 'active tab', **tab_state)
     if shelf:
         holder = r.view('UIView', 'native pinned filter holder', (0,0,440,36), page,
@@ -269,8 +280,8 @@ def exercise(data, labels, kind):
         require(geometry and geometry[-1]['stockViewportFrame'] == list(viewport_frame) and
                 geometry[-1]['scrollClipRect'][1] == 0,
                 'Device diagnostics identify the real clip owner and show that its visible range reaches the top')
+    refresh_animation = exercise_refresh(c, r, tab, scroll, content_viewport if nested else None)
     if shelf:
-        refresh_animation = exercise_shelf_refresh(c, r, tab, scroll)
         call(c,r,tab,FLOATING_LAYOUT,scroll)
         require(surface(r,holder) and r.objects[holder].state['frame']==(0,boundary,440,36),
                 'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
@@ -301,10 +312,10 @@ def exercise(data, labels, kind):
             'Disabling glass restores the exact tab strip fill and gradient artwork')
     if shelf:
         call(c, r, tab, SHELF_SCROLL, scroll)
-        require(not r.objects[refresh_animation].state['hidden'],
-                'Removing the expanded viewport restores native refresh-artwork visibility')
         require(not surface(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
                 'Disabling glass restores the original pinned-filter holder')
+    require(not r.objects[refresh_animation].state['hidden'],
+            'Removing the expanded viewport restores native refresh-artwork visibility')
 
 
 if __name__ == '__main__':

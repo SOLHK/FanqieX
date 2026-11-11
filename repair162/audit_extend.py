@@ -133,7 +133,7 @@ def audit(source, candidate, payload=None):
     require([s["raw"] for s in ns[:2]] == [s["raw"] for s in os[:2]], "original segment descriptors")
     patch = ns[2]
     delta = patch["fs"]
-    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000), "patch size")
+    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000), "patch size")
     require((patch["vm"], patch["off"], patch["vs"], patch["max"], patch["prot"], patch["ns"], patch["flags"]) ==
             (0x14000, 0x14000, delta, 5, 5, 0, 0), "patch permissions/map")
     for i, seg in enumerate(ns):
@@ -218,6 +218,9 @@ def selftest(source):
     eleven_page_payload = bytes.fromhex("1f2003d5") * (0x28000 // 4) + bytes.fromhex("c0035fd6")
     eleven_page = extend(source, eleven_page_payload, capacity=0x2c000)
     reports.append(audit(source, eleven_page, eleven_page_payload))
+    twelve_page_payload = bytes.fromhex("1f2003d5") * (0x2c000 // 4) + bytes.fromhex("c0035fd6")
+    twelve_page = extend(source, twelve_page_payload, capacity=0x30000)
+    reports.append(audit(source, twelve_page, twelve_page_payload))
     candidate = extend(source, payload, capacity=0x4000)
     _, items, segs = parse(candidate)
     sig, _ = blob_range(items, 0x1D)
@@ -269,7 +272,8 @@ def selftest(source):
         ("nine_page_overflow", source, bytes(0x24004), 0x24000),
         ("ten_page_overflow", source, bytes(0x28004), 0x28000),
         ("eleven_page_overflow", source, bytes(0x2c004), 0x2c000),
-        ("twelve_page_capacity", source, payload, 0x30000),
+        ("twelve_page_overflow", source, bytes(0x30004), 0x30000),
+        ("thirteen_page_capacity", source, payload, 0x34000),
     ]
     occupied = bytearray(source)
     _, cmds, _ = parse(source)

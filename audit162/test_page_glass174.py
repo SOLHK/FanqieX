@@ -62,6 +62,13 @@ HOOKS = [
     ("SSBookShelfSubViewController", "fetchBookCoverTransitionInfo:"),
     ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
+    ("SSCommunityPublishButton", "layoutSubviews"),
+    ("SSCommunityPublishButton", "traitCollectionDidChange:"),
+    ("SSDoubleRowUgcProduceEntranceView", "layoutSubviews"),
+    ("SSDoubleRowUgcProduceEntranceView", "traitCollectionDidChange:"),
+    ("SSBookStoreNestedTabView", "setPublishButtonView:"),
+    ("SSBookStoreCommunityPublishEntranceComponent", "setPublishButton:"),
+    ("SSMyUser621ViewController", "publishButton"),
     ("SSMyUser621BaseViewController", "updateCollectionLayout"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
     ("SSMyUserCollectionViewOrderFunCell", "layoutSubviews"),
@@ -99,6 +106,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
     MODEL_CONFIGURED_GAME = 0x330c2400
     MODEL_LIST_OBJECTS = 0x330c2500
     MINE_ORDER_LAYOUT = 0x330c2600
+    PUBLISH_SET = 0x330c2700
+    PUBLISH_GET = 0x330c2800
     SPEECH_THEME = 0x330c0700
     PROGRESS_THEME = 0x330c0b00
     CHAPTER_CARD_THEME = 0x330c0b40
@@ -135,6 +144,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             ("SSReaderChapterEndCommunityCardView", "UIView"),
             ("SSReaderChapterEndCombineContainerView", "UIView"),
             ("SSReaderChapterEndCommunityCardViewModel", "NSObject"),
+            ("SSReaderChapterEndAuthorInfoView", "UIView"),
             ("SSReaderChapterEndBaseButton", "UIView"),
             ("SSReaderChapterEndRewardButton", "SSReaderChapterEndBaseButton"),
             ("SSBookShelfTabSelectViewTitleCell", "UIView"),
@@ -150,6 +160,11 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             ("SSBookShelfBaseCell", "UIView"),
             ("SSCoverTransitionInfo", "NSObject"),
             ("SSMyUserBar", "UIView"),
+            ("CAGradientLayer", "CALayer"),
+            ("SSCommunityPublishButton", "UIView"),
+            ("SSDoubleRowUgcProduceEntranceView", "UIView"),
+            ("SSBookStoreNestedTabView", "UIView"),
+            ("SSBookStoreCommunityPublishEntranceComponent", "NSObject"),
             ("UICollectionView", "UIScrollView"),
             ("FQFeedListCollectionView", "UICollectionView"),
             ("FQReaderSaaSBaseImageView", "UIImageView"),
@@ -203,6 +218,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                   self.CHAPTER_CARD_THEME, "v24@0:8@16")
         self._add(self.classes["SSReaderChapterEndRewardButton"], "updateWithThemeConfigChange:",
                   self.CHAPTER_REWARD_THEME, "v24@0:8@16")
+        self._add(self.metaclasses[self.classes["UICornerConfiguration"]], "capsuleConfigurationWithMaximumRadius:",
+                  self.LAYOUT_IMP, "@24@0:8d16")
         self._add(self.classes["FQReaderUIManager"], "showBottomBarContainer:",
                   self.READER_MENU_SHOW, "v20@0:8B16")
         self._add(self.classes["FQReaderUIManager"], "onConfigThemeChange:context:",
@@ -275,6 +292,13 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                   self.MODEL_LIST_OBJECTS, "@24@0:8@16")
         self._add(self.classes["SSMyUserCollectionViewOrderFunCell"], "layoutSubviews",
                   self.MINE_ORDER_LAYOUT, "v16@0:8")
+        for cls in ("SSCommunityPublishButton", "SSDoubleRowUgcProduceEntranceView"):
+            self._add(self.classes[cls], "layoutSubviews", self.LAYOUT_IMP, "v16@0:8")
+            self._add(self.classes[cls], "traitCollectionDidChange:", self.LAYOUT_IMP, "v24@0:8@16")
+        self._add(self.classes["SSBookStoreNestedTabView"], "setPublishButtonView:", self.PUBLISH_SET, "v24@0:8@16")
+        self._add(self.classes["SSBookStoreCommunityPublishEntranceComponent"], "setPublishButton:",
+                  self.PUBLISH_SET, "v24@0:8@16")
+        self._add(self.classes["SSMyUser621ViewController"], "publishButton", self.PUBLISH_GET, "@16@0:8")
 
     @staticmethod
     def edit_fitting_size(state):
@@ -286,6 +310,12 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self.current_cpu = cpu
         receiver, selector = cpu.x[:2]
         name = self.selector_names.get(selector)
+        if pc == self.PUBLISH_SET:
+            key = "publishButtonView" if name == "setPublishButtonView:" else "publishButton"
+            self.objects[receiver].state[key] = cpu.x[2]
+            return self.finish(cpu)
+        if pc == self.PUBLISH_GET:
+            return self.finish(cpu, self.objects[receiver].state["publishButton"])
         if pc == self.SHELF_RELOAD:
             cell = self.objects[receiver].state
             cell["cellModel"] = cpu.x[2]
@@ -415,6 +445,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             state["currentBottomToolbarInsertObject"] = state["nextBottomToolbarInsertObject"]
             return self.finish(cpu)
         if pc - self.slide == 0xa5d4:
+            if receiver == self.classes["UICornerConfiguration"] and name == "capsuleConfigurationWithMaximumRadius:":
+                return self.finish(cpu, self.obj("UICornerConfiguration", "rounded card", max_radius=cpu.fp(0)))
             if receiver == self.classes["UIFont"] and name == "systemFontOfSize:":
                 return self.finish(cpu, self.obj("UIFont", "settings font", pointSize=cpu.fp(0)))
             if receiver == self.classes["UIColor"] and name == "secondaryLabelColor":
@@ -426,6 +458,13 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
             if receiver in self.objects:
                 state = self.objects[receiver].state
+                if name == "setColors:" and self.objects[receiver].cls == self.classes["CAGradientLayer"]:
+                    state["colors"] = cpu.x[2]
+                    return self.finish(cpu)
+                if name in ("colors", "gradientLayer", "entranceView", "entranceBgLayer", "publishIcon",
+                            "closeIcon", "publishImageView", "publishTintLabel", "publishImageBackgroundView",
+                            "darkModeMaskView", "backgroundStyleOptV697") and name in state:
+                    return self.finish(cpu, state[name])
                 if "edit_title_size" in state:
                     if name == "sizeThatFits:":
                         return self.finish(cpu, fp=self.edit_fitting_size(state))
@@ -465,7 +504,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                     state["cover_frame"] = tuple(cpu.fp(i) for i in range(4))
                     return self.finish(cpu)
                 if name in ("model", "displayMode", "activeEntranceView", "contentBackgroundView",
-                            "customBackgroundView") and name in state:
+                            "customBackgroundView", "authorInfoView") and name in state:
                     return self.finish(cpu, state[name])
                 if name in ("bottomToolbarInsertContainer", "bottomToolbarInsertTopLineView",
                             "currentBottomToolbarInsertObject", "containerView") and name in state:
@@ -1291,13 +1330,42 @@ def exercise(data, labels):
             runtime.objects[card_fill].state["backgroundColor"] == clear and
             runtime.objects[reward_fill].state["backgroundColor"] == clear,
             "the card's final gift fill write is cleared before another layout without allocating another surface")
+    author = runtime.view("SSReaderChapterEndAuthorInfoView", "author note", (16, 12, 368, 105), card_fill,
+                          gesture_action="handleAuthorTap")
+    note = runtime.label("native note body", author, (0, 32, 360, 60), "作者的话")
+    inline_gift_action = (author, runtime.sel("handleGiftTap"), 64)
+    inline_gift = runtime.view("UIButton", "author note gift", (305, 0, 60, 24), author,
+                               control_targets=[inline_gift_action])
+    runtime.objects[card].state["authorInfoView"] = author
     runtime.objects[model].state["displayMode"] = 2
+    runtime.objects[card_fill].state.update(frame=(0, 0, 400, 160), bounds=(0, 0, 400, 160))
+    entry_state["frame"] = (16, 125, 368, 20)
+    send(cpu, runtime, entry, "layoutSubviews")
+    require(not surface_for(entry), "the author-card entry skips strip decoration even before its parent layout")
     send(cpu, runtime, card, "layoutSubviews")
-    require(not surface_for(card_fill) and entry_state["hitInsets"] == (0, 0, 0, 0) and
-            runtime.objects[card_fill].state["backgroundColor"] == chapter_theme,
-            "author-talk reuse restores the card and original discussion tap bounds")
+    send(cpu, runtime, entry, "layoutSubviews")
+    combined_glass = runtime.objects[card_surface].state
+    require(surface_for(card_fill) == card_surface and combined_glass["frame"] == (0, 0, 400, 160) and
+            runtime.objects[combined_glass["cornerConfiguration"]].state["max_radius"] == 18 and
+            runtime.objects[card_fill].state["subviews"] == [card_surface, entry, author] and not surface_for(entry),
+            "one rounded rectangular glass surface spans the author note and discussion")
+    require(entry_state["hitInsets"] == (0, 0, 0, 0) and entry_state["gesture_action"] == "handleTap" and
+            runtime.objects[author].state["gesture_action"] == "handleAuthorTap" and
+            note in runtime.objects[author].state["subviews"] and
+            runtime.objects[inline_gift].state["control_targets"] == [inline_gift_action],
+            "the combined card preserves author text, author and gift taps, and the native discussion hit region")
+    send(cpu, runtime, card, "updateWithReaderConfig:", chapter_theme)
+    require(surface_for(card_fill) == card_surface and runtime.objects[card_fill].state["backgroundColor"] == clear,
+            "author-card theme reapplies the same surface after the stock fill write")
     runtime.objects[model].state["displayMode"] = 1
+    runtime.objects[author].state["hidden"] = True
+    runtime.objects[card_fill].state.update(frame=(0, 0, 342, 50), bounds=(0, 0, 342, 50))
+    entry_state["frame"] = entry_frame
     send(cpu, runtime, card, "layoutSubviews")
+    require(surface_for(card_fill) == card_surface and
+            "max_radius" not in runtime.objects[combined_glass["cornerConfiguration"]].state and
+            entry_state["hitInsets"] == (-15, -16, -15, -16),
+            "discussion-only reuse restores the capsule and the original expanded discussion tap region")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
     send(cpu, runtime, card, "layoutSubviews")
     send(cpu, runtime, reward, "layoutSubviews")
@@ -1412,6 +1480,66 @@ def exercise(data, labels):
             geometry[1]["scrollClipRect"] == [0, 0, 440, 956],
             "Profile diagnostics report mode and visible list bounds without repeating settled layouts")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+
+    stock_tint = runtime.color("original white quill")
+    stock_colors = runtime.obj("NSArray", "host gradient", items=[runtime.color("original orange")])
+    updated_colors = runtime.obj("NSArray", "dark-mode gradient", items=[runtime.color("dark orange")])
+    bookstore_publisher = runtime.obj("SSBookStoreCommunityPublishEntranceComponent", "bookstore component")
+    nested_publisher = runtime.obj("SSBookStoreNestedTabView", "bookstore nested tab")
+    for route in ("component", "mine", "nested"):
+        alternate = route == "nested"
+        button_class = "SSDoubleRowUgcProduceEntranceView" if alternate else "SSCommunityPublishButton"
+        publish_frame = (384, 805, 44, 44)
+        publish = runtime.view(button_class, route + " writing button", publish_frame,
+                               runtime.ROOT, userInteractionEnabled=True, onTap=tap)
+        publish_state = runtime.objects[publish].state
+        owner = runtime.view("UIView", "native writing control", (0, 0, 44, 44), publish) if alternate else publish
+        glyph = runtime.view("UIImageView", "host quill", (12, 12, 20, 20), owner, tintColor=stock_tint)
+        glyph_state = runtime.objects[glyph].state
+        glyph_state["image"] = runtime.obj("UIImage", "host template icon")
+        stock_image = glyph_state["image"]
+        gradient = runtime.obj("CAGradientLayer", "orange backing layer", colors=stock_colors, hidden=False)
+        gradient_state = runtime.objects[gradient].state
+        bitmap = 0
+        if alternate:
+            publish_state.update(entranceView=owner, entranceBgLayer=gradient, publishIcon=glyph)
+        else:
+            model = runtime.obj("NSObject", "writing button options", backgroundStyleOptV697=(route == "mine"))
+            publish_state.update(gradientLayer=gradient, layer=gradient, publishImageView=glyph, model=model)
+            if route == "mine":
+                bitmap = runtime.view("UIImageView", "original orange bitmap", (0, 0, 44, 44), owner)
+                publish_state["publishImageBackgroundView"] = bitmap
+        send(cpu, runtime, publish, "layoutSubviews")
+        require(not surface_for(owner) and gradient_state["colors"] == stock_colors,
+                "Other instances of the same writing control are outside the exact page owners")
+        if route == "component":
+            send(cpu, runtime, bookstore_publisher, "setPublishButton:", publish)
+        elif route == "mine":
+            runtime.objects[profile_controller].state["publishButton"] = publish
+            require(send(cpu, runtime, profile_controller, "publishButton")["result"] == publish,
+                    "Mine's native writing entry still returns its original target")
+        else:
+            send(cpu, runtime, nested_publisher, "setPublishButtonView:", publish)
+        surface = surface_for(owner)
+        require(surface and runtime.objects[owner].state["subviews"][0] == surface and
+                not runtime.objects[surface].state["userInteractionEnabled"] and
+                runtime.objects[surface].state["frame"] == (0, 0, 44, 44) and
+                not gradient_state["hidden"] and not gradient_state["colors"] and
+                glyph_state["image"] == stock_image and glyph_state["tintColor"] == runtime.colors["labelColor"] and
+                publish_state["frame"] == publish_frame and publish_state["onTap"] == tap and
+                publish_state["userInteractionEnabled"] and (not bitmap or runtime.objects[bitmap].state["hidden"]),
+                "Native glass replaces the orange paint and leaves the original quill and action in place")
+        gradient_state["colors"] = updated_colors
+        send(cpu, runtime, publish, "traitCollectionDidChange:", 0)
+        send(cpu, runtime, publish, "layoutSubviews")
+        require(surface_for(owner) == surface and not gradient_state["colors"],
+                "Writing button reuses one glass and absorbs a native repaint")
+        runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+        send(cpu, runtime, publish, "layoutSubviews")
+        require(not surface_for(owner) and gradient_state["colors"] == updated_colors and
+                glyph_state["tintColor"] == stock_tint and (not bitmap or not runtime.objects[bitmap].state["hidden"]),
+                "Disabling glass restores the latest native gradient, image, and quill tint")
+        runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     shortcut_count = 0
     shortcut_background = runtime.color("original shortcut content")
@@ -1911,12 +2039,14 @@ def exercise(data, labels):
         "reader_backdrop_and_chapter_controls": True,
         "reader_community_full_item_surfaces": True,
         "full_chapter_discussion_and_gift_surfaces": True,
+        "full_author_note_discussion_card": True,
         "shelf_tabs": len(tabs),
         "shelf_filters": len(filters),
         "profile_shortcuts": shortcut_count,
         "mine_benefits_section_toggle": True,
         "profile_search_clips_carousel": True,
         "profile_top_blur_and_feed_underlap": True,
+        "bookstore_and_profile_publish_glass": True,
         "profile_header_glass": len(icons),
         "target_game_deleted": True,
         "nonpromotion_mine_rows_retained": True,
