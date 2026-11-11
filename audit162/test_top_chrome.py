@@ -51,6 +51,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self._class(FLAT_STORE, 'UIViewController')
         self._class('FQRJXCategoryListContainerView', 'UIView')
         self._class(REFRESH_HEADER, 'UIView')
+        self.bookstore_header_reads = 0
         self.original_update_inset = 0x3304e200
         self.original_float_layout = 0x3304e300
         self.original_double_row_scroll = 0x3304e400
@@ -139,6 +140,8 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         if pc-self.slide == 0xa5d4 and cpu.x[0] in self.objects:
             state = self.objects[cpu.x[0]].state
             name = self.selector_names.get(cpu.x[1])
+            if name == 'simpleHeader':
+                self.bookstore_header_reads += 1
             if self.is_kind(cpu.x[0], self.classes['UICollectionViewFlowLayout']):
                 if name == 'sectionHeadersPinToVisibleBounds':
                     return self.finish(cpu, state[name])
@@ -261,6 +264,40 @@ def exercise_nested_refresh_geometry(c, r, tab, scroll, animation):
                 'Bookstore returns the ranking card to its original screen position after refresh')
         require(r.objects[animation].state['hidden'], 'The artwork hides at idle without leaving a gap')
     state.update(contentOffset=original_offset, bounds=(*original_offset, *state['bounds'][2:]))
+
+
+def exercise_nested_scroll_repair(c, r, tab, root, viewport, scroll, edge):
+    preferences = r.objects[r.DEFAULTS].state['values']
+    reads = r.bookstore_header_reads
+    call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(r.bookstore_header_reads == reads,
+            'Scrolling with glass disabled does not recalculate bookstore header geometry')
+
+    preferences['FanqieAdBlock.GlassDisabled.1'] = 0
+    _, _, width, height = r.objects[viewport].state['frame']
+    r.objects[viewport].state['frame'] = (0, 0, width, height)
+    call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(len(surfaces(r, root)) == 1 and r.objects[edge].state['hidden'],
+            'The first scroll still installs glass for a late full-height viewport')
+    reads = r.bookstore_header_reads
+    for _ in range(3):
+        call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+    require(r.bookstore_header_reads == reads,
+            'A settled full-height viewport does not recalculate bookstore header geometry')
+
+    new_scroll = r.view('SSNestedContainerScrollView', 'replacement vertical feed', (0, 0, width, height),
+                        viewport, clipsToBounds=True, contentInset=(0, 0, 0, 0), contentOffset=(0, 0))
+    new_edge = r.enable_native_top_edge(new_scroll, hidden=False)
+    r.objects[tab].state['doubleRowNestContainerScrollView'] = new_scroll
+    call(c, r, tab, DOUBLE_ROW_SCROLL, new_scroll)
+    require(not r.objects[edge].state['hidden'] and r.objects[new_edge].state['hidden'],
+            'Replacing the nested scroll view restores the previous edge and styles the new one')
+
+    r.objects[viewport].state['frame'] = (0, 20, width, height - 20)
+    call(c, r, tab, DOUBLE_ROW_SCROLL, new_scroll)
+    require(r.objects[viewport].state['frame'] == (0, 0, width, height) and
+            r.objects[new_scroll].state['contentInset'] == (20, 0, 0, 0),
+            'A stock frame rewrite still re-expands the viewport and anchors its content')
 
 
 def exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config):
@@ -601,6 +638,8 @@ def exercise(data, labels, kind):
         call(c, r, tab, SHELF_SCROLL, scroll)
     require(not r.objects[refresh_animation].state['hidden'],
             'Removing the expanded viewport restores native refresh-artwork visibility')
+    if nested:
+        exercise_nested_scroll_repair(c, r, tab, root, content_viewport, scroll, edge)
 
 
 if __name__ == '__main__':

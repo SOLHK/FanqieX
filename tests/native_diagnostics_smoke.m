@@ -15,6 +15,7 @@ static NSMutableArray *SmokeEvents;
 static NSMutableDictionary *OriginalCalls;
 static NSUInteger SmokeChecks;
 static NSString *const PrivateSentinel = @"FANQIEX_PRIVATE_BODY_QUERY_TOKEN_SENTINEL";
+static NSString *const EnhancedDiagnosticsKey = @"FanqieX.EnhancedDiagnostics.1";
 static NSURL *DocumentsFixture;
 static NSURL *FixtureParent;
 static Method DocumentsMethod;
@@ -144,6 +145,13 @@ static NSArray *Events(NSString *name) {
         if ([record[@"event"] isEqualToString:name])
             [result addObject:record[@"data"]];
     return result;
+}
+
+static void UseArgumentDefaults(NSDictionary *domain) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults removeVolatileDomainForName:NSArgumentDomain];
+    if (domain)
+        [defaults setVolatileDomain:domain forName:NSArgumentDomain];
 }
 
 // Match the production bridge's C ABI while using actual libobjc lookup,
@@ -355,6 +363,10 @@ static void CheckEventsHaveCorrelation(void) {
 }
 
 static void RunSmoke(NSString *failureCase) {
+    NSDictionary *originalArguments = [[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain];
+    NSMutableDictionary *argumentDefaults = [NSMutableDictionary dictionaryWithDictionary:originalArguments ?: @{}];
+    argumentDefaults[EnhancedDiagnosticsKey] = @NO;
+    UseArgumentDefaults(argumentDefaults);
     Check(!strcmp(@encode(BOOL), "B"), "fixtures use arm64 BOOL encoding");
     Method baseLoad = class_getInstanceMethod([SmokePageBase class], @selector(viewDidLoad));
     IMP baseLoadIMP = method_getImplementation(baseLoad);
@@ -411,7 +423,14 @@ static void RunSmoke(NSString *failureCase) {
     model.chapterId = PrivateSentinel; model.paragraphId = PrivateSentinel;
     model.ideaOriginCount = 1; model.ideaCount = 1;
     FQCReaderParagraphEndView *bubble = [[FQCReaderParagraphEndView alloc] init];
-    bubble.model = model; [bubble updateIdeaLabelCount]; [bubble ideaCountTap];
+    bubble.model = model; [bubble updateIdeaLabelCount];
+    Check(bubble.model == model && model.ideaCount == 1 &&
+          Calls([FQCReaderParagraphEndView class], @selector(updateIdeaLabelCount)) == 1,
+          "default mode preserves host binding and count updates");
+    Check(Events(@"commentBubbleBind").count == 0 && Events(@"commentBubbleCountUI").count == 0 &&
+          Events(@"commentCountChanged").count == 0, "default mode skips high-frequency details");
+    [bubble ideaCountTap];
+    Check(Events(@"commentBubbleTap").count == 1, "default mode observes an explicit bubble tap");
     SSReaderParagraphCommentAdapter *adapter = [[SSReaderParagraphCommentAdapter alloc] init];
     [adapter showParagraphCommentVCWithOpenParams:@{@"private" : PrivateSentinel}];
     id token = [adapter.paragraphCommentPanelSessionToken retain];
@@ -424,6 +443,12 @@ static void RunSmoke(NSString *failureCase) {
     Check(opened.count == 1 && closed.count == 1, "panel open/close observed");
     Check([opened[0][@"correlationId"] isEqual:closed[0][@"correlationId"]], "panel correlation stable");
     [token release]; [adapter release]; [panel release];
+
+    argumentDefaults[EnhancedDiagnosticsKey] = @YES;
+    UseArgumentDefaults(argumentDefaults);
+    bubble.model = model; [bubble updateIdeaLabelCount];
+    Check(Events(@"commentBubbleBind").count == 1 && Events(@"commentBubbleCountUI").count == 1,
+          "enhanced mode observes detailed bubble events");
 
     __block NSUInteger completions = 0;
     for (NSString *path in @[@"$POST /novel/commentapi/idea/list/:item_id/v1/",
@@ -539,8 +564,15 @@ int main(int argc, const char **argv) {
             IsolateDocuments();
             if ([failureCase isEqualToString:@"load-diagnostics-normal"])
                 RunLoadDiagnostics();
-            else
-                RunSmoke(failureCase);
+            else {
+                NSDictionary *argumentDefaults = [[[NSUserDefaults standardUserDefaults]
+                    volatileDomainForName:NSArgumentDomain] copy];
+                @try { RunSmoke(failureCase); }
+                @finally {
+                    UseArgumentDefaults(argumentDefaults);
+                    [argumentDefaults release];
+                }
+            }
         }
         @catch (NSException *exception) { passed = NO; exceptionName = exception.name; }
         BOOL fixtureCleaned = CleanupDocuments();

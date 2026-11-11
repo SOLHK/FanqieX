@@ -438,10 +438,15 @@ class CPU:
             if not op & (1 << 16):
                 value = sx(value, source_width)
             self.wf(op & 31, math.ldexp(value, -fraction_bits), 64 if op & (1 << 22) else 32); return
-        if op & 0x7f3ffc00 == 0x1e380000:  # FCVTZS scalar FP -> signed general register
+        fixed = op & 0x7f3f0000 == 0x1e180000
+        if fixed or op & 0x7f3ffc00 == 0x1e380000:  # FCVTZS scalar FP -> signed general register
             width = 64 if op >> 31 else 32
             value = self.fp((op >> 5) & 31, 64 if op & (1 << 22) else 32)
-            # Audited scroll-bucket operands are finite and in signed range.
+            if fixed:
+                fraction_bits = 64 - ((op >> 10) & 63)
+                require(fraction_bits <= width, 'Valid fixed-point fractional width')
+                value = math.ldexp(value, fraction_bits)
+            # Audited bucket operands are finite and in signed range.
             # Exceptional FP conversions require FPSR/FPCR modeling, which this
             # interpreter deliberately does not pretend to implement.
             require(math.isfinite(value) and -(1 << (width-1)) <= value < (1 << (width-1)),

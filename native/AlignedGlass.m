@@ -376,6 +376,8 @@ static void TopChromeOpaqueKey(void) {}
 static void TopChromeArtworkAlphaKey(void) {}
 static void TopChromeGeometryKey(void) {}
 static void BookstoreViewportKey(void) {}
+static void BookstoreUnexpandedFrameKey(void) {}
+static void BookstoreUnexpandedScrollKey(void) {}
 static void TopChromeStockFrameKey(void) {}
 static void TopChromeFrameKey(void) {}
 static void TopChromeScrollKey(void) {}
@@ -641,6 +643,18 @@ static void BookstoreTopChrome(Obj controller) {
         V0(previous,"release");
     }
     TopChromeUnderlap(viewport,scroll,Convert(root,bounds,parent).y,installed);
+    Obj unexpandedScroll=objc_getAssociatedObject(controller,BookstoreUnexpandedScrollKey);
+    if (installed && !objc_getAssociatedObject(viewport,TopChromeFrameKey)) {
+        Rect frame=Frame(viewport);
+        Obj remembered=objc_getAssociatedObject(controller,BookstoreUnexpandedFrameKey);
+        if (!remembered || !SameRect(frame,UnboxRect(remembered)))
+            objc_setAssociatedObject(controller,BookstoreUnexpandedFrameKey,RectBox(frame),1);
+        if (unexpandedScroll!=scroll)
+            objc_setAssociatedObject(controller,BookstoreUnexpandedScrollKey,scroll,1);
+    } else if (unexpandedScroll) {
+        objc_setAssociatedObject(controller,BookstoreUnexpandedFrameKey,0,1);
+        objc_setAssociatedObject(controller,BookstoreUnexpandedScrollKey,0,1);
+    }
     TopChromeRefreshVisibility(scroll);
     TopChromeDiagnostics(controller,"bookstore",root,viewport,scroll,installed);
 }
@@ -671,12 +685,26 @@ static void BookstoreDoubleRowScroll(Obj self,Sel cmd,Obj scroll) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookStoreDoubleRowViewController","fqx187_originalStoreDoubleRowScroll:"))(self,cmd,scroll);
     Obj controller=Get(self,"delegate");
     if (!Kind(controller,"SSBookStoreNewViewController")) return;
+    Obj nested=Get(self,"doubleRowNestContainerScrollView");
     Obj viewport=objc_getAssociatedObject(controller,BookstoreViewportKey);
     Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
-    if ((!applied || !SameRect(Frame(viewport),UnboxRect(applied))) &&
-        BookstoreCurrentTab(controller,Get(controller,"containerView"))==self)
+    B repair;
+    if (applied) {
+        repair=!SameRect(Frame(viewport),UnboxRect(applied));
+    } else if (viewport) {
+        // A viewport that already fills the page has no applied frame. Reuse
+        // its last geometry only while the same nested scroll stays mounted.
+        Obj remembered=objc_getAssociatedObject(controller,BookstoreUnexpandedFrameKey);
+        repair=!remembered || !nested || nested!=objc_getAssociatedObject(controller,BookstoreUnexpandedScrollKey) ||
+            !SameRect(Frame(viewport),UnboxRect(remembered)) || !Enabled();
+    } else {
+        repair=Enabled();
+    }
+    if (repair && BookstoreCurrentTab(controller,Get(controller,"containerView"))==self) {
         BookstoreTopChrome(controller);
-    if (Get(self,"doubleRowNestContainerScrollView")==scroll) TopChromeRefreshVisibility(scroll);
+        nested=Get(self,"doubleRowNestContainerScrollView");
+    }
+    if (nested==scroll) TopChromeRefreshVisibility(scroll);
 }
 static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
@@ -717,8 +745,8 @@ static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Rect inset=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
     // At rest the empty strip behind the blur samples the header artwork, while
     // the first row uses the shelf canvas. Blend back to live glass as books enter.
-    double blend=Flag(Get(scroll,"mj_header"),"isRefreshing") ? 0 :
-        1-__builtin_fmin(__builtin_fabs(offset.y+inset.x)/16,1);
+    double distance=__builtin_fabs(offset.y+inset.x);
+    double blend=distance<16 && !Flag(Get(scroll,"mj_header"),"isRefreshing") ? 1-distance/16 : 0;
     Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
     if (blend>0) {
         Obj colors=Lookup("UIColor"),canvas=Get(Get(Get(tab,"viewModel"),"uiConfigParams"),"backgroundColor");

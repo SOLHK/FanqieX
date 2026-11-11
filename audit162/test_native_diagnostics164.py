@@ -12,7 +12,7 @@ from pathlib import Path
 import plistlib
 import struct
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from mock_foundation import Runtime as FoundationRuntime
 from test_feed_viewport import labels_for
 
@@ -227,6 +227,8 @@ def installation(data, labels, slide):
 
 def bubble_cycle(data, labels, count, slide):
     cpu, rt = make(data, labels, slide)
+    if not release_version(data).startswith('1.6.'):
+        rt.objects[rt.DEFAULTS].state['values']['FanqieX.EnhancedDiagnostics.1'] = 1
     chapter = rt.text_object(PRIVATE + '_chapter')
     paragraph = rt.text_object(PRIVATE + '_paragraph')
     model = rt.obj('FQCParagraphEntranceViewModel', 'entrance_model', ideaCount=count,
@@ -282,6 +284,57 @@ def bubble_cycle(data, labels, count, slide):
             'A recreated model with copied IDs remains linked to the same anonymous paragraph')
     return {'starting_count': count, 'slide': hex(slide), 'events': len(chain),
             'count_before': count, 'count_after': 0, 'privacy_sentinel_absent': True}
+
+
+def comment_detail_budget(data, labels, slide):
+    cpu, rt = make(data, labels, slide)
+    model = rt.obj('SSParagraphIdeaDataVal', 'paragraph model', ideaCount=0, bubbleData=0)
+    bubble = rt.view('FQCReaderParagraphEndView', 'paragraph bubble', parent=rt.ROOT)
+    payload = rt.obj('NSArray', 'bubble payload', items=[])
+    settings = rt.objects[rt.DEFAULTS].state['values']
+    counters = ('commentCountChanged', 'commentDataReplaced')
+    mutations = ('setIdeaCount:', 'setBubbleData:', 'updateIdeaLabelCount')
+
+    send(cpu, rt, bubble, 'setModel:', model)
+    for value in range(1, 13):
+        send(cpu, rt, model, mutations[0], value)
+        send(cpu, rt, model, mutations[1], payload)
+        send(cpu, rt, bubble, mutations[2])
+    send(cpu, rt, bubble, 'ideaCountTap')
+    rows = journal(cpu, rt, data)
+    require([r['event'] for r in rows if r['event'].startswith('comment')] == ['commentBubbleTap'],
+            'Ordinary reading skips per-paragraph snapshots while retaining explicit comment actions')
+
+    settings['FanqieX.EnhancedDiagnostics.1'] = 1
+    for value in range(13, 25):
+        send(cpu, rt, model, mutations[0], value)
+        send(cpu, rt, model, mutations[1], payload)
+        send(cpu, rt, bubble, mutations[2])
+    send(cpu, rt, bubble, 'ideaCountTap')
+    rows = journal(cpu, rt, data)
+    names = [r['event'] for r in rows]
+    require([n for n in names if n in counters] == list(counters) * 2 and
+            names.count('commentBubbleCountUI') == 4 and names.count('commentBubbleTap') == 2,
+            'A burst shares the setter/replacement quota and preserves independent UI and tap observations')
+
+    rt.now += 0.25
+    send(cpu, rt, model, mutations[0], 25)
+    send(cpu, rt, bubble, mutations[2])
+    rows = journal(cpu, rt, data)
+    require(sum(r['event'] == 'commentCountChanged' for r in rows) == 3 and
+            sum(r['event'] == 'commentBubbleCountUI' for r in rows) == 5,
+            'Both budgets reopen in the next sampling window')
+    settings['FanqieX.EnhancedDiagnostics.1'] = 0
+    send(cpu, rt, model, mutations[0], 26)
+    require(rt.objects[model].state['ideaCount'] == 26 and
+            rt.objects[model].state['bubbleData'] == payload and
+            [sum(n == selector for _, n, _, _ in rt.original_calls) for selector in mutations] == [26, 24, 25],
+            'Every sampled and skipped call forwards the original operation exactly once')
+    rows = journal(cpu, rt, data)
+    require(sum(r['event'] == 'commentCountChanged' for r in rows) == 3,
+            'Turning enhanced diagnostics off takes effect immediately')
+    return {'ordinary_detail_snapshots': 0, 'enhanced_model_snapshots_per_window': 4,
+            'enhanced_ui_snapshots_per_window': 4, 'host_calls_preserved': True}
 
 
 def network(data, labels, slide):
@@ -443,6 +496,8 @@ def main():
         cases.append({'installation': installation(data, labels, slide)})
         for count in (0, 1, 7):
             cases.append({'bubble_cycle': bubble_cycle(data, labels, count, slide)})
+        if not release_version(data).startswith('1.6.'):
+            cases.append({'comment_detail_budget': comment_detail_budget(data, labels, slide)})
         cases.append({'network': network(data, labels, slide)})
         cases.append({'ordered_requests':ordered_requests(data,labels,slide)})
         cases.append({'enhanced_actions':enhanced_actions(data,labels,slide)})
