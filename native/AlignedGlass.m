@@ -1430,6 +1430,10 @@ static B ReaderBottomItem(Obj view) {
     return type>=1 && type<=3;
 }
 static B ReaderBottomBackgroundEnabled(void);
+static B ReaderThemeIsolationEnabled(void);
+void FQHApplyReaderThemeIsolation(void);
+static void SaveReaderThemePreset(Obj manager,Obj config,Obj context);
+static B ShelfFilterVisible(void);
 static void ReaderBackdropAppliedKey(void) {}
 static void ReaderBackdropColorKey(void) {}
 static void ReaderBackdropAlphaKey(void) {}
@@ -1528,6 +1532,7 @@ static void ReaderMenuShow(Obj self,Sel cmd,B animated) {
 }
 static void ReaderBackdropTheme(Obj self,Sel cmd,Obj config,Obj context) {
     ((void(*)(Obj,Sel,Obj,Obj))Original("FQReaderUIManager","fqx180_originalReaderTheme:context:"))(self,cmd,config,context);
+    SaveReaderThemePreset(self,config,context);
     ReaderMenuBackdrop(self);
 }
 static void CatalogTapKey(void) {}
@@ -2106,6 +2111,36 @@ static void ShelfActionGlass(Obj button,B filter) {
     }
     ApplySurface(button,material,0);
 }
+static void ShelfFilterHiddenKey(void) {}
+static void ShelfFilterHeadersKey(void) {}
+static Obj ShelfFilterHeaders(void) {
+    Obj cls=Lookup("NSHashTable");
+    Obj headers=objc_getAssociatedObject(cls,ShelfFilterHeadersKey);
+    if (!headers) {
+        headers=O0(cls,"weakObjectsHashTable");
+        objc_setAssociatedObject(cls,ShelfFilterHeadersKey,headers,1);
+    }
+    return headers;
+}
+static void ShelfRememberFilterHeader(Obj header) {
+    if (objc_getAssociatedObject(header,ShelfFilterHeadersKey)) return;
+    V1(ShelfFilterHeaders(),"addObject:",header);
+    objc_setAssociatedObject(header,ShelfFilterHeadersKey,header,0);
+}
+static void RestoreShelfFilterButton(Obj button) {
+    if (!objc_getAssociatedObject(button,ShelfFilterHiddenKey)) return;
+    objc_setAssociatedObject(button,ShelfFilterHiddenKey,0,0);
+    if (Flag(button,"isHidden")) VB(button,"setHidden:",0);
+}
+static void ApplyShelfFilterButton(Obj button,B visible) {
+    if (!Kind(button,"UIButton")) return;
+    if (visible) RestoreShelfFilterButton(button);
+    else if (!Flag(button,"isHidden")) {
+        objc_setAssociatedObject(button,ShelfFilterHiddenKey,button,0);
+        VB(button,"setHidden:",1);
+    }
+    ShelfActionGlass(button,1);
+}
 B FQHShelfOwnsAction(Obj button,Obj header) {
     // The inherited recursive material pass reaches these same controls first.
     // The page hook alone owns their glass, including before Edit moves upward.
@@ -2120,7 +2155,8 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFilterHeaderView","fqx179_originalShelfFilterHeader"))(self,cmd);
     Obj button=Get(self,"filterButton");
     if (!Belongs(button,self)) return;
-    ShelfActionGlass(button,1);
+    ShelfRememberFilterHeader(self);
+    ApplyShelfFilterButton(button,ShelfFilterVisible());
     Obj material=FQHSurface(button);
     if (!material) return;
     Obj gradient=Get(self,"filterGradientView");
@@ -2133,6 +2169,15 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
         fade.x=capsule.x-fade.width;
         SetFrame(gradient,fade);
     }
+}
+static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj order) {
+    // The host can hide the action while it is showing selected genre tags.
+    // Let it own that decision before applying the user's display preference.
+    RestoreShelfFilterButton(Get(self,"filterButton"));
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfFilterHeaderView","fqx191_originalShelfFilterConfig:order:"))(
+        self,cmd,model,order);
+    Obj button=Get(self,"filterButton");
+    if (Belongs(button,self)) ApplyShelfFilterButton(button,ShelfFilterVisible());
 }
 static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
     Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
@@ -2478,7 +2523,8 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
 }
 
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
-       MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption };
+       MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption,
+       ShelfFilterOption, ReaderThemeIsolationOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -2491,6 +2537,8 @@ static Obj PagePreference(I option) {
         case MineBenefitsOption: key="FanqieX.MineBenefitsCard.1"; break;
         case ReaderBottomBackgroundOption: key="FanqieX.ReaderBottomBackground.1"; break;
         case FullscreenFillOption: key="FanqieX.FullscreenFill.1"; break;
+        case ShelfFilterOption: key="FanqieX.ShelfFilterButton.1"; break;
+        case ReaderThemeIsolationOption: key="FanqieX.ReaderThemeIsolation.1"; break;
         default: return 0;
     }
     return Text(key);
@@ -2506,6 +2554,8 @@ static Obj PageOptionLabel(I option) {
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
         case FullscreenFillOption: label="横屏播放铺满屏幕"; break;
+        case ShelfFilterOption: label="书架显示筛选按钮"; break;
+        case ReaderThemeIsolationOption: label="书外主题跟随系统"; break;
         default: label="阅读菜单显示上下栏背景"; break;
     }
     return Text(label);
@@ -2514,10 +2564,13 @@ static B DefaultEnabled(Obj key) {
     Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",key);
     return value ? BoolProp(value,"boolValue") : 1;
 }
-static B FullscreenFillEnabled(void) {
-    Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",PagePreference(FullscreenFillOption));
-    return BoolProp(value,"boolValue");
+static B PageOptionEnabled(I option) {
+    Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",PagePreference(option));
+    return value ? BoolProp(value,"boolValue") : option!=FullscreenFillOption && option!=ReaderThemeIsolationOption;
 }
+static B FullscreenFillEnabled(void) { return PageOptionEnabled(FullscreenFillOption); }
+static B ShelfFilterVisible(void) { return PageOptionEnabled(ShelfFilterOption); }
+static B ReaderThemeIsolationEnabled(void) { return PageOptionEnabled(ReaderThemeIsolationOption); }
 static B MineBenefitsEnabled(void) { return DefaultEnabled(PagePreference(MineBenefitsOption)); }
 static B ReaderBottomBackgroundEnabled(void) { return DefaultEnabled(PagePreference(ReaderBottomBackgroundOption)); }
 static void SetDefault(Obj key,B value) {
@@ -2860,8 +2913,26 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
         ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),edit);
     }
     if (!edit) ShelfActionGlass(Get(self,"editButton"),0);
-    ShelfActionGlass(Get(self,"filterButton"),1);
-    ShelfActionGlass(Get(self,"fullGenreFilterButton"),1);
+    ShelfRememberFilterHeader(self);
+    B visible=ShelfFilterVisible();
+    ApplyShelfFilterButton(Get(self,"filterButton"),visible);
+    ApplyShelfFilterButton(Get(self,"fullGenreFilterButton"),visible);
+}
+static void ShelfLegacyFilterShow(Obj self,Sel cmd,B show) {
+    RestoreShelfFilterButton(Get(self,"filterButton"));
+    ((void(*)(Obj,Sel,B))Original("SS525BookShelfSubHeaderView","fqx191_originalShelfFilterShow:"))(self,cmd,show);
+    ApplyShelfFilterButton(Get(self,"filterButton"),ShelfFilterVisible());
+}
+static void RefreshShelfFilter(void) {
+    Obj headers=O0(ShelfFilterHeaders(),"allObjects");
+    U count=TabCount(headers);
+    B visible=ShelfFilterVisible();
+    for (U i=0;i<count;++i) {
+        Obj header=At(headers,i);
+        ApplyShelfFilterButton(Get(header,"filterButton"),visible);
+        ApplyShelfFilterButton(Get(header,"fullGenreFilterButton"),visible);
+        V0(header,"setNeedsLayout");
+    }
 }
 static void RefreshShelfDuration(B enabled) {
     Obj cls=Lookup("SS525BookShelfSubHeaderView");
@@ -2884,6 +2955,8 @@ static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
         SetDefault(key,on);
         if (tag==ShelfDurationOption) RefreshShelfDuration(on);
         else if (tag==MineBenefitsOption) RefreshMineBenefits();
+        else if (tag==ShelfFilterOption) RefreshShelfFilter();
+        else if (tag==ReaderThemeIsolationOption && on) FQHApplyReaderThemeIsolation();
         return;
     }
     Obj owner=ActiveTabOwner();
@@ -2962,51 +3035,182 @@ static void InstallTabRecovery(Obj owner) {
     V0(gesture,"release");
     V0(observer,"release");
 }
-static void DramaBackdropStockKey(void) {}
-static void DramaTabBackdrop(Obj controller,B hostRepainted) {
-    Obj canvas=O0(controller,"contentView");
-    if (!canvas) return;
-    Obj stock=objc_getAssociatedObject(canvas,DramaBackdropStockKey);
-    if (stock && hostRepainted) {
-        objc_setAssociatedObject(canvas,DramaBackdropStockKey,0,1);
-        stock=0;
+static void DramaFeedFactoryKey(void) {}
+
+static Obj DramaFeedFactory(Obj self,Sel cmd,I feedType,Obj params) {
+    Obj thread=O0(Lookup("NSThread"),"currentThread");
+    Obj previous=objc_getAssociatedObject(thread,DramaFeedFactoryKey);
+    // Feed type 4 is the outer player. Bottom item type 7 is the drama tab.
+    B active=feedType==4 && Enabled() && Kind(params,"SSShortVideoOpenParams") &&
+        ((int(*)(Obj,Sel))Message)(params,sel_registerName("bottomTabBarItemType"))==7;
+    objc_setAssociatedObject(thread,DramaFeedFactoryKey,active ? thread : 0,0);
+    Obj result=((Obj(*)(Obj,Sel,I,Obj))Original("SSShortVideoCreatePlayerViewControllerComponent",
+        "fqx191_originalDramaFeedFactory:params:"))(self,cmd,feedType,params);
+    objc_setAssociatedObject(thread,DramaFeedFactoryKey,previous,0);
+    return result;
+}
+
+static void DramaShiftOffset(Obj ui,const char *getter,const char *setter,double delta) {
+    Obj offset=O0(ui,getter);
+    if (offset) V1(ui,setter,Number(Double(offset)-delta));
+}
+
+static void DramaFeedCanvas(Obj config,Sel cmd,Obj color) {
+    Obj thread=O0(Lookup("NSThread"),"currentThread");
+    if (objc_getAssociatedObject(thread,DramaFeedFactoryKey) &&
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4 &&
+        SameColor(color,O1(Lookup("UIColor"),"btd_colorWithHexString:",Text("#1D1D1D")))) {
+        // This factory computes the stock portrait height from these same screen
+        // bounds minus the tab dock. Restore that area to the paging viewport.
+        Rect portrait=((Rect(*)(Obj,Sel))Message)(O0(Lookup("UIScreen"),"mainScreen"),sel_registerName("fqv_portraitBounds"));
+        Size stock=((Size(*)(Obj,Sel))Message)(config,sel_registerName("portraitVideoSize"));
+        Obj ui=O0(config,"uiConfig");
+        double delta=portrait.height-stock.height;
+        if (ui && stock.width>0 && stock.height>0 && __builtin_fabs(stock.width-portrait.width)<=1 && delta>=40 && delta<=120) {
+            ((void(*)(Obj,Sel,Size))Message)(config,sel_registerName("setPortraitVideoSize:"),(Size){stock.width,portrait.height});
+            double bottom=((double(*)(Obj,Sel))Message)(ui,sel_registerName("safeBottom"));
+            ((void(*)(Obj,Sel,double))Message)(ui,sel_registerName("setSafeBottom:"),bottom+delta);
+            DramaShiftOffset(ui,"infoViewOffsetY","setInfoViewOffsetY:",delta);
+            DramaShiftOffset(ui,"bottomGradientOffsetY","setBottomGradientOffsetY:",delta);
+            DramaShiftOffset(ui,"progressContainerViewOffsetY","setProgressContainerViewOffsetY:",delta);
+            // The list paints this color in the dock strip and uses the same
+            // color to tint its template bottom corner decorations.
+            color=O0(Lookup("UIColor"),"clearColor");
+        }
     }
-    B active=Enabled() && Flag(controller,"isCurrentAtVideoTab");
-    if (!stock && !active) return;
-    Obj current=O0(canvas,"backgroundColor");
-    Obj black=O0(Lookup("UIColor"),"blackColor");
-    B alreadyBlack=SameColor(current,black);
-    if (active) {
-        if (alreadyBlack) return;
-        // The short-video viewport ends above the transparent SSTabBar. Its
-        // backing canvas is exposed below it, so match the player's black.
-        Obj saved=current ? current : O0(Lookup("NSNull"),"null");
-        objc_setAssociatedObject(canvas,DramaBackdropStockKey,saved,1);
-        V1(canvas,"setBackgroundColor:",black);
-    } else {
-        if (alreadyBlack) V1(canvas,"setBackgroundColor:",stock==O0(Lookup("NSNull"),"null") ? 0 : stock);
-        objc_setAssociatedObject(canvas,DramaBackdropStockKey,0,1);
-    }
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListConfig","fqx191_originalDramaFeedCanvas:"))(config,cmd,color);
 }
-static void DramaTabBackgroundChanged(Obj self,Sel cmd,Obj model) {
-    ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedViewController","fqx190_originalDramaBackground:"))(self,cmd,model);
-    DramaTabBackdrop(self,1);
-}
-static void DramaTabWillLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedViewController","fqx190_originalDramaWillLayout"))(self,cmd);
-    DramaTabBackdrop(self,0);
-}
+
 static void DramaBackdropInstall(void) {
-    const char *controller="SSVideoSeriesFeedViewController";
-    if (!FQHGlassAvailable() || !Signature(controller,"contentView","@16@0:8") ||
-        !Signature(controller,"isCurrentAtVideoTab","B16@0:8")) return;
-    Hook(controller,"updateContentBackgroundColorWithTabModel:","fqx190_originalDramaBackground:","v24@0:8@16",(Imp)DramaTabBackgroundChanged);
-    Hook(controller,"viewWillLayoutSubviews","fqx190_originalDramaWillLayout","v16@0:8",(Imp)DramaTabWillLayout);
+    const char *config="FQVShortVideoListConfig";
+    const char *ui="FQVShortVideoListUIConfig";
+    if (!FQHGlassAvailable() || !Responds(Lookup("UIColor"),"btd_colorWithHexString:") ||
+        !Signature("UIScreen","fqv_portraitBounds","{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") ||
+        !Signature("SSShortVideoOpenParams","bottomTabBarItemType","i16@0:8") ||
+        !Signature(config,"feedType","q16@0:8") || !Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") ||
+        !Signature(config,"setPortraitVideoSize:","v32@0:8{CGSize=dd}16") || !Signature(config,"uiConfig","@16@0:8") ||
+        !Signature(ui,"safeBottom","d16@0:8") || !Signature(ui,"setSafeBottom:","v24@0:8d16") ||
+        !Signature(ui,"infoViewOffsetY","@16@0:8") || !Signature(ui,"setInfoViewOffsetY:","v24@0:8@16") ||
+        !Signature(ui,"bottomGradientOffsetY","@16@0:8") || !Signature(ui,"setBottomGradientOffsetY:","v24@0:8@16") ||
+        !Signature(ui,"progressContainerViewOffsetY","@16@0:8") || !Signature(ui,"setProgressContainerViewOffsetY:","v24@0:8@16")) return;
+    Hook(config,"setListVCBackgroundColor:","fqx191_originalDramaFeedCanvas:","v24@0:8@16",(Imp)DramaFeedCanvas);
+    Hook("SSShortVideoCreatePlayerViewControllerComponent","getShortVideoListVCWithFeedType:params:",
+        "fqx191_originalDramaFeedFactory:params:","@32@0:8q16@24",(Imp)DramaFeedFactory);
+}
+
+static void ReaderThemeLaunchKey(void) {}
+static void ReaderThemePendingKey(void) {}
+
+static Obj ReaderThemePresetKey(void) { return Text("FanqieX.ReaderThemePreset.1"); }
+static B ReaderThemeKeysMatch(Obj left,Obj right) {
+    return left && (left==right || ((B(*)(Obj,Sel,Obj))Message)(left,sel_registerName("isEqual:"),right));
+}
+
+static void TrackReaderThemePreset(Obj manager,Obj config) {
+    Obj key=Get(config,"themeKey");
+    if (!Kind(key,"NSString") || !((U(*)(Obj,Sel))Message)(key,sel_registerName("length"))) key=0;
+    objc_setAssociatedObject(manager,ReaderThemePendingKey,key,1);
+}
+
+static void SaveReaderThemePreset(Obj manager,Obj config,Obj context) {
+    Obj pending=objc_getAssociatedObject(manager,ReaderThemePendingKey);
+    if (!pending || !ReaderThemeIsolationEnabled() || !Kind(context,"FQReaderThemeConfigChangeContext") ||
+        !Flag(context,"needSaveConfig") || !ReaderThemeKeysMatch(pending,Get(config,"themeKey"))) return;
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    ((void(*)(Obj,Sel,Obj,Obj))Message)(defaults,sel_registerName("setObject:forKey:"),pending,ReaderThemePresetKey());
+    objc_setAssociatedObject(manager,ReaderThemePendingKey,0,1);
+}
+
+static void ReaderThemePaletteChoice(Obj self,Sel cmd,Obj view,Obj config) {
+    if (ReaderThemeIsolationEnabled()) TrackReaderThemePreset(self,config);
+    ((void(*)(Obj,Sel,Obj,Obj))Original("FQReaderUIManager","fqx191_originalReaderPalette:theme:"))(self,cmd,view,config);
+}
+
+static void ReaderThemeWillAppear(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("FQReaderManager","fqx191_originalReaderWillAppear:"))(self,cmd,model);
+    if (!ReaderThemeIsolationEnabled()) return;
+    Obj key=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",ReaderThemePresetKey());
+    if (!Kind(key,"NSString")) return;
+    Obj current=Get(Get(model,"config"),"themeConfig");
+    if (ReaderThemeKeysMatch(key,Get(current,"themeKey"))) return;
+    Obj uiConfig=Get(self,"UIConfig"),ui=Get(self,"UIMgr");
+    if (!Kind(uiConfig,"FQReaderSaaSUIConfig") || !Kind(ui,"FQReaderUIManager")) return;
+    Obj preset=O1(uiConfig,"themeConfigForKey:",key);
+    if (ReaderThemeKeysMatch(key,Get(preset,"themeKey"))) V1(ui,"onConfigThemeChange:",preset);
+}
+
+void FQHApplyReaderThemeIsolation(void) {
+    const char *adapterName="SSUIColorAdaptedManager";
+    Obj adapterClass=Lookup(adapterName);
+    Obj serviceCenter=Lookup("HTSServiceCenter");
+    if (!ReaderThemeIsolationEnabled() ||
+        !class_getInstanceMethod(Lookup("FQReaderThemeManager"),sel_registerName("fqx191_originalReaderTheme:success:failure:")) ||
+        !Signature("HTSServiceCenter","getService:","@24@0:8#16") ||
+        !Signature(adapterName,"isCurrentDarkModeFollowSystem","B16@0:8") ||
+        !Signature(adapterName,"setCurrentDarkModeFollowSystemWithEnable:","v20@0:8B16")) return;
+    Obj adapter=O1(Get(serviceCenter,"defaultCenter"),"getService:",adapterClass);
+    if (Kind(adapter,adapterName) && !Flag(adapter,"isCurrentDarkModeFollowSystem"))
+        VB(adapter,"setCurrentDarkModeFollowSystemWithEnable:",1);
+}
+
+static void ReaderLocalTheme(Obj self,Sel cmd,Obj config,Obj success,Obj failure) {
+    const char *legacy="tryChangethemeConfig:successCallback:failedCallback:";
+    if (ReaderThemeIsolationEnabled()) {
+        // Use the reader's own commit path, including custom-background confirmation,
+        // saving and callbacks. The cross-theme path asks the app to disable follow-system.
+        U style=((U(*)(Obj,Sel))Message)(config,sel_registerName("themeStyle"));
+        VB(self,"setTargetIsDark:",style==1);
+        Obj ui=Get(Get(self,"readerMgr"),"UIMgr");
+        if (ui) TrackReaderThemePreset(ui,config);
+        ((void(*)(Obj,Sel,Obj,Obj,Obj))Message)(self,sel_registerName("tryChangeSameThemeConfig:successCallback:failedCallback:"),config,success,failure);
+        return;
+    }
+    const char *alias=cmd==sel_registerName(legacy) ? "fqx191_originalReaderTheme:success:failure:" : "fqx191_originalReaderDiffTheme:success:failure:";
+    ((void(*)(Obj,Sel,Obj,Obj,Obj))Original("FQReaderThemeManager",alias))(self,cmd,config,success,failure);
+}
+
+static void ReaderThemeToApp(Obj self,Sel cmd,Obj setting,Obj book) {
+    // This host bridge only synchronizes the app's dark mode to the reader's background.
+    if (!ReaderThemeIsolationEnabled())
+        ((void(*)(Obj,Sel,Obj,Obj))Original("SSUIColorAdaptedManager","fqx191_originalReaderSetting:book:"))(self,cmd,setting,book);
+}
+
+static void ReaderThemeFromApp(Obj self,Sel cmd,B dark) {
+    if (ReaderThemeIsolationEnabled()) return;
+    const char *alias=cmd==sel_registerName("onDarkModeChange:") ? "fqx191_originalReaderDarkMode:" : "fqx191_originalReaderDarkModeSwitch:";
+    ((void(*)(Obj,Sel,B))Original("FQReaderThemeManager",alias))(self,cmd,dark);
+}
+
+static void ReaderThemeIsolationInstall(void) {
+    const char *manager="FQReaderThemeManager";
+    const char *local="tryChangeSameThemeConfig:successCallback:failedCallback:";
+    const char *legacy="tryChangethemeConfig:successCallback:failedCallback:";
+    const char *diff="tryChangeDiffThemeConfig:successCallback:failedCallback:";
+    const char *encoding="v40@0:8@16@?24@?32";
+    const char *adapter="SSUIColorAdaptedManager";
+    if (!Signature(manager,local,encoding) || !Signature(manager,legacy,encoding) || !Signature(manager,diff,encoding) ||
+        !Signature(manager,"setTargetIsDark:","v20@0:8B16") ||
+        !Signature("BDReaderThemeConfig","themeStyle","Q16@0:8") ||
+        !Signature(adapter,"readerClientDidChangeSetting:bookId:","v32@0:8@16@24")) return;
+    Hook("FQReaderThemeManager","tryChangethemeConfig:successCallback:failedCallback:","fqx191_originalReaderTheme:success:failure:",encoding,(Imp)ReaderLocalTheme);
+    Hook("FQReaderThemeManager","tryChangeDiffThemeConfig:successCallback:failedCallback:","fqx191_originalReaderDiffTheme:success:failure:",encoding,(Imp)ReaderLocalTheme);
+    Hook("SSUIColorAdaptedManager","readerClientDidChangeSetting:bookId:","fqx191_originalReaderSetting:book:","v32@0:8@16@24",(Imp)ReaderThemeToApp);
+    Hook("FQReaderThemeManager","onDarkModeChange:","fqx191_originalReaderDarkMode:","v20@0:8B16",(Imp)ReaderThemeFromApp);
+    Hook("FQReaderThemeManager","onDarkModeSwitchChange:","fqx191_originalReaderDarkModeSwitch:","v20@0:8B16",(Imp)ReaderThemeFromApp);
+    if (!Signature("FQReaderThemeConfigChangeContext","needSaveConfig","B16@0:8") ||
+        !Signature("FQReaderSaaSUIConfig","themeConfigForKey:","@24@0:8@16") ||
+        !Signature("FQReaderUIManager","onConfigThemeChange:","v24@0:8@16")) return;
+    Hook("FQReaderUIManager","onSelectSettingView:themeConfig:","fqx191_originalReaderPalette:theme:","v32@0:8@16@24",(Imp)ReaderThemePaletteChoice);
+    Hook("FQReaderManager","onBDReaderVCWillAppearWithReadModel:","fqx191_originalReaderWillAppear:","v24@0:8@16",(Imp)ReaderThemeWillAppear);
 }
 
 static void TabOwnerAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSTabBarController","fqx176_originalTabAppear:"))(self,cmd,animated);
     InstallTabRecovery(self);
+    if (!objc_getAssociatedObject(self,ReaderThemeLaunchKey)) {
+        objc_setAssociatedObject(self,ReaderThemeLaunchKey,self,0);
+        FQHApplyReaderThemeIsolation();
+    }
 }
 static Obj ToggleRow(Obj container,double y,Obj title,I tag,B on,Obj observer) {
     double width=Bounds(container).width;
@@ -3047,15 +3251,15 @@ void FQHInstallOptionsToggles(Obj controller) {
     if (!container) { V0(observer,"release"); return; }
     double width=Bounds(table).width;
     // UITableView can still be unsized before its navigation controller presents it.
-    Rect frame={0,0,width>0 ? width : 320,432};
+    double noteY=2+42*(ReaderThemeIsolationOption-StoreOption+1);
+    Rect frame={0,0,width>0 ? width : 320,noteY+48};
     ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
     V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
-    for (I tag=StoreOption;tag<=FullscreenFillOption;++tag) {
-        ToggleRow(container,8+42*(tag-StoreOption),PageOptionLabel(tag),tag,
-            tag==FullscreenFillOption ? FullscreenFillEnabled() : DefaultEnabled(PagePreference(tag)),observer);
+    for (I tag=StoreOption;tag<=ReaderThemeIsolationOption;++tag) {
+        ToggleRow(container,8+42*(tag-StoreOption),PageOptionLabel(tag),tag,PageOptionEnabled(tag),observer);
     }
     Obj note=O0(O0(Lookup("UILabel"),"alloc"),"init");
-    SetFrame(note,(Rect){16,384,frame.width-32,40});
+    SetFrame(note,(Rect){16,noteY,frame.width-32,40});
     V1(note,"setText:",Text("底栏至少保留一项。\n关闭“我的”后，长按底栏打开 FanqieX 设置。"));
     Q1(note,"setNumberOfLines:",2);
     V1(note,"setFont:",((Obj(*)(Obj,Sel,double))Message)(Lookup("UIFont"),sel_registerName("systemFontOfSize:"),12));
@@ -3208,6 +3412,7 @@ static void ShelfCompactInstall(void) {
 }
 
 void FQHPageInstall(void) {
+    ReaderThemeIsolationInstall();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
@@ -3239,6 +3444,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilter541Cell","updateAppearance:","fqx175_originalShelfFilterAppearance:","v20@0:8B16",(Imp)PageShelfFilterAppearance);
     Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
     Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
+    Hook("SSBookShelfFilterHeaderView","configFullGenreSelectedModel:categoryOrder:","fqx191_originalShelfFilterConfig:order:","v32@0:8@16@24",(Imp)ShelfFilterHeaderConfigure);
     Hook("SSBookShelfFilterMixRowCollectionView","collectionView:layout:insetForSectionAtIndex:","fqx185_originalInlineFilterInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfInlineFilterInsets);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
     Hook("SSCommunityPublishButton","layoutSubviews","fqx188_originalPublishLayout","v16@0:8",(Imp)PublishLayout);
@@ -3257,6 +3463,7 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621ViewController","objectsForListAdapter:","fqx176_originalMineListObjects:","@24@0:8@16",(Imp)MineListObjects);
     Hook("SS525BookShelfSubHeaderView","setShowReadTimeView:","fqx177_originalDurationVisible:","v20@0:8B16",(Imp)ShelfDurationVisible);
     Hook("SS525BookShelfSubHeaderView","layoutSubviews","fqx177_originalDurationLayout","v16@0:8",(Imp)ShelfDurationLayout);
+    Hook("SS525BookShelfSubHeaderView","updateFilterShow:","fqx191_originalShelfFilterShow:","v20@0:8B16",(Imp)ShelfLegacyFilterShow);
     Hook("SS525BookShelfSubHeaderView","layoutEditButton","fqx185_originalStockEditLayout","v16@0:8",(Imp)ShelfStockEditLayout);
     Hook("SSBookShelfSubViewController","saveOpeningData:indexPath:","fqx185_originalSaveOpeningData:index:","v32@0:8@16@24",(Imp)ShelfSaveOpeningData);
     Hook("SSBookShelfSubViewController","fetchBookCoverTransitionInfo:","fqx185_originalCoverTransition:","@24@0:8Q16",(Imp)ShelfCoverTransitionInfo);

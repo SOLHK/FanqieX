@@ -58,9 +58,11 @@ HOOKS = [
     ("SSBookShelfFilter541Cell", "updateAppearance:"),
     ("SSBookShelfFilter541Cell", "updateCellBgColor:"),
     ("SSBookShelfFilterHeaderView", "layoutSubviews"),
+    ("SSBookShelfFilterHeaderView", "configFullGenreSelectedModel:categoryOrder:"),
     ("SSBookShelfFilterMixRowCollectionView", "collectionView:layout:insetForSectionAtIndex:"),
     ("SS525BookShelfSubHeaderView", "setShowReadTimeView:"),
     ("SS525BookShelfSubHeaderView", "layoutSubviews"),
+    ("SS525BookShelfSubHeaderView", "updateFilterShow:"),
     ("SS525BookShelfSubHeaderView", "layoutEditButton"),
     ("SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:"),
     ("SSBookShelfSubViewController", "collectionView:layout:insetForSectionAtIndex:"),
@@ -111,6 +113,8 @@ class Runtime(TopChromeRuntime, GlassRuntime):
     SHELF_SAVE_OPENING = 0x330c3170
     SHELF_COVER_TRANSITION = 0x330c3180
     SHELF_FILTER_HEADER_LAYOUT = 0x330c3190
+    SHELF_FILTER_HEADER_CONFIG = 0x330c31a0
+    SHELF_FILTER_LEGACY_VISIBILITY = 0x330c31b0
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -269,6 +273,10 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                   self.SHELF_INLINE_FILTER_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
         self._add(self.classes["SSBookShelfFilterHeaderView"], "layoutSubviews",
                   self.SHELF_FILTER_HEADER_LAYOUT, "v16@0:8")
+        self._add(self.classes["SSBookShelfFilterHeaderView"], "configFullGenreSelectedModel:categoryOrder:",
+                  self.SHELF_FILTER_HEADER_CONFIG, "v32@0:8@16@24")
+        self._add(self.classes["SS525BookShelfSubHeaderView"], "updateFilterShow:",
+                  self.SHELF_FILTER_LEGACY_VISIBILITY, "v20@0:8B16")
         self._add(self.classes["SSBookShelfSubViewController"], "saveOpeningData:indexPath:",
                   self.SHELF_SAVE_OPENING, "v32@0:8@16@24")
         self._add(self.classes["SSBookShelfSubViewController"], "fetchBookCoverTransitionInfo:",
@@ -422,6 +430,11 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             if "filterGradientView" in state:
                 self.objects[state["filterGradientView"]].state["frame"] = state["host_filter_fade_frame"]
             return self.finish(cpu)
+        if pc in (self.SHELF_FILTER_HEADER_CONFIG, self.SHELF_FILTER_LEGACY_VISIBILITY):
+            state = self.objects[receiver].state
+            hidden = bool(cpu.x[2]) if pc == self.SHELF_FILTER_HEADER_CONFIG else not cpu.x[2]
+            self.objects[state["filterButton"]].state["hidden"] = hidden
+            return self.finish(cpu)
         if pc == self.SHELF_SAVE_OPENING:
             state = self.objects[receiver].state
             state["capture"] = (cpu.x[2], cpu.x[3], self.objects[state["collectionView"]].state["layout_passes"])
@@ -550,7 +563,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                     return self.finish(cpu)
                 if name == "sectionTypeAtIndex:" and "section_types" in state:
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
-                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "filterGradientView", "lineView",
+                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "fullGenreFilterButton", "filterGradientView", "lineView",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
                             "visibleCells", "viewModel", "isFiltering", "showsFilterExposure", "optionsView",
                             "openingModel", "data", "bookId", "collectDatas", "fetchCoverView",
@@ -939,6 +952,7 @@ def exercise(data, labels):
                 "selection refits the latest host fonts without changing their weight")
 
     header = runtime.view("SSBookShelfFilterHeaderView", "filter header", (0, 100, 390, 44), runtime.ROOT)
+    filter_header = header
     filter_action = [(header, runtime.sel("filterBtnClick"), 64)]
     filter_button = runtime.view("UIButton", "open all shelf filters", (324, 2, 58, 30), header,
                                  control_targets=filter_action[:])
@@ -1852,18 +1866,68 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 432.0),
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 512.0),
             "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
                      for item in switches]
-    require(switch_labels == [f"底栏显示：{title}" for title in titles] +
-            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景", "横屏播放铺满屏幕"] and
-            all(runtime.objects[item].state["isOn"] for item in switches[:-1]) and
-            not runtime.objects[switches[-1]].state["isOn"],
-            "settings expose the existing options and default to the host video layout")
-    exercise_fullscreen_fill(cpu, runtime, switches[-1], prefs)
+    require(switch_labels == [f"底栏显示：{title}" for title in titles] + [
+                "书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景",
+                "横屏播放铺满屏幕", "书架显示筛选按钮", "书外主题跟随系统"],
+            "all page preferences have a settings switch")
+    require([bool(runtime.objects[item].state["isOn"]) for item in switches] == [True] * 8 + [False, True, False],
+            "filter stays visible and the two override modes default off")
+    exercise_fullscreen_fill(cpu, runtime, switches[8], prefs)
+    for index, key, enabled in ((9, "FanqieX.ShelfFilterButton.1", False),
+                                (10, "FanqieX.ReaderThemeIsolation.1", True)):
+        switch = switches[index]
+        state = runtime.objects[switch].state
+        observer, action, _ = state["control_targets"][0]
+        state["isOn"] = enabled
+        send(cpu, runtime, observer, runtime.selector_names[action], switch)
+        require(prefs[key] is enabled, "new switches persist the exact preference")
+        prefs.pop(key)
+
+    pinned_header = runtime.view("SSBookShelfFilterHeaderView", "pinned filter header", (0, 60, 390, 44), runtime.ROOT)
+    pinned_button = runtime.view("UIButton", "pinned filter action", (324, 2, 58, 30), pinned_header)
+    runtime.objects[pinned_header].state["filterButton"] = pinned_button
+    send(cpu, runtime, pinned_header, "layoutSubviews")
+    legacy_header = runtime.view("SS525BookShelfSubHeaderView", "alternate shelf header", (0, 0, 390, 64),
+                                 runtime.ROOT, showReadTimeView=True)
+    coin_button = runtime.view("UIButton", "reading duration", (20, 4, 150, 32), legacy_header)
+    legacy_button = runtime.view("UIButton", "legacy filter action", (314, 2, 58, 30), legacy_header)
+    genre_button = runtime.view("UIButton", "full genre filter action", (314, 2, 58, 30), legacy_header)
+    runtime.objects[legacy_header].state.update(coinButton=coin_button, filterButton=legacy_button,
+                                                fullGenreFilterButton=genre_button)
+    send(cpu, runtime, legacy_header, "layoutSubviews")
+    filter_switch = switches[9]
+    state = runtime.objects[filter_switch].state
+    observer, action, _ = state["control_targets"][0]
+
+    def hidden(view):
+        return runtime.objects[view].state["hidden"]
+
+    actions = (filter_button, pinned_button, legacy_button, genre_button)
+    state["isOn"] = False
+    send(cpu, runtime, observer, runtime.selector_names[action], filter_switch)
+    require(all(hidden(button) and not surface_for(button) for button in actions) and
+            all(not hidden(cell) for cell, _ in filters),
+            "disabling hides only the mounted filter actions in both shelf layouts")
+    select_model = runtime.obj("NSObject", "host active filter model")
+    send(cpu, runtime, filter_header, "configFullGenreSelectedModel:categoryOrder:", select_model, 0)
+    send(cpu, runtime, legacy_header, "updateFilterShow:", 0)
+    send(cpu, runtime, pinned_header, "layoutSubviews")
+    require(all(hidden(button) for button in actions), "host reconfiguration respects the off setting")
+    state["isOn"] = True
+    send(cpu, runtime, observer, runtime.selector_names[action], filter_switch)
+    require(hidden(filter_button) and hidden(legacy_button) and not hidden(pinned_button) and not hidden(genre_button),
+            "enabling restores only actions the host currently wants visible")
+    send(cpu, runtime, filter_header, "configFullGenreSelectedModel:categoryOrder:", 0, 0)
+    send(cpu, runtime, legacy_header, "updateFilterShow:", 1)
+    require(all(not hidden(button) for button in actions) and
+            runtime.objects[filter_button].state["control_targets"] == filter_action,
+            "native show requests and the original filter tap survive the toggle")
 
     # Duration uses the host visibility setter and keeps the latest requested state.
     duration_switch = switches[5]
@@ -2160,6 +2224,7 @@ def exercise(data, labels):
         "bottom_entries_default_on": True,
         "bottom_entries_restored": True,
         "shelf_duration_toggle": True,
+        "shelf_filter_visibility_toggle": True,
         "landscape_fill_toggle_and_engine_restore": True,
         "shelf_edit_top_placement_and_compaction": True,
         "shelf_edit_single_material_owner": True,

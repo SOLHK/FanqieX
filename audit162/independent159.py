@@ -7,7 +7,7 @@ them against the pinned user-supplied 1.5.8 image.  A passing report establishes
 the checks named in it; it does not establish iOS loading or UIKit behaviour.
 
 The accepted format is intentionally narrow: this project's ARM64 dylib, its
-reviewed patch sites, four segments, and 16/32/48/64 KiB executable extension.
+reviewed patch sites, four segments, and version-specific executable extension limits.
 """
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
     capacities = (0x4000, 0x8000, 0xC000, 0x10000, 0x20000)
     if version in ("1.7.4", "1.74", "1.75"):
-        capacities += (0x24000, 0x28000, 0x2c000, 0x30000)
+        capacities += (0x24000, 0x28000, 0x2c000, 0x30000, 0x34000)
     require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
             "Unsupported reviewed extension capacity")
     require((patch["maxprot"], patch["initprot"], patch["nsects"], patch["flags"]) == (5, 5, 0, 0),
