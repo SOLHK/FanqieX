@@ -682,30 +682,6 @@ static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
         Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
 }
-static void BookshelfFloatingChrome(Obj tab,double overlap) {
-    Obj holder=Get(tab,"fullGenreFloatingContainerView");
-    if (!Kind(holder,"UIView")) return;
-    Obj cell=Get(tab,"functionCell"),foreground=Get(cell,"layoutContainerView");
-    B visible=Get(holder,"superview")==Get(tab,"view") && !Flag(holder,"isHidden");
-    B installed=TopChrome(holder,foreground,Bounds(holder),visible && overlap>0);
-    Rect current=Frame(holder),stock=current;
-    Obj applied=objc_getAssociatedObject(holder,TopChromeFrameKey);
-    if (applied && SameRect(current,UnboxRect(applied)))
-        stock=UnboxRect(objc_getAssociatedObject(holder,TopChromeStockFrameKey));
-    Rect target=stock;
-    if (installed) target.y+=overlap; // UIKit pins the floating row to the moved list's top.
-    if (!SameRect(current,target)) SetFrame(holder,target);
-    if (installed && (!applied || !SameRect(target,UnboxRect(applied)))) {
-        objc_setAssociatedObject(holder,TopChromeStockFrameKey,RectBox(stock),1);
-        objc_setAssociatedObject(holder,TopChromeFrameKey,RectBox(target),1);
-    } else if (!installed && applied) {
-        objc_setAssociatedObject(holder,TopChromeStockFrameKey,0,1);
-        objc_setAssociatedObject(holder,TopChromeFrameKey,0,1);
-    }
-    TopChromeFill(holder,installed);
-    TopChromeFill(foreground,installed);
-    TopChromeFill(Get(cell,"filterView"),installed);
-}
 static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Obj owner=Get(tab,"delegate");
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
@@ -745,10 +721,12 @@ static void BookshelfTopChrome(Obj controller) {
     TopChromeFill(Get(tabs,"collectionView"),installed);
     TopChromeFill(Get(controller,"headerBackgroundView"),installed);
     TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed);
+    B owned=objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0;
     TopChromeUnderlap(viewport,scroll,bounds.y,installed);
+    if (owned!=(objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0) &&
+        Responds(tab,"fqx186_originalShelfFloating:"))
+        V1(tab,"updateFullGenreFloatingViewWithScrollView:",scroll);
     if (installed) BookshelfRestingTint(tab,scroll);
-    if (Kind(tab,"SSBookShelfSubViewController"))
-        BookshelfFloatingChrome(tab,TopChromeOverlap(scroll));
     TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
 static void BookshelfTopLayout(Obj self,Sel cmd) {
@@ -769,8 +747,10 @@ static void BookshelfUpdateInsets(Obj self,Sel cmd) {
     RestoreBookshelfTopInset(self);
 }
 static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
+    // The host treats an absent scroll view as a reset to its inline row.
+    if (scroll && objc_getAssociatedObject(scroll,TopChromeInsetKey) &&
+        scroll==Get(self,"collectionView") && Enabled()) scroll=0;
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx186_originalShelfFloating:"))(self,cmd,scroll);
-    if (scroll==Get(self,"collectionView")) BookshelfFloatingChrome(self,TopChromeOverlap(scroll));
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }

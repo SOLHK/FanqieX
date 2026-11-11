@@ -14,6 +14,8 @@ from top_chrome_runtime import TopChromeRuntime
 
 SHELF = 'SSBookShelf525ViewController'
 SHELF_LIST = 'SSBookShelfSubViewController'
+SHELF_FUNCTION_CELL = 'SSBookShelfFunctionCell'
+SHELF_SUBHEADER = 'SS525BookShelfSubHeaderView'
 REFRESH_HEADER = 'SSNewRefreshHeader'
 FLAT_STORE = 'SSBookStoreTabViewController'
 SHELF_SCROLL = 'scrollViewDidScroll:'
@@ -39,6 +41,8 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.dispatch_methods = True
         for cls in (SHELF, SHELF_LIST, DOUBLE_ROW):
             self._class(cls, 'UIViewController')
+        for cls in (SHELF_FUNCTION_CELL, SHELF_SUBHEADER):
+            self._class(cls, 'UIView')
         self._class('UICollectionView', 'UIScrollView')
         self._class('SSNestedContainerScrollView', 'UIScrollView')
         self._class('SSBookStoreNestedTabView', 'UIView')
@@ -99,13 +103,26 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             nested['frame'] = tab['stockNestedFrame']
             nested['bounds'] = (0, 0, *nested['frame'][2:])
             return self.finish(cpu)
-        if pc in (self.original_update_inset, self.original_float_layout):
+        if pc == self.original_update_inset:
             tab = self.objects[cpu.x[0]].state
-            if pc == self.original_update_inset:
-                self.objects[tab['collectionView']].state['contentInset'] = tab['stockInset']
-            else:
-                holder = self.objects[tab['fullGenreFloatingContainerView']].state
-                holder['frame'] = (0, 0, 440, 36)
+            self.objects[tab['collectionView']].state['contentInset'] = tab['stockInset']
+            return self.finish(cpu)
+        if pc == self.original_float_layout:
+            tab = self.objects[cpu.x[0]].state
+            scroll = tab['collectionView']
+            holder = tab['fullGenreFloatingContainerView']
+            cell = self.objects[tab['functionCell']].state
+            list_state = self.objects[scroll].state
+            # Stock reparents the same layout container after the inline row
+            # crosses the leading edge, and takes its inline cleanup on nil.
+            should_pin = cpu.x[2] == scroll and (
+                list_state['contentOffset'][1] + list_state['contentInset'][0] > cell['frame'][1])
+            parent = holder if should_pin else cell['contentView']
+            row = cell['layoutContainerView']
+            if self.objects[row].state['superview'] != parent:
+                self.reparent(row, parent)
+            self.objects[holder].state.update(frame=(0, 0, 440, 36), hidden=not should_pin)
+            self.event('shelf_floating_layout', cpu.x[0], scroll=cpu.x[2])
             return self.finish(cpu)
         if pc-self.slide == 0xa5d4 and cpu.x[0] in self.objects:
             state = self.objects[cpu.x[0]].state
@@ -340,8 +357,13 @@ def exercise(data, labels, kind):
     if shelf:
         holder = r.view('UIView', 'native pinned filter holder', (0,0,440,36), page,
                         backgroundColor=stock_fill, clipsToBounds=True)
-        filter_view = r.view('UIView', 'native filter controls', (0,0,440,36), holder)
-        cell = r.obj('UIViewController', 'shelf function row', layoutContainerView=filter_view)
+        cell = r.view(SHELF_FUNCTION_CELL, 'shelf function row', (0, 20, 440, 36), scroll)
+        inline_parent = r.view('UIView', 'inline function-cell content', (0, 0, 440, 36), cell)
+        row = r.view('UIView', 'already pinned native filter controls', (0,0,440,36), holder)
+        subheader = r.view(SHELF_SUBHEADER, 'shelf subheader', (0, 0, 440, 36), row)
+        filter_button = r.view('UIButton', 'native filter button', (365, 4, 62, 28), subheader,
+                               userInteractionEnabled=True, enabled=True)
+        r.objects[cell].state.update(contentView=inline_parent, layoutContainerView=row, headerView=subheader)
         config = r.obj('NSObject', 'native shelf theme', backgroundColor=r.color('host shelf light canvas'))
         model = r.obj('NSObject', 'shelf view model', uiConfigParams=config)
         r.objects[tab].state.update(fullGenreFloatingContainerView=holder, functionCell=cell,
@@ -362,6 +384,9 @@ def exercise(data, labels, kind):
         call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
     else:
         call(c,r,owner,layout)
+    if shelf:
+        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
+                not surfaces(r, holder), 'The first owned shelf layout returns any pinned controls to their inline cell')
     top_surfaces = surfaces(r, root)
     require(len(top_surfaces) == 1, 'Exactly one frame-bounded effect is active with the native scroll edge available')
     blur = top_surfaces[0]
@@ -405,9 +430,17 @@ def exercise(data, labels, kind):
         exercise_nested_refresh_geometry(c, r, tab, scroll, refresh_animation)
     if shelf:
         exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config)
-        call(c,r,tab,FLOATING_LAYOUT,scroll)
-        require(len(surfaces(r,holder)) == 1 and r.objects[holder].state['frame']==(0,boundary,440,36),
-                'Pinned filter gets its own blur and keeps its screen position under the main toolbar')
+        rest = -applied_inset[0]
+        scroll_state.update(contentOffset=(0, rest), bounds=(0, rest, *scroll_state['bounds'][2:]))
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        resting_filter = drawn_rect(r, filter_button)
+        require(resting_filter[1] > boundary and resting_filter[3] == 28 and
+                r.objects[filter_button].state['enabled'] and r.objects[filter_button].state['userInteractionEnabled'],
+                'The native filter stays visible and interactive inline at rest')
+        scroll_state.update(contentOffset=(0, rest + 12), bounds=(0, rest + 12, *scroll_state['bounds'][2:]))
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(drawn_rect(r, filter_button)[1] == resting_filter[1] - 12,
+                'The filter moves by the same amount as the book list')
         # A native write at a deeply scrolled offset must not move the anchor.
         scroll_state['contentOffset']=(0,64)
         scroll_state['bounds']=(0,64,*scroll_state['bounds'][2:])
@@ -416,6 +449,10 @@ def exercise(data, labels, kind):
         call(c,r,tab,UPDATE_INSET)
         require(scroll_state['contentOffset']==applied_offset and scroll_state['contentInset']==applied_inset,
                 'Host mid-scroll inset rewrites do not move the visible cover')
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
+                not surfaces(r, holder) and drawn_rect(r, filter_button)[3] == 0,
+                'The filter leaves the viewport on deep scroll without showing a fixed material')
     for _ in range(3):
         call(c,r,owner,layout)
     require(surfaces(r,root) == [blur] and scroll_state['contentOffset']==applied_offset,
@@ -443,9 +480,12 @@ def exercise(data, labels, kind):
     require(r.objects[tab_strip].state['backgroundColor']==stock_fill and r.objects[artwork].state['alpha']==1,
             'Disabling glass restores the exact tab strip fill and gradient artwork')
     if shelf:
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(not surfaces(r, holder) and not r.objects[holder].state['hidden'] and
+                r.objects[holder].state['frame'] == (0, 0, 440, 36) and
+                r.objects[row].state['superview'] == holder,
+                'With glass disabled, the host again pins the same native controls')
         call(c, r, tab, SHELF_SCROLL, scroll)
-        require(not surfaces(r,holder) and r.objects[holder].state['frame']==(0,0,440,36),
-                'Disabling glass restores the original pinned-filter holder')
     require(not r.objects[refresh_animation].state['hidden'],
             'Removing the expanded viewport restores native refresh-artwork visibility')
 
