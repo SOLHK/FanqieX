@@ -3108,6 +3108,8 @@ static void InstallTabRecovery(Obj owner) {
 }
 static void DramaDockLogKey(void) {}
 static void DramaDockInsetKey(void) {}
+static void DramaDockControlFrameKey(void) {}
+static void DramaDockAppliedControlFrameKey(void) {}
 
 static B DramaDockStockChannel(double value) {
     return value>=0 && value<=1 && (int)(value*256+0.5)==29;
@@ -3170,17 +3172,40 @@ static Size DramaDockPortraitSize(Obj self,Sel cmd) {
     return result;
 }
 
-static double DramaDockSafeBottom(Obj self,Sel cmd) {
-    double stock=((double(*)(Obj,Sel))Original("FQVShortVideoListUIConfig","fqx194_originalSafeBottom"))(self,cmd);
-    return stock+(Enabled() ? Double(objc_getAssociatedObject(self,DramaDockInsetKey)) : 0);
-}
-
-static Obj DramaDockControlOffset(Obj self,Sel cmd) {
-    const char *alias=cmd==sel_registerName("infoViewOffsetY") ? "fqx194_originalInfoOffset" :
-        cmd==sel_registerName("bottomGradientOffsetY") ? "fqx194_originalGradientOffset" : "fqx194_originalProgressOffset";
-    Obj stock=((Obj(*)(Obj,Sel))Original("FQVShortVideoListUIConfig",alias))(self,cmd);
-    double inset=Enabled() ? Double(objc_getAssociatedObject(self,DramaDockInsetKey)) : 0;
-    return stock && inset>0 ? Number(Double(stock)-inset) : stock;
+static void DramaDockControlFrame(Obj self,Sel cmd,Rect requested) {
+    Obj previous=objc_getAssociatedObject(self,DramaDockAppliedControlFrameKey);
+    Obj baseline=objc_getAssociatedObject(self,DramaDockControlFrameKey);
+    if (previous && SameRect(requested,UnboxRect(previous)))
+        requested=UnboxRect(baseline);
+    Rect target=requested;
+    Obj config=Get(Get(self,"listVCContext"),"config");
+    if (!config) config=Get(self,"listVCConfig");
+    if (Enabled() && Kind(config,"FQVShortVideoListConfig") && requested.height>requested.width) {
+        // Reserve the space added to the owning feed's viewport. A control's
+        // separate config can already contain the resolved full-height size.
+        Size viewport=((Size(*)(Obj,Sel))Message)(config,sel_registerName("portraitVideoSize"));
+        double inset=Double(objc_getAssociatedObject(O0(config,"uiConfig"),DramaDockInsetKey));
+        if (inset>0 && __builtin_fabs(requested.height-viewport.height)<1)
+            target.height-=inset;
+    }
+    B adjusted=!SameRect(requested,target);
+    B changed=(adjusted && (!previous || !SameRect(target,UnboxRect(previous)))) || (previous && !adjusted);
+    if (adjusted) {
+        if (!baseline || !SameRect(requested,UnboxRect(baseline)))
+            objc_setAssociatedObject(self,DramaDockControlFrameKey,RectBox(requested),1);
+        if (changed) objc_setAssociatedObject(self,DramaDockAppliedControlFrameKey,RectBox(target),1);
+    } else if (previous) {
+        objc_setAssociatedObject(self,DramaDockControlFrameKey,0,1);
+        objc_setAssociatedObject(self,DramaDockAppliedControlFrameKey,0,1);
+    }
+    ((void(*)(Obj,Sel,Rect))Original("FQVShortVideoVPlayerControlView","fqx195_originalControlFrame:"))(self,cmd,target);
+    if (changed) {
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"requestedFrame",RectArray(requested));
+        Put(record,"controlsFrame",RectArray(target));
+        Put(record,"reservedBottom",Number(requested.height-target.height));
+        FQDRecord("dramaDockControls",record);
+    }
 }
 
 static void DramaBackdropInstall(void) {
@@ -3191,18 +3216,16 @@ static void DramaBackdropInstall(void) {
         Hook(config,"listVCBackgroundColor",alias,"@16@0:8",(Imp)DramaDockBackground);
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"installed",BoolBox(class_getInstanceMethod(owner,sel_registerName(alias))!=0));
-    Put(record,"revision",Text("drama-dock-r6"));
+    Put(record,"revision",Text("drama-dock-r7"));
     FQDRecord("dramaDockBackdropInstall",record);
-    const char *ui="FQVShortVideoListUIConfig";
+    const char *control="FQVShortVideoVPlayerControlView";
     if (!FQHGlassAvailable() || !Signature(config,"feedType","q16@0:8") ||
         !Signature(config,"uiConfig","@16@0:8") || !Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") ||
-        !Signature(ui,"safeBottom","d16@0:8") || !Signature(ui,"infoViewOffsetY","@16@0:8") ||
-        !Signature(ui,"bottomGradientOffsetY","@16@0:8") || !Signature(ui,"progressContainerViewOffsetY","@16@0:8")) return;
+        !Signature(control,"listVCConfig","@16@0:8") ||
+        !Signature(control,"setFrame:","v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16")) return;
     Hook(config,"portraitVideoSize","fqx194_originalPortraitSize","{CGSize=dd}16@0:8",(Imp)DramaDockPortraitSize);
-    Hook(ui,"safeBottom","fqx194_originalSafeBottom","d16@0:8",(Imp)DramaDockSafeBottom);
-    Hook(ui,"infoViewOffsetY","fqx194_originalInfoOffset","@16@0:8",(Imp)DramaDockControlOffset);
-    Hook(ui,"bottomGradientOffsetY","fqx194_originalGradientOffset","@16@0:8",(Imp)DramaDockControlOffset);
-    Hook(ui,"progressContainerViewOffsetY","fqx194_originalProgressOffset","@16@0:8",(Imp)DramaDockControlOffset);
+    Hook(control,"setFrame:","fqx195_originalControlFrame:",
+         "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16",(Imp)DramaDockControlFrame);
 }
 
 static void ReaderThemeLaunchKey(void) {}

@@ -2605,7 +2605,10 @@ def exercise_drama_dock_backdrop(data, labels):
         def __init__(self, binary):
             super().__init__(binary)
             self._class(config_class, "NSObject")
+            self._class("FQVShortVideoListContext", "NSObject")
             self._class("FQVShortVideoListUIConfig", "NSObject")
+            self._class("FQVShortVideoVPlayerControlView", "UIView")
+            self._class("FQVShortVideoVPlayerSeriesControlView", "FQVShortVideoVPlayerControlView")
             self._class("UIScreen", "NSObject")
             self.screen = self.obj("UIScreen", "phone screen", bounds=(0., 0., 440., 956.))
             for cls, selector, abi in (
@@ -2613,6 +2616,10 @@ def exercise_drama_dock_backdrop(data, labels):
                 (config_class, color_selector, "@16@0:8"),
                 (config_class, "portraitVideoSize", "{CGSize=dd}16@0:8"),
                 (config_class, "uiConfig", "@16@0:8"),
+                ("FQVShortVideoVPlayerControlView", "listVCConfig", "@16@0:8"),
+                ("FQVShortVideoVPlayerControlView", "listVCContext", "@16@0:8"),
+                ("FQVShortVideoListContext", "config", "@16@0:8"),
+                ("UIView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16"),
                 ("FQVShortVideoListUIConfig", "safeBottom", "d16@0:8"),
                 ("FQVShortVideoListUIConfig", "infoViewOffsetY", "@16@0:8"),
                 ("FQVShortVideoListUIConfig", "bottomGradientOffsetY", "@16@0:8"),
@@ -2637,6 +2644,11 @@ def exercise_drama_dock_backdrop(data, labels):
             if name == "mainScreen":
                 return self.finish(cpu, self.screen)
             state = self.objects[receiver].state
+            if name == "setFrame:":
+                frame = tuple(cpu.fp(i) for i in range(4))
+                state["frame"] = frame
+                state["bounds"] = (*state["bounds"][:2], *frame[2:])
+                return self.finish(cpu)
             if name in ("portraitVideoSize", "bounds"):
                 return self.finish(cpu, fp=state[name])
             if name == "safeBottom":
@@ -2652,6 +2664,8 @@ def exercise_drama_dock_backdrop(data, labels):
     runtime.labels = labels
     call(cpu, labels, "LFQH_FQHPageInstall")
     black = runtime.color("blackColor")
+    require(runtime.methods[runtime.get_method(runtime.classes["UIView"], runtime.sel("setFrame:"))]["imp"]
+            == runtime.COLOR_METHOD, "the portrait overlay hook leaves the shared UIView setter intact")
     channel = 29/255
     rgb = runtime.obj("UIColor", "opaque stock gray", **{rgb_selector: (channel,)*3 + (1.,)})
     gray = runtime.obj("UIColor", "monochrome stock gray", **{white_selector: (channel, 1.)})
@@ -2687,6 +2701,15 @@ def exercise_drama_dock_backdrop(data, labels):
                          **{key: runtime.obj("NSNumber", key, value=value) for key, value in offsets.items()})
         config = runtime.obj(config_class, "outer feed geometry", feedType=4, uiConfig=ui,
                              portraitVideoSize=(requested_width, height-dock_height))
+        controls_ui = runtime.obj("FQVShortVideoListUIConfig", "copied control settings", safeBottom=6.,
+                                  **{key: runtime.obj("NSNumber", key, value=value) for key, value in offsets.items()})
+        controls_config = runtime.obj(config_class, "copied list config", feedType=4, uiConfig=controls_ui,
+                                      portraitVideoSize=(requested_width, height))
+        context = runtime.obj("FQVShortVideoListContext", "owning feed", config=config)
+        full_frame = (0., 0., width, height)
+        controls = runtime.view("FQVShortVideoVPlayerSeriesControlView", "portrait overlay", full_frame,
+                                runtime.ROOT, listVCConfig=controls_config, listVCContext=context)
+        controls_state = runtime.objects[controls].state
         prefs["FanqieAdBlock.GlassDisabled.1"] = False
         for _ in range(3):
             send(cpu, runtime, config, "portraitVideoSize")
@@ -2697,17 +2720,37 @@ def exercise_drama_dock_backdrop(data, labels):
             resolved_width = cpu.fp(0) if cpu.fp(0) > 0 else width
             require((resolved_width, cpu.fp(1)) == (width, height),
                     "the resolved collection viewport includes the area behind the glass")
-            send(cpu, runtime, ui, "safeBottom")
-            require(cpu.fp(0) == 6.+dock_height, "native control inset reserves the floating dock")
+            send(cpu, runtime, controls, "setFrame:", fp=full_frame)
+            require(controls_state["bounds"][3] == height-dock_height,
+                    "the entire portrait overlay reserves the dock above the full-height video")
+            send(cpu, runtime, controls, "setFrame:", fp=controls_state["frame"])
+            require(controls_state["bounds"][3] == height-dock_height,
+                    "reusing an already adjusted overlay frame does not accumulate an inset")
+            send(cpu, runtime, controls_ui, "safeBottom")
+            require(cpu.fp(0) == 6., "the native overlay supplies its own safe bottom once")
             for key, offset in offsets.items():
-                adjusted = send(cpu, runtime, ui, key)["result"]
-                require(height+runtime.objects[adjusted].state["value"] == height-dock_height+offset,
+                adjusted = send(cpu, runtime, controls_ui, key)["result"]
+                require(controls_state["bounds"][3]+runtime.objects[adjusted].state["value"] == height-dock_height+offset,
                         "watch row and progress anchors keep their original screen positions")
+            dock_top = height-dock_height+6.
+            require(controls_state["frame"][1]+controls_state["bounds"][3] <= dock_top-6.,
+                    "the watch row and right-side actions end above the glass navigation")
+        landscape = (0., 0., height, width)
+        send(cpu, runtime, controls, "setFrame:", fp=landscape)
+        require(controls_state["frame"] == landscape, "native landscape controls use their full requested frame")
+        send(cpu, runtime, controls, "setFrame:", fp=full_frame)
         prefs["FanqieAdBlock.GlassDisabled.1"] = True
+        send(cpu, runtime, controls, "setFrame:", fp=controls_state["frame"])
+        require(controls_state["frame"] == full_frame, "disabling glass restores the saved native overlay frame")
         send(cpu, runtime, config, "portraitVideoSize")
         require(cpu.fp(1) == height-dock_height, "disabling glass restores native paging geometry")
         send(cpu, runtime, ui, "safeBottom")
         require(cpu.fp(0) == 6., "disabling glass restores native control insets")
+        prefs["FanqieAdBlock.GlassDisabled.1"] = False
+        runtime.objects[config].state["feedType"] = 5
+        runtime.objects[controls_config].state["feedType"] = 5
+        send(cpu, runtime, controls, "setFrame:", fp=full_frame)
+        require(controls_state["frame"] == full_frame, "a reused overlay in another feed keeps its native frame")
     return True
 
 
