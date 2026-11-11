@@ -517,9 +517,17 @@ static void TopChromeInsets(Obj scroll,double overlap) {
     double oldStock=Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
     double oldApplied=Double(applied);
     B hostWroteTop=applied && inset.x!=oldApplied;
+    if (hostWroteTop && inset.x!=oldStock) {
+        // MJRefresh changes the nested bookstore's already padded inset and
+        // removes its own delta on rebound. Only an unpadded reset needs rebasing.
+        Obj owner=Get(scroll,"delegate");
+        if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll)
+            hostWroteTop=0;
+    }
     double stock=applied && !hostWroteTop ? oldStock : inset.x;
     double target=stock+overlap;
-    if (overlap>0 && (!applied || inset.x!=Double(applied)))
+    double liveTop=applied && !hostWroteTop ? inset.x+(target-oldApplied) : target;
+    if (overlap>0 && (!applied || hostWroteTop))
         objc_setAssociatedObject(scroll,TopChromeStockInsetKey,Number(stock),1);
     if (overlap>0 && (!applied || target!=oldApplied))
         objc_setAssociatedObject(scroll,TopChromeInsetKey,Number(target),1);
@@ -527,15 +535,15 @@ static void TopChromeInsets(Obj scroll,double overlap) {
         objc_setAssociatedObject(scroll,TopChromeStockInsetKey,0,1);
         objc_setAssociatedObject(scroll,TopChromeInsetKey,0,1);
     }
-    if (target!=inset.x || (hostWroteTop && overlap==0)) {
+    if (liveTop!=inset.x || (hostWroteTop && overlap==0)) {
         Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
         Rect adjusted=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
         // A host relayout may have rewritten its stock inset while a book is
         // mid-scroll. Reapply the padding without shifting that visible book.
-        if (!hostWroteTop || offset.y<=-adjusted.x+0.5) offset.y-=target-inset.x;
+        if (!hostWroteTop || offset.y<=-adjusted.x+0.5) offset.y-=liveTop-inset.x;
         else offset.y-=overlap-(oldApplied-oldStock);
-        if (target!=inset.x) {
-            inset.x=target;
+        if (liveTop!=inset.x) {
+            inset.x=liveTop;
             ((void(*)(Obj,Sel,Rect))Message)(scroll,sel_registerName("setContentInset:"),inset);
         }
         Point actual=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
@@ -1955,6 +1963,7 @@ static void ProfileScanKey(void) {}
 static void ProfileNightKey(void) {}
 static void ProfileMenuKey(void) {}
 static void ProfileAnchorKey(void) {}
+static void ProfileHiddenEdgeKey(void) {}
 static void PublishOwnerKey(void) {}
 static void PublishBackingKey(void) {}
 static void PublishColorKey(void) {}
@@ -2043,6 +2052,10 @@ static void BookstorePublishButton(Obj self,Sel cmd,Obj button) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookStoreNestedTabView","fqx188_originalStorePublishButton:"))(self,cmd,button);
     PublishMark(button);
 }
+static void BookstoreProduceEntrance(Obj self,Sel cmd,Obj view) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookStoreNestedTabView","fqx189_originalStoreProduceEntrance:"))(self,cmd,view);
+    PublishMark(view);
+}
 static void BookstoreComponentPublishButton(Obj self,Sel cmd,Obj button) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookStoreCommunityPublishEntranceComponent","fqx188_originalStoreComponentPublish:"))(self,cmd,button);
     PublishMark(button);
@@ -2103,8 +2116,21 @@ static void ProfileCollectionLayout(Obj self,Sel cmd) {
     if (!Kind(root,"UIView") || !Kind(bar,"SSMyUserBar") || !Kind(list,"FQFeedListCollectionView")) return;
     Rect material=Bounds(root), barFrame=Frame(bar);
     material.height=barFrame.y+barFrame.height-material.y;
-    B enabled=Enabled() && Get(list,"superview")==root && !Flag(bar,"isHidden");
-    B installed=TopChromePage(root,bar,list,material,enabled);
+    B enabled=Enabled() && Kind(list,"UIScrollView") && Get(list,"superview")==root && !Flag(bar,"isHidden");
+    // The soft scroll edge extends into the account row. Keep the backdrop
+    // within the bar while the expanded list still scrolls behind it.
+    TopChromeNativeEdge(bar,0,0);
+    B installed=TopChrome(root,bar,material,enabled);
+    Obj edge=installed ? Get(list,"topEdgeEffect") : (Obj)0;
+    Obj hiddenEdge=objc_getAssociatedObject(self,ProfileHiddenEdgeKey);
+    if (hiddenEdge && hiddenEdge!=edge) {
+        VB(hiddenEdge,"setHidden:",0);
+        objc_setAssociatedObject(self,ProfileHiddenEdgeKey,0,1);
+    }
+    if (Responds(edge,"setHidden:") && !Flag(edge,"isHidden")) {
+        objc_setAssociatedObject(self,ProfileHiddenEdgeKey,edge,1);
+        VB(edge,"setHidden:",1);
+    }
     TopChromeFill(bar,installed);
     TopChromeUnderlap(list,list,material.y,installed);
     TopChromeDiagnostics(self,"profile",root,list,list,installed);
@@ -2908,6 +2934,7 @@ void FQHPageInstall(void) {
     Hook("SSDoubleRowUgcProduceEntranceView","layoutSubviews","fqx188_originalPublishLayout","v16@0:8",(Imp)PublishLayout);
     Hook("SSDoubleRowUgcProduceEntranceView","traitCollectionDidChange:","fqx188_originalPublishTheme:","v24@0:8@16",(Imp)PublishTheme);
     Hook("SSBookStoreNestedTabView","setPublishButtonView:","fqx188_originalStorePublishButton:","v24@0:8@16",(Imp)BookstorePublishButton);
+    Hook("SSBookStoreNestedTabView","setProduceEntranceView:","fqx189_originalStoreProduceEntrance:","v24@0:8@16",(Imp)BookstoreProduceEntrance);
     Hook("SSBookStoreCommunityPublishEntranceComponent","setPublishButton:","fqx188_originalStoreComponentPublish:","v24@0:8@16",(Imp)BookstoreComponentPublishButton);
     Hook("SSMyUser621ViewController","publishButton","fqx188_originalMinePublishButton","@16@0:8",(Imp)ProfilePublishButton);
     Hook("SSMyUser621BaseViewController","updateCollectionLayout","fqx186_originalProfileCollectionLayout","v16@0:8",(Imp)ProfileCollectionLayout);

@@ -74,7 +74,18 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             self.event('shelf_scroll', cpu.x[0])
             return self.finish(cpu)
         if pc == self.original_refresh_state:
-            self.objects[cpu.x[0]].state['refresh_state'] = cpu.x[2]
+            header = self.objects[cpu.x[0]].state
+            previous = header['refresh_state']
+            header['refresh_state'] = cpu.x[2]
+            scroll = header.get('nativeRefreshScroll')
+            if scroll and previous != 3 and cpu.x[2] == 3:
+                state = self.objects[scroll].state
+                top, *inset = state['contentInset']
+                # The host holds the pull by adding the header's height to
+                # its current inset.
+                top += header['frame'][3]
+                state.update(contentInset=(top, *inset), contentOffset=(0, -top),
+                             bounds=(0, -top, *state['bounds'][2:]))
             return self.finish(cpu)
         if pc == self.original_refresh_visibility:
             header = self.objects[cpu.x[0]].state
@@ -172,6 +183,46 @@ def exercise_refresh(c, r, tab, scroll, nested_view=None):
             'Refresh visibility leaves the native header position and trigger insets intact')
     scroll_state.update(contentOffset=original_offset, bounds=(0,original_offset[1],*scroll_state['bounds'][2:]))
     return replacement
+
+
+def exercise_nested_refresh_geometry(c, r, tab, scroll, animation):
+    state = r.objects[scroll].state
+    original_offset = state['contentOffset']
+    idle_inset = state['contentInset']
+    idle_offset = -idle_inset[0]
+    header = state['mj_header']
+    r.objects[header].state['nativeRefreshScroll'] = scroll
+    ranking = r.view('UIView', 'first bookstore ranking card', (12, 4, 416, 248), scroll)
+    state.update(contentOffset=(0, idle_offset), bounds=(0, idle_offset, *state['bounds'][2:]))
+    ranking_top = drawn_rect(r, ranking)[1]
+    require(ranking_top == 148 and idle_offset == -188,
+            'The fixture puts the first result just below the device-matched toolbar')
+    for _ in range(2):
+        state.update(contentOffset=(0, idle_offset - 60), bounds=(0, idle_offset - 60, *state['bounds'][2:]),
+                     isDragging=True)
+        call(c, r, tab, DOUBLE_ROW_SCROLL, scroll)
+        require(state['contentOffset'] == (0, idle_offset - 60), 'Layout leaves a live pull in place')
+        state['isDragging'] = False
+        call(c, r, header, 'setState:', 3)
+        call(c, r, tab, DOUBLE_ROW_LAYOUT)
+        require(state['contentInset'] == (242, *idle_inset[1:]) and state['contentOffset'] == (0, -242),
+                'Bookstore layout during refresh does not add the toolbar height to the native hold inset')
+        require(not r.objects[animation].state['hidden'], 'The native refreshing artwork remains visible')
+        call(c, r, header, 'setState:', 1)
+        call(c, r, tab, DOUBLE_ROW_LAYOUT)
+        require(state['contentInset'] == (242, *idle_inset[1:]) and state['contentOffset'] == (0, -242),
+                'An idle layout waits for the native refresh hold to finish restoring its inset')
+        # MJRefresh adds insetTDelta to the current top in its completion
+        # animation. Applying this to an inflated inset leaves a visible gap.
+        top, *inset = state['contentInset']
+        top -= r.objects[header].state['frame'][3]
+        state.update(contentInset=(top, *inset), contentOffset=(0, -top), bounds=(0, -top, *state['bounds'][2:]))
+        call(c, r, tab, DOUBLE_ROW_LAYOUT)
+        require(state['contentInset'] == idle_inset and state['contentOffset'] == (0, idle_offset) and
+                drawn_rect(r, ranking)[1] == ranking_top,
+                'Bookstore returns the ranking card to its original screen position after refresh')
+        require(r.objects[animation].state['hidden'], 'The artwork hides at idle without leaving a gap')
+    state.update(contentOffset=original_offset, bounds=(*original_offset, *state['bounds'][2:]))
 
 
 def exercise(data, labels, kind):
@@ -281,6 +332,8 @@ def exercise(data, labels, kind):
                 geometry[-1]['scrollClipRect'][1] == 0,
                 'Device diagnostics identify the real clip owner and show that its visible range reaches the top')
     refresh_animation = exercise_refresh(c, r, tab, scroll, content_viewport if nested else None)
+    if nested:
+        exercise_nested_refresh_geometry(c, r, tab, scroll, refresh_animation)
     if shelf:
         call(c,r,tab,FLOATING_LAYOUT,scroll)
         require(surface(r,holder) and r.objects[holder].state['frame']==(0,boundary,440,36),

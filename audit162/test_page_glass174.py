@@ -15,6 +15,7 @@ from pathlib import Path
 from arm64 import CPU, require
 from test_controls171 import Runtime as GlassRuntime, call
 from test_control_glass166 import send
+from test_header173 import drawn_rect
 from test_home_glass165 import LABELS
 from test_feed_viewport import labels_for
 from top_chrome_runtime import TopChromeRuntime
@@ -67,6 +68,7 @@ HOOKS = [
     ("SSDoubleRowUgcProduceEntranceView", "layoutSubviews"),
     ("SSDoubleRowUgcProduceEntranceView", "traitCollectionDidChange:"),
     ("SSBookStoreNestedTabView", "setPublishButtonView:"),
+    ("SSBookStoreNestedTabView", "setProduceEntranceView:"),
     ("SSBookStoreCommunityPublishEntranceComponent", "setPublishButton:"),
     ("SSMyUser621ViewController", "publishButton"),
     ("SSMyUser621BaseViewController", "updateCollectionLayout"),
@@ -296,6 +298,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             self._add(self.classes[cls], "layoutSubviews", self.LAYOUT_IMP, "v16@0:8")
             self._add(self.classes[cls], "traitCollectionDidChange:", self.LAYOUT_IMP, "v24@0:8@16")
         self._add(self.classes["SSBookStoreNestedTabView"], "setPublishButtonView:", self.PUBLISH_SET, "v24@0:8@16")
+        self._add(self.classes["SSBookStoreNestedTabView"], "setProduceEntranceView:", self.PUBLISH_SET, "v24@0:8@16")
         self._add(self.classes["SSBookStoreCommunityPublishEntranceComponent"], "setPublishButton:",
                   self.PUBLISH_SET, "v24@0:8@16")
         self._add(self.classes["SSMyUser621ViewController"], "publishButton", self.PUBLISH_GET, "@16@0:8")
@@ -311,7 +314,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         receiver, selector = cpu.x[:2]
         name = self.selector_names.get(selector)
         if pc == self.PUBLISH_SET:
-            key = "publishButtonView" if name == "setPublishButtonView:" else "publishButton"
+            key = name[3].lower() + name[4:-1]
             self.objects[receiver].state[key] = cpu.x[2]
             return self.finish(cpu)
         if pc == self.PUBLISH_GET:
@@ -1416,8 +1419,10 @@ def exercise(data, labels):
 
     profile_root = runtime.view("UIView", "Mine root", (0, 0, 440, 956), runtime.ROOT)
     profile_feed = runtime.view("FQFeedListCollectionView", "Mine outer feed", (0, 106, 440, 850), profile_root,
-                                contentInset=(0, 0, 57, 0), contentOffset=(0, 230), clipsToBounds=True)
+                                contentInset=(0, 0, 57, 0), contentOffset=(0, 0), clipsToBounds=True)
     feed_state = runtime.objects[profile_feed].state
+    account = runtime.view("UIView", "Mine first account row", (0, 2, 440, 64), profile_feed)
+    account_frame = drawn_rect(runtime, account)
     nested_feed = runtime.view("FQFeedListCollectionView", "Mine nested recommendations",
                                (0, 200, 440, 750), profile_feed, contentInset=(0, 0, 0, 0))
     nested_frame = runtime.objects[nested_feed].state["frame"]
@@ -1434,36 +1439,38 @@ def exercise(data, labels):
     blur_state = runtime.objects[profile_blur].state
     require(blur_state["frame"] == (0, 0, 440, 106) and not blur_state["userInteractionEnabled"] and
             runtime.objects[blur_state["effect"]].state["style"] == 6,
-            "Mine bar uses adaptive ultra-thin blur when the native scroll edge is unavailable")
-    require(feed_state["frame"] == (0, 0, 440, 956) and feed_state["contentOffset"] == (0, 124) and
+            "Mine bar uses frame-bounded adaptive ultra-thin blur")
+    require(feed_state["frame"] == (0, 0, 440, 956) and feed_state["contentOffset"] == (0, -106) and
             feed_state["contentInset"] == (106, 0, 57, 0) and feed_state["clipsToBounds"] and
-            runtime.objects[nested_feed].state["frame"] == nested_frame,
-            "Only the outer viewport expands, preserving the scroll anchor, lower edge and nested feed")
+            runtime.objects[nested_feed].state["frame"] == nested_frame and
+            drawn_rect(runtime, account) == account_frame and account_frame[1] == 108,
+            "Only the outer viewport expands, keeping the first account row clear below the bar at rest")
     require(runtime.objects[profile_chrome].state["backgroundColor"] == clear and
             not runtime.objects[profile_chrome].state["opaque"] and
             runtime.objects[profile_chrome].state["userInteractionEnabled"],
             "The host bar retains touch while its opaque backing is removed")
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
-    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 124),
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, -106),
             "Repeated profile layout reuses blur and never reapplies the scroll delta")
-    native_edge = runtime.enable_native_top_edge(profile_feed)
+    native_edge = runtime.enable_native_top_edge(profile_feed, hidden=False)
     bar_state = runtime.objects[profile_chrome].state
     edge_state = runtime.objects[native_edge].state
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
-    interaction, = bar_state["interactions"]
-    edge_interaction = runtime.objects[interaction].state
-    require(siblings == [profile_feed, profile_chrome] and edge_interaction["scrollView"] == profile_feed and
-            edge_interaction["edge"] == 1 and edge_state["style"] == runtime.top_edge_soft and
-            not edge_state["hidden"],
-            "The public top-edge interaction replaces the background blur and targets the actual scrolling list")
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and not bar_state.get("interactions") and
+            edge_state["style"] == runtime.top_edge_stock and edge_state["hidden"] and
+            drawn_rect(runtime, account) == account_frame,
+            "Mine keeps the bounded blur and hides the list's separate automatic top edge")
+    send(cpu, runtime, profile_feed, "setContentOffset:", fp=(0, 124))
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
-    require(bar_state["interactions"] == [interaction] and feed_state["contentOffset"] == (0, 124),
-            "The official effect stays attached once during repeated layout")
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 124) and
+            blur_state["frame"] == (0, 0, 440, 106) and edge_state["hidden"],
+            "Scrolled Mine content remains under the same bounded material without shifting the offset")
     sidebar = runtime.obj("NSObject", "Mine sidebar adapter", isSidebarOpen=1, isSidebarTransitioning=0)
     runtime.objects[profile_controller].state["sidebarAdapter"] = sidebar
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
-    require(bar_state["interactions"] == [interaction] and feed_state["frame"] == (0, 0, 440, 956),
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and edge_state["hidden"] and
+            feed_state["frame"] == (0, 0, 440, 956),
             "Mine sidebar owns geometry while it is open")
     runtime.objects[sidebar].state["isSidebarOpen"] = 0
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
@@ -1472,12 +1479,12 @@ def exercise(data, labels):
             runtime.objects[profile_chrome].state["backgroundColor"] == original_bar_color and
             runtime.objects[profile_chrome].state["opaque"],
             "Disabling glass restores Mine geometry, scroll position, and native bar color")
-    require(not bar_state["interactions"] and edge_state["style"] == runtime.top_edge_stock and edge_state["hidden"],
+    require(not bar_state.get("interactions") and edge_state["style"] == runtime.top_edge_stock and not edge_state["hidden"],
             "Disabling restores the original native scroll edge style and visibility")
     geometry = [record for event, record in runtime.records
                 if event == "topChromeGeometry" and record["role"] == "profile"]
-    require([record["material"] for record in geometry] == ["systemUltraThin", "nativeScrollEdge", "stock"] and
-            geometry[1]["scrollClipRect"] == [0, 0, 440, 956],
+    require([record["material"] for record in geometry] == ["systemUltraThin", "stock"] and
+            geometry[0]["scrollClipRect"] == [0, 0, 440, 956],
             "Profile diagnostics report mode and visible list bounds without repeating settled layouts")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
@@ -1486,12 +1493,12 @@ def exercise(data, labels):
     updated_colors = runtime.obj("NSArray", "dark-mode gradient", items=[runtime.color("dark orange")])
     bookstore_publisher = runtime.obj("SSBookStoreCommunityPublishEntranceComponent", "bookstore component")
     nested_publisher = runtime.obj("SSBookStoreNestedTabView", "bookstore nested tab")
-    for route in ("component", "mine", "nested"):
-        alternate = route == "nested"
+    for route in ("component", "mine", "nested publish button", "nested produce entrance"):
+        alternate = route == "nested produce entrance"
         button_class = "SSDoubleRowUgcProduceEntranceView" if alternate else "SSCommunityPublishButton"
         publish_frame = (384, 805, 44, 44)
         publish = runtime.view(button_class, route + " writing button", publish_frame,
-                               runtime.ROOT, userInteractionEnabled=True, onTap=tap)
+                               0 if alternate else runtime.ROOT, userInteractionEnabled=True, onTap=tap)
         publish_state = runtime.objects[publish].state
         owner = runtime.view("UIView", "native writing control", (0, 0, 44, 44), publish) if alternate else publish
         glyph = runtime.view("UIImageView", "host quill", (12, 12, 20, 20), owner, tintColor=stock_tint)
@@ -1518,8 +1525,16 @@ def exercise(data, labels):
             runtime.objects[profile_controller].state["publishButton"] = publish
             require(send(cpu, runtime, profile_controller, "publishButton")["result"] == publish,
                     "Mine's native writing entry still returns its original target")
-        else:
+        elif route == "nested publish button":
             send(cpu, runtime, nested_publisher, "setPublishButtonView:", publish)
+            require(runtime.objects[nested_publisher].state["publishButtonView"] == publish,
+                    "The nested bookstore keeps its publish button property")
+        else:
+            send(cpu, runtime, nested_publisher, "setProduceEntranceView:", publish)
+            require(runtime.objects[nested_publisher].state["produceEntranceView"] == publish,
+                    "The nested bookstore keeps its separate produce entrance property")
+            send(cpu, runtime, runtime.ROOT, "addSubview:", publish)
+            send(cpu, runtime, publish, "layoutSubviews")
         surface = surface_for(owner)
         require(surface and runtime.objects[owner].state["subviews"][0] == surface and
                 not runtime.objects[surface].state["userInteractionEnabled"] and
@@ -1528,7 +1543,7 @@ def exercise(data, labels):
                 glyph_state["image"] == stock_image and glyph_state["tintColor"] == runtime.colors["labelColor"] and
                 publish_state["frame"] == publish_frame and publish_state["onTap"] == tap and
                 publish_state["userInteractionEnabled"] and (not bitmap or runtime.objects[bitmap].state["hidden"]),
-                "Native glass replaces the orange paint and leaves the original quill and action in place")
+                f"{route}: native glass replaces the orange paint and leaves the original quill and action in place")
         gradient_state["colors"] = updated_colors
         send(cpu, runtime, publish, "traitCollectionDidChange:", 0)
         send(cpu, runtime, publish, "layoutSubviews")
