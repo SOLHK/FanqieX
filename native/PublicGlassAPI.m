@@ -5,6 +5,8 @@
 
 _Static_assert(UIGlassEffectStyleRegular == 0,
                "The main navigation capsule uses the readable regular variant");
+_Static_assert(UIBlurEffectStyleSystemThinMaterial == 7,
+               "The full-width top bars use adaptive thin material");
 _Static_assert(UIControlEventValueChanged == 4096,
                "The native selection bridge observes only value changes");
 _Static_assert(UIControlEventTouchDown == 1 && UIControlEventTouchUpInside == 64 &&

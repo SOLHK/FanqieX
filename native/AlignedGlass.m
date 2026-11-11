@@ -312,13 +312,16 @@ void FQHHeader(Obj view) {
 static Imp Original(const char *cls,const char *alias) {
     return method_getImplementation(class_getInstanceMethod(Lookup(cls),sel_registerName(alias)));
 }
+static void BookstoreTopChrome(Obj controller);
 static void HomeLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreNewViewController","fqx165_originalRelayout"))(self,cmd);
     FQHHeader(Get(self,"searchBgView"));
+    BookstoreTopChrome(self);
 }
 static void HomeAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSBookStoreNewViewController","fqx165_originalAppear:"))(self,cmd,animated);
     FQHHeader(Get(self,"searchBgView"));
+    BookstoreTopChrome(self);
 }
 static void CategoryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookStoreCategorySignView","fqx173_originalLayout"))(self,cmd);
@@ -363,6 +366,215 @@ static inline __attribute__((always_inline)) B Belongs(Obj view,Obj owner) {
     for (int depth=0;view && depth<8;++depth,view=Get(view,"superview"))
         if (view==owner) return 1;
     return 0;
+}
+static void TopChromeSurfaceKey(void) {}
+static void TopChromeAnchorKey(void) {}
+static void TopChromeColorKey(void) {}
+static void TopChromeOpaqueKey(void) {}
+static void TopChromeStockFrameKey(void) {}
+static void TopChromeFrameKey(void) {}
+static void TopChromeScrollKey(void) {}
+static void TopChromeStockInsetKey(void) {}
+static void TopChromeInsetKey(void) {}
+static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
+    Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
+    if (!enabled || !root || Get(foreground,"superview")!=root || !VisibleRect(material)) {
+        V0(surface,"removeFromSuperview");
+        objc_setAssociatedObject(root,TopChromeSurfaceKey,0,1);
+        return 0;
+    }
+    if (!surface) {
+        // UIVisualEffectView must stay at full opacity for the backdrop to sample
+        // the covers. A thin, adaptive material controls the amount of tint.
+        Obj effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIBlurEffect"),sel_registerName("effectWithStyle:"),7);
+        if (!effect) return 0;
+        surface=O1(O0(Lookup("UIVisualEffectView"),"alloc"),"initWithEffect:",effect);
+        if (!surface) return 0;
+        VB(surface,"setUserInteractionEnabled:",0);
+        VB(surface,"setAccessibilityElementsHidden:",1);
+        VB(surface,"setOpaque:",0);
+        objc_setAssociatedObject(root,TopChromeSurfaceKey,surface,1);
+        V0(surface,"release");
+    }
+    if (!SameRect(Frame(surface),material)) SetFrame(surface,material);
+    if (Get(surface,"superview")!=root || objc_getAssociatedObject(surface,TopChromeAnchorKey)!=foreground) {
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(root,sel_registerName("insertSubview:belowSubview:"),surface,foreground);
+        objc_setAssociatedObject(surface,TopChromeAnchorKey,foreground,1);
+    }
+    return 1;
+}
+static void TopChromeFill(Obj view,B enabled) {
+    if (!Kind(view,"UIView")) return;
+    Obj clear=O0(Lookup("UIColor"),"clearColor"),color=O0(view,"backgroundColor");
+    Obj stock=objc_getAssociatedObject(view,TopChromeColorKey);
+    Obj opaque=objc_getAssociatedObject(view,TopChromeOpaqueKey);
+    if (enabled && Flag(view,"isOpaque")) {
+        objc_setAssociatedObject(view,TopChromeOpaqueKey,BoolBox(1),1);
+        VB(view,"setOpaque:",0);
+    } else if (!enabled && opaque) {
+        VB(view,"setOpaque:",1);
+        objc_setAssociatedObject(view,TopChromeOpaqueKey,0,1);
+    }
+    if (enabled && color && !SameColor(color,clear)) {
+        objc_setAssociatedObject(view,TopChromeColorKey,color,1);
+        V1(view,"setBackgroundColor:",clear);
+    } else if (!enabled && stock) {
+        if (SameColor(color,clear)) V1(view,"setBackgroundColor:",stock);
+        objc_setAssociatedObject(view,TopChromeColorKey,0,1);
+    }
+}
+static void TopChromeInsets(Obj scroll,double overlap) {
+    if (!scroll) return;
+    Rect inset=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("contentInset"));
+    Obj applied=objc_getAssociatedObject(scroll,TopChromeInsetKey);
+    double oldStock=Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
+    double oldApplied=Double(applied);
+    B hostWroteTop=applied && inset.x!=oldApplied;
+    double stock=applied && !hostWroteTop ? oldStock : inset.x;
+    double target=stock+overlap;
+    if (overlap>0 && (!applied || inset.x!=Double(applied)))
+        objc_setAssociatedObject(scroll,TopChromeStockInsetKey,Number(stock),1);
+    if (overlap>0 && (!applied || target!=oldApplied))
+        objc_setAssociatedObject(scroll,TopChromeInsetKey,Number(target),1);
+    if (overlap==0 && applied) {
+        objc_setAssociatedObject(scroll,TopChromeStockInsetKey,0,1);
+        objc_setAssociatedObject(scroll,TopChromeInsetKey,0,1);
+    }
+    if (target!=inset.x || (hostWroteTop && overlap==0)) {
+        Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+        Rect adjusted=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
+        // A host relayout may have rewritten its stock inset while a book is
+        // mid-scroll. Reapply the padding without shifting that visible book.
+        if (!hostWroteTop || offset.y<=-adjusted.x+0.5) offset.y-=target-inset.x;
+        else offset.y-=overlap-(oldApplied-oldStock);
+        if (target!=inset.x) {
+            inset.x=target;
+            ((void(*)(Obj,Sel,Rect))Message)(scroll,sel_registerName("setContentInset:"),inset);
+        }
+        Point actual=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+        if (actual.x!=offset.x || actual.y!=offset.y)
+            ((void(*)(Obj,Sel,Point))Message)(scroll,sel_registerName("setContentOffset:"),offset);
+    }
+}
+static void TopChromeUnderlap(Obj viewport,Obj scroll,double top,B enabled) {
+    if (!Kind(viewport,"UIView")) return;
+    Rect current=Frame(viewport),stock=current;
+    Obj applied=objc_getAssociatedObject(viewport,TopChromeFrameKey);
+    if (applied && current.y==UnboxRect(applied).y) {
+        stock.y=UnboxRect(objc_getAssociatedObject(viewport,TopChromeStockFrameKey)).y;
+        stock.height+=current.y-stock.y;
+    }
+    double overlap=0;
+    if (enabled && Kind(scroll,"UIScrollView") && Belongs(scroll,viewport) && VisibleRect(stock))
+        overlap=__builtin_fmin(56,__builtin_fmax(0,stock.y-top));
+    Rect target={stock.x,stock.y-overlap,stock.width,stock.height+overlap};
+    Obj previous=objc_getAssociatedObject(viewport,TopChromeScrollKey);
+    if (applied && !previous) previous=viewport;
+    if (previous && (previous!=scroll || overlap==0)) TopChromeInsets(previous,0);
+    if (overlap>0) {
+        if (previous!=scroll) objc_setAssociatedObject(viewport,TopChromeScrollKey,scroll==viewport ? (Obj)0 : scroll,1);
+        if (!applied || !SameRect(UnboxRect(applied),target)) {
+            objc_setAssociatedObject(viewport,TopChromeStockFrameKey,RectBox(stock),1);
+            objc_setAssociatedObject(viewport,TopChromeFrameKey,RectBox(target),1);
+        }
+    } else if (applied) {
+        objc_setAssociatedObject(viewport,TopChromeStockFrameKey,0,1);
+        objc_setAssociatedObject(viewport,TopChromeFrameKey,0,1);
+        objc_setAssociatedObject(viewport,TopChromeScrollKey,0,1);
+    }
+    if (!SameRect(current,target)) SetFrame(viewport,target);
+    if (overlap>0) TopChromeInsets(scroll,overlap);
+}
+static void BookstoreTopChrome(Obj controller) {
+    Obj root=Get(controller,"contentView"),header=Get(controller,"simpleHeader");
+    Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
+    Obj scroll=Get(tab,"doubleRowNestContainerScrollView");
+    if (!Kind(scroll,"UIScrollView")) scroll=Get(tab,"collectionView");
+    if (!Kind(scroll,"UIScrollView")) scroll=Get(tab,"listView");
+    Rect frame=Frame(header),bounds=Bounds(root);
+    double height=frame.y+frame.height-bounds.y;
+    B enabled=Enabled() && Get(viewport,"superview")==root && Kind(scroll,"UIScrollView") &&
+        Belongs(scroll,viewport) && !Flag(header,"isHidden");
+    B installed=TopChrome(root,header,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+    TopChromeFill(header,installed);
+    TopChromeFill(Get(controller,"tabContainer"),installed);
+    TopChromeFill(Get(controller,"simpleTabView"),installed);
+    TopChromeUnderlap(viewport,scroll,bounds.y,installed);
+}
+static void BookstoreTabSelected(Obj self,Sel cmd,Obj category,I index) {
+    ((void(*)(Obj,Sel,Obj,I))Original("SSBookStoreNewViewController","fqx186_originalStoreSelected:index:"))(self,cmd,category,index);
+    BookstoreTopChrome(self);
+}
+static void BookstoreCollectionLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookStoreTabViewController","fqx186_originalStoreCollectionLayout"))(self,cmd);
+    Obj controller=Get(self,"delegate");
+    if (Kind(controller,"SSBookStoreNewViewController") && Get(controller,"currentTabVC")==self)
+        BookstoreTopChrome(controller);
+}
+static double TopChromeOverlap(Obj scroll) {
+    return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
+        Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
+}
+static void BookshelfFloatingChrome(Obj tab,double overlap) {
+    Obj holder=Get(tab,"fullGenreFloatingContainerView");
+    if (!Kind(holder,"UIView")) return;
+    Obj cell=Get(tab,"functionCell"),foreground=Get(cell,"layoutContainerView");
+    B visible=Get(holder,"superview")==Get(tab,"view") && !Flag(holder,"isHidden");
+    B installed=TopChrome(holder,foreground,Bounds(holder),visible && overlap>0);
+    Rect current=Frame(holder),stock=current;
+    Obj applied=objc_getAssociatedObject(holder,TopChromeFrameKey);
+    if (applied && SameRect(current,UnboxRect(applied)))
+        stock=UnboxRect(objc_getAssociatedObject(holder,TopChromeStockFrameKey));
+    Rect target=stock;
+    if (installed) target.y+=overlap; // UIKit pins the floating row to the moved list's top.
+    if (!SameRect(current,target)) SetFrame(holder,target);
+    if (installed && (!applied || !SameRect(target,UnboxRect(applied)))) {
+        objc_setAssociatedObject(holder,TopChromeStockFrameKey,RectBox(stock),1);
+        objc_setAssociatedObject(holder,TopChromeFrameKey,RectBox(target),1);
+    } else if (!installed && applied) {
+        objc_setAssociatedObject(holder,TopChromeStockFrameKey,0,1);
+        objc_setAssociatedObject(holder,TopChromeFrameKey,0,1);
+    }
+    TopChromeFill(holder,installed);
+    TopChromeFill(foreground,installed);
+    TopChromeFill(Get(cell,"filterView"),installed);
+}
+static void BookshelfTopChrome(Obj controller) {
+    Obj root=Get(controller,"view"),header=Get(controller,"headerView");
+    Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
+    Obj scroll=Get(tab,"collectionView");
+    Rect frame=Frame(header),bounds=Bounds(root);
+    double height=frame.y+frame.height-bounds.y;
+    B enabled=Enabled() && Kind(tab,"SSBookShelfSubViewController") &&
+        Get(viewport,"superview")==root && Kind(scroll,"UIScrollView") && Belongs(scroll,viewport);
+    B installed=TopChrome(root,header,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+    TopChromeFill(header,installed);
+    TopChromeFill(Get(controller,"tabSelectView"),installed);
+    TopChromeFill(Get(controller,"headerBackgroundView"),installed);
+    TopChromeUnderlap(viewport,scroll,bounds.y,installed);
+    if (Kind(tab,"SSBookShelfSubViewController"))
+        BookshelfFloatingChrome(tab,TopChromeOverlap(scroll));
+}
+static void BookshelfTopLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx186_originalShelfTopLayout"))(self,cmd);
+    BookshelfTopChrome(self);
+}
+static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
+    ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
+    BookshelfTopChrome(self);
+}
+static void RestoreBookshelfTopInset(Obj self) {
+    Obj scroll=Get(self,"collectionView");
+    double overlap=TopChromeOverlap(scroll);
+    if (overlap>0) TopChromeInsets(scroll,overlap);
+}
+static void BookshelfUpdateInsets(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx186_originalShelfUpdateInsets"))(self,cmd);
+    RestoreBookshelfTopInset(self);
+}
+static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx186_originalShelfFloating:"))(self,cmd,scroll);
+    if (scroll==Get(self,"collectionView")) BookshelfFloatingChrome(self,TopChromeOverlap(scroll));
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }
@@ -769,6 +981,7 @@ void FQHShelf(Obj self) {
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
     FQHShelf(self);
+    RestoreBookshelfTopInset(self);
 }
 static void ShelfButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
@@ -1209,6 +1422,56 @@ static void PageBookGiftLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBookEndUserGiftView","fqx174_originalBookGift"))(self,cmd);
     FQHApply(self);
 }
+static void PageCoverListenLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderCoverTopRightView","fqx186_originalCoverListen"))(self,cmd);
+    Obj button=Get(self,"listenBtn"),background=Get(self,"bgView"),label=Get(self,"listenLabel");
+    B legacy=Kind(button,"UIButton") && Get(button,"superview")==self && !Flag(button,"isHidden");
+    B shared=!legacy && Kind(label,"UILabel") && Get(label,"superview")==self && !Flag(label,"isHidden") &&
+        Get(background,"superview")==self && !Flag(background,"isHidden");
+    if (legacy) FQHApply(button);
+    else if (FQHSurface(button)) PageRestore(button);
+    if (shared) FQHApply(background);
+    else if (FQHSurface(background)) PageRestore(background);
+}
+static void CoverGuideBorderKey(void) {}
+static void CoverGuideGlass(Obj guide) {
+    // The host may supply a different guide. Only style the standard reading prompt.
+    if (object_getClass(guide)!=Lookup("UIView")) return;
+    Obj children=O0(guide,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    B standard=0;
+    for (U i=0;i<count && !standard;++i) {
+        Obj label=At(children,i);
+        if (Kind(label,"UILabel")) {
+            Obj text=O0(label,"text");
+            standard=Equal(text,"左滑开始阅读") || Equal(text,"上滑开始阅读");
+        }
+    }
+    if (standard && !Flag(guide,"isHidden")) FQHApply(guide);
+    else if (FQHSurface(guide)) PageRestore(guide);
+
+    Obj saved=objc_getAssociatedObject(guide,CoverGuideBorderKey);
+    B styled=FQHSurface(guide)!=0;
+    if (!styled && !saved) return;
+    Obj layer=O0(guide,"layer");
+    double width=((double(*)(Obj,Sel))Message)(layer,sel_registerName("borderWidth"));
+    if (styled) {
+        if (width==0) return;
+        objc_setAssociatedObject(guide,CoverGuideBorderKey,Number(width),1);
+        ((void(*)(Obj,Sel,double))Message)(layer,sel_registerName("setBorderWidth:"),0);
+    } else {
+        if (width==0) ((void(*)(Obj,Sel,double))Message)(layer,sel_registerName("setBorderWidth:"),Double(saved));
+        objc_setAssociatedObject(guide,CoverGuideBorderKey,0,1);
+    }
+}
+static void PageCoverGuideSetup(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderCoverMainContentViewController","fqx186_originalCoverGuideSetup"))(self,cmd);
+    CoverGuideGlass(Get(self,"guideView"));
+}
+static void PageCoverGuideLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQReaderCoverMainContentViewController","fqx186_originalCoverGuideLayout"))(self,cmd);
+    CoverGuideGlass(Get(self,"guideView"));
+}
 static void ChapterDiscussionKey(void) {}
 static B ChapterEntranceOnly(Obj card) {
     Obj model=Get(card,"model");
@@ -1241,16 +1504,28 @@ static void PageChapterCardLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCard"))(self,cmd);
     ChapterDiscussionGlass(self);
 }
-static void PageChapterCardTheme(Obj self,Sel cmd,Obj config) {
-    ((void(*)(Obj,Sel,Obj))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCardTheme:"))(self,cmd,config);
-    ChapterDiscussionGlass(self);
-}
 static void ChapterRewardGlass(Obj reward) {
     Obj card=Get(reward,"superview");
     Obj background=Get(reward,"customBackgroundView");
     if ((Kind(card,"SSReaderChapterEndCommunityCardView") || Kind(card,"SSReaderChapterEndCombineContainerView")) &&
         Get(background,"superview")==reward && !Flag(reward,"isHidden")) FQHApply(background);
     else if (FQHSurface(background)) PageRestore(background);
+    // Keep native press feedback on the backing, and let its glass rim extend
+    // beyond the stock button mask.
+    if (FQHSurface(background)) PrepareOwner(reward,Flag(reward,"clipsToBounds"),Flag(reward,"isOpaque"));
+    else RestoreOwner(reward);
+}
+static void PageChapterCardTheme(Obj self,Sel cmd,Obj config) {
+    ((void(*)(Obj,Sel,Obj))Original("SSReaderChapterEndCommunityCardView","fqx177_originalChapterCardTheme:"))(self,cmd,config);
+    ChapterDiscussionGlass(self);
+    // The card repaints the gift backing after the reward's theme callback.
+    // Use the attached child so this does not invoke the lazy gift getter.
+    Obj children=O0(self,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj child=At(children,i);
+        if (Kind(child,"SSReaderChapterEndRewardButton")) ChapterRewardGlass(child);
+    }
 }
 static void PageChapterButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndBaseButton","fqx177_originalChapterButton"))(self,cmd);
@@ -1348,12 +1623,16 @@ static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterBackground:"))(self,cmd,color);
     ShelfFilterStyle(self);
 }
-static void ShelfActionGlass(Obj button) {
+static void ShelfActionGlass(Obj button,B filter) {
     if (!Kind(button,"UIButton")) return;
     if (Flag(button,"isHidden")) { PageRestore(button); return; }
     Rect material=Bounds(button);
     material.y+=1;
     material.height-=2;
+    if (filter) {
+        material.x+=1;
+        material.width-=2;
+    }
     ApplySurface(button,material,0);
 }
 B FQHShelfOwnsAction(Obj button,Obj header) {
@@ -1369,7 +1648,20 @@ B FQHShelfOwnsAction(Obj button,Obj header) {
 static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFilterHeaderView","fqx179_originalShelfFilterHeader"))(self,cmd);
     Obj button=Get(self,"filterButton");
-    if (Belongs(button,self)) ShelfActionGlass(button);
+    if (!Belongs(button,self)) return;
+    ShelfActionGlass(button,1);
+    Obj material=FQHSurface(button);
+    if (!material) return;
+    Obj gradient=Get(self,"filterGradientView");
+    if (Get(gradient,"superview")!=self) return;
+    // The host lays out the right fade above its filter button. Keep the
+    // full fade to the left of the capsule when their bounds overlap.
+    Rect fade=Frame(gradient),capsule=Convert(button,Frame(material),self);
+    if (VisibleRect(fade) && fade.x<capsule.x+capsule.width && fade.x+fade.width>capsule.x &&
+        fade.y<capsule.y+capsule.height && fade.y+fade.height>capsule.y) {
+        fade.x=capsule.x-fade.width;
+        SetFrame(gradient,fade);
+    }
 }
 static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
     Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
@@ -1425,6 +1717,18 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     ProfileIconGlass(self,enabled ? Get(self,"scanQRCodeView") : (Obj)0,ProfileScanKey);
     ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
     ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
+}
+static void ProfileCollectionLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUser621BaseViewController","fqx186_originalProfileCollectionLayout"))(self,cmd);
+    if (!Kind(self,"SSMyUser621ViewController")) return;
+    Obj root=Get(self,"view"), bar=Get(self,"myUserBar"), list=Get(self,"collectionView");
+    if (!Kind(root,"UIView") || !Kind(bar,"SSMyUserBar") || !Kind(list,"FQFeedListCollectionView")) return;
+    Rect material=Bounds(root), barFrame=Frame(bar);
+    material.height=barFrame.y+barFrame.height-material.y;
+    B enabled=Enabled() && Get(list,"superview")==root && !Flag(bar,"isHidden");
+    B installed=TopChrome(root,bar,material,enabled);
+    TopChromeFill(bar,installed);
+    TopChromeUnderlap(list,list,material.y,installed);
 }
 static void ProfileCaptionKey(void) {}
 static Rect ProfileStockFrame(Obj view,Rect current) {
@@ -1772,7 +2076,9 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
     Obj old=objc_getAssociatedObject(holder,ShelfEditHeaderKey);
     Obj button=0,secondary=0;
     Rect frame={0};
-    if (Kind(header,"SS525BookShelfSubHeaderView") &&
+    if (!DefaultEnabled(PagePreference(ShelfDurationOption)) &&
+        Kind(header,"SS525BookShelfSubHeaderView") &&
+        InstanceABI(header,"showReadTimeView","B16@0:8") && !Flag(header,"showReadTimeView") &&
         InstanceABI(header,"isFiltering","B16@0:8") && !Flag(header,"isFiltering") &&
         InstanceABI(header,"layoutEditButton","v16@0:8") && !Flag(header,"isHidden")) {
         button=Get(header,"editButton");
@@ -1794,10 +2100,9 @@ static Obj ShelfEditPlacement(Obj controller,Obj holder) {
     if (moved) {
         if (Get(button,"superview")!=holder) V1(holder,"addSubview:",button);
         if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
-        ShelfActionGlass(button);
+        ShelfActionGlass(button,0);
         if (old!=header) objc_setAssociatedObject(holder,ShelfEditHeaderKey,header,1);
-        if (class_getInstanceMethod(object_getClass(cell),sel_registerName("fqx178_originalShelfFunctionLayout")) &&
-            InstanceABI(header,"showReadTimeView","B16@0:8") && !Flag(header,"showReadTimeView")) {
+        if (class_getInstanceMethod(object_getClass(cell),sel_registerName("fqx178_originalShelfFunctionLayout"))) {
             compact=cell;
             if (!Flag(secondary,"isHidden")) {
                 Obj line=Get(header,"lineView"),line2=Get(header,"lineView2");
@@ -1937,9 +2242,9 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
         edit=ShelfEditPlacement(controller,holder);
         ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),edit);
     }
-    if (!edit) ShelfActionGlass(Get(self,"editButton"));
-    ShelfActionGlass(Get(self,"filterButton"));
-    ShelfActionGlass(Get(self,"fullGenreFilterButton"));
+    if (!edit) ShelfActionGlass(Get(self,"editButton"),0);
+    ShelfActionGlass(Get(self,"filterButton"),1);
+    ShelfActionGlass(Get(self,"fullGenreFilterButton"),1);
 }
 static void RefreshShelfDuration(B enabled) {
     Obj cls=Lookup("SS525BookShelfSubHeaderView");
@@ -2169,6 +2474,9 @@ void FQHPageInstall(void) {
     Hook("SSReaderBottomToolDivertView","layoutSubviews","fqx175_originalDivert","v16@0:8",(Imp)PageDivertLayout);
     Hook("SSReaderGiftView","layoutSubviews","fqx174_originalGift","v16@0:8",(Imp)PageGiftLayout);
     Hook("SSReaderBookEndUserGiftView","layoutSubviews","fqx174_originalBookGift","v16@0:8",(Imp)PageBookGiftLayout);
+    Hook("SSReaderCoverTopRightView","layoutSubviews","fqx186_originalCoverListen","v16@0:8",(Imp)PageCoverListenLayout);
+    Hook("FQReaderCoverMainContentViewController","setupGuideView","fqx186_originalCoverGuideSetup","v16@0:8",(Imp)PageCoverGuideSetup);
+    Hook("FQReaderCoverMainContentViewController","viewDidLayoutSubviews","fqx186_originalCoverGuideLayout","v16@0:8",(Imp)PageCoverGuideLayout);
     Hook("SSReaderChapterEndDiscussionEntranceView","layoutSubviews","fqx174_originalDiscuss","v16@0:8",(Imp)PageDiscussLayout);
     Hook("SSReaderChapterEndDiscussionEntranceButton","layoutSubviews","fqx174_originalDiscussButton","v16@0:8",(Imp)PageDiscussButtonLayout);
     Hook("SSReaderChapterEndCommunityCardView","layoutSubviews","fqx177_originalChapterCard","v16@0:8",(Imp)PageChapterCardLayout);
@@ -2183,6 +2491,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfFilterHeaderView","layoutSubviews","fqx179_originalShelfFilterHeader","v16@0:8",(Imp)ShelfFilterHeaderLayout);
     Hook("SSBookShelfFilterMixRowCollectionView","collectionView:layout:insetForSectionAtIndex:","fqx185_originalInlineFilterInsets:layout:section:","{UIEdgeInsets=dddd}40@0:8@16@24q32",(Imp)ShelfInlineFilterInsets);
     Hook("SSMyUserBar","layoutSubviews","fqx174_originalProfileBar","v16@0:8",(Imp)PageProfileBarLayout);
+    Hook("SSMyUser621BaseViewController","updateCollectionLayout","fqx186_originalProfileCollectionLayout","v16@0:8",(Imp)ProfileCollectionLayout);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
     Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
@@ -2206,6 +2515,8 @@ void FQHInstall(void) {
     if (Signature("SSBookStoreNewViewController","searchBgView","@16@0:8")) {
         Hook("SSBookStoreNewViewController","relayout","fqx165_originalRelayout","v16@0:8",(Imp)HomeLayout);
         Hook("SSBookStoreNewViewController","viewDidAppear:","fqx165_originalAppear:","v20@0:8B16",(Imp)HomeAppear);
+        Hook("SSBookStoreNewViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalStoreSelected:index:","v32@0:8@16q24",(Imp)BookstoreTabSelected);
+        Hook("SSBookStoreTabViewController","setupLayout","fqx186_originalStoreCollectionLayout","v16@0:8",(Imp)BookstoreCollectionLayout);
         if (Signature("SSBookStoreSearchBarComponent","bookStoreVCContext","@16@0:8"))
             Hook("SSBookStoreSearchBarComponent","resetTopTabSearchViewWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalSearchColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)SearchColor);
     }
@@ -2213,6 +2524,10 @@ void FQHInstall(void) {
     Hook("SSBookStoreCategorySignView","layoutSubviews","fqx173_originalLayout","v16@0:8",(Imp)CategoryLayout);
     Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
+    Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
+    Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
+    Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
+    Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("FQReaderSaasNavigationView","layoutSubviews","fqx167_originalLayout","v16@0:8",(Imp)ReaderLayout);
     Hook("FQReaderSaasNavigationView","readerInsertedViewThemeConfigChange:","fqx167_originalTheme:","v24@0:8@16",(Imp)ReaderTheme);

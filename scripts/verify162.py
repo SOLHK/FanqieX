@@ -266,6 +266,8 @@ def main():
         if args.version in ("1.7.4", "1.74"):
             run("page-glass174", ["audit162/test_page_glass174.py", candidate,
                 "--report", output / "page-glass174.json"])
+            run("top-chrome", ["audit162/test_top_chrome.py", candidate,
+                "--report", output / "top-chrome.json"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

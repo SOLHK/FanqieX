@@ -85,7 +85,7 @@ def compose_assembly(path, version=VERSION):
 
 def extension_limit(version):
  if version in (RELEASES['1.7.4'], RELEASES['1.74']):
-  return 0x28000
+  return 0x2c000
  return 0x20000 if version>=0x10604 else 0x10000
 
 def directory(data, version):

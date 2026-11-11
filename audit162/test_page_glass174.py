@@ -17,6 +17,7 @@ from test_controls171 import Runtime as GlassRuntime, call
 from test_control_glass166 import send
 from test_home_glass165 import LABELS
 from test_feed_viewport import labels_for
+from top_chrome_runtime import TopChromeRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = [
@@ -36,6 +37,9 @@ HOOKS = [
     ("SSReaderBottomToolDivertView", "layoutSubviews"),
     ("SSReaderGiftView", "layoutSubviews"),
     ("SSReaderBookEndUserGiftView", "layoutSubviews"),
+    ("SSReaderCoverTopRightView", "layoutSubviews"),
+    ("FQReaderCoverMainContentViewController", "setupGuideView"),
+    ("FQReaderCoverMainContentViewController", "viewDidLayoutSubviews"),
     ("SSReaderChapterEndDiscussionEntranceView", "layoutSubviews"),
     ("SSReaderChapterEndDiscussionEntranceButton", "layoutSubviews"),
     ("SSReaderChapterEndCommunityCardView", "layoutSubviews"),
@@ -58,6 +62,7 @@ HOOKS = [
     ("SSBookShelfSubViewController", "fetchBookCoverTransitionInfo:"),
     ("SSBookShelfFunctionCell", "layoutContainerSubviews"),
     ("SSMyUserBar", "layoutSubviews"),
+    ("SSMyUser621BaseViewController", "updateCollectionLayout"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
     ("SSMyUserCollectionViewOrderFunCell", "layoutSubviews"),
     ("SSMyUser621BaseViewController", "setupCellMiniGameEntranceData"),
@@ -68,7 +73,7 @@ HOOKS = [
 ]
 
 
-class Runtime(GlassRuntime):
+class Runtime(TopChromeRuntime, GlassRuntime):
     SHELF_RELOAD = 0x330c1000
     SHELF_APPEARANCE = 0x330c1100
     SHELF_BACKGROUND = 0x330c1200
@@ -86,6 +91,7 @@ class Runtime(GlassRuntime):
     SHELF_INLINE_FILTER_INSETS = 0x330c3160
     SHELF_SAVE_OPENING = 0x330c3170
     SHELF_COVER_TRANSITION = 0x330c3180
+    SHELF_FILTER_HEADER_LAYOUT = 0x330c3190
     MODEL_INVISIBLE = 0x330c0300
     MODEL_DISABLED = 0x330c0400
     MODEL_REMOVE = 0x330c0500
@@ -122,6 +128,8 @@ class Runtime(GlassRuntime):
             ("BDReaderNewSlider", "UIView"),
             ("SSReaderGiftView", "UIView"),
             ("SSReaderBookEndUserGiftView", "UIView"),
+            ("SSReaderCoverTopRightView", "UIView"),
+            ("FQReaderCoverMainContentViewController", "UIViewController"),
             ("SSReaderChapterEndDiscussionEntranceView", "UIView"),
             ("SSReaderChapterEndDiscussionEntranceButton", "UIButton"),
             ("SSReaderChapterEndCommunityCardView", "UIView"),
@@ -142,6 +150,8 @@ class Runtime(GlassRuntime):
             ("SSBookShelfBaseCell", "UIView"),
             ("SSCoverTransitionInfo", "NSObject"),
             ("SSMyUserBar", "UIView"),
+            ("UICollectionView", "UIScrollView"),
+            ("FQFeedListCollectionView", "UICollectionView"),
             ("FQReaderSaaSBaseImageView", "UIImageView"),
             ("SSMyUserCollectionViewFunCell", "UIView"),
             ("SSMyUserCollectionViewOrderFunCell", "SSMyUserCollectionViewFunCell"),
@@ -216,6 +226,8 @@ class Runtime(GlassRuntime):
                   self.SHELF_FUNCTION_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
         self._add(self.classes["SSBookShelfFilterMixRowCollectionView"], "collectionView:layout:insetForSectionAtIndex:",
                   self.SHELF_INLINE_FILTER_INSETS, "{UIEdgeInsets=dddd}40@0:8@16@24q32")
+        self._add(self.classes["SSBookShelfFilterHeaderView"], "layoutSubviews",
+                  self.SHELF_FILTER_HEADER_LAYOUT, "v16@0:8")
         self._add(self.classes["SSBookShelfSubViewController"], "saveOpeningData:indexPath:",
                   self.SHELF_SAVE_OPENING, "v32@0:8@16@24")
         self._add(self.classes["SSBookShelfSubViewController"], "fetchBookCoverTransitionInfo:",
@@ -229,6 +241,8 @@ class Runtime(GlassRuntime):
                 ("SSReaderBottomToolDivertView", "titleLabel", "@16@0:8"),
                 ("BDReaderTopViewContainer", "updateGradientLayer", "v16@0:8"),
                 ("SSReaderChapterEndCommunityCardViewModel", "displayMode", "q16@0:8"),
+                ("FQReaderCoverMainContentViewController", "setupGuideView", "v16@0:8"),
+                ("FQReaderCoverMainContentViewController", "viewDidLayoutSubviews", "v16@0:8"),
                 ("SSBookShelfTabSelectViewTitleCellModel", "cellSpacing", "d16@0:8"),
                 ("SSBookShelfViewModel", "sectionTypeAtIndex:", "q24@0:8q16"),
                 ("SSBookShelfBaseCell", "fetchCoverSize", "{CGSize=dd}16@0:8"),
@@ -239,6 +253,7 @@ class Runtime(GlassRuntime):
                 ("SSMineEcomEntranceData", "entranceType", "i16@0:8"),
                 ("SSMyUserCell2Model", "businessStyle", "q16@0:8"),
                 ("SSMyUser621ViewController", "reloadData:", "v24@0:8@16"),
+                ("SSMyUser621BaseViewController", "updateCollectionLayout", "v16@0:8"),
                 ("SSTabBarController", "titleStrWithType:", "@20@0:8i16"),
                 ("SSTabBarController", "setTypeArray:", "v24@0:8@16"),
                 ("SSTabBarController", "setTypeIndexMap:", "v24@0:8@16")):
@@ -304,6 +319,11 @@ class Runtime(GlassRuntime):
             return self.finish(cpu, fp=(0., 11., 12., 11.))
         if pc == self.SHELF_INLINE_FILTER_INSETS:
             return self.finish(cpu, fp=(0., 20., 0., 24.))
+        if pc == self.SHELF_FILTER_HEADER_LAYOUT:
+            state = self.objects[receiver].state
+            if "filterGradientView" in state:
+                self.objects[state["filterGradientView"]].state["frame"] = state["host_filter_fade_frame"]
+            return self.finish(cpu)
         if pc == self.SHELF_SAVE_OPENING:
             state = self.objects[receiver].state
             state["capture"] = (cpu.x[2], cpu.x[3], self.objects[state["collectionView"]].state["layout_passes"])
@@ -360,6 +380,9 @@ class Runtime(GlassRuntime):
             state = self.objects[receiver].state
             key = "contentBackgroundView" if pc == self.CHAPTER_CARD_THEME else "customBackgroundView"
             self.objects[state[key]].state["backgroundColor"] = cpu.x[2]
+            if pc == self.CHAPTER_CARD_THEME and "standaloneGiftButton" in state:
+                gift = self.objects[state["standaloneGiftButton"]].state
+                self.objects[gift["customBackgroundView"]].state["backgroundColor"] = cpu.x[2]
             return self.finish(cpu)
         if pc == self.READER_MENU_SHOW:
             self.reader_menu_calls.append(cpu.x[2])
@@ -397,12 +420,19 @@ class Runtime(GlassRuntime):
                 if name == "setAlpha:":
                     state["alpha"] = cpu.fp(0)
                     return self.finish(cpu)
+                if name == "borderWidth":
+                    return self.finish(cpu, fp=(state.get("borderWidth", 0.0),))
+                if name == "setBorderWidth:":
+                    state["borderWidth"] = cpu.fp(0)
+                    return self.finish(cpu)
+                if name in ("listenBtn", "listenLabel", "bgView", "guideView") and name in state:
+                    return self.finish(cpu, state[name])
                 if name == "updateGradientLayer":
                     state["gradientVisible"] = bool(state["backgroundColor"] and state["gradientBg"])
                     return self.finish(cpu)
                 if name == "sectionTypeAtIndex:" and "section_types" in state:
                     return self.finish(cpu, state["section_types"][cpu.x[2]])
-                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "lineView",
+                if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "filterGradientView", "lineView",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
                             "visibleCells", "viewModel", "isFiltering", "showsFilterExposure", "optionsView",
                             "openingModel", "data", "bookId", "collectDatas", "fetchCoverView") and name in state:
@@ -430,7 +460,7 @@ class Runtime(GlassRuntime):
                     return self.finish(cpu, state.get(name, 0))
                 if name == "showReadTimeView":
                     return self.finish(cpu, int(state["showReadTimeView"]))
-                if name in ("customTabBar", "delegate", "state", "view") and name in state:
+                if name in ("customTabBar", "delegate", "state", "view", "myUserBar") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "initWithTarget:action:" and self.is_kind(receiver, self.classes["UIGestureRecognizer"]):
                     state.update(target=cpu.x[2], action=cpu.x[3], state=0)
@@ -777,15 +807,25 @@ def exercise(data, labels):
     filter_action = [(header, runtime.sel("filterBtnClick"), 64)]
     filter_button = runtime.view("UIButton", "open all shelf filters", (324, 2, 58, 30), header,
                                  control_targets=filter_action[:])
-    runtime.objects[header].state["filterButton"] = filter_button
+    fade_frame = (308., 0., 24., 44.)
+    filter_fade = runtime.view("UIView", "native filter fade above the capsule", fade_frame, header)
+    runtime.objects[header].state.update(filterButton=filter_button, filterGradientView=filter_fade,
+                                         host_filter_fade_frame=fade_frame)
     require(not call(cpu, labels, "LGstyle_control", filter_button, 0)["result"],
             "the inline filter action does not acquire an earlier legacy capsule")
     send(cpu, runtime, header, "layoutSubviews")
     filter_glass = surface_for(filter_button)
-    require(filter_glass and runtime.objects[filter_glass].state["frame"] == (0., 1., 58., 28.) and
+    require(filter_glass and runtime.objects[filter_glass].state["frame"] == (1., 1., 56., 28.) and
             not runtime.objects[filter_glass].state["userInteractionEnabled"] and
-            runtime.objects[filter_button].state["control_targets"] == filter_action,
-            "the separate shelf filter button gets a matching capsule and preserves its native tap")
+            runtime.objects[filter_button].state["control_targets"] == filter_action and
+            runtime.objects[filter_button].state["frame"] == (324., 2., 58., 30.),
+            "the filter capsule has clearance without changing the native button or tap")
+    require(runtime.objects[filter_fade].state["frame"] == (301., 0., 24., 44.),
+            "the overlapping native fade stops before the capsule's left edge")
+    send(cpu, runtime, header, "layoutSubviews")
+    require(runtime.objects[filter_fade].state["frame"] == (301., 0., 24., 44.) and
+            surface_for(filter_button) == filter_glass,
+            "native relayout keeps the same capsule and preserves the full fade")
     row = runtime.view("SSBookShelfFilterMixRowCollectionView", "filter row", (0, 0, 270, 40), header)
     collection = runtime.view("UIView", "filter collection", (0, 0, 270, 40), row)
     runtime.objects[header].state["optionsView"] = row
@@ -830,8 +870,9 @@ def exercise(data, labels):
     require(not surface_for(cell) and runtime.objects[cell].state["backgroundColor"] == theme,
             "disabling glass restores the latest host filter background")
     send(cpu, runtime, header, "layoutSubviews")
-    require(not surface_for(filter_button) and runtime.objects[filter_button].state["control_targets"] == filter_action,
-            "disabling glass removes only the filter decoration")
+    require(not surface_for(filter_button) and runtime.objects[filter_button].state["control_targets"] == filter_action and
+            runtime.objects[filter_fade].state["frame"] == fade_frame,
+            "disabling glass restores the native filter fade and tap")
     tab, _, _ = tabs[3]
     send(cpu, runtime, tab, "layoutSubviews")
     require(shelf_fonts(tab) == (host_fonts[1], host_fonts[1]),
@@ -850,6 +891,60 @@ def exercise(data, labels):
     require(call(cpu, labels, "LFQH_FQHSurface", gift_button)["result"], "gift entry glass")
     require(not call(cpu, labels, "LFQH_FQHSurface", gift)["result"],
             "gift owner itself is not masked")
+
+    cover_top = runtime.view("SSReaderCoverTopRightView", "cover listen entry", (326, 0, 44, 24), runtime.ROOT)
+    cover_fill = runtime.color("stock cover button fill")
+    cover_listen_action = (cover_top, runtime.sel("onListenBtnClick"), 64)
+    cover_listen = runtime.view("UIButton", "native 听书 button", (0, 0, 44, 24), cover_top,
+                                backgroundColor=cover_fill, control_targets=[cover_listen_action])
+    cover_background = runtime.view("UIView", "shared cover backing", (0, 0, 44, 24), cover_top,
+                                    hidden=True, backgroundColor=cover_fill, clipsToBounds=True)
+    cover_label = runtime.label("cover listen caption", cover_top, (4, 4, 36, 16), "听书")
+    runtime.objects[cover_label].state["hidden"] = True
+    runtime.objects[cover_top].state.update(listenBtn=cover_listen, listenLabel=cover_label, bgView=cover_background)
+    send(cpu, runtime, cover_top, "layoutSubviews")
+    legacy_glass = surface_for(cover_listen)
+    require(legacy_glass and not surface_for(cover_background) and
+            runtime.objects[cover_listen].state["control_targets"] == [cover_listen_action],
+            "the cover's legacy Listen button keeps its native action under one glass surface")
+    runtime.objects[cover_listen].state["hidden"] = True
+    runtime.objects[cover_background].state["hidden"] = False
+    runtime.objects[cover_label].state["hidden"] = False
+    send(cpu, runtime, cover_top, "layoutSubviews")
+    cover_glass = surface_for(cover_background)
+    require(cover_glass and not surface_for(cover_listen) and
+            runtime.objects[cover_listen].state["backgroundColor"] == cover_fill and
+            runtime.objects[cover_glass].state["frame"] == (0, 0, 44, 24),
+            "the new Listen layout styles its existing visible backing and restores the hidden legacy button")
+
+    guide = runtime.view("UIView", "native left swipe guide", (134, 795, 122, 33), runtime.ROOT,
+                         backgroundColor=cover_fill, gesture_action="onClickGuideView")
+    guide_layer = runtime.objects[runtime.layer(guide)].state
+    guide_layer["borderWidth"] = 1.0
+    guide_arrow = runtime.view("UIImageView", "native guide arrow", (18, 9, 15, 15), guide)
+    guide_label = runtime.label("native guide caption", guide, (34, 7, 70, 19), "左滑开始阅读")
+    cover_main = runtime.obj("FQReaderCoverMainContentViewController", "cover page", guideView=guide)
+    send(cpu, runtime, cover_main, "setupGuideView")
+    guide_glass = surface_for(guide)
+    require(guide_glass and guide_layer["borderWidth"] == 0 and
+            runtime.objects[guide].state["subviews"] == [guide_glass, guide_arrow, guide_label] and
+            runtime.objects[guide].state["gesture_action"] == "onClickGuideView" and
+            not runtime.objects[guide_glass].state["userInteractionEnabled"],
+            "the guide replaces its stock fill and border while preserving the host arrow, caption and gesture")
+    runtime.objects[guide_label].state["text"] = runtime.text_object("上滑开始阅读")
+    send(cpu, runtime, cover_main, "viewDidLayoutSubviews")
+    require(surface_for(guide) == guide_glass, "vertical reading uses the same guide surface on layout")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, cover_main, "viewDidLayoutSubviews")
+    send(cpu, runtime, cover_top, "layoutSubviews")
+    require(not surface_for(guide) and guide_layer["borderWidth"] == 1.0 and
+            runtime.objects[guide].state["backgroundColor"] == cover_fill and
+            not surface_for(cover_background) and runtime.objects[cover_background].state["backgroundColor"] == cover_fill,
+            "disabling glass restores the original guide border and both stock fills")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+    runtime.objects[guide_label].state["text"] = runtime.text_object("继续阅读")
+    send(cpu, runtime, cover_main, "setupGuideView")
+    require(not surface_for(guide), "a different host guide is left alone")
 
     backdrop = runtime.color("reader panel theme")
     wrapper_backdrop = runtime.color("reader outer panel theme")
@@ -1145,11 +1240,12 @@ def exercise(data, labels):
                          hitInsets=(0., 0., 0., 0.), gesture_action="handleTap")
     caption = runtime.label("chapter caption", entry, (0, 0, 68, 20), "本章讨论")
     reward = runtime.view("SSReaderChapterEndRewardButton", "standalone gift",
-                          (350, 0, 50, 50), card, gesture_action="handleStandaloneGift")
+                          (350, 0, 50, 50), card, clipsToBounds=True, gesture_action="handleStandaloneGift")
     reward_fill = runtime.view("UIView", "white gift backing", (0, 0, 50, 50), reward,
                                clipsToBounds=True, backgroundColor=stock_fill)
     glyph = runtime.view("UIImageView", "gift icon", (14, 14, 22, 22), reward)
-    runtime.objects[card].state.update(model=model, activeEntranceView=entry, contentBackgroundView=card_fill)
+    runtime.objects[card].state.update(model=model, activeEntranceView=entry, contentBackgroundView=card_fill,
+                                       standaloneGiftButton=reward)
     runtime.objects[reward].state["customBackgroundView"] = reward_fill
     send(cpu, runtime, card, "layoutSubviews")
     send(cpu, runtime, entry, "layoutSubviews")
@@ -1159,6 +1255,8 @@ def exercise(data, labels):
     card_surface, reward_surface = surface_for(card_fill), surface_for(reward_fill)
     require(card_surface and reward_surface and not surface_for(entry) and not surface_for(reward),
             "both stock backings are replaced by one material each, with no nested strip")
+    require(not reward_state["clipsToBounds"] and not runtime.objects[reward_fill].state["clipsToBounds"],
+            "both gift wrappers allow the glass rim to render past the stock rounded mask")
     for backing, surface in ((card_fill, card_surface), (reward_fill, reward_surface)):
         owner, glass = runtime.objects[backing].state, runtime.objects[surface].state
         require(glass["frame"] == owner["bounds"] and owner["backgroundColor"] == clear and
@@ -1169,12 +1267,12 @@ def exercise(data, labels):
             reward_state["gesture_action"] == "handleStandaloneGift" and glyph in reward_state["subviews"],
             "discussion expands to the card and each original gesture and foreground is retained")
     chapter_theme = runtime.color("chapter after theme change")
+    send(cpu, runtime, reward, "updateWithThemeConfigChange:", runtime.color("gift after own theme change"))
     send(cpu, runtime, card, "updateWithReaderConfig:", chapter_theme)
-    send(cpu, runtime, reward, "updateWithThemeConfigChange:", chapter_theme)
     require(surface_for(card_fill) == card_surface and surface_for(reward_fill) == reward_surface and
             runtime.objects[card_fill].state["backgroundColor"] == clear and
             runtime.objects[reward_fill].state["backgroundColor"] == clear,
-            "native theme writes are absorbed without allocating another surface")
+            "the card's final gift fill write is cleared before another layout without allocating another surface")
     runtime.objects[model].state["displayMode"] = 2
     send(cpu, runtime, card, "layoutSubviews")
     require(not surface_for(card_fill) and entry_state["hitInsets"] == (0, 0, 0, 0) and
@@ -1187,8 +1285,8 @@ def exercise(data, labels):
     send(cpu, runtime, reward, "layoutSubviews")
     require(not surface_for(card_fill) and not surface_for(reward_fill) and
             entry_state["hitInsets"] == (0, 0, 0, 0) and
-            runtime.objects[reward_fill].state["backgroundColor"] == chapter_theme,
-            "disabling glass restores both native backgrounds and original hit bounds")
+            runtime.objects[reward_fill].state["backgroundColor"] == chapter_theme and reward_state["clipsToBounds"],
+            "disabling glass restores both native backgrounds, the gift mask and original hit bounds")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     profile = runtime.view("SSMyUserBar", "bar", (0, 0, 390, 96), runtime.ROOT)
@@ -1228,6 +1326,47 @@ def exercise(data, labels):
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
     send(cpu, runtime, profile, "layoutSubviews")
     require(not any(surface in mounted for surface in icons), "disabling glass removes the three siblings")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
+
+    profile_root = runtime.view("UIView", "Mine root", (0, 0, 440, 956), runtime.ROOT)
+    profile_feed = runtime.view("FQFeedListCollectionView", "Mine outer feed", (0, 106, 440, 850), profile_root,
+                                contentInset=(0, 0, 57, 0), contentOffset=(0, 230), clipsToBounds=True)
+    feed_state = runtime.objects[profile_feed].state
+    nested_feed = runtime.view("FQFeedListCollectionView", "Mine nested recommendations",
+                               (0, 200, 440, 750), profile_feed, contentInset=(0, 0, 0, 0))
+    nested_frame = runtime.objects[nested_feed].state["frame"]
+    original_bar_color = runtime.color("stock Mine bar color")
+    profile_chrome = runtime.view("SSMyUserBar", "Mine top bar", (0, 0, 440, 106), profile_root,
+                                  backgroundColor=original_bar_color, opaque=True, userInteractionEnabled=True)
+    profile_controller = runtime.obj("SSMyUser621ViewController", "Mine controller", view=profile_root,
+                                     myUserBar=profile_chrome, collectionView=profile_feed)
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    siblings = runtime.objects[profile_root].state["subviews"]
+    require(len(siblings) == 3 and siblings[0] == profile_feed and siblings[2] == profile_chrome,
+            "Mine blur samples the outer list and sits behind the native top controls")
+    profile_blur = siblings[1]
+    blur_state = runtime.objects[profile_blur].state
+    require(blur_state["frame"] == (0, 0, 440, 106) and not blur_state["userInteractionEnabled"] and
+            runtime.objects[blur_state["effect"]].state["style"] == 7,
+            "Mine bar uses one passive adaptive thin blur from the status area to the header bottom")
+    require(feed_state["frame"] == (0, 50, 440, 906) and feed_state["contentOffset"] == (0, 174) and
+            feed_state["contentInset"] == (56, 0, 57, 0) and feed_state["clipsToBounds"] and
+            runtime.objects[nested_feed].state["frame"] == nested_frame,
+            "Only the outer viewport expands, preserving the scroll anchor, lower edge and nested feed")
+    require(runtime.objects[profile_chrome].state["backgroundColor"] == clear and
+            not runtime.objects[profile_chrome].state["opaque"] and
+            runtime.objects[profile_chrome].state["userInteractionEnabled"],
+            "The host bar retains touch while its opaque backing is removed")
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 174),
+            "Repeated profile layout reuses blur and never reapplies the scroll delta")
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
+    send(cpu, runtime, profile_controller, "updateCollectionLayout")
+    require(siblings == [profile_feed, profile_chrome] and feed_state["frame"] == (0, 106, 440, 850) and
+            feed_state["contentInset"] == (0, 0, 57, 0) and feed_state["contentOffset"] == (0, 230) and
+            runtime.objects[profile_chrome].state["backgroundColor"] == original_bar_color and
+            runtime.objects[profile_chrome].state["opaque"],
+            "Disabling glass restores Mine geometry, scroll position, and native bar color")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
 
     shortcut_count = 0
@@ -1479,7 +1618,7 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     require(runtime.objects[duration].state["hidden"], "plugin respects the host's own hidden state")
-    # The original edit control moves into the measured title/search gap.
+    # Edit follows the duration preference while retaining the native control.
     shelf_controller = runtime.obj("SSBookShelfSubViewController", "native shelf subcontroller")
     shelf_owner = runtime.obj("SSBookShelf525ViewController", "shelf tabs", currentTabVC=shelf_controller)
     top = runtime.view("UIView", "top shelf chrome", (0, 64, 440, 44), runtime.ROOT)
@@ -1522,13 +1661,26 @@ def exercise(data, labels):
             "the inherited layout releases its Edit material and keeps the native title")
     edit_background = runtime.color("native shelf edit background")
     runtime.objects[edit].state["backgroundColor"] = edit_background
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     edit_state = runtime.objects[edit].state
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.) and
+            runtime.objects[size_layout].state["invalidations"] == 0,
+            "duration on keeps Edit at the right of its original row")
+    edit_glass = surface_for(edit)
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
+    require(edit_state["superview"] == secondary and surface_for(edit) == edit_glass,
+            "a temporary host hide does not move Edit while the preference is on")
+    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
+    runtime.objects[duration_switch].state["isOn"] = False
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
+    send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 44., 30.) and
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
-    edit_glass = surface_for(edit)
-    require(edit_glass and runtime.objects[edit_glass].state["frame"] == (0., 1., 44., 28.) and
+    require(edit_glass and surface_for(edit) == edit_glass and
+            runtime.objects[edit_glass].state["frame"] == (0., 1., 44., 28.) and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
     edit_frame = edit_state["frame"]
@@ -1608,10 +1760,12 @@ def exercise(data, labels):
     runtime.shelf_base_height = 30.
     runtime.shelf_function_height = 70.
     runtime.objects[cell].state["showsFilterExposure"] = True
-    send(cpu, runtime, shelf_header, "setShowReadTimeView:", 1)
+    runtime.objects[duration_switch].state["isOn"] = True
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == holder and runtime.objects[size_layout].state["invalidations"] == 2,
-            "showing duration restores the lower row while keeping edit in the top bar")
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.) and
+            runtime.objects[size_layout].state["invalidations"] == 2,
+            "re-enabling duration restores Edit and the stock row in the same layout pass")
     require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info,
             "uncompacted shelf keeps the stock transition info")
     send(cpu, runtime, shelf_controller, size_selector, shelf_list, size_layout, function)
@@ -1623,6 +1777,8 @@ def exercise(data, labels):
     require(runtime.objects[clip].state["frame"] == (0., 42., 440., 28.),
             "visible duration leaves the native function and filter geometry intact")
     runtime.objects[category].state["frame"] = (292., 6., 40., 32.)
+    runtime.objects[duration_switch].state["isOn"] = False
+    send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == secondary and edit_state["frame"] == (380., 4., 44., 30.),
             "a narrower title/search gap restores the original position")
@@ -1703,6 +1859,7 @@ def exercise(data, labels):
         "profile_shortcuts": shortcut_count,
         "mine_benefits_section_toggle": True,
         "profile_search_clips_carousel": True,
+        "profile_top_blur_and_feed_underlap": True,
         "profile_header_glass": len(icons),
         "target_game_deleted": True,
         "nonpromotion_mine_rows_retained": True,
@@ -1725,6 +1882,7 @@ def exercise(data, labels):
 def incompatible_shelf_compaction(data, labels):
     cpu, runtime = make(data)
     runtime.labels = labels
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieX.ShelfReadingDuration.1"] = False
     model_cls = runtime.classes["SSBookShelfViewModel"]
     runtime.methods[runtime.get_method(model_cls, runtime.sel("sectionTypeAtIndex:"))]["encoding"] = "@24@0:8q16"
     call(cpu, labels, "LFQH_FQHPageInstall")
