@@ -23,10 +23,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install the LLVM 19 shared library
+      - name: Check the runner's preinstalled LLVM and Clang
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y libllvm19 clang-19 python3
+          set -euo pipefail
+          python3 --version
+          /usr/bin/clang-18 --version
+          echo 'FQ_NATIVE_CLANG=/usr/bin/clang-18' >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import ctypes
+          library = ctypes.CDLL('/lib/x86_64-linux-gnu/libLLVM.so.19.1')
+          version = [ctypes.c_uint() for _ in range(3)]
+          library.LLVMGetVersion.argtypes = [ctypes.POINTER(ctypes.c_uint)] * 3
+          library.LLVMGetVersion(*(ctypes.byref(value) for value in version))
+          assert version[0].value == 19, 'ARM64 assembly audits require LLVM 19'
+          print('LLVM shared library:', '.'.join(str(value.value) for value in version))
+          PY
 
       - name: Download the matching Xcode 27.2 build artifact
         env:
