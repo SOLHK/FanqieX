@@ -395,6 +395,14 @@ Lrepair_edges:
     mov x0, x19
     mov x1, x20
     bl LXupdate
+.if FQ_VERSION >= 0x14b00
+    // Resolve the selected page's appearance before drawing the owned capsule.
+    AGET x20, LIbuttons_key
+    mov x2, x0
+    mov x0, x19
+    mov x1, x20
+    bl LFQH_FQHUpdateTabAppearance
+.endif
     // Choose the final material after native selection installation/fallback.
     mov x0, x19
     mov x1, x20

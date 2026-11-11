@@ -2724,6 +2724,56 @@ static Obj ActiveTabOwner(void) {
     }
     return 0;
 }
+
+// The app's bottom-background resolver knows which selected page is a video
+// feed, including registered tabs and bookstore subtabs. System traits alone
+// cannot describe those black pages when the rest of the app is in light mode.
+void FQHUpdateTabAppearance(Obj bar,Obj proxy,Obj buttons) {
+    Obj owner=Get(bar,"delegate");
+    if (!Kind(owner,"SSTabBarController") ||
+        !InstanceABI(owner,"bottomTabBackgroundColorWithTabModel:","@24@0:8@16")) return;
+    Obj page=Get(owner,"selectedViewController");
+    Obj model=Get(page,"currentTabModel");
+    if (!model) model=Get(Get(Get(page,"bookStoreTabContext"),"containerProvider"),"currentCategoryTabModel");
+    Obj color=O1(owner,"bottomTabBackgroundColorWithTabModel:",model);
+    Obj traits=Get(bar,"traitCollection");
+    if (Responds(color,"resolvedColorWithTraitCollection:"))
+        color=O1(color,"resolvedColorWithTraitCollection:",traits);
+
+    I style=0;
+    double red=0,green=0,blue=0,alpha=0,white=0;
+    if (Kind(color,"UIColor")) {
+        if (((B(*)(Obj,Sel,double *,double *,double *,double *))Message)(color,
+            sel_registerName("getRed:green:blue:alpha:"),&red,&green,&blue,&alpha))
+            white=(red+green*2+blue)*0.25;
+        else ((B(*)(Obj,Sel,double *,double *))Message)(color,
+            sel_registerName("getWhite:alpha:"),&white,&alpha);
+        if (alpha>=0.5) style=white<0.5 ? 2 : 1;
+    }
+    // Only the owned capsule and its descendants adopt the page appearance.
+    // Keep the regular glass effect, transparent backing and established frame.
+    if (((I(*)(Obj,Sel))Message)(proxy,sel_registerName("overrideUserInterfaceStyle"))!=style) {
+        Q1(proxy,"setOverrideUserInterfaceStyle:",style);
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"style",Number(style));
+        Put(record,"background",Get(color,"description"));
+        FQDRecord("tabGlassAppearance",record);
+    }
+    Obj foreground=O0(Lookup("UIColor"),"labelColor");
+    U count=TabCount(buttons);
+    for (U i=0;i<count;++i) {
+        Obj button=At(buttons,i);
+        if (!Kind(button,"UIButton")) continue;
+        // These are our visible title buttons, above the native selector whose
+        // titles are intentionally clear. Late host syncs may reset their ink.
+        for (U state=0;state<8;++state) {
+            Obj current=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("titleColorForState:"),state);
+            if (!SameColor(current,foreground))
+                ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitleColor:forState:"),foreground,state);
+        }
+        if (!SameColor(Get(button,"tintColor"),foreground)) V1(button,"setTintColor:",foreground);
+    }
+}
 static void InstallTabRecovery(Obj owner);
 static void ShelfEditHeaderKey(void) {}
 static void ShelfEditInsetsKey(void) {}

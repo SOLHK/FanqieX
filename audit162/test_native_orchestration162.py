@@ -29,10 +29,10 @@ class Runtime(Native, Legacy):
         return super().handle(cpu, pc)
 
 
-def make(data, *, slide=0, **options):
+def make(data, *, slide=0, runtime_class=Runtime, **options):
     entries = read_entries(data)
     native = native_entries(data)
-    rt = Runtime(data, entries, native, slide=slide, **options)
+    rt = runtime_class(data, entries, native, slide=slide, **options)
     words = struct.unpack_from('<64I', data, 0x800)
     ext = struct.unpack_from('<28I', data, 0x800 + words[60] + 16)
     entries.update({name: 0x800 + ext[index] for name, index in

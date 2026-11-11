@@ -268,6 +268,9 @@ def main():
                 "--report", output / "page-glass174.json"])
             run("top-chrome", ["audit162/test_top_chrome.py", candidate,
                 "--report", output / "top-chrome.json"])
+        if args.version == "1.75":
+            run("tab-appearance175", ["audit162/test_tab_appearance175.py", candidate,
+                "--report", output / "tab-appearance175.json"])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")
