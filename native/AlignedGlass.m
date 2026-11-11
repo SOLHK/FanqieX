@@ -2624,7 +2624,7 @@ static Obj PageOptionLabel(I option) {
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
-        case FullscreenFillOption: label="横屏播放铺满屏幕"; break;
+        case FullscreenFillOption: label="横屏原比例铺满（背景延展）"; break;
         case ShelfFilterOption: label="书架显示筛选按钮"; break;
         case ReaderThemeIsolationOption: label="书外主题跟随系统"; break;
         default: label="阅读菜单显示上下栏背景"; break;
@@ -3107,6 +3107,7 @@ static void InstallTabRecovery(Obj owner) {
     V0(observer,"release");
 }
 static void DramaDockLogKey(void) {}
+static void DramaDockInsetKey(void) {}
 
 static B DramaDockStockChannel(double value) {
     return value>=0 && value<=1 && (int)(value*256+0.5)==29;
@@ -3139,6 +3140,47 @@ static Obj DramaDockBackground(Obj self,Sel cmd) {
     return O0(Lookup("UIColor"),"blackColor");
 }
 
+static Size DramaDockPortraitSize(Obj self,Sel cmd) {
+    Size stock=((Size(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx194_originalPortraitSize"))(self,cmd);
+    Obj ui=O0(self,"uiConfig");
+    double inset=0;
+    Size result=stock;
+    if (Enabled() && ((I(*)(Obj,Sel))Message)(self,sel_registerName("feedType"))==4) {
+        Rect screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
+        double width=screen.width<screen.height ? screen.width : screen.height;
+        double height=screen.width>screen.height ? screen.width : screen.height;
+        // The native feed reserves the whole tab bar beneath its paging viewport.
+        // Grow that viewport while keeping controls above the floating navigation.
+        if (__builtin_fabs(stock.width-width)<1 && height-stock.height>=40 && height-stock.height<=120) {
+            inset=height-stock.height;
+            result.height=height;
+        }
+    }
+    Obj previous=objc_getAssociatedObject(ui,DramaDockInsetKey);
+    if (Double(previous)!=inset) {
+        objc_setAssociatedObject(ui,DramaDockInsetKey,Number(inset),1);
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"stockHeight",Number(stock.height));
+        Put(record,"viewportHeight",Number(result.height));
+        Put(record,"controlsBottomInset",Number(inset));
+        FQDRecord("dramaDockViewport",record);
+    }
+    return result;
+}
+
+static double DramaDockSafeBottom(Obj self,Sel cmd) {
+    double stock=((double(*)(Obj,Sel))Original("FQVShortVideoListUIConfig","fqx194_originalSafeBottom"))(self,cmd);
+    return stock+(Enabled() ? Double(objc_getAssociatedObject(self,DramaDockInsetKey)) : 0);
+}
+
+static Obj DramaDockControlOffset(Obj self,Sel cmd) {
+    const char *alias=cmd==sel_registerName("infoViewOffsetY") ? "fqx194_originalInfoOffset" :
+        cmd==sel_registerName("bottomGradientOffsetY") ? "fqx194_originalGradientOffset" : "fqx194_originalProgressOffset";
+    Obj stock=((Obj(*)(Obj,Sel))Original("FQVShortVideoListUIConfig",alias))(self,cmd);
+    double inset=Enabled() ? Double(objc_getAssociatedObject(self,DramaDockInsetKey)) : 0;
+    return stock && inset>0 ? Number(Double(stock)-inset) : stock;
+}
+
 static void DramaBackdropInstall(void) {
     const char *config="FQVShortVideoListConfig", *alias="fqx193_originalDramaDockColor";
     Obj owner=Lookup(config);
@@ -3148,6 +3190,16 @@ static void DramaBackdropInstall(void) {
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"installed",BoolBox(class_getInstanceMethod(owner,sel_registerName(alias))!=0));
     FQDRecord("dramaDockBackdropInstall",record);
+    const char *ui="FQVShortVideoListUIConfig";
+    if (!FQHGlassAvailable() || !Signature(config,"feedType","q16@0:8") ||
+        !Signature(config,"uiConfig","@16@0:8") || !Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") ||
+        !Signature(ui,"safeBottom","d16@0:8") || !Signature(ui,"infoViewOffsetY","@16@0:8") ||
+        !Signature(ui,"bottomGradientOffsetY","@16@0:8") || !Signature(ui,"progressContainerViewOffsetY","@16@0:8")) return;
+    Hook(config,"portraitVideoSize","fqx194_originalPortraitSize","{CGSize=dd}16@0:8",(Imp)DramaDockPortraitSize);
+    Hook(ui,"safeBottom","fqx194_originalSafeBottom","d16@0:8",(Imp)DramaDockSafeBottom);
+    Hook(ui,"infoViewOffsetY","fqx194_originalInfoOffset","@16@0:8",(Imp)DramaDockControlOffset);
+    Hook(ui,"bottomGradientOffsetY","fqx194_originalGradientOffset","@16@0:8",(Imp)DramaDockControlOffset);
+    Hook(ui,"progressContainerViewOffsetY","fqx194_originalProgressOffset","@16@0:8",(Imp)DramaDockControlOffset);
 }
 
 static void ReaderThemeLaunchKey(void) {}
@@ -3326,8 +3378,10 @@ void FQHInstallOptionsToggles(Obj controller) {
 }
 
 static void FullscreenScaleBaselineKey(void) {}
-// TTVideoEngine's Fill mode resizes the entire frame to the viewport.
-enum { FullscreenStretchMode=3 };
+static void FullscreenAmbientKey(void) {}
+// Native aspect-fit preserves the complete video; the renderer fills its unused
+// canvas with the same decoded frame's dynamic Gaussian background.
+enum { FullscreenAspectFitMode=1, FullscreenDynamicBlurOption=40092 };
 
 static B FullscreenFillViewport(Obj player,Rect *viewport) {
     if (!Flag(player,"isFullScreen") || !FullscreenFillEnabled()) return 0;
@@ -3353,19 +3407,52 @@ static B FullscreenFillViewport(Obj player,Rect *viewport) {
     return 1;
 }
 
+static void FullscreenAmbient(Obj engine,B fill) {
+    Obj previous=objc_getAssociatedObject(engine,FullscreenAmbientKey);
+    if (!fill) {
+        if (previous) {
+            ((void(*)(Obj,Sel,I,Obj))Message)(engine,sel_registerName("setOptionForKey:value:"),FullscreenDynamicBlurOption,previous);
+            objc_setAssociatedObject(engine,FullscreenAmbientKey,0,1);
+        }
+        return;
+    }
+    Obj key=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),FullscreenDynamicBlurOption);
+    Obj stock=O1(engine,"getOptionBykey:",key);
+    if (Kind(stock,"NSNumber") && Flag(stock,"boolValue")) return;
+    if (!previous) objc_setAssociatedObject(engine,FullscreenAmbientKey,Kind(stock,"NSNumber") ? stock : BoolBox(0),1);
+    ((void(*)(Obj,Sel,I,Obj))Message)(engine,sel_registerName("setOptionForKey:value:"),FullscreenDynamicBlurOption,BoolBox(1));
+    // Match the host's ALMOwnPlayerWrapper dynamic-background configuration.
+    Obj effect=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(effect,"kProcessorAction",Number(0));
+    Put(effect,"kProcessorEffectType",Number(12));
+    ((void(*)(Obj,Sel,Obj,Obj))Message)(effect,sel_registerName("setObject:forKey:"),Number(2),Number(5));
+    ((void(*)(Obj,Sel,Obj,Obj))Message)(effect,sel_registerName("setObject:forKey:"),Number(1),Number(13));
+    Put(effect,"kProcessorUseEffect",Number(1));
+    Put(effect,"pGradientLength",Number(0));
+    Put(effect,"pDGBOffsety",Number(0));
+    Put(effect,"pDYGBTexMaxLen",Number(320));
+    Put(effect,"kDYGBControNum",Number(1));
+    V1(engine,"setEffectParams:",effect);
+    Q1(engine,"dynamicGaussianBlurResetViewSize:",1);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"mode",Text("aspectFitWithAmbientBackground"));
+    FQDRecord("dramaFullscreenMode",record);
+}
+
 static void FullscreenScale(Obj engine,B fill) {
     if (!engine) return;
+    FullscreenAmbient(engine,fill);
     Obj baseline=objc_getAssociatedObject(engine,FullscreenScaleBaselineKey);
     if (!fill && !baseline) return;
     I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode"));
-    if (fill && mode!=FullscreenStretchMode) {
+    if (fill && mode!=FullscreenAspectFitMode) {
         Obj box=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),mode);
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,box,1);
-        Q1(engine,"setScaleMode:",FullscreenStretchMode);
+        Q1(engine,"setScaleMode:",FullscreenAspectFitMode);
     } else if (!fill) {
         I previous=((I(*)(Obj,Sel))Message)(baseline,sel_registerName("integerValue"));
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,0,1);
-        if (mode==FullscreenStretchMode) Q1(engine,"setScaleMode:",previous);
+        if (mode==FullscreenAspectFitMode) Q1(engine,"setScaleMode:",previous);
     }
 }
 
@@ -3401,6 +3488,9 @@ static void FullscreenRefresh(Obj player) {
 }
 
 static void FullscreenPlayerPrepare(Obj self,Sel cmd,Obj info,B async) {
+    // Configure the renderer before preparation creates its native video surface.
+    Rect viewport;
+    FullscreenScale(O0(self,"videoEngine"),FullscreenFillViewport(self,&viewport));
     ((void(*)(Obj,Sel,Obj,B))Original("FQVPlayer","fqx190_originalPlayerPrepare:async:"))(self,cmd,info,async);
     FullscreenRefresh(self);
 }
@@ -3432,6 +3522,10 @@ static void FullscreenFillInstall(void) {
         !Signature(cell,"isInPlayerScaleMode","B16@0:8") ||
         !Signature(cell,"modelDidDisplay","v16@0:8") ||
         !Signature("TTVideoEngine","scaleMode","q16@0:8") ||
+        !Signature("TTVideoEngine","getOptionBykey:","@24@0:8@16") ||
+        !Signature("TTVideoEngine","setOptionForKey:value:","v32@0:8q16@24") ||
+        !Signature("TTVideoEngine","setEffectParams:","v24@0:8@16") ||
+        !Signature("TTVideoEngine","dynamicGaussianBlurResetViewSize:","v24@0:8q16") ||
         !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16")) return;
     Hook("FQVPlayer","landscapePlayerViewFrame","fqx190_originalLandscapeFrame",
          "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8",(Imp)FullscreenPlayerFrame);

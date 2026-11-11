@@ -367,6 +367,10 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 ("FQVShortVideoLandscapePlayerCellView", "isInPlayerScaleMode", "B16@0:8"),
                 ("FQVShortVideoLandscapePlayerCellView", "modelDidDisplay", "v16@0:8"),
                 ("TTVideoEngine", "scaleMode", "q16@0:8"),
+                ("TTVideoEngine", "getOptionBykey:", "@24@0:8@16"),
+                ("TTVideoEngine", "setOptionForKey:value:", "v32@0:8q16@24"),
+                ("TTVideoEngine", "setEffectParams:", "v24@0:8@16"),
+                ("TTVideoEngine", "dynamicGaussianBlurResetViewSize:", "v24@0:8q16"),
                 ("TTVideoEngine", "setScaleMode:", "v24@0:8q16")):
             self._add(self.classes[cls], selector, self.VIDEO_PLAYER_ORIGINAL, encoding)
         for cls in ("SSShortVideoHostRightInteractionCommentView", "SSShortVideoBottomDistributionView"):
@@ -409,6 +413,18 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             return self.finish(cpu)
         if pc == self.VIDEO_PLAYER_ORIGINAL:
             state = self.objects[receiver].state
+            if name == "getOptionBykey:":
+                key = int(self.objects[cpu.x[2]].state["value"])
+                return self.finish(cpu, state.get("options", {}).get(key, 0))
+            if name == "setOptionForKey:value:":
+                state.setdefault("options", {})[cpu.x[2]] = cpu.x[3]
+                return self.finish(cpu)
+            if name == "setEffectParams:":
+                state.setdefault("effects", []).append(cpu.x[2])
+                return self.finish(cpu)
+            if name == "dynamicGaussianBlurResetViewSize:":
+                state.setdefault("blurSizeResets", []).append(cpu.x[2])
+                return self.finish(cpu)
             if name == "landscapePlayerViewFrame":
                 return self.finish(cpu, fp=state["landscapePlayerViewFrame"])
             if name in ("setScaleMode:", "setIsFullScreen:", "setVideoEngine:"):
@@ -421,6 +437,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 state["prepareArguments"] = tuple(cpu.x[2:4])
                 engine = self.objects[state["videoEngine"]].state
                 engine["scaleMode"] = state["nativeScaleMode"]
+                engine["options"] = {}
                 return self.finish(cpu)
             if name == "updatePlayerLayout":
                 state["playerLayoutUpdates"] = state.get("playerLayoutUpdates", 0) + 1
@@ -1932,7 +1949,7 @@ def exercise(data, labels):
                      for item in switches]
     require(switch_labels == [f"底栏显示：{title}" for title in titles] + [
                 "书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景",
-                "横屏播放铺满屏幕", "书架显示筛选按钮", "书外主题跟随系统"],
+                "横屏原比例铺满（背景延展）", "书架显示筛选按钮", "书外主题跟随系统"],
             "all page preferences have a settings switch")
     require([bool(runtime.objects[item].state["isOn"]) for item in switches] == [True] * 8 + [False, True, False],
             "filter stays visible and the two override modes default off")
@@ -2325,19 +2342,26 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
             send(cpu, runtime, target, "landscapePlayerViewFrame")
             return tuple(cpu.fp(i) for i in range(4))
 
+        def ambient(state):
+            option = state.get("options", {}).get(40092)
+            return bool(option and runtime.objects[option].state["value"])
+
         send(cpu, runtime, player, "layoutSubviews")
         require(displayed() == stock and engine_state["scaleMode"] == 1,
                 "the off setting preserves the native renderer")
         toggle["isOn"] = True
         send(cpu, runtime, observer, selector, switch)
         send(cpu, runtime, player, "layoutSubviews")
-        require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 3,
-                "each phone uses native stretch to show the entire frame across its landscape viewport")
+        require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 1,
+                "each phone uses aspect fit to preserve the complete video and its proportions")
+        require(ambient(engine_state) and engine_state["effects"],
+                "native dynamic video background fills the unused aspect-fit canvas")
 
         runtime.objects[cell].state["isInPlayerScaleMode"] = True
         send(cpu, runtime, player, "layoutSubviews")
         require(displayed() == stock and engine_state["scaleMode"] == 1,
                 "opening a native landscape side panel restores the stock presentation")
+        require(not ambient(engine_state), "the side panel restores native background processing")
         runtime.objects[cell].state["isInPlayerScaleMode"] = False
         send(cpu, runtime, player, "layoutSubviews")
 
@@ -2345,10 +2369,11 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         send(cpu, runtime, player, "setVideoEngine:", replacement)
         require(engine_state["scaleMode"] == 1, "the pooled engine is restored before replacement")
         send(cpu, runtime, player, "layoutSubviews")
-        require(runtime.objects[replacement].state["scaleMode"] == 3, "replacement engine fills its viewport")
+        require(runtime.objects[replacement].state["scaleMode"] == 1, "replacement engine preserves the video ratio")
         send(cpu, runtime, player, "setIsFullScreen:", 0)
         require(displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
                 "leaving fullscreen restores the new engine's original scale")
+        require(not ambient(runtime.objects[replacement].state), "pooled engines restore their background option")
 
         send(cpu, runtime, player, "setIsFullScreen:", 1)
         send(cpu, runtime, player, "layoutSubviews")
@@ -2360,32 +2385,33 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
                                    (0.5, 0., float(width), float(height)), next_cell)
         next_engine = runtime.obj("TTVideoEngine", "next engine", scaleMode=1, resolution="native adaptive")
         next_player = runtime.view("FQVPlayer", "next player", canvas, next_holder,
-                                   isFullScreen=True, videoEngine=next_engine, nativeScaleMode=1,
+                                   isFullScreen=True, videoEngine=next_engine, nativeScaleMode=2,
                                    landscapePlayerViewFrame=stock)
         next_state = runtime.objects[next_player].state
         next_engine_state = runtime.objects[next_engine].state
         runtime.objects[next_cell].state.update(playerSuperView=next_holder, vPlayer=next_player)
 
         send(cpu, runtime, next_player, "layoutSubviews")
-        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 3,
-                "an offscreen cell can prepare stretch with fractional layout rounding")
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 1,
+                "an offscreen cell prepares full-frame aspect fit with fractional layout rounding")
         info = runtime.obj("NSObject", "next video info")
         send(cpu, runtime, next_player, "prepareWithVideoInfo:async:", info, 1)
-        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 3,
-                "fill is restored after native prepare resets the renderer scale")
+        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 1
+                and ambient(next_engine_state),
+                "aspect fit and ambient background return after native preparation resets the renderer")
         require(next_engine_state["resolution"] == "native adaptive",
                 "fill preserves the native resolution selection")
 
-        next_engine_state["scaleMode"] = 1
+        next_engine_state["scaleMode"] = 2
         previous_updates = next_state["playerLayoutUpdates"]
         send(cpu, runtime, next_player, "videoEngineReadyToDisPlay:", next_engine)
-        require(next_state["readySnapshot"] == (3, previous_updates + 1),
+        require(next_state["readySnapshot"] == (1, previous_updates + 1),
                 "the engine and frame are ready before the host reveals the first frame")
 
         runtime.objects[next_cell].state["frame"] = canvas
-        next_engine_state["scaleMode"] = 1
+        next_engine_state["scaleMode"] = 2
         send(cpu, runtime, next_cell, "modelDidDisplay")
-        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 3,
+        require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 1,
                 "paging to an already-ready cell restores fill without a new player layout or ready callback")
         scale_writes = list(next_engine_state["scaleWrites"])
         send(cpu, runtime, next_cell, "modelDidDisplay")
@@ -2397,6 +2423,22 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         send(cpu, runtime, player, "layoutSubviews")
         require(not prefs[key] and displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
                 "turning off fill restores fullscreen framing and scale")
+        require(not ambient(runtime.objects[replacement].state), "turning off fill releases the ambient renderer")
+
+        # Another host scene may already have enabled its own background effect.
+        replacement_state = runtime.objects[replacement].state
+        host_option = runtime.obj("NSNumber", "native ambient already enabled", value=True)
+        replacement_state["options"][40092] = host_option
+        previous_effects = list(replacement_state["effects"])
+        toggle["isOn"] = True
+        send(cpu, runtime, observer, selector, switch)
+        send(cpu, runtime, player, "layoutSubviews")
+        toggle["isOn"] = False
+        send(cpu, runtime, observer, selector, switch)
+        send(cpu, runtime, player, "layoutSubviews")
+        require(replacement_state["effects"] == previous_effects
+                and replacement_state["options"][40092] == host_option,
+                "native ambient settings survive a complete plugin toggle cycle")
 
 
 def incompatible_shelf_compaction(data, labels):
@@ -2563,14 +2605,26 @@ def exercise_drama_dock_backdrop(data, labels):
         def __init__(self, binary):
             super().__init__(binary)
             self._class(config_class, "NSObject")
+            self._class("FQVShortVideoListUIConfig", "NSObject")
+            self._class("UIScreen", "NSObject")
+            self.screen = self.obj("UIScreen", "phone screen", bounds=(0., 0., 440., 956.))
             for cls, selector, abi in (
                 (config_class, "feedType", "q16@0:8"),
                 (config_class, color_selector, "@16@0:8"),
+                (config_class, "portraitVideoSize", "{CGSize=dd}16@0:8"),
+                (config_class, "uiConfig", "@16@0:8"),
+                ("FQVShortVideoListUIConfig", "safeBottom", "d16@0:8"),
+                ("FQVShortVideoListUIConfig", "infoViewOffsetY", "@16@0:8"),
+                ("FQVShortVideoListUIConfig", "bottomGradientOffsetY", "@16@0:8"),
+                ("FQVShortVideoListUIConfig", "progressContainerViewOffsetY", "@16@0:8"),
+                ("UIScreen", "bounds", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8"),
                 ("UIColor", rgb_selector, "B48@0:8^d16^d24^d32^d40"),
                 ("UIColor", white_selector, "B32@0:8^d16^d24"),
             ):
                 self._add(self.classes[cls], selector, self.COLOR_METHOD, abi)
             self._add(self.metaclasses[self.classes["UIColor"]], "blackColor",
+                      self.COLOR_METHOD, "@16@0:8")
+            self._add(self.metaclasses[self.classes["UIScreen"]], "mainScreen",
                       self.COLOR_METHOD, "@16@0:8")
 
         def handle(self, cpu, pc):
@@ -2580,7 +2634,13 @@ def exercise_drama_dock_backdrop(data, labels):
             name = self.selector_names[selector]
             if name == "blackColor":
                 return self.finish(cpu, self.color(name))
+            if name == "mainScreen":
+                return self.finish(cpu, self.screen)
             state = self.objects[receiver].state
+            if name in ("portraitVideoSize", "bounds"):
+                return self.finish(cpu, fp=state[name])
+            if name == "safeBottom":
+                return self.finish(cpu, fp=(state[name],))
             if name in (rgb_selector, white_selector):
                 values = state.get(name, ())
                 for address, value in zip(cpu.x[2:], values):
@@ -2616,6 +2676,31 @@ def exercise_drama_dock_backdrop(data, labels):
     require([record for event, record in runtime.records if event == "dramaDockBackdrop"]
             == [{"feedType": 4., "stock": "#1D1D1D", "applied": "#000000"}]*2,
             "background substitution is recorded once per matching config")
+    prefs = runtime.objects[runtime.DEFAULTS].state["values"]
+    offsets = {"infoViewOffsetY": -8., "bottomGradientOffsetY": 0., "progressContainerViewOffsetY": -2.}
+    for screen_width, screen_height, dock_height in ((440., 956., 80.), (375., 812., 74.), (956., 440., 80.)):
+        width, height = sorted((screen_width, screen_height))
+        runtime.objects[runtime.screen].state["bounds"] = (0., 0., screen_width, screen_height)
+        ui = runtime.obj("FQVShortVideoListUIConfig", "native control positions", safeBottom=6.,
+                         **{key: runtime.obj("NSNumber", key, value=value) for key, value in offsets.items()})
+        config = runtime.obj(config_class, "outer feed geometry", feedType=4, uiConfig=ui,
+                             portraitVideoSize=(width, height-dock_height))
+        prefs["FanqieAdBlock.GlassDisabled.1"] = False
+        for _ in range(3):
+            send(cpu, runtime, config, "portraitVideoSize")
+            require((cpu.fp(0), cpu.fp(1)) == (width, height),
+                    "native paging canvas reaches the screen edge behind the floating glass")
+            send(cpu, runtime, ui, "safeBottom")
+            require(cpu.fp(0) == 6.+dock_height, "native control inset reserves the floating dock")
+            for key, offset in offsets.items():
+                adjusted = send(cpu, runtime, ui, key)["result"]
+                require(height+runtime.objects[adjusted].state["value"] == height-dock_height+offset,
+                        "watch row and progress anchors keep their original screen positions")
+        prefs["FanqieAdBlock.GlassDisabled.1"] = True
+        send(cpu, runtime, config, "portraitVideoSize")
+        require(cpu.fp(1) == height-dock_height, "disabling glass restores native paging geometry")
+        send(cpu, runtime, ui, "safeBottom")
+        require(cpu.fp(0) == 6., "disabling glass restores native control insets")
     return True
 
 
