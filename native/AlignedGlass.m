@@ -3149,9 +3149,10 @@ static Size DramaDockPortraitSize(Obj self,Sel cmd) {
         Rect screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
         double width=screen.width<screen.height ? screen.width : screen.height;
         double height=screen.width>screen.height ? screen.width : screen.height;
-        // The native feed reserves the whole tab bar beneath its paging viewport.
-        // Grow that viewport while keeping controls above the floating navigation.
-        if (__builtin_fabs(stock.width-width)<1 && height-stock.height>=40 && height-stock.height<=120) {
+        // The host factory supplies {0, screenHeight - dockHeight}. Zero width
+        // means automatic container width in setupVideoSizes; preserve that sentinel.
+        if ((stock.width==0 || __builtin_fabs(stock.width-width)<1) &&
+            height-stock.height>=40 && height-stock.height<=120) {
             inset=height-stock.height;
             result.height=height;
         }
@@ -3160,6 +3161,7 @@ static Size DramaDockPortraitSize(Obj self,Sel cmd) {
     if (Double(previous)!=inset) {
         objc_setAssociatedObject(ui,DramaDockInsetKey,Number(inset),1);
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"requestedWidth",Number(stock.width));
         Put(record,"stockHeight",Number(stock.height));
         Put(record,"viewportHeight",Number(result.height));
         Put(record,"controlsBottomInset",Number(inset));
@@ -3189,6 +3191,7 @@ static void DramaBackdropInstall(void) {
         Hook(config,"listVCBackgroundColor",alias,"@16@0:8",(Imp)DramaDockBackground);
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"installed",BoolBox(class_getInstanceMethod(owner,sel_registerName(alias))!=0));
+    Put(record,"revision",Text("drama-dock-r6"));
     FQDRecord("dramaDockBackdropInstall",record);
     const char *ui="FQVShortVideoListUIConfig";
     if (!FQHGlassAvailable() || !Signature(config,"feedType","q16@0:8") ||

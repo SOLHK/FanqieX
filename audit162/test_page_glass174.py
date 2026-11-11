@@ -2671,25 +2671,32 @@ def exercise_drama_dock_backdrop(data, labels):
     check(other, 4, other)
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = True
     check(rgb, 4, rgb)
-    require([record for event, record in runtime.records if event == "dramaDockBackdropInstall"]
-            == [{"installed": True}], "hook installation is recorded")
+    require([record["installed"] for event, record in runtime.records if event == "dramaDockBackdropInstall"]
+            == [True], "hook installation is recorded")
     require([record for event, record in runtime.records if event == "dramaDockBackdrop"]
             == [{"feedType": 4., "stock": "#1D1D1D", "applied": "#000000"}]*2,
             "background substitution is recorded once per matching config")
     prefs = runtime.objects[runtime.DEFAULTS].state["values"]
     offsets = {"infoViewOffsetY": -8., "bottomGradientOffsetY": 0., "progressContainerViewOffsetY": -2.}
-    for screen_width, screen_height, dock_height in ((440., 956., 80.), (375., 812., 74.), (956., 440., 80.)):
+    cases = ((440., 956., 80., 440.), (375., 812., 74., 375.), (956., 440., 80., 440.),
+             (440., 956., 80., 0.), (375., 812., 74., 0.), (956., 440., 80., 0.))
+    for screen_width, screen_height, dock_height, requested_width in cases:
         width, height = sorted((screen_width, screen_height))
         runtime.objects[runtime.screen].state["bounds"] = (0., 0., screen_width, screen_height)
         ui = runtime.obj("FQVShortVideoListUIConfig", "native control positions", safeBottom=6.,
                          **{key: runtime.obj("NSNumber", key, value=value) for key, value in offsets.items()})
         config = runtime.obj(config_class, "outer feed geometry", feedType=4, uiConfig=ui,
-                             portraitVideoSize=(width, height-dock_height))
+                             portraitVideoSize=(requested_width, height-dock_height))
         prefs["FanqieAdBlock.GlassDisabled.1"] = False
         for _ in range(3):
             send(cpu, runtime, config, "portraitVideoSize")
-            require((cpu.fp(0), cpu.fp(1)) == (width, height),
-                    "native paging canvas reaches the screen edge behind the floating glass")
+            require((cpu.fp(0), cpu.fp(1)) == (requested_width, height),
+                    "native paging reaches the screen bottom with explicit or automatic width")
+            # setupVideoSizes resolves zero to the container width before sizing
+            # both the collection's clipping bounds and its paged video cells.
+            resolved_width = cpu.fp(0) if cpu.fp(0) > 0 else width
+            require((resolved_width, cpu.fp(1)) == (width, height),
+                    "the resolved collection viewport includes the area behind the glass")
             send(cpu, runtime, ui, "safeBottom")
             require(cpu.fp(0) == 6.+dock_height, "native control inset reserves the floating dock")
             for key, offset in offsets.items():
