@@ -105,7 +105,7 @@ def fixture(data,labels,slide=0,available=True):
 
 def run(data,labels):
     passed=[]
-    header=release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75')
+    header=release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76')
     def call(c,label,*args,fp=None): return c.run(labels[label],args=list(args),fp_args=fp,max_steps=1500000)
     for slide in (0,0x100000000):
         c,r=fixture(data,labels,slide)
@@ -165,7 +165,7 @@ def run(data,labels):
         passed.append('header sizing/reuse/theme/restore; original text geometry and actions at slide '+hex(slide))
     for available in (False,True):
         c,r=fixture(data,labels,available=available)
-        bundle_only=release_version(data) in ('1.7.4', '1.74', '1.75')
+        bundle_only=release_version(data) in ('1.7.4', '1.74', '1.75', '1.76')
         check='LFQH_FQHHostBundle' if bundle_only else 'LFQH_FQHCompatibleHost'
         require(call(c,check)['result']==1,'Matching app accepted independently of UUID and glass API')
         c.run(0x4018,check_abi=False)
@@ -189,7 +189,7 @@ def run(data,labels):
             require(r.objects[v].state==before and not r.attachments,'iOS 18 missing API leaves original controls intact')
             require(not any(e['event']=='method_setImplementation' for e in r.events),'No glass hooks on old system')
         passed.append('identity/ABI gates with glass '+str(available))
-    if release_version(data) in ('1.7.4', '1.74', '1.75'):
+    if release_version(data) in ('1.7.4', '1.74', '1.75', '1.76'):
         for missing in (False,True):
             c,r=fixture(data,labels)
             owner=r.classes[HOME]
@@ -238,7 +238,7 @@ def run(data,labels):
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('candidate',type=Path);p.add_argument('--report',type=Path,required=True);a=p.parse_args()
     data=a.candidate.read_bytes()
-    names=LABELS+(['LFQH_FQHHostBundle'] if release_version(data) in ('1.7.4', '1.74', '1.75') else [])
+    names=LABELS+(['LFQH_FQHHostBundle'] if release_version(data) in ('1.7.4', '1.74', '1.75', '1.76') else [])
     labels=labels_for(data,a.candidate.with_suffix('.composed.s'),names)
     results=run(data,labels)
     report={'passed':True,'device_tested':False,'cases':results,'viewport_widths':[320,375,390,430,440,768,1024]}

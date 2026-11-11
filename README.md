@@ -2,17 +2,19 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.75
+## FanqieX 1.76
 
-本版调整阅读页、书城、书架和「我的」的液态玻璃，修复书城下拉刷新后留下的空白。
+本版修复短剧悬浮底栏的遮罩、视频透出和全集入口重叠，并让底栏按当前页面的明暗自动适配玻璃与文字颜色。
+横屏播放保留原始画面比例，使用原生动态背景填充剩余区域；阅读页深色背景与应用外部主题独立。
 插件会检查宿主的类和方法签名，再逐项启用匹配的功能。
 
-- [修复说明和设备观察点](docs/REPAIR_1.75.md)
+- [修复说明和设备观察点](docs/REPAIR_1.76.md)
 - [逆向材料核对证据](docs/REVERSE_ARCHIVE_174_EVIDENCE.json)
-- [插件](dist/1.75/FanqieX-1.75.dylib)
-- [插件包](dist/1.75/FanqieX-1.75.zip)
-- [SHA-256 校验值](dist/1.75/SHA256SUMS.txt)
-- [验证记录](verification/1.75/ci-summary.json)
+- [插件](https://github.com/SOLHK/FanqieX/releases/download/v1.76/FanqieX-1.76.dylib)
+- [插件包](https://github.com/SOLHK/FanqieX/releases/download/v1.76/FanqieX-1.76.zip)
+- [SHA-256 校验值](https://github.com/SOLHK/FanqieX/releases/download/v1.76/SHA256SUMS.txt)
+- [验证记录](https://github.com/SOLHK/FanqieX/releases/download/v1.76/VERIFICATION.json)
+- [GitHub Release](https://github.com/SOLHK/FanqieX/releases/tag/v1.76)
 - [GitHub Actions](https://github.com/SOLHK/FanqieX/actions)
 
 宿主身份已按本次上传的 IPA 逆向 ZIP 重新核对：
@@ -31,6 +33,10 @@ Mach-O 元数据、Info.plist、Frameworks 和 Swift 元数据列表。缺失项
 
 ## 主要修改
 
+- 短剧视频延伸到底栏后方，底栏保持单层悬浮玻璃；全集、合集入口与底栏分别布局。
+- 底栏根据当前页面的背景色自动切换深浅材质、文字及选中态，切回浅色页面时同步恢复。
+- 全屏播放保持视频原始宽高比，连续切换视频时重新应用设置，剩余屏幕使用原生动态背景。
+- 书架筛选开关控制实际入口显示；阅读页的黑色背景与玻璃控件采用局部深色外观，应用主题遵从设置。
 - 阅读页的章末讨论与作者说共用整张玻璃卡片，新书的「听书」与「左滑开始阅读」入口采用玻璃样式。
 - 书城、书架和「我的」使用同一套顶部模糊材质，滚动时可透出后方封面。书城刷新后恢复列表位置，书架编辑按钮随今日看听读时长的显示状态切换位置。
 - 书城与「我的」右下角写作按钮采用液态玻璃。「我的」将顶部模糊限制在工具栏内。
@@ -69,14 +75,14 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.75 --output build/ci175
+python3 scripts/verify162.py --version 1.76 --output build/ci176
 ```
 
 macOS / Xcode 27.2 构建：
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
-python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.75
+python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.76
 ```
 
 Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建检查：
@@ -84,7 +90,7 @@ Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建�
 ```powershell
 $env:FQ_ASSEMBLER = "clang"
 $env:FQ_CLANG = "C:\Program Files\LLVM\bin\clang.exe"
-python scripts/verify162.py --version 1.75 --output build/ci175
+python scripts/verify162.py --version 1.76 --output build/ci176
 ```
 
 该 Windows 路径不替代 Xcode 27.2 发布构建；它只用于执行同一套 ARM64 指令、结构审计和回归测试。

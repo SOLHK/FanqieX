@@ -32,7 +32,7 @@ NAMES = ['ratio','layout','installer','repair','strings','end','version','reserv
 
 def directory(data):
     words = struct.unpack_from('<64I',data,0x800)
-    require(words[6] in (0x10505,0x10506,0x10508,0x10509,0x10600,0x10602,0x10603,0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704, 0x14a00, 0x14b00) and words[7] == 0,
+    require(words[6] in (0x10505,0x10506,0x10508,0x10509,0x10600,0x10602,0x10603,0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704, 0x14a00, 0x14b00, 0x14c00) and words[7] == 0,
             'Known payload directory')
     require(all(not p or 0x100 <= p < words[55] or words[4] <= p < words[5] for p in words[57:60]), 'Additional entries stay inside code/data payload')
     require(0x100 <= words[0] < words[55] <= 0x3800 and words[4] == 0x11100 and words[4] < words[5] <= 0x13800, 'Split payload bounds')

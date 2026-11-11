@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.75
+name: Verify FanqieX 1.76
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: verify175-${{ github.ref }}
+  group: verify176-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,8 +38,8 @@ jobs:
             run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then
               gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.75.dylib
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.75.validation.json
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.76.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.76.validation.json
               exit 0
             fi
             sleep 10
@@ -48,7 +48,7 @@ jobs:
           exit 1
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.75 --output build/ci175 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.75.dylib
+        run: python3 scripts/verify162.py --version 1.76 --output build/ci176 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.76.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -56,8 +56,8 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci175/*.json
-            build/ci175/logs/
+            build/ci176/*.json
+            build/ci176/logs/
           if-no-files-found: warn
           retention-days: 30
 
@@ -66,18 +66,18 @@ jobs:
         run: |
           set -euo pipefail
           # Rebuild the committed distribution from this run after verification.
-          rm -rf dist/1.75 verification/1.75
-          python3 scripts/package162.py --version 1.75 --verification-dir build/ci175
+          rm -rf dist/1.76 verification/1.76
+          python3 scripts/package162.py --version 1.76 --verification-dir build/ci176
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.75
+          name: FanqieX-1.76
           path: |
-            dist/1.75/FanqieX-1.75.dylib
-            dist/1.75/FanqieX-1.75.zip
-            dist/1.75/SHA256SUMS.txt
-            dist/1.75/VERIFICATION.json
+            dist/1.76/FanqieX-1.76.dylib
+            dist/1.76/FanqieX-1.76.zip
+            dist/1.76/SHA256SUMS.txt
+            dist/1.76/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30

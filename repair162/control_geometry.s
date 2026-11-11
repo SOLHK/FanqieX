@@ -1162,7 +1162,7 @@ LGstyle_glyph:
     bl LRrestore_original_top
     b LGglyph_done
 LGglyph_fallback:
-.if FQ_VERSION == 0x14b00
+.if FQ_VERSION >= 0x14b00
     mov x0, x19
     mov x1, x20
     bl LFQH_FQHDramaGlyph
