@@ -15,6 +15,7 @@ from pathlib import Path
 from arm64 import CPU, require
 from test_controls171 import Runtime as GlassRuntime, call
 from test_control_glass166 import send
+from test_control_geometry import selector_address
 from test_header173 import drawn_rect
 from test_home_glass165 import LABELS
 from test_feed_viewport import labels_for
@@ -27,6 +28,10 @@ EXTRA = [
     "LFQH_FQHSurface", "LFQH_FQHIconGlass", "Lrecord_named", "LGstyle_control", "LGshelf_material",
 ]
 HOOKS = [
+    ("SSShortVideoHostRightInteractionCommentView", "layoutSubviews"),
+    ("SSShortVideoRightInteractionLikeView", "updateLikeIconHidden:"),
+    ("SSShortVideoBottomDistributionView", "layoutSubviews"),
+    ("SSShortVideoBottomDistributionView", "renderWithModel:"),
     ("SSReaderFanClubEntryContainerView", "layoutSubviews"),
     ("FQReaderUIManager", "showBottomBarContainer:"),
     ("FQReaderUIManager", "onConfigThemeChange:context:"),
@@ -79,6 +84,11 @@ HOOKS = [
     ("SSMyUser621ViewController", "objectsForListAdapter:"),
     ("SSTabBarController", "tabbarVCAndAttributeInit"),
     ("SSTabBarController", "viewDidAppear:"),
+    ("FQVPlayer", "landscapePlayerViewFrame"),
+    ("FQVPlayer", "layoutSubviews"),
+    ("FQVPlayer", "setIsFullScreen:"),
+    ("FQVPlayer", "setVideoEngine:"),
+    ("FQVPlayer", "videoEngineReadyToDisPlay:"),
 ]
 
 
@@ -117,6 +127,9 @@ class Runtime(TopChromeRuntime, GlassRuntime):
     READER_MENU_SHOW = 0x330c0b10
     READER_MENU_THEME = 0x330c0b20
     READER_COMMUNITY_REFRESH = 0x330c0b70
+    VIDEO_PLAYER_ORIGINAL = 0x330c3200
+    DRAMA_WATCH_RENDER = 0x330c3300
+    DRAMA_LIKE_VISIBILITY = 0x330c3310
 
     def __init__(self, data):
         super().__init__(data)
@@ -192,6 +205,15 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             ("UITapGestureRecognizer", "UIGestureRecognizer"),
             ("UISwitch", "UIControl"),
             ("UITableView", "UIScrollView"),
+            ("FQVPlayer", "UIView"),
+            ("FQVShortVideoLandscapePlayerCellView", "UIView"),
+            ("TTVideoEngine", "NSObject"),
+            ("SSShortVideoRightInteractionCollectView", "UIView"),
+            ("SSShortVideoHostRightInteractionCommentView", "UIView"),
+            ("SSShortVideoRightInteractionLikeView", "UIView"),
+            ("SSShortVideoRightInteractionShareView", "UIView"),
+            ("SSShortVideoBottomDistributionView", "UIView"),
+            ("SSShortVideoDistributionContentView", "UIView"),
         ):
             if name not in self.classes:
                 self._class(name, parent)
@@ -302,6 +324,25 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self._add(self.classes["SSBookStoreCommunityPublishEntranceComponent"], "setPublishButton:",
                   self.PUBLISH_SET, "v24@0:8@16")
         self._add(self.classes["SSMyUser621ViewController"], "publishButton", self.PUBLISH_GET, "@16@0:8")
+        for cls, selector, encoding in (
+                ("FQVPlayer", "landscapePlayerViewFrame", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8"),
+                ("FQVPlayer", "layoutSubviews", "v16@0:8"),
+                ("FQVPlayer", "isFullScreen", "B16@0:8"),
+                ("FQVPlayer", "setIsFullScreen:", "v20@0:8B16"),
+                ("FQVPlayer", "videoEngine", "@16@0:8"),
+                ("FQVPlayer", "setVideoEngine:", "v24@0:8@16"),
+                ("FQVPlayer", "videoEngineReadyToDisPlay:", "v24@0:8@16"),
+                ("TTVideoEngine", "scaleMode", "q16@0:8"),
+                ("TTVideoEngine", "setScaleMode:", "v24@0:8q16")):
+            self._add(self.classes[cls], selector, self.VIDEO_PLAYER_ORIGINAL, encoding)
+        for cls in ("SSShortVideoHostRightInteractionCommentView", "SSShortVideoBottomDistributionView"):
+            self._add(self.classes[cls], "layoutSubviews", self.LAYOUT_IMP, "v16@0:8")
+        self._add(self.classes["SSShortVideoBottomDistributionView"], "renderWithModel:",
+                  self.DRAMA_WATCH_RENDER, "v24@0:8@16")
+        self._add(self.classes["SSShortVideoRightInteractionLikeView"], "updateLikeIconHidden:",
+                  self.DRAMA_LIKE_VISIBILITY, "v20@0:8B16")
+        self._add(self.metaclasses[self.classes["UIButtonConfiguration"]],
+                  "clearGlassButtonConfiguration", self.CONFIG_FACTORY, "@16@0:8")
 
     @staticmethod
     def edit_fitting_size(state):
@@ -313,6 +354,24 @@ class Runtime(TopChromeRuntime, GlassRuntime):
         self.current_cpu = cpu
         receiver, selector = cpu.x[:2]
         name = self.selector_names.get(selector)
+        if pc == self.CONFIG_FACTORY and name == "clearGlassButtonConfiguration":
+            return self.finish(cpu, self.obj("UIButtonConfiguration", "clear glass configuration", style="clearGlass"))
+        if pc == self.DRAMA_WATCH_RENDER:
+            self.objects[receiver].state["lastRenderModel"] = cpu.x[2]
+            return self.finish(cpu)
+        if pc == self.DRAMA_LIKE_VISIBILITY:
+            icon = self.objects[receiver].state["likeIcon"]
+            self.objects[icon].state["hidden"] = bool(cpu.x[2])
+            return self.finish(cpu)
+        if pc == self.VIDEO_PLAYER_ORIGINAL:
+            state = self.objects[receiver].state
+            if name == "landscapePlayerViewFrame":
+                return self.finish(cpu, fp=state["landscapePlayerViewFrame"])
+            if name in ("setScaleMode:", "setIsFullScreen:", "setVideoEngine:"):
+                key = name[3].lower() + name[4:-1]
+                state[key] = cpu.x[2]
+                return self.finish(cpu)
+            return self.finish(cpu, state.get(name, 0))
         if pc == self.PUBLISH_SET:
             key = name[3].lower() + name[4:-1]
             self.objects[receiver].state[key] = cpu.x[2]
@@ -494,13 +553,25 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 if name in ("section", "functionCell", "headerView", "headerRightView", "secondaryView", "editButton", "filterButton", "filterGradientView", "lineView",
                             "filterClipView", "currentTabVC", "tabSelectView", "collectionView", "collectionViewLayout",
                             "visibleCells", "viewModel", "isFiltering", "showsFilterExposure", "optionsView",
-                            "openingModel", "data", "bookId", "collectDatas", "fetchCoverView") and name in state:
+                            "openingModel", "data", "bookId", "collectDatas", "fetchCoverView",
+                            "isInPlayerScaleMode") and name in state:
                     return self.finish(cpu, state[name])
                 if name == "layoutIfNeeded" and "layout_passes" in state:
                     state["layout_passes"] += 1
                     return self.finish(cpu)
                 if name == "firstObject" and "items" in state:
                     return self.finish(cpu, next(iter(state["items"]), 0))
+                if name == "initWithFrame:" and self.objects[receiver].cls == self.classes["UIButton"]:
+                    frame = tuple(cpu.fp(i) for i in range(4))
+                    state.update(frame=frame, bounds=(0., 0., *frame[2:]), superview=0, subviews=[], hidden=False)
+                    return self.finish(cpu, receiver)
+                if name == "getWhite:alpha:" and "white" in state:
+                    for address, value in zip(cpu.x[2:4], (state["white"], state["alpha"])):
+                        cpu.write(address, 8, struct.unpack("<Q", struct.pack("<d", value))[0])
+                    return self.finish(cpu, 1)
+                if name in ("defaultContentView", "lastRenderModel", "bottomBar", "bottomBarType",
+                            "starIcon", "commentIcon", "likeIcon", "shareIcon") and name in state:
+                    return self.finish(cpu, state[name])
                 if name == "fetchCoverSize" and "cover_size" in state:
                     return self.finish(cpu, fp=state["cover_size"])
                 if name == "setCoverFrame:":
@@ -1781,19 +1852,21 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 400.0),
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 432.0),
             "an unsized table starts with a consistent header and control width")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
                      for item in switches]
     require(switch_labels == [f"底栏显示：{title}" for title in titles] +
-            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景"] and
-            all(runtime.objects[item].state["isOn"] for item in switches),
-            "settings expose the current bottom entries and the shelf duration switch")
+            ["书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景", "横屏播放铺满屏幕"] and
+            all(runtime.objects[item].state["isOn"] for item in switches[:-1]) and
+            not runtime.objects[switches[-1]].state["isOn"],
+            "settings expose the existing options and default to the host video layout")
+    exercise_fullscreen_fill(cpu, runtime, switches[-1], prefs)
 
     # Duration uses the host visibility setter and keeps the latest requested state.
-    duration_switch = switches[-3]
+    duration_switch = switches[5]
     duration_observer, duration_action, _ = runtime.objects[duration_switch].state["control_targets"][0]
     duration_selector = runtime.selector_names[duration_action]
     shelf_header = runtime.view("SS525BookShelfSubHeaderView", "live shelf header", (0, 0, 390, 64),
@@ -2011,7 +2084,7 @@ def exercise(data, labels):
             edit_state["control_targets"] == edit_targets, "glass off restores native Edit with neither material")
     glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 0
 
-    benefits_switch = switches[-2]
+    benefits_switch = switches[6]
     benefits_observer, benefits_action, _ = runtime.objects[benefits_switch].state["control_targets"][0]
     benefits_selector = runtime.selector_names[benefits_action]
     for on in (False, True):
@@ -2020,7 +2093,7 @@ def exercise(data, labels):
         require(mine_prefs[mine_benefits_key] is on, "the benefits switch persists its setting")
     require(runtime.mine_reloads == [(legacy_owner, "FanqieXMineBenefits")] * 2 and not runtime.tab_refreshes,
             "each benefits change refreshes the mounted native Mine list without rebuilding tabs")
-    backdrop_switch = switches[-1]
+    backdrop_switch = switches[7]
     backdrop_observer, backdrop_action, _ = runtime.objects[backdrop_switch].state["control_targets"][0]
     for on in (False, True):
         runtime.objects[backdrop_switch].state["isOn"] = on
@@ -2087,6 +2160,7 @@ def exercise(data, labels):
         "bottom_entries_default_on": True,
         "bottom_entries_restored": True,
         "shelf_duration_toggle": True,
+        "landscape_fill_toggle_and_engine_restore": True,
         "shelf_edit_top_placement_and_compaction": True,
         "shelf_edit_single_material_owner": True,
         "shelf_inline_filter_alignment": True,
@@ -2096,6 +2170,61 @@ def exercise(data, labels):
         "host_layout_calls": 22,
         "exact_installed_hooks": installed,
     }
+
+
+def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
+    key = "FanqieX.FullscreenFill.1"
+    toggle = runtime.objects[switch].state
+    observer, action, _ = toggle["control_targets"][0]
+    selector = runtime.selector_names[action]
+    for width, height in ((956, 440), (812, 375)):
+        canvas = (0., 0., float(width), float(height))
+        stock = (80., 0., width - 160., float(height))
+        window = runtime.view("UIWindow", "landscape window", canvas)
+        cell = runtime.view("FQVShortVideoLandscapePlayerCellView", "landscape cell",
+                            canvas, window, isInPlayerScaleMode=False)
+        holder = runtime.view("UIView", "player holder", canvas, cell)
+        engine = runtime.obj("TTVideoEngine", "video engine", scaleMode=1)
+        engine_state = runtime.objects[engine].state
+        player = runtime.view("FQVPlayer", "video player", canvas, holder,
+                              isFullScreen=True, videoEngine=engine, landscapePlayerViewFrame=stock)
+
+        def displayed():
+            send(cpu, runtime, player, "landscapePlayerViewFrame")
+            return tuple(cpu.fp(i) for i in range(4))
+
+        send(cpu, runtime, player, "layoutSubviews")
+        require(displayed() == stock and engine_state["scaleMode"] == 1,
+                "the off setting preserves the native renderer")
+        toggle["isOn"] = True
+        send(cpu, runtime, observer, selector, switch)
+        send(cpu, runtime, player, "layoutSubviews")
+        require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 2,
+                "each phone fills its own landscape viewport in aspect-fill mode")
+
+        runtime.objects[cell].state["isInPlayerScaleMode"] = True
+        send(cpu, runtime, player, "layoutSubviews")
+        require(displayed() == stock and engine_state["scaleMode"] == 1,
+                "opening a native landscape side panel restores the stock presentation")
+        runtime.objects[cell].state["isInPlayerScaleMode"] = False
+        send(cpu, runtime, player, "layoutSubviews")
+
+        replacement = runtime.obj("TTVideoEngine", "replacement engine", scaleMode=0)
+        send(cpu, runtime, player, "setVideoEngine:", replacement)
+        require(engine_state["scaleMode"] == 1, "the pooled engine is restored before replacement")
+        send(cpu, runtime, player, "layoutSubviews")
+        require(runtime.objects[replacement].state["scaleMode"] == 2, "replacement engine fills its viewport")
+        send(cpu, runtime, player, "setIsFullScreen:", 0)
+        require(displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 0,
+                "leaving fullscreen restores the new engine's original scale")
+
+        send(cpu, runtime, player, "setIsFullScreen:", 1)
+        send(cpu, runtime, player, "layoutSubviews")
+        toggle["isOn"] = False
+        send(cpu, runtime, observer, selector, switch)
+        send(cpu, runtime, player, "layoutSubviews")
+        require(not prefs[key] and displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 0,
+                "turning off fill restores fullscreen framing and scale")
 
 
 def incompatible_shelf_compaction(data, labels):
@@ -2144,6 +2273,88 @@ def incompatible_shelf_compaction(data, labels):
     return True
 
 
+def exercise_drama_glass(data, labels):
+    cpu, runtime = make(data)
+    runtime.labels = labels
+    call(cpu, labels, "LFQH_FQHPageInstall")
+    prefs = runtime.objects[runtime.DEFAULTS].state["values"]
+
+    def backing(parent):
+        return [view for view in runtime.objects[parent].state["subviews"]
+                if runtime.is_kind(view, runtime.classes["UIButton"])]
+
+    def check_glass(view, expected_frame):
+        state = runtime.objects[view].state
+        require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
+                "clear glass is correctly inset and passes touches through")
+        require(runtime.objects[state["configuration"]].state["style"] == "clearGlass",
+                "the installed backing uses native Clear Liquid Glass")
+
+    for cls, selector in (("SSShortVideoRightInteractionCollectView", "starIcon"),
+                          ("SSShortVideoHostRightInteractionCommentView", "commentIcon"),
+                          ("SSShortVideoRightInteractionLikeView", "likeIcon"),
+                          ("SSShortVideoRightInteractionShareView", "shareIcon")):
+        owner = runtime.view(cls, selector, (0, 0, 60, 66), runtime.ROOT)
+        glyph = runtime.view("UIImageView", "host glyph", (8, 2, 44, 44), owner)
+        count = runtime.label("host counter", owner, (0, 48, 60, 18), "123")
+        state = runtime.objects[owner].state
+        state[selector] = glyph
+        if selector == "commentIcon":
+            def update():
+                send(cpu, runtime, owner, "layoutSubviews")
+        else:
+            pointer = selector_address(data, selector)
+            legacy = runtime.view("UIVisualEffectView", "legacy disk", (4, -2, 52, 52), owner)
+            runtime.associations[(owner, pointer)] = legacy
+
+            def update():
+                cpu.run(0x7ac4, owner, pointer)
+
+        update()
+        glass, = backing(owner)
+        check_glass(glass, (6, 0, 48, 48))
+        require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
+        update()
+        require(backing(owner) == [glass], "repeat layout reuses the same glass")
+        if selector == "likeIcon":
+            for hidden in (1, 0):
+                send(cpu, runtime, owner, "updateLikeIconHidden:", hidden)
+                require(runtime.objects[glyph].state["hidden"] == hidden and
+                        runtime.objects[glass].state["hidden"] == hidden,
+                        "like visibility stays in sync even without another layout")
+        prefs["FanqieAdBlock.GlassDisabled.1"] = 1
+        update()
+        require(state["subviews"] == [glyph, count], "disabling glass restores the original action view")
+        prefs["FanqieAdBlock.GlassDisabled.1"] = 0
+
+    owner = runtime.view("SSShortVideoBottomDistributionView", "bottom watch row", (0, 0, 440, 40), runtime.ROOT)
+    base_color = runtime.color("host watch base")
+    shade_color = runtime.obj("UIColor", "host watch shade", white=1., alpha=0.15)
+    content = runtime.view("SSShortVideoDistributionContentView", "watch content", (0, 0, 440, 40), owner,
+                           backgroundColor=base_color, gesture_action="host action")
+    shade = runtime.view("UIView", "stock shade", (0, 0, 440, 40), content, backgroundColor=shade_color)
+    caption = runtime.label("watch label", content, (16, 0, 300, 40), "观看完整漫剧 · 全206集")
+    runtime.objects[owner].state["defaultContentView"] = content
+    bar = runtime.obj("NSObject", "watch bar", bottomBarType=runtime.text_object("short_play"))
+    model = runtime.obj("NSObject", "watch render model", bottomBar=bar)
+    send(cpu, runtime, owner, "renderWithModel:", model)
+    glass, = backing(content)
+    check_glass(glass, (8, 3, 424, 34))
+    clear = runtime.color("clearColor")
+    require(runtime.objects[content].state["subviews"] == [glass, shade, caption] and
+            runtime.objects[content].state["gesture_action"] == "host action" and
+            all(runtime.objects[view].state["backgroundColor"] == clear for view in (content, shade)),
+            "the floating pill replaces both stock fills and retains the title and tap target")
+    runtime.objects[content].state["bounds"] = (0, 0, 375, 40)
+    send(cpu, runtime, owner, "layoutSubviews")
+    check_glass(glass, (8, 3, 359, 34))
+    send(cpu, runtime, owner, "renderWithModel:", 0)
+    require(not backing(content) and runtime.objects[content].state["backgroundColor"] == base_color and
+            runtime.objects[shade].state["backgroundColor"] == shade_color,
+            "reusing the view for another bottom row restores both host colors")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
@@ -2153,6 +2364,7 @@ def main():
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
+    runtime["short_drama_clear_glass_and_reuse"] = exercise_drama_glass(data, labels)
     result = {"passed": True, "device_tested": False, "pixel_rendering_tested": False,
               "scope": "Actual candidate ARM64 instructions with explicit UIKit/Foundation boundaries",
               "static": static_checks(), "runtime": runtime}

@@ -1141,7 +1141,7 @@ LGcontrol_original:
     b Lpatch + (0x784c - PATCH_BASE)
 
 // Reader-top glyph calls restore original host controls. The legacy plugin
-// trampoline remains only for out-of-scope short-video/share/library glyphs.
+// trampoline remains for the other short-video/share/library glyphs.
 LGstyle_glyph:
     stp x29, x30, [sp, #-208]!
     mov x29, sp
@@ -1162,6 +1162,17 @@ LGstyle_glyph:
     bl LRrestore_original_top
     b LGglyph_done
 LGglyph_fallback:
+.if FQ_VERSION == 0x14b00
+    mov x0, x19
+    mov x1, x20
+    bl LFQH_FQHDramaGlyph
+    cbz w0, LGglyph_legacy
+    mov x0, x19
+    mov x1, x20
+    bl LRremove_glyph_material
+    b LGglyph_done
+LGglyph_legacy:
+.endif
     mov x0, x19
     mov x1, x20
     ldp x23, x24, [sp, #48]

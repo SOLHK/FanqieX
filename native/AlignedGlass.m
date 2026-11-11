@@ -1872,6 +1872,156 @@ static void PageDiscussButtonLayout(Obj self,Sel cmd) {
     FQHApply(self);
 }
 static void ShelfTitleHostFontKey(void) {}
+static void DramaGlassKey(void) {}
+static void DramaBackgroundKey(void) {}
+static void DramaShadeKey(void) {}
+static void DramaWatchContentKey(void) {}
+
+static void RemoveDramaGlass(Obj owner) {
+    Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
+    if (!glass) return;
+    V0(glass,"removeFromSuperview");
+    objc_setAssociatedObject(owner,DramaGlassKey,0,1);
+}
+
+// The transparent button only draws the material. The host still owns the
+// foreground, its accessibility element and the original click handling.
+static Obj PlaceDramaGlass(Obj owner,Obj parent,Obj foreground,Rect frame) {
+    Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
+    if (!glass) {
+        Obj config=Get(Lookup("UIButtonConfiguration"),"clearGlassButtonConfiguration");
+        if (!config) return 0;
+        glass=((Obj(*)(Obj,Sel,Rect))Message)(O0(Lookup("UIButton"),"alloc"),sel_registerName("initWithFrame:"),frame);
+        if (!glass) return 0;
+        V1(glass,"setConfiguration:",config);
+        V1(glass,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
+        VB(glass,"setUserInteractionEnabled:",0);
+        VB(glass,"setAccessibilityElementsHidden:",1);
+        VB(glass,"setIsAccessibilityElement:",0);
+        objc_setAssociatedObject(owner,DramaGlassKey,glass,1);
+        V0(glass,"release");
+    }
+    B move=!SameRect(Frame(glass),frame), attach=O0(glass,"superview")!=parent;
+    if (!move && !attach) return glass;
+    Obj transaction=Lookup("CATransaction");
+    V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
+    if (move) SetFrame(glass,frame);
+    if (attach) {
+        if (foreground)
+            ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:belowSubview:"),glass,foreground);
+        else
+            ((void(*)(Obj,Sel,Obj,I))Message)(parent,sel_registerName("insertSubview:atIndex:"),glass,0);
+    }
+    V0(transaction,"commit");
+    return glass;
+}
+
+B FQHDramaGlyph(Obj owner,const char *selector) {
+    Sel glyphSelector=sel_registerName(selector);
+    if (!((glyphSelector==sel_registerName("starIcon") && Kind(owner,"SSShortVideoRightInteractionCollectView")) ||
+          (glyphSelector==sel_registerName("commentIcon") &&
+           (Kind(owner,"SSShortVideoRightInteractionCommentView") || Kind(owner,"SSShortVideoHostRightInteractionCommentView"))) ||
+          (glyphSelector==sel_registerName("likeIcon") && Kind(owner,"SSShortVideoRightInteractionLikeView")) ||
+          (glyphSelector==sel_registerName("shareIcon") && Kind(owner,"SSShortVideoRightInteractionShareView")))) return 0;
+    if (!FQHGlassAvailable() || !Responds(Lookup("UIButtonConfiguration"),"clearGlassButtonConfiguration")) return 0;
+    if (!Enabled()) { RemoveDramaGlass(owner); return 1; }
+
+    Obj glyph=Get(owner,selector);
+    Obj parent=Kind(glyph,"UIImageView") ? O0(glyph,"superview") : (Obj)0;
+    if (!parent) { RemoveDramaGlass(owner); return 1; }
+    Rect frame=Frame(glyph);
+    if (!VisibleRect(frame)) { RemoveDramaGlass(owner); return 1; }
+    double diameter=(frame.width>frame.height ? frame.width : frame.height)+4;
+    Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
+    Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
+    if (!glass) return 0;
+    B hidden=Flag(glyph,"isHidden");
+    if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
+    return 1;
+}
+
+static void DramaCommentLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoHostRightInteractionCommentView","fqx190_originalDramaCommentLayout"))(self,cmd);
+    FQHDramaGlyph(self,"commentIcon");
+}
+
+static void DramaLikeVisibility(Obj self,Sel cmd,B hidden) {
+    ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionLikeView","fqx190_originalDramaLikeVisibility:"))(self,cmd,hidden);
+    Obj glass=objc_getAssociatedObject(self,DramaGlassKey);
+    if (glass) VB(glass,"setHidden:",hidden);
+}
+
+static void DramaClearBackground(Obj view,B clear) {
+    Obj color=O0(view,"backgroundColor");
+    Obj stock=objc_getAssociatedObject(view,DramaBackgroundKey);
+    Obj transparent=O0(Lookup("UIColor"),"clearColor");
+    if (clear && color && !SameColor(color,transparent)) {
+        objc_setAssociatedObject(view,DramaBackgroundKey,color,1);
+        V1(view,"setBackgroundColor:",transparent);
+    } else if (!clear && stock) {
+        if (SameColor(color,transparent)) V1(view,"setBackgroundColor:",stock);
+        objc_setAssociatedObject(view,DramaBackgroundKey,0,1);
+    }
+}
+
+static void RestoreDramaWatch(Obj owner,Obj content) {
+    if (!content) return;
+    Obj shade=objc_getAssociatedObject(content,DramaShadeKey);
+    RemoveDramaGlass(content);
+    DramaClearBackground(content,0);
+    if (shade) DramaClearBackground(shade,0);
+    objc_setAssociatedObject(content,DramaShadeKey,0,1);
+    objc_setAssociatedObject(owner,DramaWatchContentKey,0,1);
+}
+
+static void DramaWatchGlass(Obj owner,Obj model) {
+    Obj previous=objc_getAssociatedObject(owner,DramaWatchContentKey);
+    if (!Equal(Get(Get(model,"bottomBar"),"bottomBarType"),"short_play") || !Enabled() || !FQHGlassAvailable()) {
+        RestoreDramaWatch(owner,previous);
+        return;
+    }
+    Obj content=Get(owner,"defaultContentView");
+    if (content!=previous) RestoreDramaWatch(owner,previous);
+    if (!Kind(content,"SSShortVideoDistributionContentView") || O0(content,"superview")!=owner) {
+        if (content==previous) RestoreDramaWatch(owner,content);
+        return;
+    }
+    Rect bounds=Bounds(content);
+    Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
+    if (!VisibleRect(material)) {
+        if (content==previous) RestoreDramaWatch(owner,content);
+        return;
+    }
+    Obj shade=objc_getAssociatedObject(content,DramaShadeKey);
+    if (content!=previous) {
+        // The inspected host installs a 15%-white UIView at index zero.
+        Obj first=O0(O0(content,"subviews"),"firstObject");
+        if (first && object_getClass(first)==Lookup("UIView")) {
+            double white=0,alpha=0;
+            Obj color=O0(first,"backgroundColor");
+            if (((B(*)(Obj,Sel,double *,double *))Message)(color,sel_registerName("getWhite:alpha:"),&white,&alpha) &&
+                white==1 && alpha>0.125 && alpha<=0.15625) shade=first;
+        }
+    }
+    if (!PlaceDramaGlass(content,content,0,material)) return;
+    if (content!=previous) {
+        objc_setAssociatedObject(owner,DramaWatchContentKey,content,1);
+        if (shade) objc_setAssociatedObject(content,DramaShadeKey,shade,1);
+    }
+    DramaClearBackground(content,1);
+    if (shade) DramaClearBackground(shade,1);
+}
+
+static void DramaWatchLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchLayout"))(self,cmd);
+    DramaWatchGlass(self,Get(self,"lastRenderModel"));
+}
+
+static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchRender:"))(self,cmd,model);
+    DramaWatchGlass(self,model);
+}
+
 static void ShelfTitleGlassFontKey(void) {}
 static void ShelfTitleFont(Obj label,B styled) {
     if (!label) return;
@@ -2328,7 +2478,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
 }
 
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
-       MineBenefitsOption, ReaderBottomBackgroundOption };
+       MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -2340,6 +2490,7 @@ static Obj PagePreference(I option) {
         case ShelfDurationOption: key="FanqieX.ShelfReadingDuration.1"; break;
         case MineBenefitsOption: key="FanqieX.MineBenefitsCard.1"; break;
         case ReaderBottomBackgroundOption: key="FanqieX.ReaderBottomBackground.1"; break;
+        case FullscreenFillOption: key="FanqieX.FullscreenFill.1"; break;
         default: return 0;
     }
     return Text(key);
@@ -2354,6 +2505,7 @@ static Obj PageOptionLabel(I option) {
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
+        case FullscreenFillOption: label="横屏播放铺满屏幕"; break;
         default: label="阅读菜单显示上下栏背景"; break;
     }
     return Text(label);
@@ -2361,6 +2513,10 @@ static Obj PageOptionLabel(I option) {
 static B DefaultEnabled(Obj key) {
     Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",key);
     return value ? BoolProp(value,"boolValue") : 1;
+}
+static B FullscreenFillEnabled(void) {
+    Obj value=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",PagePreference(FullscreenFillOption));
+    return BoolProp(value,"boolValue");
 }
 static B MineBenefitsEnabled(void) { return DefaultEnabled(PagePreference(MineBenefitsOption)); }
 static B ReaderBottomBackgroundEnabled(void) { return DefaultEnabled(PagePreference(ReaderBottomBackgroundOption)); }
@@ -2806,6 +2962,48 @@ static void InstallTabRecovery(Obj owner) {
     V0(gesture,"release");
     V0(observer,"release");
 }
+static void DramaBackdropStockKey(void) {}
+static void DramaTabBackdrop(Obj controller,B hostRepainted) {
+    Obj canvas=O0(controller,"contentView");
+    if (!canvas) return;
+    Obj stock=objc_getAssociatedObject(canvas,DramaBackdropStockKey);
+    if (stock && hostRepainted) {
+        objc_setAssociatedObject(canvas,DramaBackdropStockKey,0,1);
+        stock=0;
+    }
+    B active=Enabled() && Flag(controller,"isCurrentAtVideoTab");
+    if (!stock && !active) return;
+    Obj current=O0(canvas,"backgroundColor");
+    Obj black=O0(Lookup("UIColor"),"blackColor");
+    B alreadyBlack=SameColor(current,black);
+    if (active) {
+        if (alreadyBlack) return;
+        // The short-video viewport ends above the transparent SSTabBar. Its
+        // backing canvas is exposed below it, so match the player's black.
+        Obj saved=current ? current : O0(Lookup("NSNull"),"null");
+        objc_setAssociatedObject(canvas,DramaBackdropStockKey,saved,1);
+        V1(canvas,"setBackgroundColor:",black);
+    } else {
+        if (alreadyBlack) V1(canvas,"setBackgroundColor:",stock==O0(Lookup("NSNull"),"null") ? 0 : stock);
+        objc_setAssociatedObject(canvas,DramaBackdropStockKey,0,1);
+    }
+}
+static void DramaTabBackgroundChanged(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedViewController","fqx190_originalDramaBackground:"))(self,cmd,model);
+    DramaTabBackdrop(self,1);
+}
+static void DramaTabWillLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedViewController","fqx190_originalDramaWillLayout"))(self,cmd);
+    DramaTabBackdrop(self,0);
+}
+static void DramaBackdropInstall(void) {
+    const char *controller="SSVideoSeriesFeedViewController";
+    if (!FQHGlassAvailable() || !Signature(controller,"contentView","@16@0:8") ||
+        !Signature(controller,"isCurrentAtVideoTab","B16@0:8")) return;
+    Hook(controller,"updateContentBackgroundColorWithTabModel:","fqx190_originalDramaBackground:","v24@0:8@16",(Imp)DramaTabBackgroundChanged);
+    Hook(controller,"viewWillLayoutSubviews","fqx190_originalDramaWillLayout","v16@0:8",(Imp)DramaTabWillLayout);
+}
+
 static void TabOwnerAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("SSTabBarController","fqx176_originalTabAppear:"))(self,cmd,animated);
     InstallTabRecovery(self);
@@ -2849,15 +3047,15 @@ void FQHInstallOptionsToggles(Obj controller) {
     if (!container) { V0(observer,"release"); return; }
     double width=Bounds(table).width;
     // UITableView can still be unsized before its navigation controller presents it.
-    Rect frame={0,0,width>0 ? width : 320,400};
+    Rect frame={0,0,width>0 ? width : 320,432};
     ((void(*)(Obj,Sel,Rect))Message)(container,sel_registerName("setFrame:"),frame);
     V1(container,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
-    for (I tag=StoreOption;tag<=ReaderBottomBackgroundOption;++tag) {
+    for (I tag=StoreOption;tag<=FullscreenFillOption;++tag) {
         ToggleRow(container,8+42*(tag-StoreOption),PageOptionLabel(tag),tag,
-            DefaultEnabled(PagePreference(tag)),observer);
+            tag==FullscreenFillOption ? FullscreenFillEnabled() : DefaultEnabled(PagePreference(tag)),observer);
     }
     Obj note=O0(O0(Lookup("UILabel"),"alloc"),"init");
-    SetFrame(note,(Rect){16,352,frame.width-32,40});
+    SetFrame(note,(Rect){16,384,frame.width-32,40});
     V1(note,"setText:",Text("底栏至少保留一项。\n关闭“我的”后，长按底栏打开 FanqieX 设置。"));
     Q1(note,"setNumberOfLines:",2);
     V1(note,"setFont:",((Obj(*)(Obj,Sel,double))Message)(Lookup("UIFont"),sel_registerName("systemFontOfSize:"),12));
@@ -2870,6 +3068,92 @@ void FQHInstallOptionsToggles(Obj controller) {
     V0(container,"release");
     V0(observer,"release");
 }
+
+static void FullscreenScaleBaselineKey(void) {}
+enum { FullscreenAspectFillMode=2 };
+
+static B FullscreenFillViewport(Obj player,Rect *viewport) {
+    if (!Flag(player,"isFullScreen") || !FullscreenFillEnabled()) return 0;
+    Obj cell=Get(Get(player,"superview"),"superview");
+    if (Kind(cell,"FQVShortVideoLandscapePlayerCellView") && BoolProp(cell,"isInPlayerScaleMode")) return 0;
+    Obj window=Get(player,"window");
+    if (!window) return 0;
+    Rect bounds=Bounds(player), screen=Bounds(window);
+    if (bounds.width<=bounds.height || bounds.height<=0) return 0;
+    // Compare in the window's coordinate space to handle either rotation direction.
+    // A player narrowed for a landscape side panel must keep the host's layout.
+    Rect placement=Convert(player,bounds,window);
+    if (__builtin_fabs(placement.x-screen.x)>1 || __builtin_fabs(placement.y-screen.y)>1 ||
+        __builtin_fabs(placement.width-screen.width)>1 || __builtin_fabs(placement.height-screen.height)>1) return 0;
+    *viewport=bounds;
+    return 1;
+}
+
+static void FullscreenScale(Obj engine,B fill) {
+    if (!engine) return;
+    Obj baseline=objc_getAssociatedObject(engine,FullscreenScaleBaselineKey);
+    if (!fill && !baseline) return;
+    I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode"));
+    if (fill && mode!=FullscreenAspectFillMode) {
+        Obj box=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),mode);
+        objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,box,1);
+        Q1(engine,"setScaleMode:",FullscreenAspectFillMode);
+    } else if (!fill) {
+        I previous=((I(*)(Obj,Sel))Message)(baseline,sel_registerName("integerValue"));
+        objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,0,1);
+        if (mode==FullscreenAspectFillMode) Q1(engine,"setScaleMode:",previous);
+    }
+}
+
+static Rect FullscreenPlayerFrame(Obj self,Sel cmd) {
+    Rect viewport;
+    if (FullscreenFillViewport(self,&viewport)) return viewport;
+    return ((Rect(*)(Obj,Sel))Original("FQVPlayer","fqx190_originalLandscapeFrame"))(self,cmd);
+}
+
+static void FullscreenPlayerLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVPlayer","fqx190_originalPlayerLayout"))(self,cmd);
+    Rect viewport;
+    FullscreenScale(O0(self,"videoEngine"),FullscreenFillViewport(self,&viewport));
+}
+
+static void FullscreenPlayerState(Obj self,Sel cmd,B full) {
+    if (!full) FullscreenScale(O0(self,"videoEngine"),0);
+    ((void(*)(Obj,Sel,B))Original("FQVPlayer","fqx190_originalPlayerFullscreen:"))(self,cmd,full);
+    if (full && FullscreenFillEnabled()) V0(self,"setNeedsLayout");
+}
+
+static void FullscreenPlayerEngine(Obj self,Sel cmd,Obj engine) {
+    Obj old=O0(self,"videoEngine");
+    if (old!=engine) FullscreenScale(old,0);
+    ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerEngine:"))(self,cmd,engine);
+}
+
+static void FullscreenPlayerReady(Obj self,Sel cmd,Obj engine) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerReady:"))(self,cmd,engine);
+    Rect viewport;
+    if (FullscreenFillViewport(self,&viewport)) V0(self,"setNeedsLayout");
+}
+
+static void FullscreenFillInstall(void) {
+    const char *player="FQVPlayer";
+    if (!Signature(player,"isFullScreen","B16@0:8") ||
+        !Signature(player,"videoEngine","@16@0:8") ||
+        !Signature(player,"landscapePlayerViewFrame","{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") ||
+        !Signature(player,"layoutSubviews","v16@0:8") ||
+        !Signature(player,"setIsFullScreen:","v20@0:8B16") ||
+        !Signature(player,"setVideoEngine:","v24@0:8@16") ||
+        !Signature(player,"videoEngineReadyToDisPlay:","v24@0:8@16") ||
+        !Signature("TTVideoEngine","scaleMode","q16@0:8") ||
+        !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16")) return;
+    Hook("FQVPlayer","landscapePlayerViewFrame","fqx190_originalLandscapeFrame",
+         "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8",(Imp)FullscreenPlayerFrame);
+    Hook("FQVPlayer","layoutSubviews","fqx190_originalPlayerLayout","v16@0:8",(Imp)FullscreenPlayerLayout);
+    Hook("FQVPlayer","setIsFullScreen:","fqx190_originalPlayerFullscreen:","v20@0:8B16",(Imp)FullscreenPlayerState);
+    Hook("FQVPlayer","setVideoEngine:","fqx190_originalPlayerEngine:","v24@0:8@16",(Imp)FullscreenPlayerEngine);
+    Hook("FQVPlayer","videoEngineReadyToDisPlay:","fqx190_originalPlayerReady:","v24@0:8@16",(Imp)FullscreenPlayerReady);
+}
+
 void FQHPageStyle(Obj view) { FQHApply(view); }
 void FQHPageTint(Obj view,B selected) { ShelfTabStyle(view,Get(view,"cellModel"),selected); }
 
@@ -2924,6 +3208,11 @@ static void ShelfCompactInstall(void) {
 }
 
 void FQHPageInstall(void) {
+    Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
+    Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
+    Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
+    Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
+    FullscreenFillInstall();
     Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);
     Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);
     Hook("FQReaderUIManager","onConfigThemeChange:context:","fqx180_originalReaderTheme:context:","v32@0:8@16@24",(Imp)ReaderBackdropTheme);
@@ -2972,6 +3261,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfSubViewController","saveOpeningData:indexPath:","fqx185_originalSaveOpeningData:index:","v32@0:8@16@24",(Imp)ShelfSaveOpeningData);
     Hook("SSBookShelfSubViewController","fetchBookCoverTransitionInfo:","fqx185_originalCoverTransition:","@24@0:8Q16",(Imp)ShelfCoverTransitionInfo);
     ShelfCompactInstall();
+    DramaBackdropInstall();
     Hook("SSTabBarController","tabbarVCAndAttributeInit","fqx176_originalTabPlan","@16@0:8",(Imp)TabPlan);
     Hook("SSTabBarController","viewDidAppear:","fqx176_originalTabAppear:","v20@0:8B16",(Imp)TabOwnerAppear);
 }
