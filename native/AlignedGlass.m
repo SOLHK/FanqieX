@@ -682,6 +682,31 @@ static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
         Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
 }
+static void ShelfPinnedLayoutKey(void) {}
+static void BookshelfSectionPinning(Obj tab) {
+    if (!Kind(tab,"SSBookShelfSubViewController")) return;
+    // Use the same layout getter as configFlowLayout, including before the
+    // collection view is created. The filter is this list's section header.
+    Obj layout=Get(tab,"collectionViewLayout");
+    Obj saved=objc_getAssociatedObject(tab,ShelfPinnedLayoutKey);
+    B enabled=Enabled() && FQHGlassAvailable() && Kind(layout,"UICollectionViewFlowLayout");
+    if (saved && (!enabled || saved!=layout)) {
+        if (!Flag(saved,"sectionHeadersPinToVisibleBounds")) {
+            VB(saved,"setSectionHeadersPinToVisibleBounds:",1);
+            V0(saved,"invalidateLayout");
+        }
+        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,0,1);
+    }
+    if (enabled && Flag(layout,"sectionHeadersPinToVisibleBounds")) {
+        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,layout,1);
+        VB(layout,"setSectionHeadersPinToVisibleBounds:",0);
+        V0(layout,"invalidateLayout");
+    }
+}
+static void BookshelfFlowLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx186_originalShelfFlowLayout"))(self,cmd);
+    BookshelfSectionPinning(self);
+}
 static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Obj owner=Get(tab,"delegate");
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
@@ -709,6 +734,7 @@ static void BookshelfTopChrome(Obj controller) {
     Obj root=Get(controller,"view"),header=Get(controller,"headerView");
     Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
     Obj scroll=Get(tab,"collectionView");
+    BookshelfSectionPinning(tab);
     Rect frame=Frame(header),bounds=Bounds(root);
     Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
     double height=__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y;
@@ -1216,6 +1242,7 @@ static void ShelfScroll(Obj self,Sel cmd,Obj scroll) {
 }
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
+    BookshelfSectionPinning(self);
     FQHShelf(self);
     RestoreBookshelfTopInset(self);
     Obj scroll=Get(self,"collectionView");
@@ -2399,7 +2426,10 @@ static const double ShelfCompactEmptyHeight=1;
 static Rect ShelfEditPaddedInsets(Rect insets) {
     // UIEdgeInsets shares the four-double ABI with Rect.
     double horizontal=__builtin_fmax(12,__builtin_fmax(insets.y,insets.height));
+    double vertical=__builtin_fmax(7,__builtin_fmax(insets.x,insets.width));
+    insets.x=vertical;
     insets.y=horizontal;
+    insets.width=vertical;
     insets.height=horizontal;
     return insets;
 }
@@ -2940,6 +2970,7 @@ void FQHInstall(void) {
     Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
     Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
+    Hook("SSBookShelfSubViewController","configFlowLayout","fqx186_originalShelfFlowLayout","v16@0:8",(Imp)BookshelfFlowLayout);
     Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);

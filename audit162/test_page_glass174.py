@@ -1835,8 +1835,8 @@ def exercise(data, labels):
     runtime.objects[duration].state["superview"] = secondary
     runtime.objects[secondary].state["subviews"].append(duration)
     edit_targets = [(shelf_header, runtime.sel("onClickEdit"), 64)]
-    edit = runtime.view("UIButton", "original edit", (394, 4, 30, 30), secondary,
-                        edit_title_size=(30., 30.), control_targets=edit_targets[:])
+    edit = runtime.view("UIButton", "original edit", (394, 10, 30, 18), secondary,
+                        edit_title_size=(30., 18.), control_targets=edit_targets[:])
     edit_title = runtime.label("native edit title", edit, (0, 5, 30, 20), "编辑")
     separator = runtime.view("UIView", "native secondary divider", (320, 4, 1, 22), secondary)
     runtime.objects[shelf_header].state.update(
@@ -1862,11 +1862,19 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "layoutEditButton")
     send(cpu, runtime, shelf_header, "layoutSubviews")
     edit_state = runtime.objects[edit].state
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.) and
-            edit_state["contentEdgeInsets"] == (0., 12., 0., 12.) and
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.) and
+            edit_state["contentEdgeInsets"] == (7., 12., 7., 12.) and
             runtime.objects[size_layout].state["invalidations"] == 0,
-            "duration on keeps Edit's native right edge and reserves 12pt per side of the title")
+            "duration on keeps Edit's right edge with 12pt horizontal and 7pt vertical title padding")
     edit_glass = surface_for(edit)
+    require(runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 30.),
+            "the native 18pt title receives a full-height capsule in the duration row")
+    for _ in range(3):
+        send(cpu, runtime, shelf_header, "layoutEditButton")
+        send(cpu, runtime, shelf_header, "layoutSubviews")
+    require(edit_state["frame"] == (370., 3., 54., 32.) and
+            edit_state["contentEdgeInsets"] == (7., 12., 7., 12.),
+            "repeated native layouts do not accumulate title padding")
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["superview"] == secondary and surface_for(edit) == edit_glass,
@@ -1875,11 +1883,11 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = False
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -3., 54., 30.) and
+    require(edit_state["superview"] == holder and edit_state["frame"] == (-132., -4., 54., 32.) and
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
     require(edit_glass and surface_for(edit) == edit_glass and
-            runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 28.) and
+            runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 30.) and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
     edit_frame = edit_state["frame"]
@@ -1887,13 +1895,13 @@ def exercise(data, labels):
     require(edit_state["frame"] == edit_frame and edit_state["subviews"].count(edit_glass) == 1,
             "native secondary-row layout cannot reposition the moved edit or its glass")
     require(edit_state["subviews"] == [edit_glass, edit_title], "the moved edit has exactly one capsule")
-    edit_state["edit_title_size"] = (46., 32.)
+    edit_state["edit_title_size"] = (46., 24.)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["frame"] == (-132., -4., 70., 32.) and
-            runtime.objects[edit_glass].state["frame"] == (0., 1., 70., 30.) and
+    require(edit_state["frame"] == (-132., -7., 70., 38.) and
+            runtime.objects[edit_glass].state["frame"] == (0., 1., 70., 36.) and
             edit_state["control_targets"] == edit_targets,
             "the existing Edit action and upper glass fit a longer or larger title")
-    edit_state["edit_title_size"] = (30., 30.)
+    edit_state["edit_title_size"] = (30., 18.)
     require(runtime.objects[size_layout].state["invalidations"] == 1,
             "only the transition to a compact row invalidates the list")
     function = runtime.obj("NSObject", "function index", section=1)
@@ -1969,7 +1977,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = True
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.) and
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.) and
             runtime.objects[size_layout].state["invalidations"] == 2,
             "re-enabling duration restores Edit and the stock row in the same layout pass")
     require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info,
@@ -1986,7 +1994,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = False
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 4., 54., 30.),
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.),
             "a narrower title/search gap restores the original position")
     require(surface_for(edit) == edit_glass and edit_state["control_targets"] == edit_targets,
             "the original lower placement keeps its glass and edit target")
@@ -1999,7 +2007,7 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["subviews"] == [edit_title] and edit_state["backgroundColor"] == edit_background and
             edit_state["contentEdgeInsets"] == (0., 0., 0., 0.) and
-            edit_state["frame"] == (394., 4., 30., 30.) and
+            edit_state["frame"] == (394., 10., 30., 18.) and
             edit_state["control_targets"] == edit_targets, "glass off restores native Edit with neither material")
     glass_preferences["FanqieAdBlock.GlassDisabled.1"] = 0
 
