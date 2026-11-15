@@ -224,6 +224,8 @@ class Runtime:
     def responds(self, receiver, name):
         if name == 'bottomEdgeEffect':
             return self.edge_supported and self.is_kind(receiver, self.classes['UIScrollView'])
+        if name in ('overrideUserInterfaceStyle', 'setOverrideUserInterfaceStyle:'):
+            return self.is_kind(receiver, self.UIView)
         state = self.objects[receiver].state
         return (name in state or name in ('respondsToSelector:','isKindOfClass:','window',
                 'convertRect:toView:','convertRect:fromView:','layer','setHidden:',
@@ -346,6 +348,13 @@ class Runtime:
                     state['hidden'] = bool(a[2]); self.event('setHidden',receiver,value=bool(a[2]))
                 elif name == 'alpha':
                     fp_result = (state['alpha'],)
+                elif name == 'overrideUserInterfaceStyle' and self.is_kind(receiver, self.UIView):
+                    # UIView's public override defaults to Unspecified (0).
+                    # The getter returns the explicit override, not inherited traits.
+                    result = state.get('overrideUserInterfaceStyle', 0)
+                elif name == 'setOverrideUserInterfaceStyle:' and self.is_kind(receiver, self.UIView):
+                    state['overrideUserInterfaceStyle'] = a[2]
+                    self.event('overrideUserInterfaceStyle', receiver, value=a[2])
                 elif name == 'layer':
                     result = self.layer(receiver)
                 elif name == 'setCornerRadius:':
