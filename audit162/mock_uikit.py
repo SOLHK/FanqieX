@@ -224,8 +224,8 @@ class Runtime:
     def responds(self, receiver, name):
         if name == 'bottomEdgeEffect':
             return self.edge_supported and self.is_kind(receiver, self.classes['UIScrollView'])
-        if name in ('overrideUserInterfaceStyle', 'setOverrideUserInterfaceStyle:'):
-            return self.is_kind(receiver, self.UIView)
+        if name in ('overrideUserInterfaceStyle', 'setOverrideUserInterfaceStyle:') and self.is_kind(receiver, self.UIView):
+            return True
         state = self.objects[receiver].state
         return (name in state or name in ('respondsToSelector:','isKindOfClass:','window',
                 'convertRect:toView:','convertRect:fromView:','layer','setHidden:',
