@@ -21,9 +21,9 @@ def require(test, detail):
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
     require(version in (0x10602, 0x10603, 0x10604, 0x10605, 0x10606, 0x10607,
-                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00),
+                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00),
             'Expected a recognized FanqieX release candidate')
-    if version in (0x14a00, 0x14b00, 0x14c00):
+    if version in (0x14a00, 0x14b00, 0x14c00, 0x14e00):
         return f'{version >> 16}.{(version >> 8) & 0xff}'
     return f'{version >> 16}.{(version >> 8) & 0xff}.{version & 0xff}'
 
@@ -158,6 +158,104 @@ class CPU:
         else:
             value = self.v[reg] if vector else self.r(reg, width=size*8)
             self.write(address, size, value)
+
+    def geometry_simd(self, op):
+        """Selected AdvSIMD encodings emitted for the audited CGRect math.
+
+        This is deliberately bounded to 64-bit FP lanes and the exact integer
+        reduction shapes used by Clang. Exceptional arithmetic/conversions fail
+        closed: this interpreter does not model FPCR/FPSR exception state.
+        """
+        dst, src, rhs = op & 31, (op >> 5) & 31, (op >> 16) & 31
+        mask128 = (1 << 128) - 1
+        if op & 0xffefbc00 == 0x6e080400:  # INS Vd.D[index], Vn.D[index]
+            target_lane, source_lane = (op >> 20) & 1, (op >> 14) & 1
+            value = (self.v[src] >> (source_lane * 64)) & MASK64
+            keep = mask128 ^ (MASK64 << (target_lane * 64))
+            self.v[dst] = (self.v[dst] & keep) | (value << (target_lane * 64))
+            return True
+        if op & 0xffeffc00 in (0x4e080400, 0x5e080400):  # DUP .2D / scalar D
+            value = (self.v[src] >> (((op >> 20) & 1) * 64)) & MASK64
+            self.v[dst] = value if op & (1 << 28) else value | (value << 64)
+            return True
+        if op & 0xfff8fc00 == 0x6f00f400:  # FMOV Vd.2D, #imm
+            imm = (((op >> 16) & 7) << 5) | ((op >> 5) & 31)
+            sign, b6 = (imm >> 7) & 1, (imm >> 6) & 1
+            exponent = ((1-b6) << 10) | ((255*b6) << 2) | ((imm >> 4) & 3)
+            value = (sign << 63) | (exponent << 52) | ((imm & 15) << 48)
+            self.v[dst] = value | (value << 64)
+            return True
+        if op & 0xffe0fc00 == 0x6e601c00:  # BSL .16B (old destination is mask)
+            selection = self.v[dst]
+            self.v[dst] = ((selection & self.v[src]) |
+                           (~selection & self.v[rhs])) & mask128
+            return True
+        key = op & 0xffe0fc00
+        multiply_element = op & 0xffe0f400 == 0x4fc09000
+        if multiply_element or key in (0x4e60d400, 0x6e60fc00):  # FMUL/FADD/FDIV .2D
+            lhs_bits, rhs_bits = self.v[src], self.v[rhs]
+            result = 0
+            for lane in range(2):
+                a = number(lhs_bits >> (lane*64))
+                index = (op >> 11) & 1 if multiply_element else lane
+                b = number(rhs_bits >> (index*64))
+                require(math.isfinite(a) and math.isfinite(b),
+                        'Audited SIMD arithmetic uses finite FP operands')
+                if multiply_element:
+                    value = a*b
+                elif key == 0x4e60d400:
+                    value = a+b
+                else:
+                    require(b != 0.0, 'Audited SIMD division has a nonzero divisor')
+                    value = a/b
+                require(math.isfinite(value), 'Audited SIMD arithmetic has a finite result')
+                result |= bits(value) << (lane*64)
+            self.v[dst] = result
+            return True
+        if key == 0x4e60e400 or op & 0xfffffc00 == 0x4ee0e800:  # FCMEQ .2D / FCMLT #0
+            lhs_bits, rhs_bits = self.v[src], self.v[rhs]
+            result = 0
+            for lane in range(2):
+                a = number(lhs_bits >> (lane*64))
+                match = a == number(rhs_bits >> (lane*64)) if key == 0x4e60e400 else a < 0.0
+                result |= (MASK64 if match else 0) << (lane*64)
+            self.v[dst] = result
+            return True
+        conversion = op & 0xfffffc00
+        if conversion in (0x4ee1b800, 0x5ee1b800, 0x4e61d800, 0x5e61d800):
+            # FCVTZS/SCVTF: .2D vector or scalar D register (not general Xn).
+            lanes = 1 if op & (1 << 28) else 2
+            source, result = self.v[src], 0
+            for lane in range(lanes):
+                value = (source >> (lane*64)) & MASK64
+                if conversion in (0x4ee1b800, 0x5ee1b800):
+                    value = number(value)
+                    require(math.isfinite(value) and -(1 << 63) <= value < (1 << 63),
+                            'FCVTZS SIMD operand finite and in audited signed range')
+                    value = math.trunc(value) & MASK64
+                else:
+                    value = bits(float(sx(value, 64)))
+                result |= value << (lane*64)
+            self.v[dst] = result
+            return True
+        if key == 0x4e801800:  # UZP1 Vd.4S, Vn.4S, Vm.4S
+            a, b = self.v[src], self.v[rhs]
+            values = [a & 0xffffffff, (a >> 64) & 0xffffffff,
+                      b & 0xffffffff, (b >> 64) & 0xffffffff]
+            self.v[dst] = sum(value << (lane*32) for lane, value in enumerate(values))
+            return True
+        if op & 0xfffffc00 == 0x6e205800:  # NOT/MVN .16B
+            self.v[dst] = (~self.v[src]) & mask128
+            return True
+        if op & 0xfffffc00 == 0x0e612800:  # XTN Vd.4H, Vn.4S
+            source = self.v[src]
+            self.v[dst] = sum(((source >> (lane*32)) & 0xffff) << (lane*16)
+                             for lane in range(4))
+            return True
+        if op & 0xfffffc00 == 0x2e70a800:  # UMAXV Hd, Vn.4H
+            self.v[dst] = max((self.v[src] >> (lane*16)) & 0xffff for lane in range(4))
+            return True
+        return False
 
     def step(self):
         if self.runtime.handle(self, self.pc):
@@ -334,6 +432,8 @@ class CPU:
             length = imms - immr + 1
             value = (self.r((op >> 5) & 31, width=width) >> immr) & ((1 << length) - 1)
             self.w(op & 31, sx(value, length), width=width); return
+        if self.geometry_simd(op):
+            return
         if op & 0xff20fc00 == 0x4e201c00:  # ORR vector / MOV.16B
             self.v[op & 31] = self.v[(op >> 5) & 31] | self.v[(op >> 16) & 31]; return
         if op & 0x3a000000 == 0x28000000:  # LDP / STP integer or SIMD

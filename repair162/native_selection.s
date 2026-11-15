@@ -382,11 +382,20 @@ LNlayout: // native, proxy -> BOOL
     mov x29, sp
     stp x19, x20, [sp, #16]
     mov x19, x0
+.if FQ_VERSION >= 0x14e00
+    mov x20, x1
+.endif
     GET x1, Lcontent_view
     cbz x0, LNlayout_no
     GET x0, Lbounds
     bl LIrect_valid
     cbz w0, LNlayout_no
+.if FQ_VERSION >= 0x14e00
+    // Compute the final public segment frame once; do not widen and narrow it
+    // again on every monitor tick while UIKit is tracking a gesture.
+    mov x0, x20
+    bl LFQH_FQHBottomNativeRect178
+.endif
     mov x0, x19
     bl Lpatch + (0x711c - PATCH_BASE)
     mov w0, #1

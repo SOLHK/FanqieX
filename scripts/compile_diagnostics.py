@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Compile runtime-only diagnostics into the existing relocation-free segment.
 
-This accepts function code and C strings. Class/selector metadata, writable
-data, unknown imports, and unrecognized page-relative references fail the build.
+This accepts function code, C strings and scalar read-only literal pools.
+Class/selector metadata, writable data, unknown imports, and unrecognized
+page-relative references fail the build.
 """
 from __future__ import annotations
 
@@ -40,6 +41,8 @@ IMPORTS = {
     '_objc_autoreleasePoolPop': 'Lpatch + (0xa574 - PATCH_BASE)',
 }
 SYMBOL = r'[A-Za-z_.$][A-Za-z0-9_.$]*'
+LITERAL_SECTIONS = {'__TEXT,__literal4,4byte_literals': 4,
+                    '__TEXT,__literal8,8byte_literals': 8}
 
 
 def without_comment(line: str) -> str:
@@ -56,6 +59,52 @@ def without_comment(line: str) -> str:
     return line.strip()
 
 
+def scalar_literal_definitions(lines: list[str]) -> dict[str, int]:
+    """Accept one bounded numeric word per local, read-only literal label.
+
+    No symbols, expressions, aliases, writable sections or arbitrary assembler
+    directives can enter the component through this constant-pool boundary.
+    """
+    width = 0
+    pending = None
+    literals = {}
+    for line in lines:
+        if not line:
+            continue
+        if line.startswith('.section'):
+            if pending is not None:
+                raise ValueError('Literal label has no value: ' + pending)
+            section = re.sub(r'\s+', '', line.removeprefix('.section'))
+            width = LITERAL_SECTIONS.get(section, 0)
+            continue
+        if not width:
+            continue
+        label = re.fullmatch(f'({SYMBOL}):', line)
+        if label:
+            if pending is not None:
+                raise ValueError('Literal aliases are unsupported: ' + line)
+            pending = label.group(1)
+            continue
+        if re.fullmatch(r'\.p2align\s+' + str(width.bit_length() - 1) +
+                        r'(?:,\s*(?:0|0x0))?', line):
+            if pending is not None:
+                raise ValueError('Alignment between a literal label and its value')
+            continue
+        directive = 'long' if width == 4 else 'quad'
+        value = re.fullmatch(r'\.' + directive + r'\s+(-?(?:0x[0-9a-fA-F]+|[0-9]+))', line)
+        if not value or pending is None:
+            raise ValueError('Unsupported scalar literal directive: ' + line)
+        token = value.group(1)
+        number = int(token, 16 if 'x' in token else 10)
+        if not -(1 << (width * 8 - 1)) <= number < (1 << (width * 8)):
+            raise ValueError('Scalar literal does not fit its declared width: ' + line)
+        literals[pending] = width
+        pending = None
+    if pending is not None:
+        raise ValueError('Literal label has no value: ' + pending)
+    return literals
+
+
 def normalize_assembly(assembly: str) -> str:
     lines = [without_comment(line) for line in assembly.splitlines()]
     labels = [match.group(1) for line in lines
@@ -63,7 +112,9 @@ def normalize_assembly(assembly: str) -> str:
     if len(labels) != len(set(labels)) or any(label in IMPORTS for label in labels):
         raise ValueError('Duplicate or conflicting diagnostic symbol')
     names = {label: 'LFQD_' + label.removeprefix('_') for label in labels}
+    literals = scalar_literal_definitions(lines)
 
+    replacements = {}
     for index, line in enumerate(lines):
         match = re.fullmatch(f'adrp\\s+(x[0-9]+),\\s*({SYMBOL})@PAGE', line)
         if not match:
@@ -76,22 +127,49 @@ def normalize_assembly(assembly: str) -> str:
                                          re.fullmatch(f'{SYMBOL}:', lines[following])):
             following += 1
         expected = f'add\\s+{register},\\s*{register},\\s*{re.escape(label)}@PAGEOFF'
-        if following >= len(lines) or not re.fullmatch(expected, lines[following]):
+        if following < len(lines) and re.fullmatch(expected, lines[following]):
+            replacements[index] = [f'adr {register}, {label}']
+            replacements[following] = ['nop']
+            continue
+        load = (re.fullmatch(r'ldr\s+([dswx])([0-9]+),\s*\[' +
+                             re.escape(register) + r',\s*' + re.escape(label) +
+                             r'@PAGEOFF\]', lines[following])
+                if following < len(lines) else None)
+        if not load or label not in literals:
             raise ValueError('Unsupported native page address pair: ' + line)
-        lines[index] = f'adr {register}, {label}'
-        lines[following] = 'nop'
+        kind, number = load.groups()
+        width = 8 if kind in 'dx' else 4
+        if literals[label] != width or int(number) > (31 if kind in 'ds' else 30):
+            raise ValueError('Scalar literal load has incompatible width or register: ' + lines[following])
+        replacements[index] = [f'adr {register}, {label}']
+        replacement = [f'ldr {kind}{number}, [{register}]']
+        # ADRP leaves a page address in the base register. Preserve that state
+        # even when later compiler instructions keep using the base. An integer
+        # load into that same register intentionally replaces it with the value.
+        if kind in 'ds' or number != register[1:]:
+            replacement.append(f'and {register}, {register}, #0xfffffffffffff000')
+        replacements[following] = replacement
+    lines = [replacement for index, line in enumerate(lines)
+             for replacement in replacements.get(index, [line])]
 
     code, data, image_info = [], [], []
     output = None
+    literal_width = 0
     for line in lines:
         if not line:
             continue
         if line.startswith('.section'):
             section = re.sub(r'\s+', '', line.removeprefix('.section'))
+            literal_width = LITERAL_SECTIONS.get(section, 0)
             if section == '__TEXT,__text,regular,pure_instructions':
                 output = code
             elif section == '__TEXT,__cstring,cstring_literals':
                 output = data
+            elif literal_width:
+                output = data
+                # Pool sections originally carry natural alignment; retain it
+                # when merging them into the component's read-only data tail.
+                output.append('.p2align ' + str(literal_width.bit_length() - 1))
             elif section == '__DATA,__objc_imageinfo,regular,no_dead_strip':
                 output = image_info
             else:
@@ -113,7 +191,12 @@ def normalize_assembly(assembly: str) -> str:
             output.append(names[label.group(1)] + ':')
             continue
         if line.startswith('.'):
-            if re.fullmatch(r'\.p2align\s+[0-4](?:,\s*[0-9]+(?:,\s*[0-9]+)?)?', line):
+            if literal_width and line.startswith('.p2align'):
+                output.append('.p2align ' + str(literal_width.bit_length() - 1))
+            elif literal_width and re.fullmatch(r'\.(?:long|quad)\s+-?(?:0x[0-9a-fA-F]+|[0-9]+)', line):
+                # Values and their exact directive widths were checked above.
+                output.append(line)
+            elif re.fullmatch(r'\.p2align\s+[0-4](?:,\s*[0-9]+(?:,\s*[0-9]+)?)?', line):
                 output.append(line)
             elif output is code and (
                     line in ('.cfi_startproc', '.cfi_endproc', '.cfi_remember_state', '.cfi_restore_state') or
@@ -126,6 +209,10 @@ def normalize_assembly(assembly: str) -> str:
                 output.append(line)
             elif output is data and re.fullmatch(r'\.asciz\s+"(?:[^"\\]|\\.)*"', line):
                 output.append(line)
+            elif output is data and not literal_width and re.fullmatch(r'\.space\s+1', line):
+                # Clang spells an empty C string as exactly one zero byte.
+                # Do not admit general padding/storage directives here.
+                output.append('.asciz ""')
             else:
                 raise ValueError('Unsupported native directive: ' + line)
             continue

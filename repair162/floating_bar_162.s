@@ -389,6 +389,14 @@ Lrepair_front:
     mov x2, x22
     GET x19, Lbring_front
 Lrepair_edges:
+.if FQ_VERSION >= 0x14e00
+    // Size the owned proxy and its buttons before either selection renderer.
+    AGET x20, LIbuttons_key
+    mov x2, x0
+    mov x0, x19
+    mov x1, x20
+    bl LFQH_FQHBottomPrepare
+.endif
     mov x0, x19
     mov x1, x20
     bl Ledge_update
@@ -402,6 +410,16 @@ Lrepair_edges:
     mov x0, x19
     mov x1, x20
     bl LFQH_FQHUpdateTabAppearance
+.endif
+.if FQ_VERSION >= 0x14e00
+    AGET x20, LNcontrol_key
+    mov x21, x0
+    AGET x20, LIbuttons_key
+    mov x2, x0
+    mov x3, x21
+    mov x0, x19
+    mov x1, x20
+    bl LFQH_FQHBottomFinish
 .endif
     // Choose the final material after native selection installation/fallback.
     mov x0, x19

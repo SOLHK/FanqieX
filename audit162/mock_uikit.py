@@ -401,7 +401,9 @@ class Runtime:
                                  rect[1]+source_origin[1]-target_origin[1],rect[2],rect[3])
                     self.event(name,receiver,other=a[2],input=list(rect),output=list(fp_result))
                 elif name in ('unsignedIntegerValue','integerValue','boolValue'):
-                    result = state['value']
+                    # NSNumber may have been created with numberWithDouble:.
+                    # These Objective-C accessors still return an integer ABI.
+                    result = int(bool(state['value'])) if name == 'boolValue' else int(state['value'])
                 elif name == 'appearanceStyle':
                     result = state.get('appearanceStyle',0)
                 elif name == 'applyTabBarAppearanceStyle:refreshForeground:':

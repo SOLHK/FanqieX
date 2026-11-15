@@ -48,6 +48,7 @@ def source_manifest():
         paths.extend(path for path in (ROOT / directory).rglob("*")
                      if path.is_file() and path.suffix in (".py", ".s", ".m", ".yml"))
     paths.extend(path for path in (ROOT / "baseline").iterdir() if path.is_file())
+    paths.extend(path for path in (ROOT / "tests/fixtures").rglob("*.json") if path.is_file())
     paths.append(ROOT / "dist/1.5.9/FanqieAdBlock-1.5.9.dylib")
     paths.append(ROOT / "verification/1.5.9/FanqieAdBlock-1.5.9.validation.json")
     paths.append(ROOT / "dist/1.6.0/FanqieAdBlock-1.6.0.dylib")
@@ -60,10 +61,53 @@ def source_manifest():
             for path in sorted(paths)}
 
 
+def validated_xcode_bundle(candidate: Path, version: str, expected_commit: str):
+    """Bind the Apple binary and its audit assembly to the same source commit.
+
+    Apple and Linux Clang may schedule the generated component differently.
+    Audit the composed assembly from the actual Apple build without replacing
+    the committed source or treating a local rebuild as the Apple artifact.
+    """
+    validation_path = candidate.with_suffix('.validation.json')
+    composed_path = candidate.with_suffix('.composed.s')
+    build_report_path = candidate.parent / 'xcode-build-report.json'
+    if not all(path.is_file() for path in
+               (candidate, validation_path, composed_path, build_report_path)):
+        raise RuntimeError('The Xcode candidate, validation, composed assembly and build report are required')
+    validation = json.loads(validation_path.read_text())
+    report = json.loads(build_report_path.read_text())
+    candidate_hash = digest(candidate)
+    if validation.get('version') != version or report.get('plugin_version') != version:
+        raise RuntimeError('Xcode artifact version mismatch')
+    if validation.get('candidate_sha256') != candidate_hash or report.get('candidate_sha256') != candidate_hash:
+        raise RuntimeError('Xcode reports do not match candidate bytes')
+    if not validation.get('native_unwind', {}).get('passed'):
+        raise RuntimeError('Xcode candidate did not pass native unwind validation')
+    if not report.get('passed') or not report.get('two_builds_identical'):
+        raise RuntimeError('Xcode build did not pass reproducible-build checks')
+    if not expected_commit or report.get('github_sha') != expected_commit:
+        raise RuntimeError('Xcode build does not belong to the verified source commit')
+    if report.get('xcode', '').splitlines()[:1] != ['Xcode 27.2'] or report.get('sdk_version', '').split('.')[:2] != ['27', '2']:
+        raise RuntimeError('Xcode artifact was not built with the required Apple toolchain')
+    if version == '1.78':
+        if report.get('composed_assembly_sha256') != digest(composed_path):
+            raise RuntimeError('Xcode composed assembly changed after the build')
+        audit_hashes = report.get('audit_input_sha256', {})
+        for suffix in ('.preextend', '.extension.bin'):
+            path = candidate.with_suffix(suffix)
+            if not path.is_file() or audit_hashes.get(suffix) != digest(path):
+                raise RuntimeError('Xcode audit input changed or is missing: ' + suffix)
+        source_hashes = report.get('native_source_sha256', {})
+        for path in ('native/AlignedGlass.m', 'native/FanqieXDiagnostics.m'):
+            if source_hashes.get(path) != digest(ROOT / path):
+                raise RuntimeError('Xcode native source does not match the verified checkout: ' + path)
+    return validation_path, composed_path, build_report_path
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
-    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"), default="1.6.2")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     parser.add_argument("--xcode-candidate", type=Path,
@@ -144,6 +188,13 @@ def main():
         baseline = ROOT / "baseline" / "FanqieAdBlock-1.5.8.dylib"
         baseline157 = ROOT / "baseline" / "FanqieAdBlock-1.5.7.dylib"
         validation = candidate.with_suffix(".validation.json")
+        if args.version == '1.78':
+            run('neon-instruction-semantics178', ['-m', 'unittest', 'discover', '-s',
+                'tests', '-p', 'test_neon178.py', '-v'])
+            run('xcode-artifact-provenance', ['-m', 'unittest', 'discover', '-s',
+                'tests', '-p', 'test_xcode_bundle.py', '-v'])
+            run('release-capacity178', ['-m', 'unittest', 'discover', '-s',
+                'tests', '-p', 'test_release_capacity178.py', '-v'])
         run("build", ["repair162/build_plugin.py", baseline, candidate, "--version", args.version])
         run("rebuild", ["repair162/build_plugin.py", baseline, rebuilt, "--version", args.version])
         if candidate.read_bytes() != rebuilt.read_bytes():
@@ -154,20 +205,20 @@ def main():
         summary["two_builds_identical"] = True
         if args.xcode_candidate:
             xcode_candidate = args.xcode_candidate.resolve()
-            validation_path = xcode_candidate.with_suffix(".validation.json")
-            if not xcode_candidate.is_file() or not validation_path.is_file():
-                raise RuntimeError("The same-commit Xcode candidate and validation report are required")
-            validation_report = json.loads(validation_path.read_text())
-            if validation_report.get("version") != args.version:
-                raise RuntimeError("Xcode validation report version mismatch")
-            if validation_report.get("candidate_sha256") != digest(xcode_candidate):
-                raise RuntimeError("Xcode validation report does not match candidate bytes")
-            if not validation_report.get("native_unwind", {}).get("passed"):
-                raise RuntimeError("Xcode candidate did not pass native unwind validation")
+            validation_path, composed_path, build_report_path = validated_xcode_bundle(
+                xcode_candidate, args.version, summary.get('git_head_at_start', ''))
             summary["linux_candidate_sha256"] = linux_candidate_sha256
             summary["xcode_validation_sha256"] = digest(validation_path)
+            summary["xcode_build_report_sha256"] = digest(build_report_path)
+            summary["xcode_composed_assembly_sha256"] = digest(composed_path)
             summary["candidate_source"] = "same-commit Xcode 27.2 validated build"
             candidate.write_bytes(xcode_candidate.read_bytes())
+            candidate.with_suffix('.validation.json').write_bytes(validation_path.read_bytes())
+            candidate.with_suffix('.composed.s').write_bytes(composed_path.read_bytes())
+            for suffix in ('.preextend', '.extension.bin'):
+                artifact = xcode_candidate.with_suffix(suffix)
+                if args.version == '1.78' or artifact.is_file():
+                    candidate.with_suffix(suffix).write_bytes(artifact.read_bytes())
             summary["candidate_sha256"] = digest(candidate)
             summary["candidate_size"] = candidate.stat().st_size
         if args.expect_candidate:
@@ -225,10 +276,10 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
-        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
                 "--report", output / "hook-ownership163-audit.json"])
-        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("ad-decisions164", ["audit162/test_ad_decisions164.py", candidate,
                 "--report", output / "ad-decisions164-audit.json"])
             run("startup-popup164", ["audit162/test_startup_popup164.py", candidate,
@@ -244,7 +295,7 @@ def main():
                 "--report", output / "load-diagnostics164-audit.json"])
             run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
             run("native-unwind", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_native_unwind.py", "-v"])
-        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("home-glass165", ["audit162/test_home_glass165.py", candidate,
                 "--report", output / "home-glass165.json"])
             run("home-compiler", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_home_compiler.py", "-v"])
@@ -252,25 +303,30 @@ def main():
             run("control-glass166", ["audit162/test_control_glass166.py", candidate,
                 "--baseline", ROOT / "dist/1.6.5/FanqieX-1.6.5.dylib",
                 "--report", output / "control-glass166.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("conditional-compare", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_conditional_compare.py", "-v"])
             run("alignment167", ["audit162/test_alignment167.py", candidate,
                 "--baseline", ROOT / "dist/1.6.6/FanqieX-1.6.6.dylib",
                 "--report", output / "alignment167.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("controls171", ["audit162/test_controls171.py", candidate,
                 "--report", output / "controls171.json"])
-        if args.version in ("1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("header173", ["audit162/test_header173.py", candidate,
                 "--report", output / "header173.json"])
-        if args.version in ("1.7.4", "1.74", "1.75", "1.76"):
+        if args.version in ("1.7.4", "1.74", "1.75", "1.76", "1.78"):
             run("page-glass174", ["audit162/test_page_glass174.py", candidate,
                 "--report", output / "page-glass174.json"])
             run("top-chrome", ["audit162/test_top_chrome.py", candidate,
                 "--report", output / "top-chrome.json"])
-        if args.version in ("1.75", "1.76"):
+        if args.version in ("1.75", "1.76", "1.78"):
             run("tab-appearance175", ["audit162/test_tab_appearance175.py", candidate,
                 "--report", output / "tab-appearance175.json"])
+        if args.version == '1.78':
+            run('bottom-appearance178', ['audit162/test_bottom_appearance178.py', candidate,
+                '--report', output / 'bottom-appearance178.json'])
+            run('reader-controls178', ['audit162/test_reader_controls178.py', candidate,
+                '--report', output / 'reader-controls178.json'])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

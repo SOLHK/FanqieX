@@ -133,7 +133,7 @@ def audit(source, candidate, payload=None):
     require([s["raw"] for s in ns[:2]] == [s["raw"] for s in os[:2]], "original segment descriptors")
     patch = ns[2]
     delta = patch["fs"]
-    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000), "patch size")
+    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000, 0x38000, 0x3c000), "patch size")
     require((patch["vm"], patch["off"], patch["vs"], patch["max"], patch["prot"], patch["ns"], patch["flags"]) ==
             (0x14000, 0x14000, delta, 5, 5, 0, 0), "patch permissions/map")
     for i, seg in enumerate(ns):
@@ -224,6 +224,14 @@ def selftest(source):
     thirteen_page_payload = bytes.fromhex("1f2003d5") * (0x30000 // 4) + bytes.fromhex("c0035fd6")
     thirteen_page = extend(source, thirteen_page_payload, capacity=0x34000)
     reports.append(audit(source, thirteen_page, thirteen_page_payload))
+    # 1.78's measured native controls exceed thirteen pages. Exercise actual
+    # bytes in each added page and recheck every relocated table and signature.
+    fourteen_page_payload = bytes.fromhex("1f2003d5") * (0x34000 // 4) + bytes.fromhex("c0035fd6")
+    fourteen_page = extend(source, fourteen_page_payload, capacity=0x38000)
+    reports.append(audit(source, fourteen_page, fourteen_page_payload))
+    fifteen_page_payload = bytes.fromhex("1f2003d5") * (0x38000 // 4) + bytes.fromhex("c0035fd6")
+    fifteen_page = extend(source, fifteen_page_payload, capacity=0x3c000)
+    reports.append(audit(source, fifteen_page, fifteen_page_payload))
     candidate = extend(source, payload, capacity=0x4000)
     _, items, segs = parse(candidate)
     sig, _ = blob_range(items, 0x1D)
@@ -277,7 +285,9 @@ def selftest(source):
         ("eleven_page_overflow", source, bytes(0x2c004), 0x2c000),
         ("twelve_page_overflow", source, bytes(0x30004), 0x30000),
         ("thirteen_page_overflow", source, bytes(0x34004), 0x34000),
-        ("fourteen_page_capacity", source, payload, 0x38000),
+        ("fourteen_page_overflow", source, bytes(0x38004), 0x38000),
+        ("fifteen_page_overflow", source, bytes(0x3c004), 0x3c000),
+        ("sixteen_page_capacity", source, payload, 0x40000),
     ]
     occupied = bytearray(source)
     _, cmds, _ = parse(source)

@@ -2,6 +2,7 @@
 // Type checking this file does not claim that the host application was run.
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#include <stddef.h>
 
 _Static_assert(UIGlassEffectStyleRegular == 0,
                "The main navigation capsule uses the readable regular variant");
@@ -161,4 +162,178 @@ UIButton *FQMakeAlignedGlassBackground(UIView *host, CGRect originalIconRect) {
     glass.accessibilityElementsHidden = YES;
     [host insertSubview:glass atIndex:0];
     return glass;
+}
+
+// 1.78 uses a runtime-only bridge in AlignedGlass.m. These declarations check
+// its public API calls against the real SDK, including the float slider ABI
+// that would not be checked by an objc_msgSend cast alone.
+_Static_assert(sizeof(void *) == 8 && sizeof(BOOL) == 1 &&
+               sizeof(NSInteger) == 8 && sizeof(NSUInteger) == 8,
+               "The runtime bridge is for the ARM64 Objective-C scalar ABI");
+_Static_assert(__builtin_types_compatible_p(CGFloat, double),
+               "The runtime geometry and font bridge passes double CGFloat values");
+_Static_assert(sizeof(CGPoint) == 16 && _Alignof(CGPoint) == _Alignof(double) &&
+               offsetof(CGPoint, x) == 0 && offsetof(CGPoint, y) == 8 &&
+               sizeof(CGSize) == 16 && _Alignof(CGSize) == _Alignof(double) &&
+               offsetof(CGSize, width) == 0 && offsetof(CGSize, height) == 8,
+               "Point and Size use two consecutive ARM64 double components");
+_Static_assert(sizeof(CGRect) == 32 && _Alignof(CGRect) == _Alignof(double) &&
+               offsetof(CGRect, origin) == 0 && offsetof(CGRect, size) == 16 &&
+               sizeof(UIEdgeInsets) == 32 &&
+               offsetof(UIEdgeInsets, top) == 0 && offsetof(UIEdgeInsets, left) == 8 &&
+               offsetof(UIEdgeInsets, bottom) == 16 && offsetof(UIEdgeInsets, right) == 24,
+               "Rect and inset bridges use four consecutive ARM64 double components");
+_Static_assert(__builtin_types_compatible_p(__typeof__(((UISlider *)nil).value), float) &&
+               __builtin_types_compatible_p(__typeof__(((UISlider *)nil).minimumValue), float) &&
+               __builtin_types_compatible_p(__typeof__(((UISlider *)nil).maximumValue), float),
+               "UISlider values are float, not CGFloat or double");
+_Static_assert(__builtin_types_compatible_p(__typeof__(((UISwitch *)nil).on), BOOL) &&
+               __builtin_types_compatible_p(__typeof__(((UIFont *)nil).pointSize), CGFloat) &&
+               __builtin_types_compatible_p(__typeof__(((UIScreen *)nil).scale), CGFloat) &&
+               __builtin_types_compatible_p(__typeof__(((UITraitCollection *)nil).displayScale), CGFloat) &&
+               __builtin_types_compatible_p(__typeof__(((UIScrollView *)nil).contentSize), CGSize) &&
+               __builtin_types_compatible_p(__typeof__([(UIPanGestureRecognizer *)nil translationInView:nil]), CGPoint),
+               "Switch, font, scroll and pan accessors must retain their bridge types");
+_Static_assert(UIButtonTypeSystem == 1 && NSTextAlignmentRight == 2 &&
+               UIViewAutoresizingFlexibleLeftMargin == 1 &&
+               UIViewAutoresizingFlexibleWidth == 2 &&
+               UIViewAutoresizingFlexibleHeight == 16,
+               "The settings controls use the exact public layout enum values");
+_Static_assert(UIImageSymbolWeightMedium == 5 && UIImageSymbolScaleMedium == 2 &&
+               UIImageRenderingModeAlwaysTemplate == 2 && UIViewContentModeScaleAspectFit == 1,
+               "The bottom symbols use medium template artwork with aspect fit");
+_Static_assert(UIGestureRecognizerStateBegan == 1 && UIGestureRecognizerStateChanged == 2 &&
+               UIGestureRecognizerStateEnded == 3 && UIGestureRecognizerStateCancelled == 4 &&
+               UIGestureRecognizerStateFailed == 5,
+               "The passive feed observer uses the exact public gesture states");
+
+UISwitch *FQBottomSwitchSDK178(CGRect frame, NSInteger tag, BOOL on,
+                              NSString *title, id target, SEL action) {
+    UISwitch *toggle = [UISwitch new];
+    toggle.frame = frame;
+    toggle.tag = tag;
+    toggle.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [toggle setOn:on animated:NO];
+    toggle.accessibilityLabel = title;
+    [toggle addTarget:target action:action forControlEvents:UIControlEventValueChanged];
+    return toggle;
+}
+
+UISlider *FQBottomSliderSDK178(CGRect frame, NSInteger tag, float minimum,
+                              float maximum, float value, NSString *title,
+                              id target, SEL action) {
+    UISlider *slider = [UISlider new];
+    slider.frame = frame;
+    slider.tag = tag;
+    slider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    slider.minimumValue = minimum;
+    slider.maximumValue = maximum;
+    [slider setValue:value animated:NO];
+    slider.accessibilityLabel = title;
+    [slider addTarget:target action:action forControlEvents:UIControlEventValueChanged];
+    return slider;
+}
+
+void FQBottomReadSettingsSDK178(UISwitch *toggle, UISlider *slider,
+                               NSUserDefaults *defaults, NSString *flagKey,
+                               NSString *valueKey, UILabel *valueLabel) {
+    [defaults setBool:toggle.isOn forKey:flagKey];
+    [defaults setDouble:(double)slider.value forKey:valueKey];
+    NSNumber *stored = [defaults objectForKey:valueKey];
+    valueLabel.text = [stored.stringValue stringByAppendingString:@"%"];
+    [slider setValue:(float)stored.doubleValue animated:YES];
+    [defaults removeObjectForKey:valueKey];
+}
+
+UILabel *FQBottomSettingsLabelSDK178(CGRect frame, NSString *title, CGFloat pointSize) {
+    UILabel *label = [UILabel new];
+    label.frame = frame;
+    label.text = title;
+    label.font = [UIFont systemFontOfSize:pointSize];
+    label.textColor = UIColor.secondaryLabelColor;
+    label.textAlignment = NSTextAlignmentRight;
+    label.numberOfLines = 0;
+    label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    return label;
+}
+
+void FQBottomSettingsPageSDK178(UIViewController *owner, UIViewController *settings,
+                               UIScrollView *scroll, UIView *content, CGSize contentSize,
+                               id target, SEL action) {
+    settings.title = @"底栏外观与尺寸";
+    UIView *root = settings.view;
+    root.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    scroll.frame = root.bounds;
+    scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    scroll.alwaysBounceVertical = YES;
+    scroll.contentSize = contentSize;
+    [root addSubview:scroll];
+    [scroll addSubview:content];
+    UIButton *reset = [UIButton buttonWithType:UIButtonTypeSystem];
+    [reset setTitle:@"恢复底栏默认设置" forState:UIControlStateNormal];
+    [reset addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:reset];
+    if (owner.navigationController && !owner.presentedViewController) {
+        [owner.navigationController pushViewController:settings animated:YES];
+    }
+}
+
+UIImageView *FQBottomSymbolSDK178(NSString *name, CGFloat pointSize, CGRect frame) {
+    UIImageSymbolConfiguration *configuration =
+        [UIImageSymbolConfiguration configurationWithPointSize:pointSize
+                                                        weight:UIImageSymbolWeightMedium
+                                                         scale:UIImageSymbolScaleMedium];
+    UIImage *image = [UIImage systemImageNamed:name withConfiguration:configuration];
+    image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    UIImageView *symbol = [UIImageView new];
+    symbol.image = image;
+    symbol.frame = frame;
+    symbol.contentMode = UIViewContentModeScaleAspectFit;
+    symbol.tintColor = UIColor.labelColor;
+    symbol.userInteractionEnabled = NO;
+    symbol.isAccessibilityElement = NO;
+    symbol.accessibilityElementsHidden = YES;
+    return symbol;
+}
+
+CGPoint FQBottomObservePanSDK178(UIScrollView *scroll, id observer, SEL action, BOOL attach) {
+    UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
+    if (attach) [pan addTarget:observer action:action];
+    else [pan removeTarget:observer action:action];
+    // Production observes the existing recognizer without changing its
+    // delegate, translation, enabled state or the scroll view geometry.
+    return [pan translationInView:pan.view];
+}
+
+NSHashTable<UIView *> *FQBottomWeakViewsSDK178(UIView *view) {
+    NSHashTable<UIView *> *views = [NSHashTable weakObjectsHashTable];
+    [views addObject:view];
+    return views;
+}
+
+CGRect FQBottomGeometrySDK178(UIView *view, UIView *destination, CGRect frame) {
+    NSValue *saved = [NSValue valueWithCGRect:frame];
+    view.frame = saved.CGRectValue;
+    return [view convertRect:view.bounds toView:destination];
+}
+
+NSArray<NSString *> *FQReaderShareActionsSDK178(UIControl *control) {
+    NSArray *targets = control.allTargets.allObjects;
+    id target = targets.count ? [targets objectAtIndex:0] : nil;
+    if ([target isKindOfClass:NSNull.class]) target = nil;
+    return [control actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
+}
+
+void FQReaderAppearanceSDK178(UILabel *caption, UIImageView *glyph, UIView *navigation,
+                             CGFloat maximumPointSize, CGRect glyphFrame) {
+    if (!caption.attributedText && caption.font.pointSize > maximumPointSize) {
+        caption.font = [caption.font fontWithSize:maximumPointSize];
+    }
+    glyph.frame = glyphFrame;
+    // Recognition reads the host's accessibility semantics; it neither sends
+    // a sharing action nor replaces the control's registered target/action.
+    NSString *label = navigation.accessibilityLabel;
+    NSString *identifier = navigation.accessibilityIdentifier;
+    (void)label;
+    (void)identifier;
 }

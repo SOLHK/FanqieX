@@ -4,7 +4,8 @@
 The native component supplies .cfi directives. LLVM's actual Mach-O assembler
 encodes its frames in __LD,__compact_unwind; this module does not guess frames.
 The pinned final image has an existing 4216-byte __TEXT,__unwind_info slot large
-enough for one regular second-level page. No section, import or fixup is added.
+enough for one regular or compressed second-level page. Compression is an
+explicit 1.78 opt-in; no function/gap record, section, import or fixup is removed.
 
 Format authority:
 https://github.com/llvm/llvm-project/blob/main/libunwind/include/mach-o/compact_unwind_encoding.h
@@ -79,7 +80,7 @@ def decode_unwind(blob: bytes) -> tuple[list[tuple[int, int]], int]:
     """Decode final regular/compressed pages without assuming a common table."""
     version, common_off, common_count, personality_off, personalities, index_off, index_count = \
         struct.unpack('<7I', span(blob, 0, 28))
-    need(version == 1 and personalities == 0 and index_count >= 2,
+    need(version == 1 and personalities == 0 and 2 <= index_count <= 129 and common_count <= 256,
          'Unsupported unwind header or personality table')
     span(blob, personality_off, 0)
     common = list(struct.unpack('<' + 'I' * common_count, span(blob, common_off, common_count * 4)))
@@ -100,8 +101,13 @@ def decode_unwind(blob: bytes) -> tuple[list[tuple[int, int]], int]:
                        for i in range(count)]
         elif kind == 3:
             _, entries_off, count, local_off, local_count = struct.unpack('<IHHHH', span(blob, page, 12))
-            need(entries_off >= 12 and count > 0 and entries_off + count * 4 <= 4096 and
-                 local_off + local_count * 4 <= 4096, 'Invalid compressed unwind page')
+            entries_end, local_end = entries_off + count * 4, local_off + local_count * 4
+            need(entries_off >= 12 and entries_off % 4 == local_off % 4 == 0 and
+                 0 < count <= 1021 and entries_end <= 4096 and
+                 local_off >= 12 and local_end <= 4096 and common_count + local_count <= 256 and
+                 (not local_count or entries_end <= local_off or local_end <= entries_off),
+                 'Invalid compressed unwind page')
+            span(blob, page, 4096)
             local = list(struct.unpack('<' + 'I' * local_count,
                                       span(blob, page + local_off, local_count * 4)))
             encodings = common + local
@@ -137,7 +143,42 @@ def regular_unwind(entries: list[tuple[int, int]], limit: int, capacity: int) ->
     return bytes(blob)
 
 
-def add_native_unwind(image: bytes, assembled_object: bytes, *, image_base: int = 0x800) -> tuple[bytes, dict]:
+def compressed_unwind(entries: list[tuple[int, int]], limit: int, capacity: int) -> bytes:
+    """Encode every record in one bounded, deterministic local-encoding page."""
+    need(0 < len(entries) <= 1021 and
+         all(0 <= start < limit <= 0xFFFFFFFF and start % 4 == 0 and
+             (encoding == 0 or encoding_supported(encoding)) for start, encoding in entries) and
+         all(a[0] < b[0] for a, b in zip(entries, entries[1:])),
+         'Invalid compressed unwind entries')
+    base = entries[0][0]
+    need(all(0 <= start - base <= 0xFFFFFF for start, _ in entries),
+         'Compressed unwind function delta exceeds 24 bits')
+    encodings = sorted({encoding for _, encoding in entries})
+    need(len(encodings) <= 256, 'Compressed unwind encoding index exceeds 8 bits')
+    encoding_indices = {encoding: index for index, encoding in enumerate(encodings)}
+    entries_offset = 12
+    encodings_offset = entries_offset + 4 * len(entries)
+    need(encodings_offset + 4 * len(encodings) <= 4096,
+         'Merged unwind exceeds one compressed page')
+    page_offset = 28 + 24
+    need(page_offset + 4096 <= capacity, 'Existing unwind slot is too small')
+    blob = bytearray(capacity)
+    struct.pack_into('<7I', blob, 0, 1, 28, 0, 28, 0, 28, 2)
+    struct.pack_into('<III', blob, 28, base, page_offset, page_offset)
+    struct.pack_into('<III', blob, 40, limit, 0, page_offset)
+    struct.pack_into('<IHHHH', blob, page_offset, 3, entries_offset, len(entries),
+                     encodings_offset, len(encodings))
+    for index, (start, encoding) in enumerate(entries):
+        packed = encoding_indices[encoding] << 24 | (start - base)
+        struct.pack_into('<I', blob, page_offset + entries_offset + 4 * index, packed)
+    for index, encoding in enumerate(encodings):
+        struct.pack_into('<I', blob, page_offset + encodings_offset + 4 * index, encoding)
+    need(decode_unwind(bytes(blob)) == (entries, limit), 'Compressed unwind round trip failed')
+    return bytes(blob)
+
+
+def add_native_unwind(image: bytes, assembled_object: bytes, *, image_base: int = 0x800,
+                      allow_compressed: bool = False) -> tuple[bytes, dict]:
     """Rewrite the existing unwind bytes, leaving every section descriptor fixed.
 
     Call before final signing/extend. Returns (patched_image, audit_report).
@@ -161,13 +202,16 @@ def add_native_unwind(image: bytes, assembled_object: bytes, *, image_base: int 
     limit = native[-1]['end']
     merged.pop(limit)
     entries = sorted(merged.items())
-    payload = regular_unwind(entries, limit, slot['size'])
+    compressed = allow_compressed and len(entries) > 511
+    writer = compressed_unwind if compressed else regular_unwind
+    payload = writer(entries, limit, slot['size'])
     result = bytearray(image)
     result[slot['offset']:slot['offset'] + slot['size']] = payload
     report = {'passed': True, 'scope': 'Assembler-derived native ARM64 compact unwind; existing slot rewritten',
               'section_offset': slot['offset'], 'section_size': slot['size'],
               'original_entry_count': len(original), 'native_entry_count': len(native),
               'merged_entry_count': len(entries), 'original_limit': old_limit, 'merged_limit': limit,
+              'page_format': 'compressed' if compressed else 'regular',
               'section_descriptors_unchanged': True, 'native_entries': native,
               'original_sha256': hashlib.sha256(old).hexdigest(),
               'merged_sha256': hashlib.sha256(payload).hexdigest()}

@@ -12,7 +12,7 @@ import struct
 import sys
 from pathlib import Path
 
-from arm64 import CPU, require
+from arm64 import CPU, require, release_version
 from test_controls171 import Runtime as GlassRuntime, call
 from test_control_glass166 import send
 from test_control_geometry import selector_address
@@ -592,6 +592,9 @@ class Runtime(TopChromeRuntime, GlassRuntime):
             state["currentBottomToolbarInsertObject"] = state["nextBottomToolbarInsertObject"]
             return self.finish(cpu)
         if pc - self.slide == 0xa5d4:
+            if receiver == self.classes["UIButton"] and name == "buttonWithType:":
+                return self.finish(cpu, self.view("UIButton", "public button factory", buttonType=cpu.x[2],
+                                                   titles={}, images={}, control_targets=[]))
             if receiver == self.classes["UICornerConfiguration"] and name == "capsuleConfigurationWithMaximumRadius:":
                 return self.finish(cpu, self.obj("UICornerConfiguration", "rounded card", max_radius=cpu.fp(0)))
             if receiver == self.classes["UIFont"] and name == "systemFontOfSize:":
@@ -605,6 +608,9 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
             if receiver in self.objects:
                 state = self.objects[receiver].state
+                if name == "setTitle:forState:" and self.is_kind(receiver, self.classes["UIButton"]):
+                    state.setdefault("titles", {})[cpu.x[3]] = cpu.x[2]
+                    return self.finish(cpu)
                 if name == "setColors:" and self.objects[receiver].cls == self.classes["CAGradientLayer"]:
                     state["colors"] = cpu.x[2]
                     return self.finish(cpu)
@@ -1755,7 +1761,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) == "1.78" else (23, 3, 24, 24)
             x, _, label_width, label_height = caption_frame
             adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
@@ -1941,8 +1947,16 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, 512.0),
+    expected_header_height = 572.0 if release_version(data) == "1.78" else 512.0
+    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
+    if release_version(data) == "1.78":
+        entries = [item for item in runtime.objects[header].state["subviews"]
+                   if runtime.is_kind(item, runtime.classes["UIButton"]) and
+                   runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
+        require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
+                len(runtime.objects[entries[0]].state["control_targets"]) == 1,
+                "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
@@ -2594,6 +2608,7 @@ def exercise_drama_glass(data, labels):
 
 
 def exercise_drama_dock_backdrop(data, labels):
+    native_video_geometry = release_version(data) == "1.78"
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -2666,6 +2681,12 @@ def exercise_drama_dock_backdrop(data, labels):
     black = runtime.color("blackColor")
     require(runtime.methods[runtime.get_method(runtime.classes["UIView"], runtime.sel("setFrame:"))]["imp"]
             == runtime.COLOR_METHOD, "the portrait overlay hook leaves the shared UIView setter intact")
+    if native_video_geometry:
+        require(runtime.methods[runtime.get_method(runtime.classes[config_class], runtime.sel("portraitVideoSize"))]["imp"]
+                == runtime.COLOR_METHOD and
+                runtime.methods[runtime.get_method(runtime.classes["FQVShortVideoVPlayerControlView"], runtime.sel("setFrame:"))]["imp"]
+                == runtime.COLOR_METHOD,
+                "1.78 preserves native video sizing and installs no portrait-size or player-overlay-frame hook")
     channel = 29/255
     rgb = runtime.obj("UIColor", "opaque stock gray", **{rgb_selector: (channel,)*3 + (1.,)})
     gray = runtime.obj("UIColor", "monochrome stock gray", **{white_selector: (channel, 1.)})
@@ -2713,28 +2734,36 @@ def exercise_drama_dock_backdrop(data, labels):
         prefs["FanqieAdBlock.GlassDisabled.1"] = False
         for _ in range(3):
             send(cpu, runtime, config, "portraitVideoSize")
-            require((cpu.fp(0), cpu.fp(1)) == (requested_width, height),
-                    "native paging reaches the screen bottom with explicit or automatic width")
+            expected_video_height = height-dock_height if native_video_geometry else height
+            expected_overlay_height = height if native_video_geometry else height-dock_height
+            require((cpu.fp(0), cpu.fp(1)) == (requested_width, expected_video_height),
+                    "1.78 keeps the native paging size; earlier versions retain their full-height paging contract")
             # setupVideoSizes resolves zero to the container width before sizing
             # both the collection's clipping bounds and its paged video cells.
             resolved_width = cpu.fp(0) if cpu.fp(0) > 0 else width
-            require((resolved_width, cpu.fp(1)) == (width, height),
-                    "the resolved collection viewport includes the area behind the glass")
+            require((resolved_width, cpu.fp(1)) == (width, expected_video_height),
+                    "automatic width resolution preserves the version's explicitly checked native viewport height")
             send(cpu, runtime, controls, "setFrame:", fp=full_frame)
-            require(controls_state["bounds"][3] == height-dock_height,
-                    "the entire portrait overlay reserves the dock above the full-height video")
+            require(controls_state["bounds"][3] == expected_overlay_height,
+                    "1.78 leaves the requested overlay intact; earlier versions reserve their dock inset")
             send(cpu, runtime, controls, "setFrame:", fp=controls_state["frame"])
-            require(controls_state["bounds"][3] == height-dock_height,
+            require(controls_state["bounds"][3] == expected_overlay_height,
                     "reusing an already adjusted overlay frame does not accumulate an inset")
             send(cpu, runtime, controls_ui, "safeBottom")
             require(cpu.fp(0) == 6., "the native overlay supplies its own safe bottom once")
             for key, offset in offsets.items():
                 adjusted = send(cpu, runtime, controls_ui, key)["result"]
-                require(controls_state["bounds"][3]+runtime.objects[adjusted].state["value"] == height-dock_height+offset,
+                require(runtime.objects[adjusted].state["value"] == offset and
+                        controls_state["bounds"][3]+runtime.objects[adjusted].state["value"] == expected_overlay_height+offset,
                         "watch row and progress anchors keep their original screen positions")
             dock_top = height-dock_height+6.
-            require(controls_state["frame"][1]+controls_state["bounds"][3] <= dock_top-6.,
-                    "the watch row and right-side actions end above the glass navigation")
+            if native_video_geometry:
+                require(controls_state["frame"] == full_frame and
+                        runtime.objects[config].state["portraitVideoSize"] == (requested_width, height-dock_height),
+                        "1.78 never resizes the host's player or its overlay when the glass bar is visible")
+            else:
+                require(controls_state["frame"][1]+controls_state["bounds"][3] <= dock_top-6.,
+                        "the watch row and right-side actions end above the glass navigation")
         landscape = (0., 0., height, width)
         send(cpu, runtime, controls, "setFrame:", fp=landscape)
         require(controls_state["frame"] == landscape, "native landscape controls use their full requested frame")

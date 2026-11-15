@@ -1,0 +1,1943 @@
+{
+  "oracle": "Unicorn 2.1.4 AArch64",
+  "fpcr": 0,
+  "scope": "Register values and unchanged NZCV; FPSR is not modeled",
+  "vectors": [
+    {
+      "assembly": "ins v0.d[0], v1.d[0]",
+      "opcode": "2004086e",
+      "inputs": {
+        "0": "8e810511f4d94ef91cd835baf2d8e14e",
+        "1": "3de346c7a50ea24177f9f2d8e4916e46"
+      },
+      "nzcv": 0,
+      "destination": 0,
+      "expected": "8e810511f4d94ef977f9f2d8e4916e46"
+    },
+    {
+      "assembly": "ins v0.d[0], v0.d[0]",
+      "opcode": "0004086e",
+      "inputs": {
+        "0": "eb6c526c56135969f6593245c14e482e",
+        "1": "48afdb92fc507cc67beff800badc2b4a"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "eb6c526c56135969f6593245c14e482e"
+    },
+    {
+      "assembly": "ins v0.d[0], v1.d[1]",
+      "opcode": "2044086e",
+      "inputs": {
+        "0": "7351257bf242aad8144a63ba2f6450ca",
+        "1": "8db08f933d73ea0ac7556314d8c8730b"
+      },
+      "nzcv": 2,
+      "destination": 0,
+      "expected": "7351257bf242aad88db08f933d73ea0a"
+    },
+    {
+      "assembly": "ins v0.d[0], v0.d[1]",
+      "opcode": "0044086e",
+      "inputs": {
+        "0": "4693e664f93be77ff1241a9938f08657",
+        "1": "c58d0289ebe13fb73cf5edf37b29c3a0"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "4693e664f93be77f4693e664f93be77f"
+    },
+    {
+      "assembly": "ins v0.d[1], v1.d[0]",
+      "opcode": "2004186e",
+      "inputs": {
+        "0": "d5120d89816659b085e8e4cf2ae9d47d",
+        "1": "180114291d0c9a4d778ba534620b084a"
+      },
+      "nzcv": 4,
+      "destination": 0,
+      "expected": "778ba534620b084a85e8e4cf2ae9d47d"
+    },
+    {
+      "assembly": "ins v0.d[1], v0.d[0]",
+      "opcode": "0004186e",
+      "inputs": {
+        "0": "cdca6031be70dc502c593ebba8496f15",
+        "1": "67911729460ebe43430f9a8e1e3223e4"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "2c593ebba8496f152c593ebba8496f15"
+    },
+    {
+      "assembly": "ins v0.d[1], v1.d[1]",
+      "opcode": "2044186e",
+      "inputs": {
+        "0": "dd61e8580403d7661424883ba5bbe972",
+        "1": "6c2f5ba78d53ff8094e1bf19aff44910"
+      },
+      "nzcv": 6,
+      "destination": 0,
+      "expected": "6c2f5ba78d53ff801424883ba5bbe972"
+    },
+    {
+      "assembly": "ins v0.d[1], v0.d[1]",
+      "opcode": "0044186e",
+      "inputs": {
+        "0": "d70c207e410842a8fbdede1984a63eb9",
+        "1": "f5c508f5f324f1e3e5b2e7f896168b0d"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "d70c207e410842a8fbdede1984a63eb9"
+    },
+    {
+      "assembly": "dup v0.2d, v1.d[0]",
+      "opcode": "2004084e",
+      "inputs": {
+        "1": "06499a9b1be59093e1710a5c5c975882"
+      },
+      "nzcv": 8,
+      "destination": 0,
+      "expected": "e1710a5c5c975882e1710a5c5c975882"
+    },
+    {
+      "assembly": "mov d0, v1.d[0]",
+      "opcode": "2004085e",
+      "inputs": {
+        "1": "a3c8120b37f2c7462c544a49dfec5374"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "00000000000000002c544a49dfec5374"
+    },
+    {
+      "assembly": "dup v31.2d, v30.d[0]",
+      "opcode": "df07084e",
+      "inputs": {
+        "30": "71df8a6dc770912e9f95954a1aa1a494"
+      },
+      "nzcv": 10,
+      "destination": 31,
+      "expected": "9f95954a1aa1a4949f95954a1aa1a494"
+    },
+    {
+      "assembly": "mov d31, v30.d[0]",
+      "opcode": "df07085e",
+      "inputs": {
+        "30": "8a74845edb75c4f2c8132682aa4bc62c"
+      },
+      "nzcv": 11,
+      "destination": 31,
+      "expected": "0000000000000000c8132682aa4bc62c"
+    },
+    {
+      "assembly": "dup v1.2d, v1.d[0]",
+      "opcode": "2104084e",
+      "inputs": {
+        "1": "f6366ae15f69c3809d327c86de53c27d"
+      },
+      "nzcv": 12,
+      "destination": 1,
+      "expected": "9d327c86de53c27d9d327c86de53c27d"
+    },
+    {
+      "assembly": "mov d1, v1.d[0]",
+      "opcode": "2104085e",
+      "inputs": {
+        "1": "316acc6922557305b9cf131b8576e6a9"
+      },
+      "nzcv": 13,
+      "destination": 1,
+      "expected": "0000000000000000b9cf131b8576e6a9"
+    },
+    {
+      "assembly": "dup v0.2d, v1.d[1]",
+      "opcode": "2004184e",
+      "inputs": {
+        "1": "d42518f29b157c4a59ff2e28b5efcea6"
+      },
+      "nzcv": 14,
+      "destination": 0,
+      "expected": "d42518f29b157c4ad42518f29b157c4a"
+    },
+    {
+      "assembly": "mov d0, v1.d[1]",
+      "opcode": "2004185e",
+      "inputs": {
+        "1": "b135f504f229d3d29070c7dddd48f23b"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "0000000000000000b135f504f229d3d2"
+    },
+    {
+      "assembly": "dup v31.2d, v30.d[1]",
+      "opcode": "df07184e",
+      "inputs": {
+        "30": "4b33299b0b485eb0dee2676288904a35"
+      },
+      "nzcv": 0,
+      "destination": 31,
+      "expected": "4b33299b0b485eb04b33299b0b485eb0"
+    },
+    {
+      "assembly": "mov d31, v30.d[1]",
+      "opcode": "df07185e",
+      "inputs": {
+        "30": "2e0c37536069a8872ff3dc71f193f996"
+      },
+      "nzcv": 1,
+      "destination": 31,
+      "expected": "00000000000000002e0c37536069a887"
+    },
+    {
+      "assembly": "dup v1.2d, v1.d[1]",
+      "opcode": "2104184e",
+      "inputs": {
+        "1": "46ce8959ac066f496fba461f8ebe409f"
+      },
+      "nzcv": 2,
+      "destination": 1,
+      "expected": "46ce8959ac066f4946ce8959ac066f49"
+    },
+    {
+      "assembly": "mov d1, v1.d[1]",
+      "opcode": "2104185e",
+      "inputs": {
+        "1": "6082a5b23c102727b586104caafa14cf"
+      },
+      "nzcv": 3,
+      "destination": 1,
+      "expected": "00000000000000006082a5b23c102727"
+    },
+    {
+      "assembly": "fmov v31.2d, #0.5",
+      "opcode": "1ff4036f",
+      "inputs": {},
+      "nzcv": 4,
+      "destination": 31,
+      "expected": "3fe00000000000003fe0000000000000"
+    },
+    {
+      "assembly": "fmov v31.2d, #-0.5",
+      "opcode": "1ff4076f",
+      "inputs": {},
+      "nzcv": 5,
+      "destination": 31,
+      "expected": "bfe0000000000000bfe0000000000000"
+    },
+    {
+      "assembly": "fmov v31.2d, #1.5",
+      "opcode": "1ff7036f",
+      "inputs": {},
+      "nzcv": 6,
+      "destination": 31,
+      "expected": "3ff80000000000003ff8000000000000"
+    },
+    {
+      "assembly": "fmov v31.2d, #-2.0",
+      "opcode": "1ff4046f",
+      "inputs": {},
+      "nzcv": 7,
+      "destination": 31,
+      "expected": "c000000000000000c000000000000000"
+    },
+    {
+      "assembly": "fmov v31.2d, #31.0",
+      "opcode": "fff7016f",
+      "inputs": {},
+      "nzcv": 8,
+      "destination": 31,
+      "expected": "403f000000000000403f000000000000"
+    },
+    {
+      "assembly": "fmov v31.2d, #0.125",
+      "opcode": "1ff4026f",
+      "inputs": {},
+      "nzcv": 9,
+      "destination": 31,
+      "expected": "3fc00000000000003fc0000000000000"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v2.16b",
+      "opcode": "201c626e",
+      "inputs": {
+        "0": "00000000000000000000000000000000",
+        "1": "9924c49b982d1dd35eabde73ed835a77",
+        "2": "eceec0b2483f0885abe7351e95c3df9a"
+      },
+      "nzcv": 10,
+      "destination": 0,
+      "expected": "eceec0b2483f0885abe7351e95c3df9a"
+    },
+    {
+      "assembly": "bsl v0.16b, v0.16b, v2.16b",
+      "opcode": "001c626e",
+      "inputs": {
+        "0": "00000000000000000000000000000000",
+        "1": "7dd0f05e615e6d36a8624a1f806cd0c1",
+        "2": "401632f6c77f5e0fad3aeb9d949c1ff6"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "401632f6c77f5e0fad3aeb9d949c1ff6"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v0.16b",
+      "opcode": "201c606e",
+      "inputs": {
+        "0": "00000000000000000000000000000000",
+        "1": "bba01c406ad14dc1c6c7332ac0aed766",
+        "2": "4229d0aec20c62597cddc9ec1c2238aa"
+      },
+      "nzcv": 12,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v2.16b",
+      "opcode": "201c626e",
+      "inputs": {
+        "0": "ffffffffffffffffffffffffffffffff",
+        "1": "6a9522f7ed64795c75bd51a5fdf0553e",
+        "2": "2779d19ce99a963245b52fbc8f15907d"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "6a9522f7ed64795c75bd51a5fdf0553e"
+    },
+    {
+      "assembly": "bsl v0.16b, v0.16b, v2.16b",
+      "opcode": "001c626e",
+      "inputs": {
+        "0": "ffffffffffffffffffffffffffffffff",
+        "1": "e446b91700bad4df6661cde988cbfb44",
+        "2": "239c6fb8b670d5e5cfcebb449edfdf0f"
+      },
+      "nzcv": 14,
+      "destination": 0,
+      "expected": "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v0.16b",
+      "opcode": "201c606e",
+      "inputs": {
+        "0": "ffffffffffffffffffffffffffffffff",
+        "1": "79107669b7243b841e3394bb52bd2f0e",
+        "2": "ce77501414706ceb38d46c9a59f91d51"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "79107669b7243b841e3394bb52bd2f0e"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v2.16b",
+      "opcode": "201c626e",
+      "inputs": {
+        "0": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "1": "09b1f4ebae37e94048142118d44826c4",
+        "2": "bfbcdd5d3f0894472b8f8fbd0c6e7630"
+      },
+      "nzcv": 0,
+      "destination": 0,
+      "expected": "1db4f5ffbf22bc450905251d844c7690"
+    },
+    {
+      "assembly": "bsl v0.16b, v0.16b, v2.16b",
+      "opcode": "001c626e",
+      "inputs": {
+        "0": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "1": "1a8cfe39a7429b9fcc779e52686547df",
+        "2": "e0f33ea9e9e155230a4ebc12523b3cef"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "eafbbeabebebffabaaeebebafabbbeef"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v0.16b",
+      "opcode": "201c606e",
+      "inputs": {
+        "0": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "1": "b3014f643eb96283e8f934536021c79d",
+        "2": "3199ca7a0cd258ae2b267273991b1eed"
+      },
+      "nzcv": 2,
+      "destination": 0,
+      "expected": "a2000a202aa82282a8a8200220208288"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v2.16b",
+      "opcode": "201c626e",
+      "inputs": {
+        "0": "08049942ffba3ad46f5cc9ff45f50f93",
+        "1": "b82a668fa7c7b1fdfe45aaf2fde8e0f7",
+        "2": "100eedb2adda45eb9fbf97b800e5f9bc"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "180a64b2a7c275fffee79ef245e0f0bf"
+    },
+    {
+      "assembly": "bsl v0.16b, v0.16b, v2.16b",
+      "opcode": "001c626e",
+      "inputs": {
+        "0": "08049942ffba3ad46f5cc9ff45f50f93",
+        "1": "62aabc8a46372fe901c461eed4bb35f8",
+        "2": "3ef82d5f7b35c3e4c34255973f633310"
+      },
+      "nzcv": 4,
+      "destination": 0,
+      "expected": "3efcbd5fffbffbf4ef5eddff7ff73f93"
+    },
+    {
+      "assembly": "bsl v0.16b, v1.16b, v0.16b",
+      "opcode": "201c606e",
+      "inputs": {
+        "0": "08049942ffba3ad46f5cc9ff45f50f93",
+        "1": "293b156ccc75536f59fb194f3653a536",
+        "2": "d9f636d2e2c6d88dfdbc49caf8bac1c2"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "08001140cc3012444958094f04510512"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[0]",
+      "opcode": "6290d14f",
+      "inputs": {
+        "3": "80000000000000000000000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 6,
+      "destination": 2,
+      "expected": "80000000000000000000000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[1]",
+      "opcode": "6298d14f",
+      "inputs": {
+        "3": "80000000000000000000000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 7,
+      "destination": 2,
+      "expected": "80000000000000000000000000000000"
+    },
+    {
+      "assembly": "fmul v0.2d, v0.2d, v0.d[0]",
+      "opcode": "0090c04f",
+      "inputs": {
+        "0": "80000000000000000000000000000000"
+      },
+      "nzcv": 8,
+      "destination": 0,
+      "expected": "80000000000000000000000000000000"
+    },
+    {
+      "assembly": "fadd v7.2d, v8.2d, v9.2d",
+      "opcode": "07d5694e",
+      "inputs": {
+        "8": "80000000000000000000000000000000",
+        "9": "3fe0000000000000bfe0000000000000"
+      },
+      "nzcv": 9,
+      "destination": 7,
+      "expected": "3fe0000000000000bfe0000000000000"
+    },
+    {
+      "assembly": "fadd v0.2d, v0.2d, v1.2d",
+      "opcode": "00d4614e",
+      "inputs": {
+        "0": "80000000000000000000000000000000",
+        "1": "bfe00000000000003fe0000000000000"
+      },
+      "nzcv": 10,
+      "destination": 0,
+      "expected": "bfe00000000000003fe0000000000000"
+    },
+    {
+      "assembly": "fdiv v10.2d, v11.2d, v12.2d",
+      "opcode": "6afd6c6e",
+      "inputs": {
+        "11": "80000000000000000000000000000000",
+        "12": "c0000000000000004008000000000000"
+      },
+      "nzcv": 11,
+      "destination": 10,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fdiv v0.2d, v1.2d, v0.2d",
+      "opcode": "20fc606e",
+      "inputs": {
+        "0": "40000000000000004008000000000000",
+        "1": "80000000000000000000000000000000"
+      },
+      "nzcv": 12,
+      "destination": 0,
+      "expected": "80000000000000000000000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[0]",
+      "opcode": "6290d14f",
+      "inputs": {
+        "3": "c0060000000000003ff8000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 13,
+      "destination": 2,
+      "expected": "c0208000000000004012000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[1]",
+      "opcode": "6298d14f",
+      "inputs": {
+        "3": "c0060000000000003ff8000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 14,
+      "destination": 2,
+      "expected": "bfe60000000000003fd8000000000000"
+    },
+    {
+      "assembly": "fmul v0.2d, v0.2d, v0.d[0]",
+      "opcode": "0090c04f",
+      "inputs": {
+        "0": "c0060000000000003ff8000000000000"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "c0108000000000004002000000000000"
+    },
+    {
+      "assembly": "fadd v7.2d, v8.2d, v9.2d",
+      "opcode": "07d5694e",
+      "inputs": {
+        "8": "c0060000000000003ff8000000000000",
+        "9": "3fe0000000000000bfe0000000000000"
+      },
+      "nzcv": 0,
+      "destination": 7,
+      "expected": "c0020000000000003ff0000000000000"
+    },
+    {
+      "assembly": "fadd v0.2d, v0.2d, v1.2d",
+      "opcode": "00d4614e",
+      "inputs": {
+        "0": "c0060000000000003ff8000000000000",
+        "1": "bfe00000000000003fe0000000000000"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "c00a0000000000004000000000000000"
+    },
+    {
+      "assembly": "fdiv v10.2d, v11.2d, v12.2d",
+      "opcode": "6afd6c6e",
+      "inputs": {
+        "11": "c0060000000000003ff8000000000000",
+        "12": "c0000000000000004008000000000000"
+      },
+      "nzcv": 2,
+      "destination": 10,
+      "expected": "3ff60000000000003fe0000000000000"
+    },
+    {
+      "assembly": "fdiv v0.2d, v1.2d, v0.2d",
+      "opcode": "20fc606e",
+      "inputs": {
+        "0": "40000000000000004008000000000000",
+        "1": "c0060000000000003ff8000000000000"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "bff60000000000003fe0000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[0]",
+      "opcode": "6290d14f",
+      "inputs": {
+        "3": "40743555555555554048000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 4,
+      "destination": 2,
+      "expected": "408e5000000000004062000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[1]",
+      "opcode": "6298d14f",
+      "inputs": {
+        "3": "40743555555555554048000000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 5,
+      "destination": 2,
+      "expected": "40543555555555554028000000000000"
+    },
+    {
+      "assembly": "fmul v0.2d, v0.2d, v0.d[0]",
+      "opcode": "0090c04f",
+      "inputs": {
+        "0": "40743555555555554048000000000000"
+      },
+      "nzcv": 6,
+      "destination": 0,
+      "expected": "40ce50000000000040a2000000000000"
+    },
+    {
+      "assembly": "fadd v7.2d, v8.2d, v9.2d",
+      "opcode": "07d5694e",
+      "inputs": {
+        "8": "40743555555555554048000000000000",
+        "9": "3fe0000000000000bfe0000000000000"
+      },
+      "nzcv": 7,
+      "destination": 7,
+      "expected": "40743d55555555554047c00000000000"
+    },
+    {
+      "assembly": "fadd v0.2d, v0.2d, v1.2d",
+      "opcode": "00d4614e",
+      "inputs": {
+        "0": "40743555555555554048000000000000",
+        "1": "bfe00000000000003fe0000000000000"
+      },
+      "nzcv": 8,
+      "destination": 0,
+      "expected": "40742d55555555554048400000000000"
+    },
+    {
+      "assembly": "fdiv v10.2d, v11.2d, v12.2d",
+      "opcode": "6afd6c6e",
+      "inputs": {
+        "11": "40743555555555554048000000000000",
+        "12": "c0000000000000004008000000000000"
+      },
+      "nzcv": 9,
+      "destination": 10,
+      "expected": "c0643555555555554030000000000000"
+    },
+    {
+      "assembly": "fdiv v0.2d, v1.2d, v0.2d",
+      "opcode": "20fc606e",
+      "inputs": {
+        "0": "40000000000000004008000000000000",
+        "1": "40743555555555554048000000000000"
+      },
+      "nzcv": 10,
+      "destination": 0,
+      "expected": "40643555555555554030000000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[0]",
+      "opcode": "6290d14f",
+      "inputs": {
+        "3": "3ef0000000000000c090008000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 11,
+      "destination": 2,
+      "expected": "3f08000000000000c0a800c000000000"
+    },
+    {
+      "assembly": "fmul v2.2d, v3.2d, v17.d[1]",
+      "opcode": "6298d14f",
+      "inputs": {
+        "3": "3ef0000000000000c090008000000000",
+        "17": "3fd00000000000004008000000000000"
+      },
+      "nzcv": 12,
+      "destination": 2,
+      "expected": "3ed0000000000000c070008000000000"
+    },
+    {
+      "assembly": "fmul v0.2d, v0.2d, v0.d[0]",
+      "opcode": "0090c04f",
+      "inputs": {
+        "0": "3ef0000000000000c090008000000000"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "bf900080000000004130010004000000"
+    },
+    {
+      "assembly": "fadd v7.2d, v8.2d, v9.2d",
+      "opcode": "07d5694e",
+      "inputs": {
+        "8": "3ef0000000000000c090008000000000",
+        "9": "3fe0000000000000bfe0000000000000"
+      },
+      "nzcv": 14,
+      "destination": 7,
+      "expected": "3fe0002000000000c090028000000000"
+    },
+    {
+      "assembly": "fadd v0.2d, v0.2d, v1.2d",
+      "opcode": "00d4614e",
+      "inputs": {
+        "0": "3ef0000000000000c090008000000000",
+        "1": "bfe00000000000003fe0000000000000"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "bfdfffc000000000c08ffd0000000000"
+    },
+    {
+      "assembly": "fdiv v10.2d, v11.2d, v12.2d",
+      "opcode": "6afd6c6e",
+      "inputs": {
+        "11": "3ef0000000000000c090008000000000",
+        "12": "c0000000000000004008000000000000"
+      },
+      "nzcv": 0,
+      "destination": 10,
+      "expected": "bee0000000000000c075560000000000"
+    },
+    {
+      "assembly": "fdiv v0.2d, v1.2d, v0.2d",
+      "opcode": "20fc606e",
+      "inputs": {
+        "0": "40000000000000004008000000000000",
+        "1": "3ef0000000000000c090008000000000"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "3ee0000000000000c075560000000000"
+    },
+    {
+      "assembly": "fcmeq v13.2d, v14.2d, v15.2d",
+      "opcode": "cde56f4e",
+      "inputs": {
+        "14": "80000000000000000000000000000000",
+        "15": "00000000000000008000000000000000"
+      },
+      "nzcv": 2,
+      "destination": 13,
+      "expected": "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "assembly": "fcmeq v0.2d, v0.2d, v1.2d",
+      "opcode": "00e4614e",
+      "inputs": {
+        "0": "80000000000000000000000000000000",
+        "1": "00000000000000008000000000000000"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "assembly": "fcmlt v16.2d, v17.2d, #0.0",
+      "opcode": "30eae04e",
+      "inputs": {
+        "17": "80000000000000000000000000000000"
+      },
+      "nzcv": 4,
+      "destination": 16,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcmeq v13.2d, v14.2d, v15.2d",
+      "opcode": "cde56f4e",
+      "inputs": {
+        "14": "bff00000000000003ff0000000000000",
+        "15": "3ff00000000000003ff0000000000000"
+      },
+      "nzcv": 5,
+      "destination": 13,
+      "expected": "0000000000000000ffffffffffffffff"
+    },
+    {
+      "assembly": "fcmeq v0.2d, v0.2d, v1.2d",
+      "opcode": "00e4614e",
+      "inputs": {
+        "0": "bff00000000000003ff0000000000000",
+        "1": "3ff00000000000003ff0000000000000"
+      },
+      "nzcv": 6,
+      "destination": 0,
+      "expected": "0000000000000000ffffffffffffffff"
+    },
+    {
+      "assembly": "fcmlt v16.2d, v17.2d, #0.0",
+      "opcode": "30eae04e",
+      "inputs": {
+        "17": "bff00000000000003ff0000000000000"
+      },
+      "nzcv": 7,
+      "destination": 16,
+      "expected": "ffffffffffffffff0000000000000000"
+    },
+    {
+      "assembly": "fcmeq v13.2d, v14.2d, v15.2d",
+      "opcode": "cde56f4e",
+      "inputs": {
+        "14": "fff00000000000007ff0000000000000",
+        "15": "fff00000000000007ff0000000000000"
+      },
+      "nzcv": 8,
+      "destination": 13,
+      "expected": "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "assembly": "fcmeq v0.2d, v0.2d, v1.2d",
+      "opcode": "00e4614e",
+      "inputs": {
+        "0": "fff00000000000007ff0000000000000",
+        "1": "fff00000000000007ff0000000000000"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "assembly": "fcmlt v16.2d, v17.2d, #0.0",
+      "opcode": "30eae04e",
+      "inputs": {
+        "17": "fff00000000000007ff0000000000000"
+      },
+      "nzcv": 10,
+      "destination": 16,
+      "expected": "ffffffffffffffff0000000000000000"
+    },
+    {
+      "assembly": "fcmeq v13.2d, v14.2d, v15.2d",
+      "opcode": "cde56f4e",
+      "inputs": {
+        "14": "bff00000000000007ff8000000000000",
+        "15": "bff00000000000007ff8000000000000"
+      },
+      "nzcv": 11,
+      "destination": 13,
+      "expected": "ffffffffffffffff0000000000000000"
+    },
+    {
+      "assembly": "fcmeq v0.2d, v0.2d, v1.2d",
+      "opcode": "00e4614e",
+      "inputs": {
+        "0": "bff00000000000007ff8000000000000",
+        "1": "bff00000000000007ff8000000000000"
+      },
+      "nzcv": 12,
+      "destination": 0,
+      "expected": "ffffffffffffffff0000000000000000"
+    },
+    {
+      "assembly": "fcmlt v16.2d, v17.2d, #0.0",
+      "opcode": "30eae04e",
+      "inputs": {
+        "17": "bff00000000000007ff8000000000000"
+      },
+      "nzcv": 13,
+      "destination": 16,
+      "expected": "ffffffffffffffff0000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v18.2d, v19.2d",
+      "opcode": "72bae14e",
+      "inputs": {
+        "19": "80000000000000000000000000000000"
+      },
+      "nzcv": 14,
+      "destination": 18,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v0.2d, v0.2d",
+      "opcode": "00b8e14e",
+      "inputs": {
+        "0": "80000000000000000000000000000000"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d22, d23",
+      "opcode": "f6bae15e",
+      "inputs": {
+        "23": "80000000000000000000000000000000"
+      },
+      "nzcv": 0,
+      "destination": 22,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d0, d0",
+      "opcode": "00b8e15e",
+      "inputs": {
+        "0": "00000000000000008000000000000000"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v18.2d, v19.2d",
+      "opcode": "72bae14e",
+      "inputs": {
+        "19": "c053e666666666664053e66666666666"
+      },
+      "nzcv": 2,
+      "destination": 18,
+      "expected": "ffffffffffffffb1000000000000004f"
+    },
+    {
+      "assembly": "fcvtzs v0.2d, v0.2d",
+      "opcode": "00b8e14e",
+      "inputs": {
+        "0": "c053e666666666664053e66666666666"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "ffffffffffffffb1000000000000004f"
+    },
+    {
+      "assembly": "fcvtzs d22, d23",
+      "opcode": "f6bae15e",
+      "inputs": {
+        "23": "c053e666666666664053e66666666666"
+      },
+      "nzcv": 4,
+      "destination": 22,
+      "expected": "0000000000000000000000000000004f"
+    },
+    {
+      "assembly": "fcvtzs d0, d0",
+      "opcode": "00b8e15e",
+      "inputs": {
+        "0": "4053e66666666666c053e66666666666"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "0000000000000000ffffffffffffffb1"
+    },
+    {
+      "assembly": "fcvtzs v18.2d, v19.2d",
+      "opcode": "72bae14e",
+      "inputs": {
+        "19": "bfeff7ced916872b3feff7ced916872b"
+      },
+      "nzcv": 6,
+      "destination": 18,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v0.2d, v0.2d",
+      "opcode": "00b8e14e",
+      "inputs": {
+        "0": "bfeff7ced916872b3feff7ced916872b"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d22, d23",
+      "opcode": "f6bae15e",
+      "inputs": {
+        "23": "bfeff7ced916872b3feff7ced916872b"
+      },
+      "nzcv": 8,
+      "destination": 22,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d0, d0",
+      "opcode": "00b8e15e",
+      "inputs": {
+        "0": "3feff7ced916872bbfeff7ced916872b"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v18.2d, v19.2d",
+      "opcode": "72bae14e",
+      "inputs": {
+        "19": "43dfffffffffffffc3e0000000000000"
+      },
+      "nzcv": 10,
+      "destination": 18,
+      "expected": "7ffffffffffffc008000000000000000"
+    },
+    {
+      "assembly": "fcvtzs v0.2d, v0.2d",
+      "opcode": "00b8e14e",
+      "inputs": {
+        "0": "43dfffffffffffffc3e0000000000000"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "7ffffffffffffc008000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d22, d23",
+      "opcode": "f6bae15e",
+      "inputs": {
+        "23": "43dfffffffffffffc3e0000000000000"
+      },
+      "nzcv": 12,
+      "destination": 22,
+      "expected": "00000000000000008000000000000000"
+    },
+    {
+      "assembly": "fcvtzs d0, d0",
+      "opcode": "00b8e15e",
+      "inputs": {
+        "0": "c3e000000000000043dfffffffffffff"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "00000000000000007ffffffffffffc00"
+    },
+    {
+      "assembly": "fcvtzs v18.2d, v19.2d",
+      "opcode": "72bae14e",
+      "inputs": {
+        "19": "c32ffffffffffffe432ffffffffffffe"
+      },
+      "nzcv": 14,
+      "destination": 18,
+      "expected": "fff0000000000001000fffffffffffff"
+    },
+    {
+      "assembly": "fcvtzs v0.2d, v0.2d",
+      "opcode": "00b8e14e",
+      "inputs": {
+        "0": "c32ffffffffffffe432ffffffffffffe"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "fff0000000000001000fffffffffffff"
+    },
+    {
+      "assembly": "fcvtzs d22, d23",
+      "opcode": "f6bae15e",
+      "inputs": {
+        "23": "c32ffffffffffffe432ffffffffffffe"
+      },
+      "nzcv": 0,
+      "destination": 22,
+      "expected": "0000000000000000000fffffffffffff"
+    },
+    {
+      "assembly": "fcvtzs d0, d0",
+      "opcode": "00b8e15e",
+      "inputs": {
+        "0": "432ffffffffffffec32ffffffffffffe"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "0000000000000000fff0000000000001"
+    },
+    {
+      "assembly": "scvtf v20.2d, v21.2d",
+      "opcode": "b4da614e",
+      "inputs": {
+        "21": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 2,
+      "destination": 20,
+      "expected": "bff00000000000000000000000000000"
+    },
+    {
+      "assembly": "scvtf v0.2d, v0.2d",
+      "opcode": "00d8614e",
+      "inputs": {
+        "0": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "bff00000000000000000000000000000"
+    },
+    {
+      "assembly": "scvtf d24, d25",
+      "opcode": "38db615e",
+      "inputs": {
+        "25": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 4,
+      "destination": 24,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "scvtf d0, d0",
+      "opcode": "00d8615e",
+      "inputs": {
+        "0": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "scvtf v20.2d, v21.2d",
+      "opcode": "b4da614e",
+      "inputs": {
+        "21": "ffffffffffffffb1000000000000004f"
+      },
+      "nzcv": 6,
+      "destination": 20,
+      "expected": "c053c000000000004053c00000000000"
+    },
+    {
+      "assembly": "scvtf v0.2d, v0.2d",
+      "opcode": "00d8614e",
+      "inputs": {
+        "0": "ffffffffffffffb1000000000000004f"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "c053c000000000004053c00000000000"
+    },
+    {
+      "assembly": "scvtf d24, d25",
+      "opcode": "38db615e",
+      "inputs": {
+        "25": "ffffffffffffffb1000000000000004f"
+      },
+      "nzcv": 8,
+      "destination": 24,
+      "expected": "00000000000000004053c00000000000"
+    },
+    {
+      "assembly": "scvtf d0, d0",
+      "opcode": "00d8615e",
+      "inputs": {
+        "0": "ffffffffffffffb1000000000000004f"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "00000000000000004053c00000000000"
+    },
+    {
+      "assembly": "scvtf v20.2d, v21.2d",
+      "opcode": "b4da614e",
+      "inputs": {
+        "21": "7fffffffffffffff8000000000000000"
+      },
+      "nzcv": 10,
+      "destination": 20,
+      "expected": "43e0000000000000c3e0000000000000"
+    },
+    {
+      "assembly": "scvtf v0.2d, v0.2d",
+      "opcode": "00d8614e",
+      "inputs": {
+        "0": "7fffffffffffffff8000000000000000"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "43e0000000000000c3e0000000000000"
+    },
+    {
+      "assembly": "scvtf d24, d25",
+      "opcode": "38db615e",
+      "inputs": {
+        "25": "7fffffffffffffff8000000000000000"
+      },
+      "nzcv": 12,
+      "destination": 24,
+      "expected": "0000000000000000c3e0000000000000"
+    },
+    {
+      "assembly": "scvtf d0, d0",
+      "opcode": "00d8615e",
+      "inputs": {
+        "0": "7fffffffffffffff8000000000000000"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "0000000000000000c3e0000000000000"
+    },
+    {
+      "assembly": "scvtf v20.2d, v21.2d",
+      "opcode": "b4da614e",
+      "inputs": {
+        "21": "ffdfffffffffffff0020000000000001"
+      },
+      "nzcv": 14,
+      "destination": 20,
+      "expected": "c3400000000000004340000000000000"
+    },
+    {
+      "assembly": "scvtf v0.2d, v0.2d",
+      "opcode": "00d8614e",
+      "inputs": {
+        "0": "ffdfffffffffffff0020000000000001"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "c3400000000000004340000000000000"
+    },
+    {
+      "assembly": "scvtf d24, d25",
+      "opcode": "38db615e",
+      "inputs": {
+        "25": "ffdfffffffffffff0020000000000001"
+      },
+      "nzcv": 0,
+      "destination": 24,
+      "expected": "00000000000000004340000000000000"
+    },
+    {
+      "assembly": "scvtf d0, d0",
+      "opcode": "00d8615e",
+      "inputs": {
+        "0": "ffdfffffffffffff0020000000000001"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "00000000000000004340000000000000"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "0123456789abcdeffedcba9876543210",
+        "28": "cb8cd706c841f7babb73fea2921192ee"
+      },
+      "nzcv": 2,
+      "destination": 26,
+      "expected": "c841f7ba921192ee89abcdef76543210"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "cb8cd706c841f7babb73fea2921192ee",
+        "1": "0123456789abcdeffedcba9876543210"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "c841f7ba921192ee89abcdef76543210"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "0123456789abcdeffedcba9876543210"
+      },
+      "nzcv": 4,
+      "destination": 29,
+      "expected": "fedcba98765432100123456789abcdef"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "0123456789abcdeffedcba9876543210"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "00000000000000004567cdefba983210"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "0123456789abcdeffedcba9876543210"
+      },
+      "nzcv": 6,
+      "destination": 0,
+      "expected": "00000000000000004567cdefba983210"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "0123456789abcdeffedcba9876543210"
+      },
+      "nzcv": 7,
+      "destination": 2,
+      "expected": "0000000000000000000000000000fedc"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "ffffffffffffffffffffffffffffffff",
+        "28": "cdb87804eeb4f9d454a81a142a6ee6ea"
+      },
+      "nzcv": 8,
+      "destination": 26,
+      "expected": "eeb4f9d42a6ee6eaffffffffffffffff"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "cdb87804eeb4f9d454a81a142a6ee6ea",
+        "1": "ffffffffffffffffffffffffffffffff"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "eeb4f9d42a6ee6eaffffffffffffffff"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "ffffffffffffffffffffffffffffffff"
+      },
+      "nzcv": 10,
+      "destination": 29,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "ffffffffffffffffffffffffffffffff"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "0000000000000000ffffffffffffffff"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "ffffffffffffffffffffffffffffffff"
+      },
+      "nzcv": 12,
+      "destination": 0,
+      "expected": "0000000000000000ffffffffffffffff"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "ffffffffffffffffffffffffffffffff"
+      },
+      "nzcv": 13,
+      "destination": 2,
+      "expected": "0000000000000000000000000000ffff"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "ffffffffffffffff0000000000000000",
+        "28": "e73980bf7821f2831148dbacadfc32a7"
+      },
+      "nzcv": 14,
+      "destination": 26,
+      "expected": "7821f283adfc32a7ffffffff00000000"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "e73980bf7821f2831148dbacadfc32a7",
+        "1": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "7821f283adfc32a7ffffffff00000000"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 0,
+      "destination": 29,
+      "expected": "0000000000000000ffffffffffffffff"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "0000000000000000ffffffff00000000"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 2,
+      "destination": 0,
+      "expected": "0000000000000000ffffffff00000000"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "ffffffffffffffff0000000000000000"
+      },
+      "nzcv": 3,
+      "destination": 2,
+      "expected": "00000000000000000000000000000000"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "d58d72be417d9ae023b6db2e2d2dc3e4",
+        "28": "ad407c7b87df25d9ee4b42603ad14fbf"
+      },
+      "nzcv": 4,
+      "destination": 26,
+      "expected": "87df25d93ad14fbf417d9ae02d2dc3e4"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "ad407c7b87df25d9ee4b42603ad14fbf",
+        "1": "d58d72be417d9ae023b6db2e2d2dc3e4"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "87df25d93ad14fbf417d9ae02d2dc3e4"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "d58d72be417d9ae023b6db2e2d2dc3e4"
+      },
+      "nzcv": 6,
+      "destination": 29,
+      "expected": "2a728d41be82651fdc4924d1d2d23c1b"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "d58d72be417d9ae023b6db2e2d2dc3e4"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "000000000000000072be9ae0db2ec3e4"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "d58d72be417d9ae023b6db2e2d2dc3e4"
+      },
+      "nzcv": 8,
+      "destination": 0,
+      "expected": "000000000000000072be9ae0db2ec3e4"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "d58d72be417d9ae023b6db2e2d2dc3e4"
+      },
+      "nzcv": 9,
+      "destination": 2,
+      "expected": "0000000000000000000000000000db2e"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "bf30f0e13240ddc4b6ce84a65f85a1c5",
+        "28": "960b31665810632574b1c3b299a23654"
+      },
+      "nzcv": 10,
+      "destination": 26,
+      "expected": "5810632599a236543240ddc45f85a1c5"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "960b31665810632574b1c3b299a23654",
+        "1": "bf30f0e13240ddc4b6ce84a65f85a1c5"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "5810632599a236543240ddc45f85a1c5"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "bf30f0e13240ddc4b6ce84a65f85a1c5"
+      },
+      "nzcv": 12,
+      "destination": 29,
+      "expected": "40cf0f1ecdbf223b49317b59a07a5e3a"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "bf30f0e13240ddc4b6ce84a65f85a1c5"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "0000000000000000f0e1ddc484a6a1c5"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "bf30f0e13240ddc4b6ce84a65f85a1c5"
+      },
+      "nzcv": 14,
+      "destination": 0,
+      "expected": "0000000000000000f0e1ddc484a6a1c5"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "bf30f0e13240ddc4b6ce84a65f85a1c5"
+      },
+      "nzcv": 15,
+      "destination": 2,
+      "expected": "0000000000000000000000000000b6ce"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "c29480ef28ae160da1dcd36d989ee2df",
+        "28": "cdd1815ada0b81f714feaacde495aae7"
+      },
+      "nzcv": 0,
+      "destination": 26,
+      "expected": "da0b81f7e495aae728ae160d989ee2df"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "cdd1815ada0b81f714feaacde495aae7",
+        "1": "c29480ef28ae160da1dcd36d989ee2df"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "da0b81f7e495aae728ae160d989ee2df"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "c29480ef28ae160da1dcd36d989ee2df"
+      },
+      "nzcv": 2,
+      "destination": 29,
+      "expected": "3d6b7f10d751e9f25e232c9267611d20"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "c29480ef28ae160da1dcd36d989ee2df"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "000000000000000080ef160dd36de2df"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "c29480ef28ae160da1dcd36d989ee2df"
+      },
+      "nzcv": 4,
+      "destination": 0,
+      "expected": "000000000000000080ef160dd36de2df"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "c29480ef28ae160da1dcd36d989ee2df"
+      },
+      "nzcv": 5,
+      "destination": 2,
+      "expected": "0000000000000000000000000000e2df"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "25cc802299c037f0e9d153176bf0f26d",
+        "28": "252ff9755a3ffd80b9fcbd1da2eb36cb"
+      },
+      "nzcv": 6,
+      "destination": 26,
+      "expected": "5a3ffd80a2eb36cb99c037f06bf0f26d"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "252ff9755a3ffd80b9fcbd1da2eb36cb",
+        "1": "25cc802299c037f0e9d153176bf0f26d"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "5a3ffd80a2eb36cb99c037f06bf0f26d"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "25cc802299c037f0e9d153176bf0f26d"
+      },
+      "nzcv": 8,
+      "destination": 29,
+      "expected": "da337fdd663fc80f162eace8940f0d92"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "25cc802299c037f0e9d153176bf0f26d"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "0000000000000000802237f05317f26d"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "25cc802299c037f0e9d153176bf0f26d"
+      },
+      "nzcv": 10,
+      "destination": 0,
+      "expected": "0000000000000000802237f05317f26d"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "25cc802299c037f0e9d153176bf0f26d"
+      },
+      "nzcv": 11,
+      "destination": 2,
+      "expected": "0000000000000000000000000000f26d"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "4fbbabdfe140b431a623b9159ca27088",
+        "28": "ca2f4ea01b3cef44dbc16496ce13a7f4"
+      },
+      "nzcv": 12,
+      "destination": 26,
+      "expected": "1b3cef44ce13a7f4e140b4319ca27088"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "ca2f4ea01b3cef44dbc16496ce13a7f4",
+        "1": "4fbbabdfe140b431a623b9159ca27088"
+      },
+      "nzcv": 13,
+      "destination": 0,
+      "expected": "1b3cef44ce13a7f4e140b4319ca27088"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "4fbbabdfe140b431a623b9159ca27088"
+      },
+      "nzcv": 14,
+      "destination": 29,
+      "expected": "b04454201ebf4bce59dc46ea635d8f77"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "4fbbabdfe140b431a623b9159ca27088"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "0000000000000000abdfb431b9157088"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "4fbbabdfe140b431a623b9159ca27088"
+      },
+      "nzcv": 0,
+      "destination": 0,
+      "expected": "0000000000000000abdfb431b9157088"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "4fbbabdfe140b431a623b9159ca27088"
+      },
+      "nzcv": 1,
+      "destination": 2,
+      "expected": "0000000000000000000000000000b915"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "2697bd2217164eab4e4fee6f89205000",
+        "28": "51b1171e8bd756002d81ced01cad4b0b"
+      },
+      "nzcv": 2,
+      "destination": 26,
+      "expected": "8bd756001cad4b0b17164eab89205000"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "51b1171e8bd756002d81ced01cad4b0b",
+        "1": "2697bd2217164eab4e4fee6f89205000"
+      },
+      "nzcv": 3,
+      "destination": 0,
+      "expected": "8bd756001cad4b0b17164eab89205000"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "2697bd2217164eab4e4fee6f89205000"
+      },
+      "nzcv": 4,
+      "destination": 29,
+      "expected": "d96842dde8e9b154b1b0119076dfafff"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "2697bd2217164eab4e4fee6f89205000"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "0000000000000000bd224eabee6f5000"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "2697bd2217164eab4e4fee6f89205000"
+      },
+      "nzcv": 6,
+      "destination": 0,
+      "expected": "0000000000000000bd224eabee6f5000"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "2697bd2217164eab4e4fee6f89205000"
+      },
+      "nzcv": 7,
+      "destination": 2,
+      "expected": "0000000000000000000000000000ee6f"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "9f41b084950971f6051068eee756cd19",
+        "28": "ab180c5ceab63bd710fed0974d367c33"
+      },
+      "nzcv": 8,
+      "destination": 26,
+      "expected": "eab63bd74d367c33950971f6e756cd19"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "ab180c5ceab63bd710fed0974d367c33",
+        "1": "9f41b084950971f6051068eee756cd19"
+      },
+      "nzcv": 9,
+      "destination": 0,
+      "expected": "eab63bd74d367c33950971f6e756cd19"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "9f41b084950971f6051068eee756cd19"
+      },
+      "nzcv": 10,
+      "destination": 29,
+      "expected": "60be4f7b6af68e09faef971118a932e6"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "9f41b084950971f6051068eee756cd19"
+      },
+      "nzcv": 11,
+      "destination": 0,
+      "expected": "0000000000000000b08471f668eecd19"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "9f41b084950971f6051068eee756cd19"
+      },
+      "nzcv": 12,
+      "destination": 0,
+      "expected": "0000000000000000b08471f668eecd19"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "9f41b084950971f6051068eee756cd19"
+      },
+      "nzcv": 13,
+      "destination": 2,
+      "expected": "0000000000000000000000000000e756"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "a4b6be6f14543a92199271fd5b3127f2",
+        "28": "2101c3467026283e515a51a343eaace3"
+      },
+      "nzcv": 14,
+      "destination": 26,
+      "expected": "7026283e43eaace314543a925b3127f2"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "2101c3467026283e515a51a343eaace3",
+        "1": "a4b6be6f14543a92199271fd5b3127f2"
+      },
+      "nzcv": 15,
+      "destination": 0,
+      "expected": "7026283e43eaace314543a925b3127f2"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "a4b6be6f14543a92199271fd5b3127f2"
+      },
+      "nzcv": 0,
+      "destination": 29,
+      "expected": "5b494190ebabc56de66d8e02a4ced80d"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "a4b6be6f14543a92199271fd5b3127f2"
+      },
+      "nzcv": 1,
+      "destination": 0,
+      "expected": "0000000000000000be6f3a9271fd27f2"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "a4b6be6f14543a92199271fd5b3127f2"
+      },
+      "nzcv": 2,
+      "destination": 0,
+      "expected": "0000000000000000be6f3a9271fd27f2"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "a4b6be6f14543a92199271fd5b3127f2"
+      },
+      "nzcv": 3,
+      "destination": 2,
+      "expected": "000000000000000000000000000071fd"
+    },
+    {
+      "assembly": "uzp1 v26.4s, v27.4s, v28.4s",
+      "opcode": "7a1b9c4e",
+      "inputs": {
+        "27": "fc9f1fa8a9bce46e7c9eac2afc15d477",
+        "28": "a53ae06a886df5f396b2bc23d718c140"
+      },
+      "nzcv": 4,
+      "destination": 26,
+      "expected": "886df5f3d718c140a9bce46efc15d477"
+    },
+    {
+      "assembly": "uzp1 v0.4s, v1.4s, v0.4s",
+      "opcode": "2018804e",
+      "inputs": {
+        "0": "a53ae06a886df5f396b2bc23d718c140",
+        "1": "fc9f1fa8a9bce46e7c9eac2afc15d477"
+      },
+      "nzcv": 5,
+      "destination": 0,
+      "expected": "886df5f3d718c140a9bce46efc15d477"
+    },
+    {
+      "assembly": "not v29.16b, v30.16b",
+      "opcode": "dd5b206e",
+      "inputs": {
+        "30": "fc9f1fa8a9bce46e7c9eac2afc15d477"
+      },
+      "nzcv": 6,
+      "destination": 29,
+      "expected": "0360e05756431b91836153d503ea2b88"
+    },
+    {
+      "assembly": "xtn v0.4h, v1.4s",
+      "opcode": "2028610e",
+      "inputs": {
+        "1": "fc9f1fa8a9bce46e7c9eac2afc15d477"
+      },
+      "nzcv": 7,
+      "destination": 0,
+      "expected": "00000000000000001fa8e46eac2ad477"
+    },
+    {
+      "assembly": "xtn v0.4h, v0.4s",
+      "opcode": "0028610e",
+      "inputs": {
+        "0": "fc9f1fa8a9bce46e7c9eac2afc15d477"
+      },
+      "nzcv": 8,
+      "destination": 0,
+      "expected": "00000000000000001fa8e46eac2ad477"
+    },
+    {
+      "assembly": "umaxv h2, v3.4h",
+      "opcode": "62a8702e",
+      "inputs": {
+        "3": "fc9f1fa8a9bce46e7c9eac2afc15d477"
+      },
+      "nzcv": 9,
+      "destination": 2,
+      "expected": "0000000000000000000000000000fc15"
+    }
+  ]
+}

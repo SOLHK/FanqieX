@@ -98,14 +98,15 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
+    refined_reader=release_version(data)=='1.78'
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
@@ -128,11 +129,25 @@ def exercise(data,labels,baseline):
             require(st['frame']==((0.,-6.,36.,36.) if b==back else (-6.,-6.,36.,36.)),'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
-        require(r.objects[r.objects[back].state['imageView']].state['frame']==(12.,0.,24.,24.),'Back glyph moves with its lens; visible center 18 and left lens edge 16 in host parent')
+        expected_back=(14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.)
+        require(r.objects[r.objects[back].state['imageView']].state['frame']==expected_back,
+                '1.78 refines the back artwork to 20pt; older versions retain their 24pt optical contract')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
+        refined_glyphs={r.objects[b].state['imageView'] for b in controls
+                        if refined_reader and r.is_kind(b,r.classes['UIButton'])}
         for v in before:
             for field in ('frame','bounds','image','imageView','images','configuration','contentMode','text','font'):
-                require((field=='frame' and v==r.objects[back].state['imageView']) or r.objects[v].state.get(field)==before[v].get(field),'Host content and geometry unchanged: '+field)
+                optical_geometry=field in ('frame','bounds') and v in refined_glyphs
+                require(optical_geometry or (field=='frame' and v==r.objects[back].state['imageView']) or
+                        r.objects[v].state.get(field)==before[v].get(field),'Host content and geometry unchanged: '+field)
+        if refined_reader:
+            for b in controls:
+                glyph=r.objects[b].state['imageView']
+                if glyph in refined_glyphs:
+                    require(r.objects[glyph].state['frame']==(expected_back if b==back else (2.,2.,20.,20.)),
+                            'Only the reviewed reader glyph rectangles change to the exact 20pt contract')
+                require(hit_contains(r,b,((-4.,-10.,44.,44.) if b==back else (-10.,-10.,44.,44.))),
+                        'Refined reader controls retain a 44pt minimum hit target')
         original_targets={b:before[b]['control_targets'] for b in controls}
         for b in controls:
             if r.is_kind(b,r.classes['UIControl']):

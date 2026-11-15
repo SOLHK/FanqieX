@@ -53,7 +53,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161', 'repair162'),
                         default='repair162')
-    parser.add_argument('--version', choices=('1.6.2', '1.6.3', '1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76'),
+    parser.add_argument('--version', choices=('1.6.2', '1.6.3', '1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78'),
                         help='Choose a release profile for repair162')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
@@ -86,16 +86,16 @@ def main():
                         '-fmodules', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                         str(ROOT / 'native' / 'PublicGlassAPI.m')], check=True)
         report['public_glass_api_typecheck'] = True
-        if args.version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76'):
+        if args.version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78'):
             subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
                             'arm64-apple-ios27.2', '-isysroot', sdk, '-fno-objc-arc',
                             '-fno-objc-exceptions', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                             str(ROOT / 'native' / 'FanqieXDiagnostics.m')], check=True)
             report['diagnostic_source_typecheck'] = True
-        if args.version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76'):
+        if args.version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78'):
             subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios18.0',
                             '-isysroot',sdk,'-fno-objc-arc','-Wall','-Wextra','-Werror','-fsyntax-only',
-                            str(ROOT/'native'/('AlignedGlass.m' if args.version in ('1.7.1','1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76') else 'AlignedGlass167.m' if args.version=='1.6.7' else 'ControlGlass.m' if args.version=='1.6.6' else 'HomeGlass.m'))],check=True)
+                            str(ROOT/'native'/('AlignedGlass.m' if args.version in ('1.7.1','1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78') else 'AlignedGlass167.m' if args.version=='1.6.7' else 'ControlGlass.m' if args.version=='1.6.6' else 'HomeGlass.m'))],check=True)
             report['home_glass_source_typecheck'] = True
         sys.path.insert(0, str(ROOT / args.repair_dir))
         builder = importlib.import_module('build_plugin')
@@ -116,6 +116,17 @@ def main():
             raise RuntimeError('Two Xcode builds produced different bytes')
         report.update(candidate_sha256=first['candidate_sha256'],
                       candidate_size=first['size_bytes'], two_builds_identical=True)
+        report['composed_assembly_sha256'] = hashlib.sha256(
+            candidate.with_suffix('.composed.s').read_bytes()).hexdigest()
+        report['audit_input_sha256'] = {
+            suffix: hashlib.sha256(candidate.with_suffix(suffix).read_bytes()).hexdigest()
+            for suffix in ('.preextend', '.extension.bin')
+        }
+        report['native_source_sha256'] = {
+            str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in (ROOT / 'native' / 'AlignedGlass.m',
+                         ROOT / 'native' / 'FanqieXDiagnostics.m')
+        }
         if args.expect_candidate:
             if candidate.read_bytes() != args.expect_candidate.resolve().read_bytes():
                 raise RuntimeError('Xcode output differs from the audited delivery candidate')

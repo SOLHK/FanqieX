@@ -15,7 +15,7 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76'), default=VERSION)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
@@ -77,7 +77,8 @@ SHA-256: {digest}
     verification = {key: summary[key] for key in
                     ('version', 'passed', 'candidate_sha256', 'candidate_size', 'two_builds_identical',
                      'device_tested', 'source_manifest_sha256', 'source_file_count', 'steps')}
-    for key in ('candidate_source', 'linux_candidate_sha256', 'xcode_validation_sha256'):
+    for key in ('candidate_source', 'linux_candidate_sha256', 'xcode_validation_sha256',
+                'xcode_build_report_sha256', 'xcode_composed_assembly_sha256'):
         if key in summary:
             verification[key] = summary[key]
     verification['scope'] = summary['scope']
@@ -106,7 +107,7 @@ SHA-256: {digest}
 SHA-256 {digest}
 大小 {len(binary)} bytes
 '''
-    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76'):
+    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78'):
         readme=(ROOT/'docs'/f'REPAIR_{version}.md').read_text(encoding='utf-8')
         readme += f'\n交付 SHA-256: {digest}\n大小: {len(binary)} bytes\n'
     (output / 'README_zh-CN.txt').write_text(readme)

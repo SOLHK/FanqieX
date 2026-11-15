@@ -219,7 +219,9 @@ def check_native_unwind(baseline: bytes, candidate: bytes) -> dict:
     need(len(old) == 63 and old_end == 0xA574, 'unexpected pinned baseline unwind')
     need(current[:len(old)] == old, 'original 63 entries changed')
     need(current[len(old)] == (old_end, 0), 'old sentinel must become a zero range')
-    need(kinds == [2], 'expected one bounded regular page')
+    version, = read(candidate, 0x818, '<I')
+    expected_kind = 3 if version == 0x14e00 and len(current) > 511 else 2
+    need(kinds == [expected_kind], 'expected the version-specific bounded unwind page')
     need('__FQPATCH' in segments, 'missing executable extension')
     vm, vm_size, fileoff, filesize, maximum, initial = segments['__FQPATCH']
     need(vm == fileoff == 0x14000 and vm_size == filesize and maximum == initial == 5,
@@ -276,6 +278,7 @@ def check_native_unwind(baseline: bytes, candidate: bytes) -> dict:
     for address in read(candidate, marker + 8, '<3I'):
         need(0x800 + address in starts, 'diagnostic API entry lacks exact function metadata')
     return {'passed': True, 'original_entries_preserved': len(old),
+            'page_format': 'compressed' if expected_kind == 3 else 'regular',
             'native_functions': len(native), 'frame_prologues_checked': checked_frames,
             'leaf_functions_checked': checked_leaves, 'native_code_references_checked': branches,
             'old_sentinel_zero': True, 'section_descriptor_unchanged': True,

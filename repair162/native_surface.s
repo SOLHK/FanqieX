@@ -93,6 +93,11 @@ LXrestore: // (bar, proxy); safe when proxy is nil
     AGET x19, LXproxy_key
     mov x20, x0
 LXrestore_has_proxy:
+.if FQ_VERSION >= 0x14e00
+    mov x0, x19
+    mov x1, x20
+    bl LFQH_FQHBottomReset178
+.endif
     mov x0, x19
     bl LFrestore
     GET x20, Lretain

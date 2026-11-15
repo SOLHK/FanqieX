@@ -21,7 +21,7 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"), default="1.6.2")
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
     good = audit(baseline, data, expected_version=args.expected_version)
@@ -97,25 +97,50 @@ def main():
     case("stale_signature_version", flip(cd + 88 + len("FanqieX-") + last_version_digit),
          "version_consistency", resign=False)
     case("stale_settings_version", flip(0xEC84 + 2 * last_version_digit), "version_consistency")
-    if args.expected_version in ("1.74", "1.75", "1.76"):
+    if args.expected_version in ("1.74", "1.75", "1.76", "1.78"):
         case("stale_settings_footer_length", u64(0x114B0, 33), "version_consistency")
     case("stale_shared_runtime_version", flip(runtime_version + last_version_digit), "version_consistency")
-    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.1": 27, "1.7.2": 27, "1.7.3": 27, "1.7.4": 27, "1.74": 27, "1.75": 27, "1.76": 27}[args.expected_version]
+    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.1": 27, "1.7.2": 27, "1.7.3": 27, "1.7.4": 27, "1.74": 27, "1.75": 27, "1.76": 27, "1.78": 27}[args.expected_version]
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76"):
+    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
         unwind_slot = next(section for section in image.sections if section['name'] == '__unwind_info')
         unwind_at = unwind_slot['offset']
         page = unpack('<I', data, unwind_at + 32)[0]
         entry_at, entry_count = unpack('<HH', data, unwind_at + page + 4)
-        native_frame = next(unwind_at + page + entry_at + 8 * i
-            for i in range(entry_count)
-            if unpack('<II', data, unwind_at + page + entry_at + 8 * i)[0] >= 0x14080
-            and unpack('<II', data, unwind_at + page + entry_at + 8 * i)[1] & 0xFF000000 == 0x04000000)
-        case('wrong_native_frame_registers', flip(native_frame + 4), 'original_sections')
-        case('missing_native_frame_encoding', u32(native_frame + 4, 0), 'original_sections')
-        case('wrong_unwind_page_kind', u32(unwind_at + page, 3), 'original_sections')
+        page_kind = unpack('<I', data, unwind_at + page)[0]
+        if args.expected_version == '1.78' and page_kind == 3:
+            common_at, common_count = unpack('<II', data, unwind_at + 4)
+            local_at, local_count = unpack('<HH', data, unwind_at + page + 8)
+            encodings = list(unpack('<' + 'I' * common_count, data, unwind_at + common_at))
+            encodings += list(unpack('<' + 'I' * local_count, data, unwind_at + page + local_at))
+            function_base = unpack('<I', data, unwind_at + 28)[0]
+            words = [unpack('<I', data, unwind_at + page + entry_at + 4 * i)[0]
+                     for i in range(entry_count)]
+            frame_index = next(i for i, word in enumerate(words)
+                               if function_base + (word & 0xFFFFFF) >= 0x14080 and
+                               encodings[word >> 24] & 0xFF000000 == 0x04000000)
+            frame_at = unwind_at + page + entry_at + 4 * frame_index
+            packed = words[frame_index]
+            alternate = next(i for i, encoding in enumerate(encodings)
+                             if encoding & 0xFF000000 == 0x04000000 and
+                             encoding != encodings[packed >> 24])
+            case('wrong_native_frame_registers', u32(frame_at, (alternate << 24) | (packed & 0xFFFFFF)), 'original_sections')
+            case('missing_native_frame_encoding', u32(frame_at, (encodings.index(0) << 24) | (packed & 0xFFFFFF)), 'original_sections')
+            require(len(encodings) < 256, 'Candidate has room for an invalid compressed encoding index')
+            case('invalid_compressed_encoding_index', u32(frame_at, (len(encodings) << 24) | (packed & 0xFFFFFF)), 'original_sections')
+            case('overlapping_compressed_tables', lambda value: struct.pack_into(
+                 '<H', value, unwind_at + page + 8, entry_at), 'original_sections')
+            case('wrong_unwind_page_kind', u32(unwind_at + page, 2), 'original_sections')
+        else:
+            native_frame = next(unwind_at + page + entry_at + 8 * i
+                for i in range(entry_count)
+                if unpack('<II', data, unwind_at + page + entry_at + 8 * i)[0] >= 0x14080
+                and unpack('<II', data, unwind_at + page + entry_at + 8 * i)[1] & 0xFF000000 == 0x04000000)
+            case('wrong_native_frame_registers', flip(native_frame + 4), 'original_sections')
+            case('missing_native_frame_encoding', u32(native_frame + 4, 0), 'original_sections')
+            case('wrong_unwind_page_kind', u32(unwind_at + page, 3), 'original_sections')
         case('nonzero_unwind_padding', flip(unwind_at + unwind_slot['size'] - 1), 'original_sections')
         case("unaligned_startup_installer", u32(0x14010 + 25 * 4, 1), "repair_directories")
         startup_branch = unpack("<I", data, 0x4650)[0]
