@@ -10,7 +10,7 @@ import json
 import struct
 from pathlib import Path
 
-from arm64 import require
+from arm64 import require, release_version
 from test_control_glass166 import send
 from test_feed_viewport import labels_for
 from test_home_glass165 import LABELS
@@ -30,6 +30,7 @@ METHODS=(
  (VIEW,"refreshSelectedCellModel:unselectedCellModel:","v32@0:8@16@24"),
  (VIEW,"refreshLeftCellModel:rightCellModel:ratio:","v40@0:8@16@24d32"),
  (FILTER,"fontForSelectState:","@20@0:8B16"))
+WIDTH=(VIEW,"preferredCellWidthAtIndex:","d24@0:8q16")
 
 
 class Runtime(PageRuntime):
@@ -49,7 +50,7 @@ class Runtime(PageRuntime):
             self.properties[setter]=(key,kind,True)
             self._add(self.classes[MODEL],getter,self.PROPERTY,kind+"16@0:8")
             self._add(self.classes[MODEL],setter,self.PROPERTY,"v"+("20" if kind=="B" else "24")+"@0:8"+kind+"16")
-        for i,(cls,sel,abi) in enumerate(METHODS+((CELL,"reloadData:","v24@0:8@16"),)):
+        for i,(cls,sel,abi) in enumerate(METHODS+(WIDTH,(CELL,"reloadData:","v24@0:8@16"))):
             imp=0x330f2000+i*0x100
             self.host_entries[imp]=(cls,sel)
             self._add(self.classes[cls],sel,imp,abi)
@@ -70,6 +71,8 @@ class Runtime(PageRuntime):
             cls,sel=self.host_entries[pc]
             self.shelf_calls.append(sel)
             state=self.objects[obj].state
+            if sel=="preferredCellWidthAtIndex:":
+                return self.finish(c,fp=(34.,))
             if cls==FILTER:
                 return self.finish(c,state["selectedFont"] if c.x[2] else state["textFont"])
             if sel=="refreshCellModel:index:":
@@ -118,8 +121,14 @@ def exercise(data,labels):
             "titleLabelVerticalOffset":-3.,"titleLabelZoomSelectedVerticalOffset":-5.,
             "titleLabelAnchorPointStyle":2,"titleFont":normal,"titleSelectedFont":selected}
     view=r.view(VIEW,"shelf title strip",(0,0,440,34),r.ROOT,nativeStyle=native)
+    width=34.
+    if release_version(data)=="1.78R12":
+        require((VIEW,WIDTH[1]) in installed,"The exact native collection width hook is installed")
+        send(c,r,view,WIDTH[1],0)
+        require(c.fp(0)==46.,"Native layout reserves capsule padding, placing its first edge at the native 20pt inset")
+        width=c.fp(0)
     models=[r.obj(MODEL,"title model",**native,isSelected=bool(i),cellSpacing=18.) for i in range(2)]
-    cell=r.view(CELL,"圈子",(0,0,34,34),view,cellModel=models[0])
+    cell=r.view(CELL,"圈子",(20,0,width,34),view,cellModel=models[0])
     for key in ("titleLabel","maskTitleLabel"):
         r.objects[cell].state[key]=r.label(key,cell,(0,-8,34,34),"圈子",alignment=0)
         r.objects[r.objects[cell].state[key]].state["transform"]=(1.,0.,0.,1.,0.,0.)
@@ -138,7 +147,8 @@ def exercise(data,labels):
                  r.objects[r.objects[cell].state[key]].state["transform"])
                 for key in ("titleLabel","maskTitleLabel"))))
     require(all(x==snapshots[0] for x in snapshots),"Click, swipe interpolation and late host layout cannot resize or move text/glass")
-    require(snapshots[0][0]==(-6.,2.,46.,30.),"Top glass retains space around the 34pt native row")
+    require(snapshots[0][0]==((0.,2.,46.,30.) if width==46 else (-6.,2.,46.,30.)),
+            "The collection width preserves title padding and R12's first glass begins at the native 20pt inset")
     for model in r.consumed:
         require(not any(model[k] for k in BOOLS) and all(model[k]==1 for k in DOUBLES[:3]) and
                 model["titleLabelAnchorPointStyle"]==0 and model["titleLabelVerticalOffset"]==0 and
@@ -146,6 +156,9 @@ def exercise(data,labels):
                 "Native animation/constraint consumers receive stable values before they run")
     require(r.objects[models[0]].state["titleCurrentColor"]=="normal","Native selection color remains authoritative")
     r.objects[r.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"]=1
+    if release_version(data)=="1.78R12":
+        send(c,r,view,WIDTH[1],0)
+        require(c.fp(0)==34.,"Glass off restores the original native collection width")
     send(c,r,cell,"reloadData:",models[0])
     state=r.objects[models[0]].state
     require(all(state[k]==v for k,v in native.items()),"Disabling restores saved native fonts, zoom, anchor and offsets")
@@ -174,7 +187,8 @@ def exercise(data,labels):
     return {"passed":True,"device_tested":False,"host_binary_inspected":True,
             "host_methods":{"updateLabelWithModel:":"0x10d504974","updateLayoutWithModel:":"0x10d505208",
                             "fontForSelectState:":"0x10d4cad74"},
-            "cases":["six exact hooks","16 click/swipe cycles","late native label and constraint consumers",
+            "cases":["six exact selection hooks","16 click/swipe cycles","late native label and constraint consumers",
+                     "collection title width and disabled native width",
                      "selection color preserved","disable restores native state","filter font and clipping boundary"],
             "limits":["Candidate ARM64 instructions execute; UIKit drawing and native constraint solver are modeled boundaries."]}
 

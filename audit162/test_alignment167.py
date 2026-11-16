@@ -102,18 +102,18 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
-    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11')
+    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12')
     nav_diameter=34. if compact_reader else 36.
     nav_padding=(nav_diameter-24.)*0.5
-    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11')
+    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12')
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
@@ -137,7 +137,7 @@ def exercise(data,labels,baseline):
                     'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
-        expected_back=(9.,3.,18.,18.) if release_version(data)in ('1.78R10','1.78R11') else (15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
+        expected_back=(13.875,3.,18.,18.) if release_version(data)=='1.78R12' else (9.,3.,18.,18.) if release_version(data)in ('1.78R10','1.78R11') else (15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
         require(r.objects[r.objects[back].state['imageView']].state['frame']==expected_back,
                 '1.78 refines the back artwork to 20pt; older versions retain their 24pt optical contract')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
@@ -283,21 +283,33 @@ def exercise(data,labels,baseline):
         search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)
         r.host_views.update((parent,search,more))
-        stable_shelf=release_version(data)=='1.78R11'
+        stable_shelf=release_version(data) in ('1.78R11', '1.78R12')
+        aligned_shelf=release_version(data)=='1.78R12'
+        custom_dock={'FanqieX.BottomLengthScale.1':0.7,'FanqieX.BottomButtonWidthScale.1':0.85}
+        r.objects[r.DEFAULTS].state['values'].update(custom_dock)
         shelf_hit=(-16.,-4.,76.,32.) if stable_shelf else (-18.,-6.,80.,36.)
         for y in (72.,92.,64.,104.,72.):
             r.objects[parent].state['frame']=(348.,y,56.,24.)
             send(c,r,vc,'viewDidLayoutSubviews')
-            require(r.objects[parent].state['frame']==(348.,y,56.,24.),'Toolbar stays at host-selected safe-area/header origin')
+            require(r.objects[parent].state['frame']==(310. if aligned_shelf else 348.,y,56.,24.),
+                    'Toolbar keeps the host vertical origin and aligns its trailing material to the 20pt grid')
             require(r.objects[search].state['frame']==(0,0,24,24) and r.objects[more].state['frame']==(32,0,24,24),'Shelf buttons retain host-local frames')
             require(hit_contains(r,parent,shelf_hit),'Container also admits touches on both visible outer rims')
         a=r.objects[material(c,r,labels,search)].state['frame'];z=r.objects[material(c,r,labels,more)].state['frame']
         require(32+z[0]-(a[0]+a[2])==(12 if stable_shelf else 8),'Device-reported host centers retain spacing between the glass circles')
-        require(not r.host_mutations,'No host geometry mutation anywhere in shelf/reader paths')
+        require(all(m==('setFrame:',parent) for m in r.host_mutations) if aligned_shelf else not r.host_mutations,
+                'Only the shelf holder moves to align the page grid; its native buttons and targets are preserved')
         search_frame=(-10.,2.,20.,20.) if stable_shelf else (-12.,0.,24.,24.)
-        more_frame=(2.,2.,20.,20.) if stable_shelf else (0.,0.,24.,24.)
+        more_frame=(-4.5,2.,20.,20.) if aligned_shelf else (2.,2.,20.,20.) if stable_shelf else (0.,0.,24.,24.)
         require(r.objects[r.objects[search].state['imageView']].state['frame']==search_frame,'Search artwork keeps balanced padding')
-        require(r.objects[r.objects[more].state['imageView']].state['frame']==more_frame,'More artwork and glass share the same center instead of a 6pt left offset')
+        require(r.objects[r.objects[more].state['imageView']].state['frame']==more_frame,'More uses the release-specific native artwork alignment')
+        if aligned_shelf:
+            # Alpha bounds from the actual bookshelf_more @2x and @3x PNGs.
+            for center,canvas in ((39.5,48.),(59.5,72.)):
+                require(abs(more_frame[0]+more_frame[2]*center/canvas-12)<0.05,
+                        'Both actual resource alpha centers lie at the glass center within 0.05pt')
+            require(all(r.objects[r.DEFAULTS].state['values'][k]==v for k,v in custom_dock.items()),
+                    'The shelf page grid never rewrites custom bottom dimensions')
         for button,expected in ((search,search_frame),(more,more_frame)):
             iv=r.objects[button].state['imageView']
             for _ in range(10):
@@ -315,9 +327,22 @@ def exercise(data,labels,baseline):
         r.objects[search].state['imageView']=replacement
         send(c,r,vc,'viewDidLayoutSubviews')
         require(r.objects[glass].state['frame']==((-11.,3.,32.,32.) if stable_shelf else (-13.,1.,36.,36.)),'Host-recreated image drives the new center without a stale image reference')
+        if aligned_shelf:
+            r.objects[more].state['hidden']=True
+            r.objects[vc].state['moreButton']=0
+            send(c,r,vc,'viewDidLayoutSubviews')
+            x=r.objects[parent].state['frame'][0]
+            search_glass=r.objects[glass].state['frame']
+            require(x+search_glass[0]+search_glass[2]-5==370.,
+                    'A search-only toolbar aligns its visible trailing circle with the same page grid')
+            r.objects[vc].state['moreButton']=more
+            r.objects[more].state['hidden']=False
+            send(c,r,vc,'viewDidLayoutSubviews')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
         send(c,r,vc,'viewDidLayoutSubviews')
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')
+        if aligned_shelf:
+            require(r.objects[parent].state['frame']==(348.,72.,56.,24.),'Disabling restores the last native holder frame')
         require(not material(c,r,labels,search) and not material(c,r,labels,more),'Shelf backgrounds removed on disable')
         require(r.objects[search].state['imageView']==replacement and r.objects[replacement].state['frame']==(9.,9.,16.,20.),'Disable preserves the latest host-created artwork and layout')
         results.append('host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))

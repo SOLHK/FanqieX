@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_control_glass166 import send
 from test_controls171 import call
 from test_drama_visibility178r7 import CONFIG, CONTEXT, Runtime as Base
@@ -17,11 +17,14 @@ CONTROL = 'FQVShortVideoListVCControlComponent'
 STATE = 'playerPlaybackStateDidChanged:'
 CLEAN = 'FanqieX.DramaDefaultClean.1'
 REVEAL = 'FanqieX.DramaRevealOnPause.1'
+EXIT_ICON = 'cancelCleanScreenView'
+RIGHT_CONTROLS = 'cleanScreenModeRightInteractionView'
 
 
 class Runtime(Base):
     HOST_PLAY = 0x33272000
     HOST_CLEAN = 0x33272004
+    HOST_CLEAN_VIEW = 0x33272008
 
     def __init__(self, data):
         super().__init__(data)
@@ -32,6 +35,10 @@ class Runtime(Base):
         for cls, selector, imp, encoding in (
             (VIEW, STATE, self.HOST_PLAY, 'v24@0:8q16'),
             (VIEW, 'controlViewDidPlay', self.HOST_PLAY, 'v16@0:8'),
+            (VIEW, EXIT_ICON, self.HOST_CLEAN_VIEW, '@16@0:8'),
+            (VIEW, RIGHT_CONTROLS, self.HOST_CLEAN_VIEW, '@16@0:8'),
+            (VIEW, 'listVCConfig', self.HOST_CLEAN_VIEW, '@16@0:8'),
+            (VIEW, 'enableShowPlayRateInCleanMode', self.HOST_CLEAN_VIEW, 'B16@0:8'),
             (CONTROL, 'enterCleanMode', self.HOST_CLEAN, 'v16@0:8'),
             (CONTROL, 'exitCleanMode', self.HOST_CLEAN, 'v16@0:8'),
         ):
@@ -48,6 +55,8 @@ class Runtime(Base):
             self.clean_calls.append(name)
             self.objects[self.objects[obj].state['status']].state['isCleanMode'] = name == 'enterCleanMode'
             return self.finish(cpu)
+        if pc == self.HOST_CLEAN_VIEW:
+            return self.finish(cpu, self.objects[obj].state[name])
         if pc - self.slide == 0xa5d4 and obj in self.objects:
             state = self.objects[obj].state
             if name in ('currentPlayModel', 'videoDataModel', 'listVCContext', 'controlContext',
@@ -114,7 +123,24 @@ def exercise(data, labels):
     callback(2)
     require(len(rt.clean_calls) == 4 and view_state['hostPlaybackCallbacks'] == 13,
             'Pause switch off leaves the clean state and all original callbacks intact')
-    return {'real_play_pause_callbacks': True, 'defaults_and_manual_exit': True, 'scoped_to_active_portrait_feed': True}
+    results = {'real_play_pause_callbacks': True, 'defaults_and_manual_exit': True, 'scoped_to_active_portrait_feed': True}
+    if release_version(data) == '1.78R12':
+        container = rt.view('UIView', 'native exit circle', (370., 765., 36., 36.), view, hidden=False)
+        icon = rt.view('UIImageView', 'native exit gesture target', (6., 6., 24., 24.), container, hidden=False)
+        view_state.update({EXIT_ICON: icon, RIGHT_CONTROLS: container, 'listVCConfig': config,
+                           'enableShowPlayRateInCleanMode': False})
+        for selector, native in ((EXIT_ICON, icon), (RIGHT_CONTROLS, container)):
+            require(send(cpu, rt, view, selector)['result'] == native and rt.objects[native].state['hidden'],
+                    'The exact host exit view is still laid out but cannot draw or receive taps')
+        view_state['enableShowPlayRateInCleanMode'] = True
+        send(cpu, rt, view, RIGHT_CONTROLS)
+        require(not rt.objects[container].state['hidden'] and rt.objects[icon].state['hidden'],
+                'A separately enabled play-rate control keeps its container')
+        rt.objects[config].state['feedType'] = 5
+        send(cpu, rt, view, EXIT_ICON)
+        require(not rt.objects[icon].state['hidden'], 'An unrelated feed keeps its native exit')
+        results['portrait_clean_exit_hidden'] = True
+    return results
 
 
 def main():

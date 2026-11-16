@@ -134,7 +134,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     entries = EXTRA + ['LFQH_FQHDramaGlyph']
-    if release_version(data) == '1.78R11':
+    if release_version(data) in ('1.78R11', '1.78R12'):
         entries.append('LFQH_FQHRefreshDramaActions178R11')
     labels = labels_for(data, args.candidate.with_suffix('.composed.s'), entries)
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),

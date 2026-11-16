@@ -867,11 +867,12 @@ def static_checks():
 
 
 def exercise(data, labels):
-    stable_shelf = release_version(data)=="1.78R11"
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11")
+    aligned_shelf = release_version(data) == "1.78R12"
+    stable_shelf = release_version(data) in ("1.78R11", "1.78R12")
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1101,12 +1102,13 @@ def exercise(data, labels):
     require(filter_glass and runtime.objects[filter_glass].state["frame"] == filter_material and
             not runtime.objects[filter_glass].state["userInteractionEnabled"] and
             runtime.objects[filter_button].state["control_targets"] == filter_action and
-            runtime.objects[filter_button].state["frame"] == (324., 2., 58., 30.),
-            "the filter capsule has clearance without changing the native button or tap")
-    require(runtime.objects[filter_fade].state["frame"] == (301., 0., 24., 44.),
+            runtime.objects[filter_button].state["frame"] == ((313., 2., 58., 30.) if aligned_shelf else (324., 2., 58., 30.)),
+            "the filter capsule preserves native size and tap, with R12's 20pt page edge")
+    fade_x = 290. if aligned_shelf else 301.
+    require(runtime.objects[filter_fade].state["frame"] == (fade_x, 0., 24., 44.),
             "the overlapping native fade stops before the capsule's left edge")
     send(cpu, runtime, header, "layoutSubviews")
-    require(runtime.objects[filter_fade].state["frame"] == (301., 0., 24., 44.) and
+    require(runtime.objects[filter_fade].state["frame"] == (fade_x, 0., 24., 44.) and
             surface_for(filter_button) == filter_glass,
             "native relayout keeps the same capsule and preserves the full fade")
     row = runtime.view("SSBookShelfFilterMixRowCollectionView", "filter row", (0, 0, 270, 40), header)
@@ -1114,7 +1116,7 @@ def exercise(data, labels):
     runtime.objects[header].state["optionsView"] = row
     inline_insets = "collectionView:layout:insetForSectionAtIndex:"
     send(cpu, runtime, row, inline_insets, collection, 0, 0)
-    require(tuple(cpu.fp(i) for i in range(4)) == (0., 16., 0., 24.),
+    require(tuple(cpu.fp(i) for i in range(4)) == (0., 19. if aligned_shelf else 16., 0., 24.),
             "the entire inline row starts at the upper bookshelf title gutter")
     panel_row = runtime.view("SSBookShelfFilterMixRowCollectionView", "separate filter panel", parent=runtime.ROOT)
     send(cpu, runtime, panel_row, inline_insets, 0, 0, 0)
@@ -1851,7 +1853,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1863,7 +1865,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) in ("1.78R10", "1.78R11"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1895,7 +1897,7 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data)in ("1.78R10", "1.78R11"):
+            if release_version(data)in ("1.78R10", "1.78R11", "1.78R12"):
                 require(runtime.objects[runtime.objects[surface].state["cornerConfiguration"]].state["max_radius"]==18 and
                         runtime.objects[label].state["textAlignment"]==1,
                         "limited corner curvature and an 8pt inset keep four-character captions away from the rim")
@@ -2058,8 +2060,8 @@ def exercise(data, labels):
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
     version = release_version(data)
-    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
-    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"))
+    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
+    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"))
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
     if has_bottom_settings:
@@ -2069,7 +2071,7 @@ def exercise(data, labels):
         require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
                 len(runtime.objects[entries[0]].state["control_targets"]) == 1,
                 "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
-    if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"):
+    if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"):
         channels = [item for item in runtime.objects[header].state["subviews"]
                     if runtime.is_kind(item, runtime.classes["UIButton"]) and
                     runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
@@ -2173,6 +2175,8 @@ def exercise(data, labels):
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     require(runtime.objects[duration].state["hidden"], "plugin respects the host's own hidden state")
     # Edit follows the duration preference while retaining the native control.
+    if aligned_shelf:
+        runtime.objects[runtime.WINDOW].state.update(frame=(0.,0.,440.,956.),bounds=(0.,0.,440.,956.))
     shelf_controller = runtime.obj("SSBookShelfSubViewController", "native shelf subcontroller")
     shelf_owner = runtime.obj("SSBookShelf525ViewController", "shelf tabs", currentTabVC=shelf_controller)
     top = runtime.view("UIView", "top shelf chrome", (0, 64, 440, 44), runtime.ROOT)
@@ -2223,7 +2227,8 @@ def exercise(data, labels):
     send(cpu, runtime, shelf_header, "layoutEditButton")
     send(cpu, runtime, shelf_header, "layoutSubviews")
     edit_state = runtime.objects[edit].state
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.) and
+    edit_x = 367. if aligned_shelf else 370.
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (edit_x, 3., 54., 32.) and
             edit_state["contentEdgeInsets"] == (7., 12., 7., 12.) and
             runtime.objects[size_layout].state["invalidations"] == 0,
             "duration on keeps Edit's right edge with 12pt horizontal and 7pt vertical title padding")
@@ -2236,7 +2241,7 @@ def exercise(data, labels):
     for _ in range(3):
         send(cpu, runtime, shelf_header, "layoutEditButton")
         send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["frame"] == (370., 3., 54., 32.) and
+    require(edit_state["frame"] == (edit_x, 3., 54., 32.) and
             edit_state["contentEdgeInsets"] == (7., 12., 7., 12.),
             "repeated native layouts do not accumulate title padding")
     send(cpu, runtime, shelf_header, "setShowReadTimeView:", 0)
@@ -2341,7 +2346,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = True
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.) and
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (edit_x, 3., 54., 32.) and
             runtime.objects[size_layout].state["invalidations"] == 2,
             "re-enabling duration restores Edit and the stock row in the same layout pass")
     require(send(cpu, runtime, shelf_controller, transition_selector, 3)["result"] == info,
@@ -2358,7 +2363,7 @@ def exercise(data, labels):
     runtime.objects[duration_switch].state["isOn"] = False
     send(cpu, runtime, duration_observer, duration_selector, duration_switch)
     send(cpu, runtime, shelf_header, "layoutSubviews")
-    require(edit_state["superview"] == secondary and edit_state["frame"] == (370., 3., 54., 32.),
+    require(edit_state["superview"] == secondary and edit_state["frame"] == (edit_x, 3., 54., 32.),
             "a narrower title/search gap restores the original position")
     require(surface_for(edit) == edit_glass and edit_state["control_targets"] == edit_targets,
             "the original lower placement keeps its glass and edit target")
@@ -2691,9 +2696,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2719,7 +2724,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (5, -1, 50, 50) if release_version(data) == "1.78R11" else (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12") else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2864,7 +2869,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3019,7 +3024,7 @@ def main():
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

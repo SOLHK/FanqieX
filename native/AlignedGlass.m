@@ -777,9 +777,11 @@ static void BookshelfTopChrome(Obj controller) {
     if (installed) BookshelfRestingTint(tab,scroll);
     TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
+void FQHShelf(Obj self);
 static void BookshelfTopLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx186_originalShelfTopLayout"))(self,cmd);
     BookshelfTopChrome(self);
+    FQHShelf(Get(self,"currentTabVC"));
 }
 static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
@@ -1136,7 +1138,11 @@ static void Icon(Obj view,IconRole role) {
             adjusted.x+=(base.width-adjusted.width)*0.5;
             adjusted.y+=(base.height-adjusted.height)*0.5;
             if (back) {
-                adjusted.x=bounds.x+bounds.width*0.5+6-adjusted.width*0.5;
+                // The host's reading_navigation_button_back_opt is a 24pt
+                // canvas with left-aligned artwork. Its alpha bounds at both
+                // @2x and @3x have their horizontal center at 5.5pt. Center
+                // that artwork, not the transparent image-view canvas.
+                adjusted.x=bounds.x+bounds.width*0.5+6-adjusted.width*(5.5/24.0);
                 adjusted.y=bounds.y+bounds.height*0.5-adjusted.height*0.5;
                 ReaderBackImageInsets(view,base,adjusted);
             }
@@ -1145,6 +1151,9 @@ static void Icon(Obj view,IconRole role) {
             adjusted.width=base.width*scale; adjusted.height=base.height*scale;
             adjusted.x=bounds.x+(bounds.width-adjusted.width)*0.5-(role==IconShelfSearch ? 12 : 0);
             adjusted.y=bounds.y+(bounds.height-adjusted.height)*0.5;
+            // bookshelf_more's alpha center is 39.5/48 at @2x and 59.5/72
+            // at @3x: the three dots occupy the right of a transparent canvas.
+            if (role==IconShelfMore) adjusted.x-=adjusted.width*0.325;
         }
         if (!SameRect(current,adjusted)) SetFrame(glyph,adjusted);
         if (!applied || !SameRect(previous,adjusted)) objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
@@ -1501,6 +1510,25 @@ static void ReaderShelfWrapperLayout(Obj self,Sel cmd) {
     } else { RestoreOwner(self); RestoreHit(self); }
 }
 static Obj ShelfEditPlacement(Obj controller,Obj holder);
+static Rect ProfileStockFrame(Obj view,Rect current);
+static void ProfileSetFrame(Obj view,Rect current,Rect stock,Rect target);
+static void ShelfRightEdge(Obj view,Obj material,B styled) {
+    if (!view) return;
+    Rect current=Frame(view),stock=ProfileStockFrame(view,current),target=stock;
+    Obj window=Get(view,"window");
+    if (styled && material && window) {
+        // Match the books and the default dock's 20pt margin. This grid is
+        // independent of the user's adjustable dock length and button width.
+        Rect edge=Convert(material,Bounds(material),window),bounds=Bounds(window);
+        target=current;
+        target.x+=bounds.x+bounds.width-20-edge.x-edge.width;
+        ProfileSetFrame(view,current,stock,target);
+    } else {
+        if (!SameRect(current,stock)) SetFrame(view,stock);
+        objc_setAssociatedObject(view,GlyphOriginalKey,0,1);
+        objc_setAssociatedObject(view,GlyphAppliedKey,0,1);
+    }
+}
 static void ShelfTopHit(Obj holder,Obj search,Obj more,Obj edit) {
     Rect area=Bounds(holder);
     Obj searchGlass=FQHIconGlass(search),moreGlass=FQHIconGlass(more);
@@ -1517,6 +1545,8 @@ void FQHShelf(Obj self) {
     if (search && (!searchRole || !Flag(searchRole,"boolValue"))) objc_setAssociatedObject(search,ShelfRoleKey,BoolBox(1),1);
     if (more && (!moreRole || Flag(moreRole,"boolValue"))) objc_setAssociatedObject(more,ShelfRoleKey,BoolBox(0),1);
     Icon(search,IconShelfSearch);Icon(more,IconShelfMore);
+    Obj trailing=!more || Flag(more,"isHidden") ? search : more;
+    ShelfRightEdge(parent,FQHIconGlass(trailing),Enabled());
     if (Kind(parent,"UIView")) ShelfTopHit(parent,search,more,ShelfEditPlacement(self,parent));
     objc_setAssociatedObject(self,OwnerBusyKey,0,0);
 }
@@ -2522,22 +2552,28 @@ static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
 
 // Decorate the inspected landscape controls in their existing tap containers.
 // The material never handles gestures, playback or accessibility actions.
+static void LandscapeClip178R12Key(void) {}
 static void LandscapeControlGlass178R9(Obj view,Obj owner,double maximum) {
     if (!Kind(view,"UIView") || !Belongs(view,owner)) return;
     Rect bounds=Bounds(view);
     if (!Enabled() || !FQHGlassAvailable() || !VisibleRect(bounds)) {
+        Obj clip=objc_getAssociatedObject(view,LandscapeClip178R12Key);
+        if (clip && !Flag(view,"clipsToBounds")) VB(view,"setClipsToBounds:",1);
+        objc_setAssociatedObject(view,LandscapeClip178R12Key,0,1);
         RemoveDramaGlass(view); DramaClearBackground(view,0); return;
     }
     B image=Kind(view,"UIImageView");
     Obj parent=image ? Get(view,"superview") : view;
     Rect material=image ? Frame(view) : bounds;
-    double height=maximum ? __builtin_fmin(material.height,maximum) : material.height;
-    double width=maximum ? __builtin_fmin(material.width,maximum) : material.width;
-    // Back and danmaku image views carry a glyph rather than a full button.
-    if (image) width=height=36;
+    double height=maximum ? (maximum>44 ? 56 : 36) : material.height;
+    double width=maximum ? height : material.width;
     material=(Rect){material.x+(material.width-width)*0.5,material.y+(material.height-height)*0.5,width,height};
     Obj glass=PlaceDramaGlass(view,parent,image ? view : (Obj)0,material);
     if (!glass) return;
+    if (!image && (width>bounds.width || height>bounds.height) && Flag(view,"clipsToBounds")) {
+        objc_setAssociatedObject(view,LandscapeClip178R12Key,BoolBox(1),1);
+        VB(view,"setClipsToBounds:",0);
+    }
     DramaClearBackground(view,1);
     if (image) {
         VB(glass,"setHidden:",Flag(view,"isHidden"));
@@ -2547,21 +2583,49 @@ static void LandscapeControlGlass178R9(Obj view,Obj owner,double maximum) {
 }
 static void LandscapeTitleStock178R10Key(void) {}
 static void LandscapeTitleApplied178R10Key(void) {}
-static void LandscapeTitleSpacing178R10(Obj owner) {
-    Obj title=Get(owner,"titleL"),back=Get(owner,"navBackImageView");
-    if (!Kind(title,"UILabel") || !Belongs(title,owner)) return;
+static void LandscapeConstraintStock178R12Key(void) {}
+static void LandscapeConstraintApplied178R12Key(void) {}
+static void LandscapeLeadingSpacing178R12(Obj title,Obj back,Obj owner,double gap) {
+    if (!Kind(title,"UIView") || !Belongs(title,owner)) return;
     Obj applied=objc_getAssociatedObject(title,LandscapeTitleApplied178R10Key);
     Obj saved=objc_getAssociatedObject(title,LandscapeTitleStock178R10Key);
-    Rect current=Frame(title),base=saved && applied && SameRect(current,UnboxRect(applied)) ? UnboxRect(saved) : current;
+    Rect current=Frame(title),base=current;
+    if (saved && applied && current.x==UnboxRect(applied).x) {
+        base.x=UnboxRect(saved).x;
+        base.width=current.x+current.width-base.x;
+    }
     Obj glass=objc_getAssociatedObject(back,DramaGlassKey);
-    if (!Enabled() || !glass || !Belongs(glass,owner)) {
-        if (saved && applied && SameRect(current,UnboxRect(applied))) SetFrame(title,base);
+    B active=Enabled() && glass && Belongs(glass,owner) && !Flag(glass,"isHidden");
+    Obj parent=Get(title,"superview");
+    Rect capsule=active ? Convert(glass,Bounds(glass),parent) : (Rect){0};
+    Rect anchor=active ? Convert(back,Bounds(back),parent) : (Rect){0};
+    // Both inspected Masonry rows pin the label/input's left to the icon's
+    // right. Keep that native constraint in sync so later Auto Layout does
+    // not overwrite the visible gap applied during this layout pass.
+    Obj constraints=Get(parent,"constraints");
+    U count=((U(*)(Obj,Sel))Message)(constraints,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj constraint=At(constraints,i);
+        if (Get(constraint,"firstItem")!=title || Get(constraint,"secondItem")!=back) continue;
+        I first=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("firstAttribute"));
+        I second=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("secondAttribute"));
+        if (!((first==1 && second==2) || (first==5 && second==6))) continue;
+        double value=((double(*)(Obj,Sel))Message)(constraint,sel_registerName("constant"));
+        Obj original=objc_getAssociatedObject(constraint,LandscapeConstraintStock178R12Key);
+        Obj previous=objc_getAssociatedObject(constraint,LandscapeConstraintApplied178R12Key);
+        double stock=original && previous && value==Double(previous) ? Double(original) : value;
+        double wanted=active ? __builtin_fmax(stock,capsule.x+capsule.width-anchor.x-anchor.width+gap) : stock;
+        objc_setAssociatedObject(constraint,LandscapeConstraintStock178R12Key,active && wanted!=stock ? Number(stock) : (Obj)0,1);
+        objc_setAssociatedObject(constraint,LandscapeConstraintApplied178R12Key,active && wanted!=stock ? Number(wanted) : (Obj)0,1);
+        if (value!=wanted) ((void(*)(Obj,Sel,double))Message)(constraint,sel_registerName("setConstant:"),wanted);
+    }
+    if (!active) {
+        if (saved && applied && !SameRect(current,base)) SetFrame(title,base);
         objc_setAssociatedObject(title,LandscapeTitleStock178R10Key,0,1);
         objc_setAssociatedObject(title,LandscapeTitleApplied178R10Key,0,1);
         return;
     }
-    Rect capsule=Convert(glass,Bounds(glass),Get(title,"superview"));
-    double inset=__builtin_fmax(0,capsule.x+capsule.width+8-base.x);
+    double inset=__builtin_fmax(0,capsule.x+capsule.width+gap-base.x);
     if (inset>=base.width) return;
     Rect target={base.x+inset,base.y,base.width-inset,base.height};
     objc_setAssociatedObject(title,LandscapeTitleStock178R10Key,RectBox(base),1);
@@ -2571,7 +2635,7 @@ static void LandscapeTitleSpacing178R10(Obj owner) {
 static void LandscapeInfoGlass178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout"))(self,cmd);
     LandscapeControlGlass178R9(Get(self,"navBackImageView"),self,44);
-    LandscapeTitleSpacing178R10(self);
+    LandscapeLeadingSpacing178R12(Get(self,"titleL"),Get(self,"navBackImageView"),self,12);
     LandscapeControlGlass178R9(Get(self,"playBtn"),self,56);
     LandscapeControlGlass178R9(Get(self,"nextBtn"),self,44);
     LandscapeControlGlass178R9(Get(self,"moreBtn"),self,44);
@@ -2599,12 +2663,28 @@ static void LandscapeNavLaidOut178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavSubviews"))(self,cmd);
     LandscapeNavApply178R9(self);
 }
+static void ShelfEditPadding(Obj button);
+static void LandscapeStackSpacing178R12Key(void) {}
 static void LandscapeBottomGlass178R9(Obj self,Sel cmd) {
+    // Reuse the existing reversible 12pt horizontal / 7pt vertical content
+    // padding before UIStackView resolves each native button's intrinsic size.
+    ShelfEditPadding(Get(self,"seriesBtn"));
+    ShelfEditPadding(Get(self,"playRateBtn"));
+    ShelfEditPadding(Get(self,"resolutionBtn"));
+    Obj stack=Get(self,"stackView");
+    if (Kind(stack,"UIStackView") && Belongs(stack,self)) {
+        Obj saved=objc_getAssociatedObject(stack,LandscapeStackSpacing178R12Key);
+        double current=((double(*)(Obj,Sel))Message)(stack,sel_registerName("spacing"));
+        B active=Enabled() && FQHGlassAvailable();
+        if (active && (!saved || current!=12)) objc_setAssociatedObject(stack,LandscapeStackSpacing178R12Key,Number(current),1);
+        double wanted=active ? 12 : (saved && current==12 ? Double(saved) : current);
+        if (!active) objc_setAssociatedObject(stack,LandscapeStackSpacing178R12Key,0,1);
+        if (current!=wanted) ((void(*)(Obj,Sel,double))Message)(stack,sel_registerName("setSpacing:"),wanted);
+    }
     ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout"))(self,cmd);
     // These intrinsic-size buttons are arranged by a nested UIStackView. Its
     // layout follows the outer view's layout, so settle that child subtree
     // before reading button bounds for the material on the first frame.
-    Obj stack=Get(self,"stackView");
     if (Kind(stack,"UIStackView") && Belongs(stack,self)) V0(stack,"layoutIfNeeded");
     LandscapeControlGlass178R9(Get(self,"seriesBtn"),self,0);
     LandscapeControlGlass178R9(Get(self,"playRateBtn"),self,0);
@@ -2626,11 +2706,12 @@ static void LandscapeInputBackground178R10(Obj input,Obj background) {
     }
 }
 static void LandscapeSocialApply178R9(Obj self) {
-    LandscapeControlGlass178R9(Get(self,"likeBtnView"),self,0);
-    LandscapeControlGlass178R9(Get(self,"commentBtnView"),self,0);
-    LandscapeControlGlass178R9(Get(self,"starBtnView"),self,0);
+    LandscapeControlGlass178R9(Get(self,"likeBtnView"),self,36);
+    LandscapeControlGlass178R9(Get(self,"commentBtnView"),self,36);
+    LandscapeControlGlass178R9(Get(self,"starBtnView"),self,36);
     LandscapeControlGlass178R9(Get(self,"danmakuBtnView"),self,36);
     Obj input=Get(self,"danmakuInputView"),background=Get(self,"danmakuInputBGView");
+    LandscapeLeadingSpacing178R12(input,Get(self,"danmakuBtnView"),self,8);
     LandscapeControlGlass178R9(input,self,0);
     LandscapeInputBackground178R10(input,background);
     LandscapeControlGlass178R9(Get(self,"danmakuPublishBtn"),self,0);
@@ -2653,7 +2734,7 @@ static void LandscapeEntryGlass178R9(Obj self,Sel cmd) {
 }
 static void LandscapeAdjustGlass178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVLandscapeAdjustButtonBase","fqx178r9_originalLandscapeAdjustLayout"))(self,cmd);
-    DramaSmallGlass(self,1);
+    LandscapeControlGlass178R9(self,self,36);
 }
 static void LandscapeLayoutHook178R9(const char *name,const char *alias,Imp imp) {
     Obj cls=Lookup(name);
@@ -2744,10 +2825,12 @@ static void DramaVisibilityHeaderLayout(Obj self,Sel cmd) {
     DramaVisibilityApplyHeader(Get(self,"headerView"));
 }
 
-static B DramaVisibilityIsMainFeed(Obj manager) {
-    Obj config=Get(Get(manager,"vcContext"),"config");
+static B DramaIsMainFeedConfig(Obj config) {
     return Kind(config,"FQVShortVideoListConfig") && InstanceABI(config,"feedType","q16@0:8") &&
         ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4;
+}
+static B DramaVisibilityIsMainFeed(Obj manager) {
+    return DramaIsMainFeedConfig(Get(Get(manager,"vcContext"),"config"));
 }
 
 static B DramaPlaybackPreference178R11(const char *key) {
@@ -2762,8 +2845,7 @@ static void DramaCleanPlayback178R11(Obj view,I state) {
     Obj context=Get(view,"listVCContext"),config=Get(context,"config");
     Obj model=Get(view,"videoDataModel"),player=Get(view,"vPlayer");
     if (!model || !player || model!=Get(context,"currentPlayModel") || Flag(player,"isFullScreen") ||
-        !Kind(config,"FQVShortVideoListConfig") || !InstanceABI(config,"feedType","q16@0:8") ||
-        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))!=4) return;
+        !DramaIsMainFeedConfig(config)) return;
     Obj control=Get(context,"controlContext"),status=Get(context,"stateContext");
     if (!Kind(control,"FQVShortVideoListVCControlComponent") || !Responds(status,"isCleanMode")) return;
     Obj prior=objc_getAssociatedObject(view,DramaCleanModel178R11Key);
@@ -2797,10 +2879,27 @@ static void DramaCleanDidPlay178R11(Obj self,Sel cmd) {
         ((I(*)(Obj,Sel))Message)(player,sel_registerName("playbackState"))==1)
         DramaCleanPlayback178R11(self,1);
 }
+static Obj DramaCleanExitIcon(Obj self,Sel cmd) {
+    Obj icon=((Obj(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx_originalCleanExitIcon"))(self,cmd);
+    DramaVisibilitySet(icon,!DramaIsMainFeedConfig(Get(self,"listVCConfig")));
+    return icon;
+}
+static Obj DramaCleanRightControls(Obj self,Sel cmd) {
+    Obj controls=((Obj(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx_originalCleanRightControls"))(self,cmd);
+    // On the standard feed this container draws the exit button's circle. In
+    // the layout with a playback-rate control, keep the container for that label.
+    DramaVisibilitySet(controls,!DramaIsMainFeedConfig(Get(self,"listVCConfig")) ||
+        Flag(self,"enableShowPlayRateInCleanMode"));
+    return controls;
+}
 static void DramaCleanInstall178R11(void) {
     const char *cls="FQVShortVideoVPlayerControlView";
     Hook(cls,"playerPlaybackStateDidChanged:","fqx178r11_originalPlaybackState:","v24@0:8q16",(Imp)DramaCleanState178R11);
     Hook(cls,"controlViewDidPlay","fqx178r11_originalControlDidPlay","v16@0:8",(Imp)DramaCleanDidPlay178R11);
+    if (Signature(cls,"listVCConfig","@16@0:8") && Signature(cls,"enableShowPlayRateInCleanMode","B16@0:8")) {
+        Hook(cls,"cancelCleanScreenView","fqx_originalCleanExitIcon","@16@0:8",(Imp)DramaCleanExitIcon);
+        Hook(cls,"cleanScreenModeRightInteractionView","fqx_originalCleanRightControls","@16@0:8",(Imp)DramaCleanRightControls);
+    }
 }
 
 static B DramaVisibilityAuthor(Obj self,Sel cmd) {
@@ -3386,6 +3485,13 @@ static void PageShelfRefreshModel(Obj self,Sel cmd,Obj model,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelfTabSelectView","fqx178r11_originalShelfModel:index:"))(self,cmd,model,index);
     ShelfPrepareTabModel(model);
 }
+static double ShelfTabWidth(Obj self,Sel cmd,I index) {
+    double width=((double(*)(Obj,Sel,I))Original("SSBookShelfTabSelectView",
+        "fqx178r12_originalShelfWidth:"))(self,cmd,index);
+    // Let the real collection layout reserve the capsule padding. Otherwise
+    // the first 34pt title's 46pt material protrudes 6pt beyond the 20pt grid.
+    return Enabled() && FQHGlassAvailable() ? __builtin_fmax(width,46) : width;
+}
 static void PageShelfSelectedModels(Obj self,Sel cmd,Obj selected,Obj unselected) {
     ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfTabSelectView","fqx178r11_originalShelfSelected:unselected:"))(self,cmd,selected,unselected);
     ShelfPrepareTabModel(selected); ShelfPrepareTabModel(unselected);
@@ -3435,6 +3541,7 @@ static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
 static void ShelfActionGlass(Obj button,B filter) {
     if (!Kind(button,"UIButton")) return;
     if (Flag(button,"isHidden")) {
+        if (filter) ShelfRightEdge(button,0,0);
         ShelfMinimumFont(Get(button,"titleLabel"),0);
         CenterCaption(Get(button,"titleLabel"),0,(Rect){0},0,0);
         PageRestore(button); return;
@@ -3445,6 +3552,7 @@ static void ShelfActionGlass(Obj button,B filter) {
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(button,material,0);
+    if (filter) ShelfRightEdge(button,FQHSurface(button),Enabled());
     if (!filter) {
         Obj caption=Get(button,"titleLabel");
         ShelfMinimumFont(caption,FQHSurface(button)!=0 && Equal(Get(caption,"text"),"编辑"));
@@ -3530,7 +3638,7 @@ static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I
     Obj header=Get(self,"superview");
     // The native inline row starts at 20pt. Align its cells with the upper title row.
     if (Enabled() && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==self)
-        insets.y-=4;
+        insets.y-=1;
     return insets;
 }
 static void ProfileScanKey(void) {}
@@ -4494,7 +4602,11 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
         edit=ShelfEditPlacement(controller,holder);
         ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),edit);
     }
-    if (!edit) ShelfActionGlass(Get(self,"editButton"),0);
+    if (!edit) {
+        Obj button=Get(self,"editButton");
+        ShelfActionGlass(button,0);
+        ShelfRightEdge(button,FQHSurface(button),Enabled());
+    }
     ShelfRememberFilterHeader(self);
     B visible=ShelfFilterVisible();
     ApplyShelfFilterButton(Get(self,"filterButton"),visible);
@@ -5385,6 +5497,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfTabSelectViewTitleCell","updateLabelWithModel:","fqx178r11_originalShelfLabel:","v24@0:8@16",(Imp)PageShelfTabUpdate);
     Hook("SSBookShelfTabSelectViewTitleCell","updateLayoutWithModel:","fqx178r11_originalShelfModelLayout:","v24@0:8@16",(Imp)PageShelfTabUpdate);
     Hook("SSBookShelfTabSelectView","refreshCellModel:index:","fqx178r11_originalShelfModel:index:","v32@0:8@16q24",(Imp)PageShelfRefreshModel);
+    Hook("SSBookShelfTabSelectView","preferredCellWidthAtIndex:","fqx178r12_originalShelfWidth:","d24@0:8q16",(Imp)ShelfTabWidth);
     Hook("SSBookShelfTabSelectView","refreshSelectedCellModel:unselectedCellModel:","fqx178r11_originalShelfSelected:unselected:","v32@0:8@16@24",(Imp)PageShelfSelectedModels);
     Hook("SSBookShelfTabSelectView","refreshLeftCellModel:rightCellModel:ratio:","fqx178r11_originalShelfLeft:right:ratio:","v40@0:8@16@24d32",(Imp)PageShelfScrollingModels);
     Hook("SSBookShelfFilter541Cell","fontForSelectState:","fqx178r11_originalFilterFont:","@20@0:8B16",(Imp)PageShelfFilterFont);

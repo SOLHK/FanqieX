@@ -53,6 +53,21 @@ class Runtime(BaseRuntime):
             return self.finish(cpu)
         if pc - self.slide == 0xa5d4 and receiver in self.objects:
             state = self.objects[receiver].state
+            if name == "contentEdgeInsets":
+                return self.finish(cpu, fp=state.get(name, (0., 0., 0., 0.)))
+            if name == "setContentEdgeInsets:":
+                state["contentEdgeInsets"] = tuple(cpu.fp(i) for i in range(4))
+                return self.finish(cpu)
+            if name == "spacing":
+                return self.finish(cpu, fp=(state.get(name, 0.),))
+            if name == "setSpacing:":
+                state["spacing"] = cpu.fp(0)
+                return self.finish(cpu)
+            if name == "clipsToBounds":
+                return self.finish(cpu, int(state.get(name, False)))
+            if name == "setClipsToBounds:":
+                state["clipsToBounds"] = bool(cpu.x[2])
+                return self.finish(cpu)
             if name in ("navBackImageView", "playBtn", "nextBtn", "moreBtn", "muteView", "screenLockBtn",
                         "landingMuteView", "seriesBtn", "playRateBtn", "resolutionBtn", "likeBtnView",
                         "commentBtnView", "starBtnView", "danmakuBtnView", "danmakuInputView",
@@ -170,7 +185,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11"), "Use R9, R10 or R11")
+    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12"), "Use R9 through R12")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {"passed": True, "candidate_sha256": hashlib.sha256(data).hexdigest(),
               **exercise(data, labels), "device_tested": False}

@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import require, release_version
 from test_controls171 import call
 from test_control_glass166 import send
 from test_feed_viewport import labels_for
@@ -45,6 +45,7 @@ def exercise(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
+    title_gap = 12 if release_version(data) == '1.78R12' else 8
 
     info = rt.view(INFO, 'landscape info', (0., 0., 844., 390.))
     top = rt.view('UIView', 'top controls', (16., 4., 760., 44.), info)
@@ -56,8 +57,8 @@ def exercise(data, labels):
     require(len(backing) == 1, 'The back glyph keeps one noninteractive sibling glass')
     capsule = rt.objects[backing[0]].state['frame']
     target = rt.objects[title].state['frame']
-    require(target[0] - capsule[0] - capsule[2] == 8 and target[0] + target[2] == 431,
-            'The title has an 8pt gap from the capsule and preserves its native right edge')
+    require(target[0] - capsule[0] - capsule[2] == title_gap and target[0] + target[2] == 431,
+            'The title keeps its release gap from the capsule and preserves its native right edge')
     for _ in range(3):
         send(cpu, rt, info, 'layoutSubviews')
     require(rt.objects[title].state['frame'] == target, 'Repeated title layout does not accumulate offsets')
@@ -65,7 +66,7 @@ def exercise(data, labels):
     rt.objects[title].state.update(frame=fresh, bounds=(0., 0., 300., 20.))
     send(cpu, rt, info, 'layoutSubviews')
     changed = rt.objects[title].state['frame']
-    require(changed[0] == 39 and changed[0] + changed[2] == 332,
+    require(changed[0] == 31 + title_gap and changed[0] + changed[2] == 332,
             'A new host title frame replaces the stored baseline')
 
     right = rt.view(RIGHT, 'bottom controls', (600., 340., 220., 32.))
@@ -119,7 +120,7 @@ def exercise(data, labels):
     prefs['FanqieAdBlock.GlassDisabled.1'] = True
     send(cpu, rt, social, 'layoutSubviews')
     require(rt.objects[background].state['hidden'], 'A preexisting hidden background stays hidden')
-    return {'title_gap_pt': 8, 'title_right_edge_and_restore': True,
+    return {'title_gap_pt': title_gap, 'title_right_edge_and_restore': True,
             'nested_stack_first_layout': True, 'input_blur_replaced_and_restored': True,
             'native_touch_rects_preserved': True}
 

@@ -6,18 +6,20 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import require, release_version
 from test_alignment167 import icon, machine, call, material, EXTRA
 from test_feed_viewport import labels_for
 from test_home_glass165 import LABELS
 
 
-def exercise(data, labels):
+def exercise(data, labels, optical=None):
+    if optical is None:
+        optical = release_version(data) == '1.78R12'
     cpu, rt = machine(data, labels)
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHInstall')
     nav = rt.view('FQReaderSaasNavigationView', 'reader navigation', (0., 62., 440., 44.), rt.ROOT)
-    back = icon(rt, nav, 'back', (16., 10., 24., 24.))
+    back = icon(rt, nav, 'back', (16., 10., 24., 24.), image_size=(24.,24.))
     other = icon(rt, nav, 'ordinary', (370., 10., 24., 24.))
     rt.objects[nav].state.update(backBtn=back, insertObjs=rt.obj('NSArray', 'empty inserts', items=[]))
     button = rt.objects[back].state
@@ -28,9 +30,21 @@ def exercise(data, labels):
     def centered():
         glass = rt.objects[material(cpu, rt, labels, back)].state['frame']
         image = glyph['frame']
-        require(image[0]+image[2]*.5 == glass[0]+glass[2]*.5 and
-                image[1]+image[3]*.5 == glass[1]+glass[3]*.5,
-                'Reader glyph and glass share the same center')
+        if optical:
+            # Exact host SSBizReader.bundle reading_navigation_button_back_opt
+            # alpha bounds (exclusive right/bottom), extracted independently
+            # from the supplied 7.4.3 Assets.car. A centered transparent canvas
+            # previously left the visible chevron 4.875pt left of the glass.
+            for pixels, box in ((48., (1.,6.,21.,41.)), (72., (2.,9.,31.,61.))):
+                x = image[0]+(box[0]+box[2])*.5/pixels*image[2]
+                y = image[1]+(box[1]+box[3])*.5/pixels*image[3]
+                require(abs(x-glass[0]-glass[2]*.5) < 0.001 and
+                        abs(y-glass[1]-glass[3]*.5) <= 1./3.,
+                        'The actual back-arrow alpha bounds are visually centered in glass')
+        else:
+            require(image[0]+image[2]*.5 == glass[0]+glass[2]*.5 and
+                    image[1]+image[3]*.5 == glass[1]+glass[3]*.5,
+                    'Historical R10/R11 centered only the transparent image canvas')
 
     def native_button_layout():
         # Apple's plain UIButton imageEdgeInsets controls the effective drawing
@@ -41,7 +55,8 @@ def exercise(data, labels):
 
     call(cpu, labels, 'LFQH_FQHReader', nav)
     centered()
-    require(button['imageEdgeInsets'] == (3., 9., 3., -3.), 'Persistent inset geometry matches the visible glass')
+    expected = (3.,13.875,3.,-7.875) if optical else (3.,9.,3.,-3.)
+    require(button['imageEdgeInsets'] == expected, 'Persistent inset geometry matches the visible glass')
     native_button_layout()
     centered()
     for _ in range(10):
@@ -63,7 +78,7 @@ def exercise(data, labels):
     call(cpu, labels, 'LFQH_FQHReader', nav)
     require(button['imageEdgeInsets'] == (1.,2.,3.,4.) and glyph['frame'] == (2.,1.,18.,20.),
             'Restoration preserves a newer host-owned image layout')
-    return {'centered_before_and_after_native_layout': True, 'stable_layouts': 10,
+    return {'centered_before_and_after_native_layout': True, 'visible_artwork_centered': optical, 'stable_layouts': 10,
             'native_action_preserved': True, 'restore_and_host_ownership': True}
 
 
