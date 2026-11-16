@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
+from build_xcode27 import matches_apple_toolchain
 from verify162 import digest, validated_xcode_bundle
 
 
@@ -142,6 +143,44 @@ class XcodeR5ArtifactTests(XcodeArtifactTests):
             (candidate.parent / 'xcode-build-report.json').write_text(json.dumps(report))
             with self.assertRaises(RuntimeError):
                 validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
+
+
+class XcodeR15ArtifactTests(XcodeArtifactTests):
+    VERSION = '1.78R15'
+
+    def fixture(self, folder):
+        candidate, validation, report = super().fixture(folder)
+        self.write_toolchain_report(candidate, report, '27.2', '27.2')
+        return candidate, validation, report
+
+    @staticmethod
+    def write_toolchain_report(candidate, report, xcode, sdk, target=None):
+        report.update(xcode=f'Xcode {xcode}\nBuild version test',
+                      sdk_version=sdk, sdk_typecheck_target=target or f'arm64-apple-ios{sdk}')
+        (candidate.parent / 'xcode-build-report.json').write_text(json.dumps(report))
+
+    def test_matching_27_3_and_patch_reported_27_2_are_accepted(self):
+        with tempfile.TemporaryDirectory() as folder:
+            candidate, _, report = self.fixture(folder)
+            for xcode, sdk in (('27.3 beta', '27.3'), ('27.2.0', '27.2'), ('27.2', '27.2.0')):
+                with self.subTest(xcode=xcode, sdk=sdk):
+                    self.write_toolchain_report(candidate, report, xcode, sdk)
+                    validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
+
+    def test_crossed_toolchains_and_wrong_typecheck_target_are_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            candidate, _, report = self.fixture(folder)
+            for xcode, sdk, target in (('27.3', '27.2', None), ('27.2', '27.3', None),
+                                       ('27.2', '27.2', 'arm64-apple-ios27.3')):
+                with self.subTest(xcode=xcode, sdk=sdk, target=target), self.assertRaises(RuntimeError):
+                    self.write_toolchain_report(candidate, report, xcode, sdk, target)
+                    validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
+
+    def test_fallback_does_not_change_earlier_release_profiles(self):
+        self.assertTrue(matches_apple_toolchain('Xcode 27.3', '27.3', '1.78R14'))
+        self.assertFalse(matches_apple_toolchain('Xcode 27.2', '27.2', '1.78R14'))
+        self.assertTrue(matches_apple_toolchain('Xcode 27.2', '27.2', '1.78R10'))
+        self.assertFalse(matches_apple_toolchain('Xcode 27.3', '27.3', '1.78R10'))
 
 
 if __name__ == '__main__':

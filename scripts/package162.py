@@ -8,7 +8,7 @@ import shutil
 import zipfile
 
 from verify162 import source_manifest
-from build_xcode27 import apple_toolchain_version
+from build_xcode27 import apple_toolchain_versions
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = '1.6.2'
@@ -61,7 +61,7 @@ def main():
 和最近一小时导出。插件文件名、内部安装标识和设置页统一为 FanqieX。
 
 本包二进制已通过可复现构建、结构与签名检查及明确范围的 ARM64 离线回归。
-构建器要求云端发布校验使用 Xcode {apple_toolchain_version(version)} / iOS {apple_toolchain_version(version)} SDK。
+构建器要求云端发布校验使用匹配的 Xcode 和 iOS SDK，支持版本为 {', '.join(apple_toolchain_versions(version))}。
 对应提交的真实云端构建结果见 GitHub Actions，不能从本地报告推断它已经通过。
 尚未在用户 iPhone 上验证最终合成、动态折射及 IPA 注入。
 宿主链接的 SDK、系统设置与兼容模式仍可能影响系统控件表现。
@@ -79,7 +79,8 @@ SHA-256: {digest}
                     ('version', 'passed', 'candidate_sha256', 'candidate_size', 'two_builds_identical',
                      'device_tested', 'source_manifest_sha256', 'source_file_count', 'steps')}
     for key in ('candidate_source', 'linux_candidate_sha256', 'xcode_validation_sha256',
-                'xcode_build_report_sha256', 'xcode_composed_assembly_sha256'):
+                'xcode_build_report_sha256', 'xcode_composed_assembly_sha256',
+                'xcode_version', 'xcode_sdk_version'):
         if key in summary:
             verification[key] = summary[key]
     verification['scope'] = summary['scope']

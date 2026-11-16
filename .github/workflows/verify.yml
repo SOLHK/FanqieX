@@ -43,7 +43,7 @@ jobs:
           print('LLVM shared library:', '.'.join(str(value.value) for value in version))
           PY
 
-      - name: Download the matching Xcode 27.3 build artifact
+      - name: Download the same-commit Xcode build artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -63,7 +63,7 @@ jobs:
             fi
             sleep 10
           done
-          echo "No successful Xcode 27.3 build artifact found for $GITHUB_SHA" >&2
+          echo "No successful Xcode build artifact found for $GITHUB_SHA" >&2
           exit 1
 
       - name: Rebuild twice and verify the exact bytes

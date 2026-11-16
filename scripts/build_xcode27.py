@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import struct
 import subprocess
 import sys
@@ -22,14 +23,22 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def apple_toolchain_version(release):
-    return '27.3' if release in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15') else '27.2'
+def apple_toolchain_versions(release):
+    if release == '1.78R15':
+        return ('27.3', '27.2')
+    if release in ('1.78R11', '1.78R12', '1.78R13', '1.78R14'):
+        return ('27.3',)
+    return ('27.2',)
 
 
 def matches_apple_toolchain(xcode, sdk, release):
-    version = apple_toolchain_version(release)
-    return xcode.splitlines()[:1] in ([f'Xcode {version}'], [f'Xcode {version} beta']) and \
-        sdk.split('.')[:2] == version.split('.')
+    first_line = xcode.split('\n', 1)[0]
+    patch = r'(?:\.\d+)?' if release == '1.78R15' else ''
+    return any(
+        re.fullmatch(rf'Xcode {re.escape(version)}{patch}(?: beta)?', first_line)
+        and re.fullmatch(rf'{re.escape(version)}(?:\.\d+)?', sdk)
+        for version in apple_toolchain_versions(release)
+    )
 
 
 def command(*arguments):
@@ -68,14 +77,12 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
     args = parser.parse_args()
-    sdk_target = f'arm64-apple-ios{apple_toolchain_version(args.version)}'
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'passed': False, 'device_tested': False,
               'native_host_app_tested': False, 'platform': platform.platform(),
               'repair_dir': args.repair_dir,
               'assembly_target': 'arm64-apple-ios15.0.1',
-              'sdk_typecheck_target': sdk_target,
               'github_sha': os.environ.get('GITHUB_SHA'),
               'github_run_id': os.environ.get('GITHUB_RUN_ID'),
               'scope': 'Xcode assembly of the actual plugin and SDK type checking'}
@@ -88,7 +95,10 @@ def main():
         report['sdk_build'] = command('xcrun', '--sdk', 'iphoneos', '--show-sdk-build-version')
         report['clang'] = command('xcrun', '--sdk', 'iphoneos', 'clang', '--version')
         if not matches_apple_toolchain(report['xcode'], report['sdk_version'], args.version):
-            raise RuntimeError(f'This release requires Xcode and iOS SDK {apple_toolchain_version(args.version)}')
+            supported = ' or '.join(apple_toolchain_versions(args.version))
+            raise RuntimeError(f'This release requires matching Xcode and iOS SDK {supported}')
+        sdk_target = f"arm64-apple-ios{report['sdk_version']}"
+        report['sdk_typecheck_target'] = sdk_target
         sdk = command('xcrun', '--sdk', 'iphoneos', '--show-sdk-path')
         subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
                         sdk_target, '-isysroot', sdk, '-fobjc-arc',

@@ -1,4 +1,4 @@
-name: Xcode 27.3 plugin build
+name: Xcode 27 plugin build
 
 on:
   push:
@@ -28,12 +28,12 @@ jobs:
           set -euo pipefail
           mkdir -p build/xcode27
           git archive --format=zip --output=build/xcode27/source-checkout.zip HEAD
-      - name: Select Xcode 27.3
+      - name: Select Xcode 27.3 or 27.2
         shell: bash
         run: |
           set -euo pipefail
           unset DEVELOPER_DIR
-          for app in /Applications/Xcode_27.3_beta.app /Applications/Xcode_27.3.0.app /Applications/Xcode_27.3.app; do
+          for app in /Applications/Xcode_27.3.app /Applications/Xcode_27.3.0.app /Applications/Xcode_27.3_beta.app /Applications/Xcode_27.2.app /Applications/Xcode_27.2.0.app; do
             if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then
               export DEVELOPER_DIR="$app/Contents/Developer"
               break
@@ -42,7 +42,7 @@ jobs:
           if [ -z "${DEVELOPER_DIR:-}" ]; then
             printf 'Runner image %s has these Xcode installations:\n' "${ImageVersion:-unknown}" >&2
             find /Applications -maxdepth 1 -name 'Xcode*.app' -print >&2
-            printf '::error::This runner does not have Xcode 27.3. Retry after the image rollout.\n'
+            printf '::error::This runner does not have Xcode 27.3 or 27.2.\n'
             exit 1
           fi
           printf 'DEVELOPER_DIR=%s\n' "$DEVELOPER_DIR" >> "$GITHUB_ENV"

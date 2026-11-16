@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-from build_xcode27 import apple_toolchain_version, matches_apple_toolchain
+from build_xcode27 import matches_apple_toolchain
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,8 +90,11 @@ def validated_xcode_bundle(candidate: Path, version: str, expected_commit: str):
         raise RuntimeError('Xcode build did not pass reproducible-build checks')
     if not expected_commit or report.get('github_sha') != expected_commit:
         raise RuntimeError('Xcode build does not belong to the verified source commit')
-    if not matches_apple_toolchain(report.get('xcode', ''), report.get('sdk_version', ''), version):
+    sdk_version = report.get('sdk_version', '')
+    if not matches_apple_toolchain(report.get('xcode', ''), sdk_version, version):
         raise RuntimeError('Xcode artifact was not built with the required Apple toolchain')
+    if version == '1.78R15' and report.get('sdk_typecheck_target') != f'arm64-apple-ios{sdk_version}':
+        raise RuntimeError('Xcode type-check target does not match the reported iOS SDK')
     if version in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15'):
         if report.get('composed_assembly_sha256') != digest(composed_path):
             raise RuntimeError('Xcode composed assembly changed after the build')
@@ -214,7 +217,10 @@ def main():
             summary["xcode_validation_sha256"] = digest(validation_path)
             summary["xcode_build_report_sha256"] = digest(build_report_path)
             summary["xcode_composed_assembly_sha256"] = digest(composed_path)
-            summary["candidate_source"] = f"same-commit Xcode {apple_toolchain_version(args.version)} validated build"
+            xcode_report = json.loads(build_report_path.read_text())
+            summary["xcode_version"] = xcode_report["xcode"].splitlines()[0]
+            summary["xcode_sdk_version"] = xcode_report["sdk_version"]
+            summary["candidate_source"] = f'same-commit {summary["xcode_version"]} validated build'
             candidate.write_bytes(xcode_candidate.read_bytes())
             candidate.with_suffix('.validation.json').write_bytes(validation_path.read_bytes())
             candidate.with_suffix('.composed.s').write_bytes(composed_path.read_bytes())
