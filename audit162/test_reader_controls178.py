@@ -102,10 +102,10 @@ def icon(runtime, *args, **kwargs):
 
 def main_checks(data, labels):
     cases = []
-    compact_reader = release_version(data) == "1.78R7"
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8")
     nav_glass_frame = (-5., -5., 34., 34.) if compact_reader else (-6., -6., 36., 36.)
     glyph_frame = (3., 3., 18., 18.) if compact_reader else (2., 2., 20., 20.)
-    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7"), "These changed visual contracts apply only to 1.78")
+    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8"), "These changed visual contracts apply only to 1.78")
     for route in ("insert_accessibility", "direct_action", "nested_identifier", "runtime_insert_class", "runtime_view_class"):
         cpu, runtime = build_fixture(data, labels)
         nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 62, 402, 44), runtime.ROOT)

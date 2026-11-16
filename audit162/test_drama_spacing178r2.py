@@ -25,6 +25,10 @@ DISABLED = "FanqieAdBlock.GlassDisabled.1"
 
 
 class Runtime(ReaderRuntime):
+    DID_DISPLAY = 0x330f3300
+    PROGRESS_LAYOUT = 0x330f3400
+    PROGRESS_PLAYING = 0x330f3500
+
     def __init__(self, data):
         super().__init__(data)
         for name, parent in (
@@ -35,9 +39,15 @@ class Runtime(ReaderRuntime):
             ("NSLayoutConstraint", "NSObject"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
+        self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
+        progress = self.classes["FQVShortVideoProgressView"]
+        self._add(progress, "layoutProgressView", self.PROGRESS_LAYOUT, "v16@0:8")
+        self._add(progress, "updateProgressViewWithPlaying:animate:", self.PROGRESS_PLAYING, "v24@0:8B16B20")
+        self.display_mutator = None
+        self.progress_mutator = None
 
     def responds(self, receiver, name):
         if receiver in self.objects and self.is_kind(receiver, self.classes["NSHashTable"]) and name in ("anyObject", "allObjects"):
@@ -45,6 +55,14 @@ class Runtime(ReaderRuntime):
         return super().responds(receiver, name)
 
     def handle(self, cpu, pc):
+        if pc == self.DID_DISPLAY:
+            if self.display_mutator:
+                self.display_mutator()
+            return self.finish(cpu)
+        if pc in (self.PROGRESS_LAYOUT, self.PROGRESS_PLAYING):
+            if self.progress_mutator:
+                self.progress_mutator(pc, *cpu.x[2:4])
+            return self.finish(cpu)
         if pc-self.slide == 0xa5d4:
             receiver, selector, other = cpu.x[:3]
             name = self.selector_names.get(selector)
@@ -163,6 +181,54 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
+    if release_version(data) != "1.78R8":
+        return
+
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
+    send(cpu, rt, root, "layoutSubviews")
+    native_layout(rt, root)
+    root_state["frame"] = (0., 956., 440., 876.)
+    send(cpu, rt, root, "layoutSubviews")
+    require(anchor_state["constant"] == stock-8., "An attached offscreen page keeps its spacing during vertical paging")
+    root_state["frame"] = (0., 0., 440., 876.)
+    glass = glass_rect(rt, v["content"])
+    require(873.-glass[1]-glass[3] == 8., "Page translation alone keeps the settled visual gap")
+
+    previous_anchor_state = anchor_state
+    replacement = rt.obj("NSLayoutConstraint", "replacement native anchor", **dict(anchor_state, constant=stock))
+
+    def native_display():
+        nonlocal anchor_state
+        previous_anchor_state["isActive"] = 0
+        anchor_state = rt.objects[replacement].state
+        root_state["constraints"] = rt.obj("NSArray", "replacement constraints", items=[replacement])
+        native_layout(rt, root)
+
+    rt.display_mutator = native_display
+    send(cpu, rt, root, "controlViewDidDisplay")
+    require(previous_anchor_state["constant"] == stock+2. and anchor_state["constant"] == stock-8.,
+            "After host display, the replacement anchor owns the gap and the old anchor is restored")
+    native_layout(rt, root)
+
+    def native_progress(callback, playing, animate):
+        if callback == rt.PROGRESS_LAYOUT:
+            frame = (16., 20., 408., 4.)
+        else:
+            require(playing == 1 and animate == 1, "Native progress playback arguments are forwarded")
+            frame = (16., 22., 408., 2.)
+        rt.objects[track].state.update(frame=frame, bounds=(0., 0., *frame[2:]))
+
+    rt.progress_mutator = native_progress
+    for selector, args, track_y in (("layoutProgressView", (), 871.),
+                                     ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
+        send(cpu, rt, progress, selector, *args)
+        native_layout(rt, root)
+        glass = glass_rect(rt, v["content"])
+        require(track_y-glass[1]-glass[3] == 8. and anchor_state["constant"] == stock-8.+(track_y-873.),
+                "The changed track updates the episode gap without a parent callback: "+selector)
+    rt.reparent(root, 0)
+    send(cpu, rt, root, "layoutSubviews")
+    require(anchor_state["constant"] == stock, "Detaching the page restores the native constraint")
 
 
 def logged_geometry(data, labels):
@@ -188,7 +254,7 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7")
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -248,7 +314,8 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        require(record["revision"] == "episode-glass-178R6" and
+        revision = "episode-glass-178R8" if release_version(data) == "1.78R8" else "episode-glass-178R6"
+        require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
                 "Diagnostics report the visible material edge and track gap")
@@ -272,6 +339,8 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
+        if release_version(data) == "1.78R8":
+            cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)

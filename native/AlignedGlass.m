@@ -1571,7 +1571,6 @@ static void ShelfButtonLayout(Obj self,Sel cmd) {
 }
 static void ListenLabelKey(void) {}
 static void ListenColorKey(void) {}
-static void ListenTintKey(void) {}
 static void OpticalGlyph(Obj glyph,double maximum);
 static void RestoreOpticalFrame(Obj view);
 static void ApplyReaderListenSurface(Obj view) {
@@ -1604,7 +1603,6 @@ void FQHListen(Obj view) {
         TrackAppearanceLabel(view,0,0);
         if (saved) V1(saved,"setTextColor:",objc_getAssociatedObject(view,ListenColorKey));
         objc_setAssociatedObject(view,ListenLabelKey,0,1);objc_setAssociatedObject(view,ListenColorKey,0,1);
-        objc_setAssociatedObject(view,ListenTintKey,0,1);
         Restore(view,FQHSurface(view));return;
     }
     ApplyReaderListenSurface(view);
@@ -1618,12 +1616,6 @@ void FQHListen(Obj view) {
     Obj foreground=O0(Lookup("UIColor"),"labelColor");
     if (!((B(*)(Obj,Sel,Obj))Message)(Get(label,"textColor"),sel_registerName("isEqual:"),foreground))
         V1(label,"setTextColor:",foreground);
-    if (!objc_getAssociatedObject(view,ListenTintKey)) {
-        Obj tint=((Obj(*)(Obj,Sel,double))Message)(O0(Lookup("UIColor"),"secondarySystemBackgroundColor"),sel_registerName("colorWithAlphaComponent:"),0.5);
-        Obj effect=O0(Get(surface,"effect"),"copy");
-        V1(effect,"setTintColor:",tint);V1(surface,"setEffect:",effect);V0(effect,"release");
-        objc_setAssociatedObject(view,ListenTintKey,surface,1);
-    }
 }
 static void ListenLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderFloatingCommonButton","fqx171_originalLayout"))(self,cmd);
@@ -1690,7 +1682,6 @@ static void SpeechTheme(Obj self,Sel cmd,Obj theme) {
 // replaced and every decoration is a plugin-owned, non-interactive view behind
 // the host's existing content. The same surface is reused across layout/theme
 // passes and is removed from the exact owner when the user disables glass.
-static void PageTintKey(void) {}
 static void ToggleObserverKey(void) {}
 static void TabRecoveryKey(void) {}
 static void RecoveryBarKey(void) {}
@@ -1705,19 +1696,6 @@ static B HasAncestor(Obj view,const char *name) {
 }
 static void PageRestore(Obj view) {
     if (view && Kind(view,"UIView")) Restore(view,FQHSurface(view));
-}
-static void ShelfTint(Obj surface,B selected,B filter) {
-    if (!surface) return;
-    Obj previous=objc_getAssociatedObject(surface,PageTintKey);
-    if (previous && BoolProp(previous,"boolValue")==selected) return;
-    Obj effect=O0(Get(surface,"effect"),"copy");
-    if (!effect) return;
-    Obj color=selected ? O0(Lookup("UIColor"),filter ? "systemOrangeColor" : "labelColor") : (Obj)0;
-    Obj tint=((Obj(*)(Obj,Sel,double))Message)(color,sel_registerName("colorWithAlphaComponent:"),0.125);
-    V1(effect,"setTintColor:",tint);
-    V1(surface,"setEffect:",effect);
-    V0(effect,"release");
-    objc_setAssociatedObject(surface,PageTintKey,BoolBox(selected),1);
 }
 static int ReaderBottomType(Obj view) {
     Obj item=Get(view,"item");
@@ -2248,7 +2226,7 @@ static void DramaGlassKey(void) {}
 static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
 static void DramaWatchContentKey(void) {}
-static void DramaSpacingForEntry178R2(Obj entry);
+static void DramaSpacingForView(Obj view);
 
 static void RemoveDramaGlass(Obj owner) {
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
@@ -2262,12 +2240,15 @@ static void RemoveDramaGlass(Obj owner) {
 static Obj PlaceDramaGlass(Obj owner,Obj parent,Obj foreground,Rect frame) {
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
     if (!glass) {
-        Obj config=Get(Lookup("UIButtonConfiguration"),"clearGlassButtonConfiguration");
+        Obj config=Get(Lookup("UIButtonConfiguration"),"glassButtonConfiguration");
         if (!config) return 0;
         glass=((Obj(*)(Obj,Sel,Rect))Message)(O0(Lookup("UIButton"),"alloc"),sel_registerName("initWithFrame:"),frame);
         if (!glass) return 0;
         V1(glass,"setConfiguration:",config);
         V1(glass,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
+        // The player's native icons and captions use white ink. Match the
+        // dark player palette used by the bottom bar, including in light apps.
+        Q1(glass,"setOverrideUserInterfaceStyle:",2);
         VB(glass,"setUserInteractionEnabled:",0);
         VB(glass,"setAccessibilityElementsHidden:",1);
         VB(glass,"setIsAccessibilityElement:",0);
@@ -2296,7 +2277,7 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
            (Kind(owner,"SSShortVideoRightInteractionCommentView") || Kind(owner,"SSShortVideoHostRightInteractionCommentView"))) ||
           (glyphSelector==sel_registerName("likeIcon") && Kind(owner,"SSShortVideoRightInteractionLikeView")) ||
           (glyphSelector==sel_registerName("shareIcon") && Kind(owner,"SSShortVideoRightInteractionShareView")))) return 0;
-    if (!FQHGlassAvailable() || !Responds(Lookup("UIButtonConfiguration"),"clearGlassButtonConfiguration")) return 0;
+    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return 0;
     if (!Enabled()) { RemoveDramaGlass(owner); return 1; }
 
     Obj glyph=Get(owner,selector);
@@ -2390,13 +2371,13 @@ static void DramaWatchGlass(Obj owner,Obj model) {
 static void DramaWatchLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchLayout"))(self,cmd);
     DramaWatchGlass(self,Get(self,"lastRenderModel"));
-    DramaSpacingForEntry178R2(self);
+    DramaSpacingForView(self);
 }
 
 static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchRender:"))(self,cmd,model);
     DramaWatchGlass(self,model);
-    DramaSpacingForEntry178R2(self);
+    DramaSpacingForView(self);
 }
 
 static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
@@ -2411,7 +2392,77 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
         RemoveDramaGlass(content);
         DramaClearBackground(content,0);
     }
-    DramaSpacingForEntry178R2(self);
+    DramaSpacingForView(self);
+}
+
+static B DramaSmallGlass(Obj view,B active) {
+    if (!Kind(view,"UIView")) return 0;
+    Rect bounds=Bounds(view);
+    if (active && Enabled() && FQHGlassAvailable() && VisibleRect(bounds) &&
+        PlaceDramaGlass(view,view,0,bounds)) {
+        DramaClearBackground(view,1);
+        return 1;
+    }
+    RemoveDramaGlass(view);
+    DramaClearBackground(view,0);
+    return 0;
+}
+
+static void DramaDanmakuStockImageKey(void) {}
+static void DramaDanmakuAppliedImageKey(void) {}
+static void DramaDanmakuStockModeKey(void) {}
+
+static void DramaDanmakuGlyph(Obj entrance,B glass) {
+    Obj icon=Get(entrance,"iconView");
+    if (!Kind(icon,"UIImageView")) return;
+    Obj asset=0;
+    if (glass && !Flag(entrance,"usesOverseaDanmaku")) {
+        const char *name=Flag(entrance,"danmakuEnabled") ?
+            "fq_danmaku_entrance_v741_on" : "fq_danmaku_entrance_v741_off";
+        Obj factory=Lookup("FQCShortVideoDanmakuAsset");
+        if (Responds(factory,"imageNamed:")) asset=O1(factory,"imageNamed:",Text(name));
+    }
+    Obj image=Get(icon,"image");
+    Obj applied=objc_getAssociatedObject(icon,DramaDanmakuAppliedImageKey);
+    Obj stockMode=objc_getAssociatedObject(icon,DramaDanmakuStockModeKey);
+    I mode=((I(*)(Obj,Sel))Message)(icon,sel_registerName("contentMode"));
+    if (asset) {
+        // Reuse the host's unbacked on/off glyph at its original size.
+        if (image!=applied) objc_setAssociatedObject(icon,DramaDanmakuStockImageKey,image,1);
+        if (!stockMode || mode!=4) objc_setAssociatedObject(icon,DramaDanmakuStockModeKey,Number(mode),1);
+        if (image!=asset) V1(icon,"setImage:",asset);
+        if (mode!=4) Q1(icon,"setContentMode:",4);
+        objc_setAssociatedObject(icon,DramaDanmakuAppliedImageKey,asset,1);
+    } else if (applied) {
+        if (image==applied) V1(icon,"setImage:",objc_getAssociatedObject(icon,DramaDanmakuStockImageKey));
+        if (mode==4) Q1(icon,"setContentMode:",(I)Double(stockMode));
+        objc_setAssociatedObject(icon,DramaDanmakuStockImageKey,0,1);
+        objc_setAssociatedObject(icon,DramaDanmakuStockModeKey,0,1);
+        objc_setAssociatedObject(icon,DramaDanmakuAppliedImageKey,0,1);
+    }
+}
+
+static void DramaDanmakuLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQCShortVideoDanmakuEntranceView","fqx178r8_originalDanmakuLayout"))(self,cmd);
+    Obj parent=Get(self,"superview");
+    B active=Kind(parent,"SSShortVideoDanmakuLeftAboveView") && Get(parent,"danmakuEntranceView")==self;
+    B combined=Flag(self,"combinedStyle");
+    Obj capsule=Get(self,"capsuleView"), toggle=Get(self,"toggleButton");
+    DramaSmallGlass(capsule,active && combined && Get(capsule,"superview")==self);
+    B standalone=DramaSmallGlass(toggle,active && !combined && Get(toggle,"superview")==self);
+    DramaDanmakuGlyph(self,standalone);
+}
+
+static void DramaDanmakuRefreshIcon(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQCShortVideoDanmakuEntranceView","fqx178r8_originalDanmakuRefreshIcon"))(self,cmd);
+    Obj toggle=Get(self,"toggleButton");
+    if (objc_getAssociatedObject(toggle,DramaGlassKey)) DramaDanmakuGlyph(self,Enabled() && !Flag(self,"combinedStyle"));
+}
+
+static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalFullscreenButtonLayout"))(self,cmd);
+    Obj button=Get(self,"fullscreenBtn");
+    DramaSmallGlass(button,Kind(button,"UIButton") && Belongs(button,self));
 }
 
 static B DefaultEnabled(Obj key);
@@ -2481,7 +2532,7 @@ static void DramaVisibilityHeaderLayout(Obj self,Sel cmd) {
     DramaVisibilityApplyHeader(Get(self,"headerView"));
 }
 
-static B DramaVisibilityAuthorIsMainFeed(Obj manager) {
+static B DramaVisibilityIsMainFeed(Obj manager) {
     Obj config=Get(Get(manager,"vcContext"),"config");
     return Kind(config,"FQVShortVideoListConfig") && InstanceABI(config,"feedType","q16@0:8") &&
         ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4;
@@ -2490,9 +2541,26 @@ static B DramaVisibilityAuthorIsMainFeed(Obj manager) {
 static B DramaVisibilityAuthor(Obj self,Sel cmd) {
     B visible=((B(*)(Obj,Sel))Original("SSShortVideoBelowLeftContainerViewManager",
         "fqx178r7_originalShouldAddAiUsageView"))(self,cmd);
-    if (!DramaVisibilityAuthorIsMainFeed(self)) return visible;
+    if (!DramaVisibilityIsMainFeed(self)) return visible;
     DramaVisibilityTrack(self);
     return visible && DefaultEnabled(Text("FanqieX.DramaAuthorDeclaration.1"));
+}
+
+static Obj DramaVisibilityNovel(Obj self,Sel cmd) {
+    Obj views=((Obj(*)(Obj,Sel))Original("SSShortVideoAboveLeftContainerViewManager",
+        "fqx178r8_originalOrderedAboveLeftViews"))(self,cmd);
+    if (!DramaVisibilityIsMainFeed(self)) return views;
+    Obj reason=Get(self,"rcmdReasonViewManager");
+    if (!Kind(reason,"SSShortVideoRcmdReasonViewManager") || !BoolProp(reason,"isRelateNovelReason")) return views;
+    Obj novel=Get(reason,"decorationView");
+    if (!Kind(novel,"SSShortVideoRcmdReasonView")) return views;
+    DramaVisibilityTrack(self);
+    if (DefaultEnabled(Text("FanqieX.DramaOriginalNovel.1"))) return views;
+    U index=((U(*)(Obj,Sel,Obj))Message)(views,sel_registerName("indexOfObjectIdenticalTo:"),novel);
+    if (index>=((U(*)(Obj,Sel))Message)(views,sel_registerName("count"))) return views;
+    Obj filtered=O0(O0(views,"mutableCopy"),"autorelease");
+    Q1(filtered,"removeObjectAtIndex:",index);
+    return filtered;
 }
 
 static void DramaVisibilityRefresh(void) {
@@ -2501,7 +2569,10 @@ static void DramaVisibilityRefresh(void) {
     for (U i=0;i<count;++i) {
         Obj owner=At(owners,i);
         if (Kind(owner,"SSVideoSeriesFeedHeaderView")) DramaVisibilityApplyHeader(owner);
-        else if (DramaVisibilityAuthorIsMainFeed(owner)) V0(owner,"updateSubViews");
+        else if (DramaVisibilityIsMainFeed(owner)) {
+            if (Kind(owner,"SSShortVideoAboveLeftContainerViewManager")) V0(owner,"updateLayoutForContainerView");
+            else V0(owner,"updateSubViews");
+        }
     }
 }
 
@@ -2515,6 +2586,15 @@ static void DramaVisibilityInstall(void) {
     const char *manager="SSShortVideoBelowLeftContainerViewManager";
     if (Signature(manager,"updateSubViews","v16@0:8"))
         Hook(manager,"shouldAddAiUsageView","fqx178r7_originalShouldAddAiUsageView","B16@0:8",(Imp)DramaVisibilityAuthor);
+    const char *above="SSShortVideoAboveLeftContainerViewManager";
+    if (Signature(above,"updateLayoutForContainerView","v16@0:8"))
+        Hook(above,"orderedAboveLeftViewsForCurrentState","fqx178r8_originalOrderedAboveLeftViews",
+             "@16@0:8",(Imp)DramaVisibilityNovel);
+    const char *danmaku="FQCShortVideoDanmakuEntranceView";
+    Hook(danmaku,"layoutSubviews","fqx178r8_originalDanmakuLayout","v16@0:8",(Imp)DramaDanmakuLayout);
+    Hook(danmaku,"refreshIcon","fqx178r8_originalDanmakuRefreshIcon","v16@0:8",(Imp)DramaDanmakuRefreshIcon);
+    Hook("FQVShortVideoVPlayerControlView","updateFullscreenBtnLayout","fqx178r8_originalFullscreenButtonLayout",
+         "v16@0:8",(Imp)DramaFullscreenButtonLayout);
 }
 
 // Measure the glass and the playback track in the same coordinate space.
@@ -2674,7 +2754,9 @@ void FQHDramaSpacing178R2(Obj root) {
         screen.height>screen.width && b.height>b.width && b.width>=screen.width-4;
     if (eligible) {
         Rect placed=Convert(root,b,window);
-        eligible=VisibleRect(placed) && placed.y<screen.y+screen.height && placed.y+placed.height>screen.y &&
+        // Attached feed cells can move vertically onscreen without laying out
+        // their children again. Keep their installed constraint while paging.
+        eligible=VisibleRect(placed) &&
             __builtin_fabs(placed.x-screen.x)<2 && __builtin_fabs(placed.width-b.width)<0.5 &&
             __builtin_fabs(placed.height-b.height)<0.5;
     }
@@ -2777,7 +2859,7 @@ void FQHDramaSpacing178R2(Obj root) {
     if (eligible || previous || previousAnchor) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
-        Put(record,"revision",Text("episode-glass-178R6"));
+        Put(record,"revision",Text("episode-glass-178R8"));
         Put(record,"spacingReference",Text("episodeGlassToTrack")); Put(record,"gap",Number(8));
         if (glass) {
             Rect actualGlass=Convert(glass,Bounds(glass),root);
@@ -2802,8 +2884,8 @@ void FQHDramaSpacing178R2(Obj root) {
     }
     objc_setAssociatedObject(root,DramaSpacingBusy178R2Key,0,0);
 }
-static void DramaSpacingForEntry178R2(Obj entry) {
-    Obj parent=Get(entry,"superview");
+static void DramaSpacingForView(Obj view) {
+    Obj parent=Get(view,"superview");
     for (int depth=0;parent && depth<8;++depth,parent=Get(parent,"superview")) {
         if (Kind(parent,"FQVShortVideoVPlayerControlView")) { FQHDramaSpacing178R2(parent); return; }
     }
@@ -2815,6 +2897,18 @@ static void DramaControlsLayout178R2(Obj self,Sel cmd) {
 static void DramaSeriesControlsLayout178R2(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerSeriesControlView","fqx178R2_originalSeriesControlsLayout"))(self,cmd);
     FQHDramaSpacing178R2(self);
+}
+static void DramaControlsDidDisplay(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalControlsDidDisplay"))(self,cmd);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaProgressLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoProgressView","fqx178r8_originalProgressLayout"))(self,cmd);
+    DramaSpacingForView(self);
+}
+static void DramaProgressPlaying(Obj self,Sel cmd,B playing,B animate) {
+    ((void(*)(Obj,Sel,B,B))Original("FQVShortVideoProgressView","fqx178r8_originalProgressPlaying:animate:"))(self,cmd,playing,animate);
+    DramaSpacingForView(self);
 }
 static void DramaSpacingInstall178R2(void) {
     Obj owner=Lookup("FQVShortVideoVPlayerControlView");
@@ -2832,6 +2926,12 @@ static void DramaSpacingInstall178R2(void) {
     }
     if (ownsSeries)
         Hook("FQVShortVideoVPlayerSeriesControlView","layoutSubviews","fqx178R2_originalSeriesControlsLayout","v16@0:8",(Imp)DramaSeriesControlsLayout178R2);
+    Hook("FQVShortVideoVPlayerControlView","controlViewDidDisplay","fqx178r8_originalControlsDidDisplay",
+         "v16@0:8",(Imp)DramaControlsDidDisplay);
+    Hook("FQVShortVideoProgressView","layoutProgressView","fqx178r8_originalProgressLayout",
+         "v16@0:8",(Imp)DramaProgressLayout);
+    Hook("FQVShortVideoProgressView","updateProgressViewWithPlaying:animate:","fqx178r8_originalProgressPlaying:animate:",
+         "v24@0:8B16B20",(Imp)DramaProgressPlaying);
 }
 
 static void ShelfTitleGlassFontKey(void) {}
@@ -2856,6 +2956,7 @@ static void ShelfTitleFont(Obj label,B styled) {
     V1(label,"setFont:",smaller);
 }
 static void ShelfTabStyle(Obj view,Obj model,B selected) {
+    (void)selected;
     Rect bounds=Bounds(view), material=bounds;
     // The host widths follow the title's zoom. Spend only the available gap
     // on padding so a capsule cannot run into the next tab during a swipe.
@@ -2868,7 +2969,6 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     material.y+=(bounds.height-material.height)*0.5;
     ApplySurface(view,material,0);
     Obj surface=FQHSurface(view);
-    ShelfTint(surface,selected,0);
     // The paired mask label must match during swipes. Keep the host zoom transforms.
     ShelfTitleFont(Get(view,"titleLabel"),surface!=0);
     ShelfTitleFont(Get(view,"maskTitleLabel"),surface!=0);
@@ -2892,7 +2992,6 @@ static void ShelfFilterStyle(Obj view) {
     material.x+=1; material.width-=2;
     material.y+=1; material.height-=2;
     ApplySurface(view,material,0);
-    ShelfTint(FQHSurface(view),BoolProp(view,"isSelect"),1);
 }
 static void PageShelfFilterLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterLayout"))(self,cmd);
@@ -3340,7 +3439,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
        MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption,
        ShelfFilterOption, ReaderThemeIsolationOption, DramaCategoriesOption,
-       DramaSearchOption, DramaAuthorDeclarationOption };
+       DramaSearchOption, DramaAuthorDeclarationOption, DramaOriginalNovelOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -3358,6 +3457,7 @@ static Obj PagePreference(I option) {
         case DramaCategoriesOption: key="FanqieX.DramaCategories.1"; break;
         case DramaSearchOption: key="FanqieX.DramaSearch.1"; break;
         case DramaAuthorDeclarationOption: key="FanqieX.DramaAuthorDeclaration.1"; break;
+        case DramaOriginalNovelOption: key="FanqieX.DramaOriginalNovel.1"; break;
         default: return 0;
     }
     return Text(key);
@@ -4703,6 +4803,7 @@ static Obj BottomPreference178(I tag) {
         case 21: return PagePreference(DramaCategoriesOption);
         case 22: return PagePreference(DramaSearchOption);
         case 23: return PagePreference(DramaAuthorDeclarationOption);
+        case 24: return PagePreference(DramaOriginalNovelOption);
     }
     return 0;
 }
@@ -5149,7 +5250,7 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
     Rect b=Bounds(button);
     Rect frame={b.x+(b.width-size)*0.5,b.y+(b.height-size)*0.5,size,size};
     if (!SameRect(Frame(symbol),frame)) SetFrame(symbol,frame);
-    Obj foreground=O0(Lookup("UIColor"),BoolProp(button,"isSelected") ? "labelColor" : "secondaryLabelColor");
+    Obj foreground=O0(Lookup("UIColor"),"labelColor");
     if (!SameColor(Get(symbol,"tintColor"),foreground)) V1(symbol,"setTintColor:",foreground);
     if (title && !((B(*)(Obj,Sel,Obj))Message)(title,sel_registerName("isEqual:"),Get(button,"accessibilityLabel")))
         V1(button,"setAccessibilityLabel:",title);
@@ -5157,8 +5258,6 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
     // The native selector owns accessibility when active; its original,
     // transparent segment titles remain intact. Fallback buttons keep theirs.
 }
-static void BottomMaterial178R7Key(void) {}
-static void BottomMaterialMode178R7Key(void) {}
 static void BottomVisualFrame178R7Key(void) {}
 static void BottomVisualCompact178R7Key(void) {}
 
@@ -5190,23 +5289,10 @@ void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
         objc_setAssociatedObject(proxy,BottomVisualFrame178R7Key,RectBox(frame),1);
     if (!lastCompact || BoolProp(lastCompact,"boolValue")!=compact)
         objc_setAssociatedObject(proxy,BottomVisualCompact178R7Key,BoolBox(compact),1);
-    B icons=Enabled() && BottomFlag178(1);
-    Obj effect=Get(proxy,"effect"), previous=objc_getAssociatedObject(proxy,BottomMaterial178R7Key);
-    Obj mode=objc_getAssociatedObject(proxy,BottomMaterialMode178R7Key);
-    if (Kind(effect,"UIGlassEffect") && (icons || previous) &&
-        (effect!=previous || !mode || BoolProp(mode,"boolValue")!=icons)) {
-        Obj glass=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIGlassEffect"),sel_registerName("effectWithStyle:"),icons ? 1 : 0);
-        if (glass) {
-            VB(glass,"setInteractive:",1);
-            V1(proxy,"setEffect:",glass);
-            objc_setAssociatedObject(proxy,BottomMaterial178R7Key,glass,1);
-            objc_setAssociatedObject(proxy,BottomMaterialMode178R7Key,BoolBox(icons),1);
-        }
-    }
-    if (!icons) return;
-    I style=((I(*)(Obj,Sel))Message)(proxy,sel_registerName("overrideUserInterfaceStyle"));
-    Obj color=((Obj(*)(Obj,Sel,double,double))Message)(Lookup("UIColor"),
-        sel_registerName("colorWithWhite:alpha:"),style==2 ? 0 : 1,style==2 ? 0.625 : 0.5);
+    // The lifecycle installs the same adaptive Regular material for both
+    // renderers. UIKit resolves the system palette against each page's traits.
+    if (!Enabled() || !BottomFlag178(1)) return;
+    Obj color=O0(Lookup("UIColor"),"secondarySystemFillColor");
     if (native && !SameColor(Get(native,"selectedSegmentTintColor"),color))
         V1(native,"setSelectedSegmentTintColor:",color);
     Obj content=Get(lens,"contentView");
@@ -5538,7 +5624,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
-static const double BottomSettingsHeight178R7=1000;
+static const double BottomSettingsHeight178R7=1048;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -5582,6 +5668,7 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     BottomSettingsSwitch178(self,content,838,21,"显示顶部分类",0);
     BottomSettingsSwitch178(self,content,886,22,"显示搜索按钮",0);
     BottomSettingsSwitch178(self,content,934,23,"显示作者声明",0);
+    BottomSettingsSwitch178(self,content,982,24,"显示阅读原著",0);
     V0(content,"release");
     V0(scroll,"release");
 }

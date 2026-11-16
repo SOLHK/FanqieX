@@ -830,9 +830,10 @@ def static_checks():
 
 
 def exercise(data, labels):
+    uniform_glass = release_version(data) == "1.78R8"
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) == "1.78R7"
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1018,8 +1019,8 @@ def exercise(data, labels):
         state = runtime.objects[material].state
         require(state["frame"] == ((width - 42) * 0.5, 3.0, 42.0, 28.0),
                 "shelf tab capsule is padded, centered and consistent")
-        require(tint_for(material) == (runtime.color("shelfNeutralTint") if index == 0 else 0),
-                "live selection selects neutral material and ignores stale hasSelected")
+        require(tint_for(material) == (runtime.color("shelfNeutralTint") if index == 0 and not uniform_glass else 0),
+                "Shelf material follows the release palette while native selection text remains intact")
         fitted_fonts = shelf_fonts(tab)
         require(all(runtime.objects[font].state["pointSize"] == (17.5 if index == 0 else 15.75)
                     for font in fitted_fonts), "both title layers have extra padding in each state")
@@ -1031,7 +1032,7 @@ def exercise(data, labels):
         runtime.objects[model].state["isSelected"] = index == 3
         send(cpu, runtime, tab, "reloadData:", model)
         require(surface_for(tab) == material, "selection updates reuse the tab material")
-        require(bool(tint_for(material)) == (index == 3), "selection moves with the host model")
+        require(bool(tint_for(material)) == (index == 3 and not uniform_glass), "Selection retains the release material palette")
         require(runtime.objects[tab].state["hasSelected"] == (index == 3),
                 "host-owned messaging flag is unchanged")
         expected_font = {"pointSize": 17.5, "weight": "semibold"} if index == 3 else {
@@ -1087,8 +1088,8 @@ def exercise(data, labels):
         require(runtime.objects[cell].state["subviews"] == [material, label] and
                 runtime.string_value(runtime.objects[label].state["text"]) == title,
                 "filter glass stays behind the host label and leaves it untouched")
-        require(tint_for(material) == (runtime.color("shelfWarmTint") if index == 0 else 0),
-                "filter tint follows its live selection")
+        require(tint_for(material) == (runtime.color("shelfWarmTint") if index == 0 and not uniform_glass else 0),
+                "R8 filters share the neutral glass used by other controls")
         filters.append((cell, material))
 
     other = runtime.view("SSBookShelfFilter541Cell", "filter panel cell", (0, 0, 58, 30), runtime.ROOT)
@@ -1116,8 +1117,8 @@ def exercise(data, labels):
             "disabling glass restores both host title fonts")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
     send(cpu, runtime, tab, "layoutSubviews")
-    require(tint_for(surface_for(tab)) == runtime.color("shelfNeutralTint"),
-            "selected tint is reapplied when the glass surface is recreated")
+    require(tint_for(surface_for(tab)) == (0 if uniform_glass else runtime.color("shelfNeutralTint")),
+            "Recreated shelf glass uses the same release palette")
 
     # Remaining exact owners: each hook forwards the host layout once and
     # applies the material only to the reviewed child/owner.
@@ -1778,7 +1779,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1968,10 +1969,10 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7") else 512.0
+    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8") else 512.0
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
-    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7"):
+    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8"):
         entries = [item for item in runtime.objects[header].state["subviews"]
                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
@@ -2579,8 +2580,12 @@ def exercise_drama_glass(data, labels):
         state = runtime.objects[view].state
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
-        require(runtime.objects[state["configuration"]].state["style"] == "clearGlass",
-                "the installed backing uses native Clear Liquid Glass")
+        require(runtime.objects[state["configuration"]].state["style"] ==
+                ("glass" if release_version(data) == "1.78R8" else "clearGlass"),
+                "The backing uses the release's native button glass configuration")
+        if release_version(data) == "1.78R8":
+            require(state["overrideUserInterfaceStyle"] == 2,
+                    "White-ink video controls consistently use the dark player palette")
 
     for cls, selector in (("SSShortVideoRightInteractionCollectView", "starIcon"),
                           ("SSShortVideoHostRightInteractionCommentView", "commentIcon"),
@@ -2749,7 +2754,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -2904,7 +2909,8 @@ def main():
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    runtime["short_drama_clear_glass_and_reuse"] = exercise_drama_glass(data, labels)
+    drama_palette = "regular" if release_version(data) == "1.78R8" else "clear"
+    runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)
     result = {"passed": True, "device_tested": False, "pixel_rendering_tested": False,

@@ -18,7 +18,7 @@ class ReleaseCapacityTests(unittest.TestCase):
         header = bytearray((ROOT / 'dist/1.75/FanqieX-1.75.dylib').read_bytes()[0x800:0x900])
         extension = struct.unpack_from('<I', header, 60 * 4)[0]
         for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000), (0x14e02, 0x3c000), (0x14e03, 0x3c000),
-                                 (0x14e04, 0x40000), (0x14e05, 0x40000), (0x14e06, 0x40000), (0x14e07, 0x44000)):
+                                 (0x14e04, 0x40000), (0x14e05, 0x40000), (0x14e06, 0x40000), (0x14e07, 0x44000), (0x14e08, 0x44000)):
             struct.pack_into('<I', header, 6 * 4, version)
             self.assertEqual(build_plugin.extension_limit(version), allowed)
             for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, 0x48000, allowed + 4):
@@ -30,14 +30,14 @@ class ReleaseCapacityTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             build_plugin.directory(header, version)
 
-    def test_independent_layout_allows_seventeen_pages_only_for_r7(self):
+    def test_independent_layout_allows_seventeen_pages_for_r7_and_r8(self):
         source = (ROOT / 'baseline/FanqieAdBlock-1.5.6.dylib').read_bytes()
         old = Image((ROOT / 'baseline/FanqieAdBlock-1.5.8.dylib').read_bytes())
         payload = bytes.fromhex('c0035fd6')
         for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000):
             image = Image(extend(source, payload, capacity=capacity))
             for version, allowed in (('1.76', 0x34000), ('1.78', 0x3c000), ('1.78R2', 0x3c000), ('1.78R3', 0x3c000),
-                                     ('1.78R4', 0x40000), ('1.78R5', 0x40000), ('1.78R6', 0x40000), ('1.78R7', 0x44000)):
+                                     ('1.78R4', 0x40000), ('1.78R5', 0x40000), ('1.78R6', 0x40000), ('1.78R7', 0x44000), ('1.78R8', 0x44000)):
                 with self.subTest(version=version, capacity=hex(capacity)):
                     if capacity <= allowed:
                         self.assertEqual(check_layout(old, image, version)['extension_capacity'], capacity)

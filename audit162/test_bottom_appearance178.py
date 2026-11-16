@@ -41,7 +41,7 @@ DRAG_METHODS = (
 
 
 def bottom_labels(data):
-    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) == "1.78R7" else LEGACY_PAN]
+    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8") else LEGACY_PAN]
 
 
 class Runtime(AppearanceRuntime):
@@ -447,7 +447,8 @@ def overlay_image(runtime, button):
 
 def check_input(runtime, cpu, fallback, expected):
     previous_count = len(runtime.route_calls)
-    effect_style = int(PAGE_HOOK in runtime.labels and runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False))
+    icon_mode = runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False)
+    effect_style = int(release_version(runtime.data) == "1.78R7" and icon_mode)
     if fallback:
         require_fallback(runtime, effect_style=effect_style)
         # The unchanged original button IMP maps the current array identity.
@@ -524,6 +525,7 @@ def default_and_geometry(data, labels):
 
 def icon_lifecycle(data, labels):
     cases = []
+    version = release_version(data)
     title_groups = (("书城", "短剧", "书架", "我的"), ("我的", "书架", "书城"),
                     ("商城", "我的", "短剧", "书架", "书城"))
     symbols_by_title = {}
@@ -554,22 +556,26 @@ def icon_lifecycle(data, labels):
             control = runtime.control()
             if PAGE_HOOK in labels:
                 proxy = runtime.objects[runtime.PROXY].state
-                style = proxy.get("overrideUserInterfaceStyle")
-                shade = (0., 0., 0., 0.625) if style == 2 else (1., 1., 1., 0.5)
+                effect = proxy["effect"]
                 if control:
                     tint = runtime.objects[control].state["selectedSegmentTintColor"]
                 else:
                     lens = runtime.associated(runtime.PROXY, "lens")
                     tint = runtime.objects[runtime.objects[lens].state["contentView"]].state["backgroundColor"]
-                require(runtime.objects[proxy["effect"]].state["style"] == 1 and
-                        runtime.semantic_rgba(tint) == shade,
-                        "Icon-only mode uses transparent glass and an appearance-specific selection fill")
+                style = runtime.objects[effect].state["style"]
+                if version == "1.78R7":
+                    shade = (0., 0., 0., 0.625) if proxy.get("overrideUserInterfaceStyle") == 2 else (1., 1., 1., 0.5)
+                    require(style == 1 and runtime.semantic_rgba(tint) == shade,
+                            "R7 uses Clear glass and an appearance-specific selection fill")
+                else:
+                    require(style == 0 and tint == runtime.color("secondarySystemFillColor"),
+                            "Icon and text mode use the same Regular glass and adaptive system selection fill")
                 for index, button in enumerate(runtime.buttons):
                     symbol = runtime.objects[overlays(runtime, button)[0]].state
-                    color = runtime.color("labelColor" if index == 0 else "secondaryLabelColor")
-                    require(symbol["tintColor"] == color and runtime.objects[
-                        runtime.objects[symbol["image"]].state["configuration"]].state["weight"] == 4,
-                            "Icon-only mode emphasizes the active regular-weight glyph")
+                    color = runtime.color("secondaryLabelColor" if version == "1.78R7" and index else "labelColor")
+                    configuration = runtime.objects[symbol["image"]].state["configuration"]
+                    require(symbol["tintColor"] == color and runtime.objects[configuration].state["weight"] == 4,
+                            "Icon-only mode preserves readable regular-weight glyphs")
             if control:
                 require([runtime.string_value(value) for value in runtime.objects[control].state["segments"]] == list(titles),
                         "Native transparent titles retain exact VoiceOver tab names")
@@ -584,6 +590,9 @@ def icon_lifecycle(data, labels):
             check_input(runtime, cpu, fallback, len(titles)-1)
             runtime.defaults(**{ICONS: False})
             repair(cpu, runtime, entries)
+            if version == "1.78R8":
+                require(runtime.objects[runtime.PROXY].state["effect"] == effect,
+                        "Toggling the icon-only preference reuses the existing Regular glass")
             require(all(not overlays(runtime, b) for b in runtime.buttons),
                     "Turning pure-icon mode off removes every owned overlay")
             require(all(runtime.objects[obj].state["hidden"] == hidden for obj, hidden in stock_visibility.items()),

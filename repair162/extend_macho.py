@@ -48,8 +48,8 @@ PAGE = 0x4000
 REVIEWED_CAPACITIES = (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE, 9 * PAGE, 10 * PAGE,
                        11 * PAGE, 12 * PAGE, 13 * PAGE, 14 * PAGE, 15 * PAGE, 16 * PAGE, 17 * PAGE)
 # This utility validates segment layout, not release identity. The production
-# builder and the independent release audit allow page 16 only for 1.78R4 through 1.78R6;
-# earlier releases retain their smaller, separately checked capacity limits.
+# builder and independent release audit allow 16 pages for 1.78R4–R6
+# and 17 for 1.78R7–R8. Earlier releases retain their own smaller limits.
 HEADER_LIMIT = 0x800
 SEGMENT_NAME = b"__FQPATCH"
 LC_SEGMENT_64 = 0x19
