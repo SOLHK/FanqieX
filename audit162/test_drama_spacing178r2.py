@@ -35,7 +35,7 @@ class Runtime(ReaderRuntime):
             ("NSLayoutConstraint", "NSObject"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) == "1.78R6" else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
 
@@ -188,7 +188,7 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    glass_spacing = release_version(data) == "1.78R6"
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):

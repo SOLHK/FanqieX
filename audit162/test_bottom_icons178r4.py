@@ -14,8 +14,9 @@ from pathlib import Path
 
 from arm64 import release_version, require
 from test_bottom_appearance178 import (
-    COMPACT, ICONS, ICON_SIZE, ENTRY_LABELS, call, check_input, fixture,
-    host_geometry, overlay_image, overlays, repair, send_pan,
+    COMPACT, ICONS, ICON_SIZE, PAGE_HOOK, bottom_labels, call, check_input,
+    compact_button, fixture, host_geometry, overlay_image, overlays, page_drag,
+    repair, send_pan, tap_expand,
 )
 from test_feed_viewport import labels_for
 
@@ -93,18 +94,32 @@ def compact_centering(data, labels):
             repair(cpu, runtime, entries)
             expanded = runtime.objects[runtime.PROXY].state["frame"]
             expanded_symbols = check_symbols(runtime, size)
-            send_pan(cpu, runtime, pan, 1)
-            send_pan(cpu, runtime, pan, 2, (0., -48.))
+            is_r7 = PAGE_HOOK in labels
+            if is_r7:
+                page_drag(cpu, runtime, feed, 1, 2)
+            else:
+                send_pan(cpu, runtime, pan, 1)
+                send_pan(cpu, runtime, pan, 2, (0., -48.))
             repair(cpu, runtime, entries)
             compact = runtime.objects[runtime.PROXY].state["frame"]
-            require(compact[2] < expanded[2] and compact[3] < expanded[3],
-                    "This case actually reaches the smaller drama dock")
-            compact_symbols = check_symbols(runtime, size)
-            for _ in range(3):
-                repair(cpu, runtime, entries)
-                require(check_symbols(runtime, size) == compact_symbols,
-                        "Compact re-layout keeps larger icons centered without drift")
-            send_pan(cpu, runtime, pan, 2, (0., -15.))
+            if is_r7:
+                button = compact_button(runtime)
+                require(compact[2:] == (60., 60.) and button and
+                        runtime.objects[button].state["frame"] == compact,
+                        "The compact circle has one full-sized input for either saved expanded glyph size")
+                for _ in range(3):
+                    repair(cpu, runtime, entries)
+                    require(compact_button(runtime) == button, "The compact symbol remains stable")
+                tap_expand(cpu, runtime)
+            else:
+                require(compact[2] < expanded[2] and compact[3] < expanded[3],
+                        "This case actually reaches the smaller drama dock")
+                compact_symbols = check_symbols(runtime, size)
+                for _ in range(3):
+                    repair(cpu, runtime, entries)
+                    require(check_symbols(runtime, size) == compact_symbols,
+                            "Compact re-layout keeps larger icons centered without drift")
+                send_pan(cpu, runtime, pan, 2, (0., -15.))
             repair(cpu, runtime, entries)
             require(runtime.objects[runtime.PROXY].state["frame"] == expanded and
                     check_symbols(runtime, size) == expanded_symbols,
@@ -143,8 +158,8 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6"), "This regression targets the R4 symbol sizes")
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), ENTRY_LABELS)
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7"), "This regression targets the R4 symbol sizes")
+    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), bottom_labels(data))
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "sizes": default_and_saved_sizes(data, labels),
               "compact": compact_centering(data, labels),

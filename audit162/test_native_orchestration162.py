@@ -58,14 +58,14 @@ def effect_writes(rt):
             if event['event'] == 'setEffect' and event['self'] == rt.PROXY]
 
 
-def require_native(rt):
+def require_native(rt, effect_style=0):
     control = rt.control()
     require(control and rt.objects[control].state['superview'] == rt.PROXY_CONTENT,
             'Native control is mounted inside the Regular effect contentView')
     effect = rt.objects[rt.PROXY].state['effect']
     require(effect and rt.class_names[rt.objects[effect].cls] == 'UIGlassEffect' and
-            rt.objects[effect].state['style'] == 0,
-            'A native allocation never removes the readable Regular base')
+            rt.objects[effect].state['style'] == effect_style,
+            'Native selection uses the expected glass material')
     require(not rt.associated(rt.PROXY, 'overlay') and not rt.associated(rt.PROXY, 'pan'),
             'Native surface removes the old overlay and custom pan')
     require(all(not rt.objects[button].state['hidden'] and
@@ -79,11 +79,11 @@ def require_native(rt):
     return control
 
 
-def require_fallback(rt):
+def require_fallback(rt, effect_style=0):
     require(not rt.control(), 'Fallback owns no native selection control')
     effect = rt.objects[rt.PROXY].state['effect']
     require(effect and rt.class_names[rt.objects[effect].cls] == 'UIGlassEffect' and
-            rt.objects[effect].state['style'] == 0, 'Fallback owns one Regular glass base')
+            rt.objects[effect].state['style'] == effect_style, 'Fallback owns one glass base of the expected style')
     overlay, lens = rt.associated(rt.PROXY, 'overlay'), rt.associated(rt.PROXY, 'lens')
     require(overlay and lens and rt.associated(rt.PROXY, 'pan'),
             'Fallback selection and existing host controls remain operable')

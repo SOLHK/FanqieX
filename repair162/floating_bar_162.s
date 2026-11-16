@@ -429,6 +429,15 @@ Lrepair_edges:
     mov x0, x19
     mov x1, x20
     bl Lmaterial_update
+.if FQ_VERSION >= 0x14e07
+    AGET x20, LNcontrol_key
+    mov x21, x0
+    AGET x20, LIlens_key
+    mov x2, x0
+    mov x1, x21
+    mov x0, x20
+    bl LFQH_FQHBottomPolish178R7
+.endif
     mov x0, x19
     bl Ldiagnostic_observe
     ASET x19, Lbusy_key, xzr, 0

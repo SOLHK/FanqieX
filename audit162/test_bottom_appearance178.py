@@ -15,7 +15,7 @@ import math
 import struct
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_feed_viewport import labels_for
 from test_tab_appearance175 import Runtime as AppearanceRuntime
 from test_native_orchestration162 import make, repair, require_native, require_fallback
@@ -27,9 +27,21 @@ LENGTH = "FanqieX.BottomLengthScale.1"
 HEIGHT = "FanqieX.BottomHeightScale.1"
 BUTTON_WIDTH = "FanqieX.BottomButtonWidthScale.1"
 ICON_SIZE = "FanqieX.BottomIconPointSize.1"
+DRAMA_DISPLAY = ("FanqieX.DramaCategories.1", "FanqieX.DramaSearch.1", "FanqieX.DramaAuthorDeclaration.1")
 ENTRY_LABELS = ["Lrecord_named", "LFQH_FQHBottomPrepare", "LFQH_FQHBottomFinish",
-                "LFQH_FQHBottomReset178", "LFQH_FQHBottomPan178",
+                "LFQH_FQHBottomReset178",
                 "LFQH_FQHBottomOptionChanged178", "LFQH_FQHBottomOptionsReset178"]
+PAGE_HOOK = "LFQH_FQHPageInstall"
+LEGACY_PAN = "LFQH_FQHBottomPan178"
+DRAG_METHODS = (
+    ("scrollViewWillBeginDragging:", "v24@0:8@16", 0x33160000),
+    ("scrollViewDidEndDragging:willDecelerate:", "v28@0:8@16B24", 0x33160100),
+    ("scrollViewDidEndDecelerating:", "v24@0:8@16", 0x33160200),
+)
+
+
+def bottom_labels(data):
+    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) == "1.78R7" else LEGACY_PAN]
 
 
 class Runtime(AppearanceRuntime):
@@ -47,11 +59,14 @@ class Runtime(AppearanceRuntime):
             ("UIImageView", "UIView"), ("NSValue", "NSObject"),
             ("UIScreen", "NSObject"),
             ("UICollectionView", "UIScrollView"),
-            ("FQFeedListCollectionView", "UICollectionView"),
+            ("FQFeedListCollectionView", "UICollectionView"), ("FQFeedListView", "UIView"),
+            ("NSIndexPath", "NSObject"), ("CABasicAnimation", "NSObject"),
             ("UISwitch", "UIControl"), ("UISlider", "UIControl"),
         ):
             if cls not in self.classes:
                 self._class(cls, parent)
+        for selector, encoding, imp in DRAG_METHODS:
+            self._add(self.classes["FQFeedListView"], selector, imp, encoding)
         self.screen = self.obj("UIScreen", "3x display", scale=3.0)
         self.objects[self.WINDOW].state["screen"] = self.screen
         self.page_view = self.view("UIView", "selected page root", (0, 0, 440, 882), self.ROOT)
@@ -112,6 +127,10 @@ class Runtime(AppearanceRuntime):
                          contentSize=(440., 4000.), contentOffset=(0., 882.),
                          contentInset=(0., 0., 0., 0.), clipsToBounds=True,
                          dragging=False, tracking=False, decelerating=False)
+        owner = self.view("FQFeedListView", "host feed delegate", (0, 0, 440, 882), self.page_view,
+                          collectionView=feed)
+        self.reparent(feed, owner)
+        self.objects[feed].state.update(listOwner=owner, pageIndex=1)
         host_target = self.obj("NSObject", "host scroll target")
         pan = self.obj("UIPanGestureRecognizer", "host scroll pan", view=feed, state=0,
                        translation=(0., 0.), velocity=(0., 0.), numberOfTouches=1,
@@ -158,6 +177,15 @@ class Runtime(AppearanceRuntime):
 
     def handle(self, cpu, pc):
         local = pc - self.slide
+        for selector, _, imp in DRAG_METHODS:
+            if pc == imp:
+                self.event("host_feed_callback", cpu.x[0], selector=selector)
+                return self.finish(cpu)
+        if local == 0xa61c:
+            parent, name = cpu.x[:2]
+            return self.finish(cpu, self._class(self.string(name), self.class_names[parent]))
+        if local == 0xa610:
+            return self.finish(cpu)
         if local != 0xa5d4:
             return super().handle(cpu, pc)
         args = cpu.x[:8]
@@ -165,6 +193,19 @@ class Runtime(AppearanceRuntime):
         name = self.selector_names.get(args[1])
         if receiver in self.classes.values():
             cls = self.class_names[receiver]
+            if cls == "FanqieXCompactBottomButton178R7" and name == "new":
+                button = self.view(cls, "compact bottom expand button", userInteractionEnabled=True)
+                self.retain_balance[button] = 1
+                return self.finish(cpu, button)
+            if cls == "CABasicAnimation":
+                if name == "animationWithKeyPath:":
+                    return self.finish(cpu, self.obj(cls, "bottom animation", keyPath=args[2]))
+                if name == "respondsToSelector:" and self.selector_names[args[2]] == "animationWithKeyPath:":
+                    return self.finish(cpu, 1)
+            if cls == "UIColor" and name in ("whiteColor", "blackColor", "secondaryLabelColor"):
+                return self.finish(cpu, self.color(name))
+            if cls == "UIColor" and name == "colorWithWhite:alpha:":
+                return self.finish(cpu, self.fresh_color((cpu.fp(0),) * 3 + (cpu.fp(1),)))
             symbol_factories = {
                 "UIImage": ("systemImageNamed:", "systemImageNamed:withConfiguration:"),
                 "UIImageSymbolConfiguration": (
@@ -201,8 +242,32 @@ class Runtime(AppearanceRuntime):
         if receiver in self.objects:
             state = self.objects[receiver].state
             cls = self.class_names[self.objects[receiver].cls]
-            if name == "isEqual:" and not self.is_kind(receiver, self.classes["UIColor"]):
-                return self.finish(cpu, int(self.object_equal(receiver, args[2])))
+            if name == "indexPathForItemAtPoint:" and cls == "FQFeedListCollectionView":
+                bounds = state["bounds"]
+                require((cpu.fp(0), cpu.fp(1)) == (bounds[0] + bounds[2] / 2, bounds[1] + bounds[3] / 2),
+                        "The active video is determined at the center of the current viewport")
+                return self.finish(cpu, self.obj("NSIndexPath", "visible drama page", index=state["pageIndex"]))
+            if name == "compare:" and cls == "NSIndexPath":
+                delta = state["index"] - self.objects[args[2]].state["index"]
+                return self.finish(cpu, (delta > 0) - (delta < 0))
+            if name in ("setFromValue:", "setToValue:") and cls == "CABasicAnimation":
+                state[name] = args[2]
+                return self.finish(cpu)
+            if name == "setDuration:" and cls == "CABasicAnimation":
+                state["duration"] = cpu.fp(0)
+                return self.finish(cpu)
+            if name == "addAnimation:forKey:" and cls == "CALayer":
+                state.setdefault("animations", []).append((args[2], args[3]))
+                return self.finish(cpu)
+            if name == "isEqual:":
+                if self.is_kind(receiver, self.classes["UIColor"]):
+                    aqua = self.semantic_rgba(receiver)
+                    if aqua is not None and self.is_kind(args[2], self.classes["UIColor"]):
+                        return self.finish(cpu, int(aqua == self.semantic_rgba(args[2])))
+                else:
+                    return self.finish(cpu, int(self.object_equal(receiver, args[2])))
+            if name == "selectedSegmentTintColor" and cls == "UISegmentedControl":
+                return self.finish(cpu, state.get(name, 0))
             if name == "titleTextAttributesForState:" and cls == "UISegmentedControl":
                 attributes=state.get("titleTextAttributes", {}).get(args[2])
                 return self.finish(cpu, self.dict_pointer(attributes) if attributes is not None else 0)
@@ -237,7 +302,7 @@ class Runtime(AppearanceRuntime):
             if name == "stringByAppendingString:" and cls == "NSString":
                 return self.finish(cpu, self.text_object(state["value"] + self.string_value(args[2])))
             if name in ("typeArray", "selectedIndex", "viewIfLoaded", "viewControllers", "view", "screen",
-                        "customTabBar", "presentedViewController", "panGestureRecognizer"):
+                        "customTabBar", "presentedViewController", "panGestureRecognizer", "collectionView"):
                 return self.finish(cpu, state.get(name, 0))
             if name == "intValue":
                 return self.finish(cpu, int(state.get("value", 0)))
@@ -337,6 +402,8 @@ def fixture(data, labels, *, titles=("书城", "短剧", "书架", "我的"), se
     runtime.labels = labels
     runtime.new_labels = labels
     runtime.configure_tabs(titles, selected)
+    if PAGE_HOOK in labels:
+        cpu.run(labels[PAGE_HOOK], max_steps=3000000)
     return cpu, runtime, entries
 
 
@@ -380,13 +447,14 @@ def overlay_image(runtime, button):
 
 def check_input(runtime, cpu, fallback, expected):
     previous_count = len(runtime.route_calls)
+    effect_style = int(PAGE_HOOK in runtime.labels and runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False))
     if fallback:
-        require_fallback(runtime)
+        require_fallback(runtime, effect_style=effect_style)
         # The unchanged original button IMP maps the current array identity.
         cpu.run(0x56c0, runtime.BAR, runtime.sel("fqab_homeTabPressed:"),
                 runtime.buttons[expected], max_steps=3000000)
     else:
-        require_native(runtime)
+        require_native(runtime, effect_style=effect_style)
         runtime.fire(cpu, index=expected)
     require(runtime.route_calls[previous_count:] == [expected],
             "A single user action invokes the original tab route exactly once")
@@ -484,6 +552,24 @@ def icon_lifecycle(data, labels):
             require(route_and_images(button_contents(runtime)) == route_and_images(original),
                     "Pure-icon mode preserves original state artwork and target/action")
             control = runtime.control()
+            if PAGE_HOOK in labels:
+                proxy = runtime.objects[runtime.PROXY].state
+                style = proxy.get("overrideUserInterfaceStyle")
+                shade = (0., 0., 0., 0.625) if style == 2 else (1., 1., 1., 0.5)
+                if control:
+                    tint = runtime.objects[control].state["selectedSegmentTintColor"]
+                else:
+                    lens = runtime.associated(runtime.PROXY, "lens")
+                    tint = runtime.objects[runtime.objects[lens].state["contentView"]].state["backgroundColor"]
+                require(runtime.objects[proxy["effect"]].state["style"] == 1 and
+                        runtime.semantic_rgba(tint) == shade,
+                        "Icon-only mode uses transparent glass and an appearance-specific selection fill")
+                for index, button in enumerate(runtime.buttons):
+                    symbol = runtime.objects[overlays(runtime, button)[0]].state
+                    color = runtime.color("labelColor" if index == 0 else "secondaryLabelColor")
+                    require(symbol["tintColor"] == color and runtime.objects[
+                        runtime.objects[symbol["image"]].state["configuration"]].state["weight"] == 4,
+                            "Icon-only mode emphasizes the active regular-weight glyph")
             if control:
                 require([runtime.string_value(value) for value in runtime.objects[control].state["segments"]] == list(titles),
                         "Native transparent titles retain exact VoiceOver tab names")
@@ -623,6 +709,107 @@ def scroll_lifecycle(data, labels):
     return cases
 
 
+def compact_button(runtime):
+    return next((child for child in runtime.objects[runtime.BAR].state["subviews"]
+                 if runtime.class_names[runtime.objects[child].cls] == "FanqieXCompactBottomButton178R7"), 0)
+
+
+def page_drag(cpu, runtime, feed, initial, final, *, decelerates=False, complete=True):
+    state = runtime.objects[feed].state
+    owner = state["listOwner"]
+    state["pageIndex"] = initial
+    begin, end, settled = (runtime.sel(row[0]) for row in DRAG_METHODS)
+    cpu.run(0xa5d4, args=(owner, begin, feed), max_steps=3000000)
+    state["pageIndex"] = final
+    cpu.run(0xa5d4, args=(owner, end, feed, int(decelerates)), max_steps=3000000)
+    if decelerates and complete:
+        cpu.run(0xa5d4, args=(owner, settled, feed), max_steps=3000000)
+
+
+def tap_expand(cpu, runtime):
+    button = compact_button(runtime)
+    require(button, "The compact dock has an explicit accessible button")
+    targets = runtime.targets(button)
+    require(len(targets) == 1 and targets[0][2] == 64,
+            "Only a completed touch on the compact button expands it")
+    target, selector, _ = targets[0]
+    cpu.run(0xa5d4, args=(target, selector, button), max_steps=3000000)
+
+
+def settled_scroll_lifecycle(data, labels):
+    cases = []
+    for fallback in (False, True):
+        cpu, runtime, entries = fixture(data, labels, selected=1, fallback=fallback)
+        feed, pan, _ = runtime.add_feed()
+        state = runtime.objects[feed].state
+        before = host_geometry(runtime, (feed,))
+        initial_targets = copy.deepcopy(runtime.objects[pan].state)
+        stock = runtime.objects[runtime.PROXY].state["frame"]
+        repair(cpu, runtime, entries)
+        page_drag(cpu, runtime, feed, 1, 2)
+        repair(cpu, runtime, entries)
+        require(not compact_button(runtime), "Forward playback does not compact with the setting off")
+        runtime.defaults(**{COMPACT: True})
+        page_drag(cpu, runtime, feed, 2, 2)
+        page_drag(cpu, runtime, feed, 2, 1)
+        repair(cpu, runtime, entries)
+        require(not compact_button(runtime), "A cancelled switch or previous page is not a forward transition")
+        page_drag(cpu, runtime, feed, 1, 2, decelerates=True, complete=False)
+        repair(cpu, runtime, entries)
+        require(not compact_button(runtime), "The bar waits for actual native paging to settle")
+        cpu.run(0xa5d4, args=(state["listOwner"], runtime.sel(DRAG_METHODS[2][0]), feed), max_steps=3000000)
+        repair(cpu, runtime, entries)
+        button = compact_button(runtime)
+        require(button and runtime.objects[runtime.PROXY_CONTENT].state["hidden"] and
+                runtime.objects[button].state["frame"] == (stock[0] + stock[2] - 60, stock[1], 60., 60.),
+                "The active forward page leaves one accessible circular button at the right edge")
+        require(runtime.objects[runtime.objects[button].state["images"][0]].state["symbol"] == "play.rectangle.fill" and
+                runtime.string_value(runtime.objects[button].state["accessibilityLabel"]) == "展开底栏",
+                "The compact button identifies the current short-drama tab and its action")
+        require(runtime.objects[runtime.BAR].state["subviews"][-1] == button,
+                "The collapsed control owns input above either renderer")
+        layer = runtime.objects[runtime.layer(runtime.PROXY)].state
+        animation_keys = [runtime.string_value(key) for _, key in layer.get("animations", [])]
+        require(animation_keys == ["bounds", "position"] and
+                all(runtime.objects[animation].state["duration"] == 0.22
+                    for animation, _ in layer["animations"]),
+                "Compaction animates the actual glass bounds and position")
+        compact_animations = runtime.objects[runtime.layer(button)].state.get("animations", [])
+        require([runtime.string_value(key) for _, key in compact_animations] == ["position"],
+                "The visible compact icon moves with the glass")
+        if fallback:
+            require(runtime.objects[runtime.objects[runtime.buttons[0]].state["superview"]].state["hidden"],
+                    "The fallback overlay does not leave hidden tab targets active")
+        else:
+            require(runtime.control(), "The native selector stays mounted while the dock is compact")
+        page_drag(cpu, runtime, feed, 2, 1)
+        repair(cpu, runtime, entries)
+        require(compact_button(runtime) == button and len(layer["animations"]) == 2,
+                "Reverse paging preserves the compact button without restarting the transition")
+        selected = runtime.objects[runtime.BAR].state["selectedItem"]
+        tap_expand(cpu, runtime)
+        repair(cpu, runtime, entries)
+        require(not compact_button(runtime) and
+                runtime.objects[runtime.PROXY].state["frame"] == stock and
+                runtime.objects[runtime.BAR].state["selectedItem"] == selected,
+                "Tapping restores the full dock at the same selected tab")
+        require(len(layer["animations"]) == 4, "Tapping also animates the restored full dock")
+        page_drag(cpu, runtime, feed, 1, 2)
+        repair(cpu, runtime, entries)
+        require(compact_button(runtime) == button, "The next forward page can compact again")
+        runtime.defaults(**{COMPACT: False})
+        repair(cpu, runtime, entries)
+        require(not compact_button(runtime) and not runtime.objects[runtime.PROXY_CONTENT].state["hidden"],
+                "Turning the setting off restores the normal renderer")
+        require(runtime.objects[pan].state == initial_targets and host_geometry(runtime, (feed,)) == before,
+                "Original feed touch routing and geometry remain intact")
+        require(any(event["event"] == "host_feed_callback" for event in runtime.events),
+                "The host paging callbacks still execute")
+        cases.append({"renderer": "fallback" if fallback else "native",
+                      "forward_only": True, "tap_expands": True, "host_paging_preserved": True})
+    return cases
+
+
 def scroll_rejections(data, labels):
     cases = []
     for reason in ("wrong_tab", "offscreen", "horizontal_transition", "modal", "hidden", "different_window"):
@@ -645,6 +832,12 @@ def scroll_rejections(data, labels):
             runtime.reparent(feed, second_window)
         before = host_geometry(runtime, (feed,))
         repair(cpu, runtime, entries)
+        if PAGE_HOOK in labels:
+            stock = runtime.objects[runtime.PROXY].state["frame"]
+            page_drag(cpu, runtime, feed, 1, 2)
+            repair(cpu, runtime, entries)
+            require(runtime.objects[runtime.PROXY].state["frame"] == stock and
+                    not compact_button(runtime), "Unsafe feed callback rejected: " + reason)
         require(not runtime.objects[pan].state["extra_targets"], "Unsafe scroll rejected: " + reason)
         require(host_geometry(runtime, (feed,)) == before, "Rejected scroll leaves host geometry intact")
         cases.append(reason)
@@ -704,6 +897,12 @@ def setting_callbacks(data, labels):
     call(cpu, labels, "FQHBottomOptionChanged178", controller, callback_sel, bad)
     require(values[LENGTH] == 80, "A nonfinite slider value cannot corrupt stored preferences")
     preserved = {"FanqieX.ReaderThemePreset.1": "custom-reading-color", "SomeHostPreference": 17}
+    if PAGE_HOOK in labels:
+        for tag, key in enumerate(DRAMA_DISPLAY, start=21):
+            runtime.objects[switch].state.update(tag=tag, isOn=False)
+            call(cpu, labels, "FQHBottomOptionChanged178", controller, callback_sel, switch)
+            require(values.get(key) is False, "Each drama visibility switch persists independently")
+            preserved[key] = False
     values.update(preserved)
     call(cpu, labels, "FQHBottomOptionsReset178", controller, runtime.sel("fqx178_resetBottom:"), 0)
     require(not any(key in values for key in (ICONS, COMPACT, LENGTH, HEIGHT, BUTTON_WIDTH, ICON_SIZE)),
@@ -741,13 +940,16 @@ def layout_direction_and_disable(data, labels):
                         "书架": "books.vertical", "我的": "person"}[title]
             require(image["symbol"].removesuffix(".fill") == expected,
                     "Reversed layout does not alter logical icon identity")
-        send_pan(cpu, runtime, pan, 1)
-        send_pan(cpu, runtime, pan, 2, (0., -60.))
+        if PAGE_HOOK in labels:
+            page_drag(cpu, runtime, feed, 1, 2)
+        else:
+            send_pan(cpu, runtime, pan, 1)
+            send_pan(cpu, runtime, pan, 2, (0., -60.))
         repair(cpu, runtime, entries)
         runtime.objects[runtime.owner].state["selectedIndex"] = 0
         repair(cpu, runtime, entries)
-        require(not runtime.objects[pan].state["extra_targets"],
-                "Leaving the drama tab removes its scroll observer")
+        require(not runtime.objects[pan].state["extra_targets"] and not compact_button(runtime),
+                "Leaving the drama tab restores its navigation")
         before_disable = host_geometry(runtime, (feed,))
         runtime.defaults(**{"FanqieAdBlock.GlassDisabled.1": 1})
         # Exercise both exported lifecycle boundaries even if the host invokes
@@ -776,13 +978,13 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), ENTRY_LABELS)
+    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), bottom_labels(data))
     report = {
         "passed": True, "sha256": hashlib.sha256(data).hexdigest(),
         "geometry": default_and_geometry(data, labels),
         "icons": icon_lifecycle(data, labels),
         "unknown_tabs": unknown_and_failure(data, labels),
-        "scroll": scroll_lifecycle(data, labels),
+        "scroll": settled_scroll_lifecycle(data, labels) if PAGE_HOOK in labels else scroll_lifecycle(data, labels),
         "scroll_rejections": scroll_rejections(data, labels),
         "preferences_and_reset": bounded_preferences_and_reset(data, labels),
         "settings_callbacks": setting_callbacks(data, labels),

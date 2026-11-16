@@ -133,7 +133,7 @@ def audit(source, candidate, payload=None):
     require([s["raw"] for s in ns[:2]] == [s["raw"] for s in os[:2]], "original segment descriptors")
     patch = ns[2]
     delta = patch["fs"]
-    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000, 0x38000, 0x3c000, 0x40000), "patch size")
+    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000, 0x38000, 0x3c000, 0x40000, 0x44000), "patch size")
     require((patch["vm"], patch["off"], patch["vs"], patch["max"], patch["prot"], patch["ns"], patch["flags"]) ==
             (0x14000, 0x14000, delta, 5, 5, 0, 0), "patch permissions/map")
     for i, seg in enumerate(ns):
@@ -238,6 +238,9 @@ def selftest(source):
     sixteen_page_payload = bytes.fromhex("1f2003d5") * (0x3c000 // 4) + bytes.fromhex("c0035fd6")
     sixteen_page = extend(source, sixteen_page_payload, capacity=0x40000)
     reports.append(audit(source, sixteen_page, sixteen_page_payload))
+    seventeen_page_payload = bytes.fromhex("1f2003d5") * (0x40000 // 4) + bytes.fromhex("c0035fd6")
+    seventeen_page = extend(source, seventeen_page_payload, capacity=0x44000)
+    reports.append(audit(source, seventeen_page, seventeen_page_payload))
     candidate = extend(source, payload, capacity=0x4000)
     _, items, segs = parse(candidate)
     sig, _ = blob_range(items, 0x1D)
@@ -252,7 +255,7 @@ def selftest(source):
         "original_indirect_symbol_offset_not_moved": (single(items, 0xB)[1] + 8 + 12 * 4,
                                                       struct.pack("<I", 0x14F58)),
         "signature_code_slots_too_small": (sig + 24 + 28, struct.pack(">I", 22)),
-        "unreviewed_seventeen_page_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x44000)),
+        "unreviewed_eighteen_page_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x48000)),
         "unaligned_extension_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x40004)),
     }
     rejected = []
@@ -296,7 +299,8 @@ def selftest(source):
         ("fourteen_page_overflow", source, bytes(0x38004), 0x38000),
         ("fifteen_page_overflow", source, bytes(0x3c004), 0x3c000),
         ("sixteen_page_overflow", source, bytes(0x40004), 0x40000),
-        ("seventeen_page_capacity", source, payload, 0x44000),
+        ("seventeen_page_overflow", source, bytes(0x44004), 0x44000),
+        ("eighteen_page_capacity", source, payload, 0x48000),
         ("unaligned_sixteen_page_capacity", source, payload, 0x40004),
     ]
     occupied = bytearray(source)

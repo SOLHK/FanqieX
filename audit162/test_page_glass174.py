@@ -832,6 +832,9 @@ def static_checks():
 def exercise(data, labels):
     runtime = Runtime(data)
     runtime.labels = labels
+    compact_reader = release_version(data) == "1.78R7"
+    tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
+    tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
     cpu = CPU(data, runtime, 0,
               ranges=[(0x800, 0x4000), (0x4878, 0x48d0), (0x6274, 0x62ac),
@@ -887,14 +890,14 @@ def exercise(data, labels):
             "only the four requested tools get glass")
     for item, caption, surface in zip(styled_items, [*captions[:3], divert_caption], surfaces):
         width = 40.0 if item == divert else 24.0
-        material_width = 76.0 if item == divert else 64.0
+        material_width = 76.0 if item == divert else tool_width
         left = (width - material_width) * 0.5
-        require(runtime.objects[surface].state["frame"] == (left, -4.0, material_width, 48.0) and
+        require(runtime.objects[surface].state["frame"] == (left, tool_y, material_width, tool_height) and
                 runtime.objects[item].state["frame"][2:] == (width, 40.0),
-                "the adaptations caption gets extra width in the shared 48-point toolbar row")
+                "the adaptations caption gets extra width in the shared toolbar row")
         require(runtime.objects[surface].state["userInteractionEnabled"] == 0,
                 "decorative material cannot steal touches")
-        require(runtime.objects[item].state["hitInsets"] == (-4.0, left, -4.0, left),
+        require(runtime.objects[item].state["hitInsets"] == (tool_y, left, tool_y, left),
                 "the item can receive touches across its padded material")
         require(runtime.objects[item].state["subviews"][:2] == [surface, caption],
                 "material is behind the original content")
@@ -907,25 +910,27 @@ def exercise(data, labels):
     caption_state = runtime.objects[divert_caption].state
     material_state = runtime.objects[surfaces[-1]].state
     require(call(cpu, labels, "LFQH_FQHSurface", divert)["result"] == surfaces[-1] and
-            caption_state["frame"] == (0, 27, 40, 12) and material_state["frame"] == (-18, -4, 76, 48),
+            caption_state["frame"] == (0, 27, 40, 12) and material_state["frame"] == (-18, tool_y, 76, tool_height),
             "both native captions retain their frame and reuse the same padded glass")
     # A neighboring pill and the toolbar edge each cap the optional expansion.
     settings = runtime.objects[items[2]].state
     settings["frame"] = (288, 2, 24, 40)
     send(cpu, runtime, divert, "layoutSubviews")
-    require(material_state["frame"] == (-13, -4, 66, 48) and
-            divert_state["hitInsets"] == (-4, -13, -4, -13),
+    fitted_width = 70. if compact_reader else 66.
+    fitted_left = (40.-fitted_width)*0.5
+    require(material_state["frame"] == (fitted_left, tool_y, fitted_width, tool_height) and
+            divert_state["hitInsets"] == (tool_y, fitted_left, tool_y, fitted_left),
             "close neighbors leave eight points before the enlarged hit area")
     settings["frame"] = (259, 2, 24, 40)
     runtime.objects[toolbar].state["bounds"] = (0, 0, 413, 56)
     send(cpu, runtime, divert, "layoutSubviews")
-    require(material_state["frame"] == (-12, -4, 64, 48),
-            "narrow layout retains the standard capsule and its stock row alignment")
+    require(material_state["frame"] == (-12, tool_y, 64, tool_height),
+            "narrow layout caps the capsule at the available edge and keeps the stock row alignment")
     runtime.objects[toolbar].state["bounds"] = (0, 0, 440, 56)
     send(cpu, runtime, divert, "layoutSubviews")
     transactions = sum(event["event"] == "transaction_begin" for event in runtime.events)
     send(cpu, runtime, divert, "layoutSubviews")
-    require(material_state["frame"] == (-18, -4, 76, 48) and
+    require(material_state["frame"] == (-18, tool_y, 76, tool_height) and
             sum(event["event"] == "transaction_begin" for event in runtime.events) == transactions,
             "expanded capsule returns after rotation and settled relayout makes no glass writes")
     runtime.reparent(divert, runtime.ROOT)
@@ -939,8 +944,8 @@ def exercise(data, labels):
         send(cpu, runtime, toolbar, "layoutSubviews")
     require(call(cpu, labels, "LFQH_FQHSurface", items[0])["result"] == surfaces[0],
             "settled layouts reuse one material")
-    require(runtime.objects[toolbar].state["hitInsets"] == (-2.0, 0.0, 0.0, 0.0),
-            "the toolbar admits the catalog glass above its stock top edge")
+    require(runtime.objects[toolbar].state.get("hitInsets", (0., 0., 0., 0.)) == (2.+tool_y, 0.0, 0.0, 0.0),
+            "the toolbar admits the entire catalog glass")
     catalog_state = runtime.objects[items[0]].state
     catalog_gestures = catalog_state["catalog_gestures"]
     require(len(catalog_gestures) == 1 and all("catalog_gestures" not in runtime.objects[item].state
@@ -955,7 +960,7 @@ def exercise(data, labels):
         runtime.objects[touch].state.update(view=target, touch_point=point)
         return send(cpu, runtime, tap_state["delegate"], accept, tap, touch)["result"]
     require(accepts(items[0], (-14.0, 20.0)) and accepts(items[0], (36.0, 20.0)) and
-            accepts(items[0], (12.0, -3.0)),
+            accepts(items[0], (12.0, tool_y+1.0)),
             "the visible left, right and top of the catalog capsule accept otherwise unhandled taps")
     require(not accepts(nested_button, (12.0, 12.0)) and not accepts(captions[0], (12.0, 33.0)) and
             not accepts(items[0], (-19.0, -3.0)),
@@ -1210,10 +1215,12 @@ def exercise(data, labels):
     fan_state["contentView"] = bookmark
     send(cpu, runtime, fan_wrapper, "layoutSubviews")
     shelf_glass = call(cpu, labels, "LFQH_FQHIconGlass", bookmark)["result"]
+    shelf_height = 34 if compact_reader else 36
+    shelf_top = (22-shelf_height)*0.5
     require(shelf_glass and fan_state["subviews"] == [shelf_glass, bookmark] and
-            runtime.objects[shelf_glass].state["frame"] == (-18, -7, 88, 36) and
+            runtime.objects[shelf_glass].state["frame"] == (-18, shelf_top, 88, shelf_height) and
             bookmark_state["frame"] == (-6, 0, 64, 22) and
-            fan_state["hitInsets"] == (-7, -18, -7, -6) and not fan_state["clipsToBounds"],
+            fan_state["hitInsets"] == (shelf_top, -18, shelf_top, -6) and not fan_state["clipsToBounds"],
             "the combined insert exposes the centered shelf label and its left-widened capsule")
     bookmark_state["text"] = runtime.text_object("加入书架")
     bookmark_state["frame"] = (0, 0, 64, 22)
@@ -1275,7 +1282,7 @@ def exercise(data, labels):
     for button, caption, x, target in chapter_controls:
         glass = call(cpu, labels, "LFQH_FQHIconGlass", button)["result"]
         button_state = runtime.objects[button].state
-        require(glass and runtime.objects[glass].state["frame"] == (-6, -6, 54, 30) and
+        require(glass and runtime.objects[glass].state["frame"] == ((-4, -6, 50, 30) if compact_reader else (-6, -6, 54, 30)) and
                 button_state["subviews"][:2] == [glass, caption] and button_state["frame"] == (x, 15, 42, 18) and
                 target in button_state["control_targets"],
                 "chapter buttons get equal padded glass below their native captions and keep their original targets")
@@ -1428,12 +1435,19 @@ def exercise(data, labels):
     targets = [(listen, runtime.sel("onSpeechBtnClick"), 64)]
     speech = runtime.view("UIButton", "speechBtn", (0, 0, 56, 56), listen, tintColor=host_tint,
                           images={0: default_image, 1: highlighted_image}, control_targets=targets[:])
+    speech_image = runtime.view("UIImageView", "speech glyph", (0, 0, 56, 56), speech)
+    runtime.objects[speech].state["imageView"] = speech_image
     runtime.objects[listen].state["speechBtn"] = speech
     send(cpu, runtime, listen, "layoutSubviews")
     speech_state = runtime.objects[speech].state
     speech_glass = call(cpu, labels, "LFQH_FQHSurface", speech)["result"]
     require(speech_glass and speech_state["images"][0] == runtime.speech_template,
             "the actual reader speech button replaces the opaque disc with native glass and transparent artwork")
+    if compact_reader:
+        require(runtime.objects[speech_glass].state["frame"] == (4, 4, 48, 48) and
+                runtime.objects[speech_image].state["frame"] == (5, 5, 46, 46) and
+                speech_state["frame"] == (0, 0, 56, 56),
+                "the smaller speech disc and artwork remain centered in the complete host hit area")
     require(speech_state["control_targets"] == targets and speech_state["images"][1] == highlighted_image,
             "original tap and other button states stay intact")
     send(cpu, runtime, listen, "readerInsertedViewBackgroundConfigChange:", theme_image)
@@ -1443,7 +1457,8 @@ def exercise(data, labels):
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
     send(cpu, runtime, listen, "layoutSubviews")
     require(not call(cpu, labels, "LFQH_FQHSurface", speech)["result"] and
-            speech_state["images"][0] == theme_image and speech_state["tintColor"] == host_tint,
+            speech_state["images"][0] == theme_image and speech_state["tintColor"] == host_tint and
+            runtime.objects[speech_image].state["frame"] == (0, 0, 56, 56),
             "disabling glass restores the latest host image and original tint")
     speech_state["tintColor"] = runtime.colors["labelColor"]
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 0
@@ -1763,7 +1778,11 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7") else (23, 3, 24, 24)
+            if compact_reader:
+                material_frame = (3, 0, material_frame[2]-6, material_frame[3])
+                if not compact and index != 4:
+                    adjusted_glyph = (26, 5, 18, 18)
             x, _, label_width, label_height = caption_frame
             adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
@@ -1789,7 +1808,7 @@ def exercise(data, labels):
                     runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
                     cell_state["userInteractionEnabled"] and cell_state["frame"] == cell_frame,
-                    "one full-size capsule leaves 10pt below the full native caption without changing its hit area")
+                    "one capsule leaves 10pt below the full native caption while the original hit area stays intact")
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
@@ -1949,10 +1968,10 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6") else 512.0
+    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7") else 512.0
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
-    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6"):
+    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7"):
         entries = [item for item in runtime.objects[header].state["subviews"]
                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
@@ -2730,7 +2749,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"

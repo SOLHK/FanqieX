@@ -27,6 +27,7 @@ class Runtime(PageRuntime):
         super().__init__(data)
         self._class("ObservedReaderShareInsert", "NSObject")
         self._class("ObservedReaderShareView", "UIView")
+        self._class("NSAttributedString", "NSObject")
         self.original_target = self.obj("NSObject", "original reader action target")
 
     def responds(self, receiver, name):
@@ -52,6 +53,13 @@ class Runtime(PageRuntime):
                 state = self.objects[receiver].state
                 if name in ("accessibilityLabel", "accessibilityIdentifier", "attributedText"):
                     return self.finish(cpu, state.get(name, 0))
+                if self.is_kind(receiver, self.classes["NSAttributedString"]):
+                    if name == "length":
+                        return self.finish(cpu, state["length"])
+                    if name == "attributesAtIndex:effectiveRange:":
+                        cpu.write(cpu.x[3], 8, 0)
+                        cpu.write(cpu.x[3]+8, 8, state["firstRunLength"])
+                        return self.finish(cpu, state["attributes"])
                 if self.is_kind(receiver, self.classes["NSString"]):
                     value = self.string_value(receiver)
                     if name == "lowercaseString":
@@ -94,7 +102,10 @@ def icon(runtime, *args, **kwargs):
 
 def main_checks(data, labels):
     cases = []
-    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6"), "These changed visual contracts apply only to 1.78")
+    compact_reader = release_version(data) == "1.78R7"
+    nav_glass_frame = (-5., -5., 34., 34.) if compact_reader else (-6., -6., 36., 36.)
+    glyph_frame = (3., 3., 18., 18.) if compact_reader else (2., 2., 20., 20.)
+    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7"), "These changed visual contracts apply only to 1.78")
     for route in ("insert_accessibility", "direct_action", "nested_identifier", "runtime_insert_class", "runtime_view_class"):
         cpu, runtime = build_fixture(data, labels)
         nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 62, 402, 44), runtime.ROOT)
@@ -124,13 +135,13 @@ def main_checks(data, labels):
         runtime.objects[nav].state.update(backBtn=back, insertObjs=runtime.obj("NSArray", "native inserts", items=items))
         original_frame, original_image = share_state["frame"], share_state["images"]
         glyph = share_state["imageView"]
-        glyph_frame = runtime.objects[glyph].state["frame"]
+        stock_glyph_frame = runtime.objects[glyph].state["frame"]
         call(cpu, labels, "LFQH_FQHReader", nav)
         glass = call(cpu, labels, "LFQH_FQHIconGlass", share)["result"]
-        require(glass and runtime.objects[glass].state["frame"] == (-6., -6., 36., 36.),
-                "Only the existing share control receives a 36pt native glass background")
-        require(runtime.objects[glyph].state["frame"] == (2., 2., 20., 20.),
-                "Share artwork fits a 20pt optical box: "+route+" "+repr(runtime.objects[glyph].state["frame"]))
+        require(glass and runtime.objects[glass].state["frame"] == nav_glass_frame,
+                "Only the existing share control receives native glass")
+        require(runtime.objects[glyph].state["frame"] == glyph_frame,
+                "Share artwork fits its optical box: "+route+" "+repr(runtime.objects[glyph].state["frame"]))
         require(share_state["frame"] == original_frame and share_state["images"] == original_image,
                 "Share host frame, image states and native control identity remain intact")
         require(all(target in share_state["control_targets"] for target in original_targets), "Original share targets survive")
@@ -149,12 +160,12 @@ def main_checks(data, labels):
         for _ in range(6):
             call(cpu, labels, "LFQH_FQHReader", nav)
         require(call(cpu, labels, "LFQH_FQHIconGlass", share)["result"] == glass, "Repeated layout reuses one share glass")
-        require(runtime.objects[glyph].state["frame"] == (2., 2., 20., 20.), "Repeated layout never shrinks the glyph again")
+        require(runtime.objects[glyph].state["frame"] == glyph_frame, "Repeated layout never shrinks the glyph again")
         require(len([event for event, _ in runtime.records if event == "readerShareResolution178"]) <= count+1,
                 "Share diagnostics settle without per-frame logging")
         runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
         call(cpu, labels, "LFQH_FQHReader", nav)
-        require(not call(cpu, labels, "LFQH_FQHIconGlass", share)["result"] and runtime.objects[glyph].state["frame"] == glyph_frame,
+        require(not call(cpu, labels, "LFQH_FQHIconGlass", share)["result"] and runtime.objects[glyph].state["frame"] == stock_glyph_frame,
                 "Disabling glass removes the material and restores the original share glyph")
         require(share_state["control_targets"] == original_targets, "Disabling glass removes only plugin highlight observers")
         if holder != nav:
@@ -212,16 +223,34 @@ def main_checks(data, labels):
         glyph = runtime.view("UIImageView", "original catalog icon", (0, 0, 24, 24), item)
         caption = runtime.label("catalog caption", item, (0, 26, 24, 14), "目录")
         original_font = font(runtime, caption, 14, "medium")
+        if compact_reader:
+            plain = runtime.obj("NSAttributedString", "UIKit plain text representation", length=2, firstRunLength=2,
+                                attributes=runtime.obj("NSDictionary", "no explicit styles", items={}))
+            runtime.objects[caption].state["attributedText"] = plain
         pigment = runtime.color("reader dark pigment" if dark else "reader light pigment")
         runtime.objects[caption].state["textColor"] = pigment
         call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
         surface = call(cpu, labels, "LFQH_FQHSurface", item)["result"]
-        require(surface and runtime.objects[glyph].state["frame"] == (2., 2., 20., 20.), "Reader toolbar keeps compact 20pt artwork")
+        require(surface and runtime.objects[glyph].state["frame"] == glyph_frame, "Reader toolbar keeps compact artwork")
+        if compact_reader:
+            require(runtime.objects[surface].state["frame"] == (-18., -2., 60., 44.), "Reader tool uses smaller glass")
         fitted = runtime.objects[runtime.objects[caption].state["font"]].state
         require(fitted["pointSize"] == 11 and fitted["weight"] == "medium", "Toolbar captions retain font weight at 11pt")
         require(runtime.string_value(runtime.objects[caption].state["text"]) == "目录" and
                 runtime.objects[caption].state["textColor"] == pigment, "Native text and theme pigment are preserved")
         require(hit_contains(runtime, item, (-10., -2., 44., 44.)), "Visual refinement retains the larger native touch area")
+        if compact_reader:
+            runtime.objects[plain].state["firstRunLength"] = 1
+            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+            require(runtime.objects[caption].state["font"] == original_font,
+                    "A later styled caption run preserves the host font")
+            runtime.objects[plain].state.update(firstRunLength=2,
+                attributes=runtime.obj("NSDictionary", "explicit caption styles", items={"NSFont": original_font}))
+            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+            require(runtime.objects[caption].state["font"] == original_font and runtime.objects[caption].state["attributedText"] == plain,
+                    "An explicitly styled caption remains intact")
+            runtime.objects[caption].state["attributedText"] = 0
+            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
         runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
         call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
         require(runtime.objects[caption].state["font"] == original_font and
@@ -239,12 +268,18 @@ def main_checks(data, labels):
     caption = runtime.label("history caption", content, (0, 35, 70, 18), "浏览历史")
     original_font = font(runtime, caption, 16, "regular")
     runtime.objects[cell].state.update(contentView=content, image=glyph, label=caption)
+    runtime.objects[runtime.DEFAULTS].state["values"]["FanqieX.ProfileIconsOnly.1"] = True
     call(cpu, labels, "LFQH_ProfileEntryGlass", cell, 0)
-    require(call(cpu, labels, "LFQH_FQHSurface", content)["result"], "Known profile shortcut receives glass")
-    require(runtime.objects[glyph].state["frame"][2:] == (20., 20.), "Profile large-row artwork is capped at 20pt")
+    surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
+    require(surface, "Known profile shortcut receives glass")
+    glyph_size = 18. if compact_reader else 20.
+    if compact_reader:
+        require(runtime.objects[surface].state["frame"] == (3., 0., 64., 58.), "Profile glass leaves room between shortcuts")
+    require(runtime.objects[glyph].state["frame"][2:] == (glyph_size, glyph_size), "Profile large-row artwork is capped")
     require(runtime.string_value(runtime.objects[caption].state["text"]) == "浏览历史" and
-            not runtime.objects[caption].state.get("hidden", False), "Profile caption remains present and visible")
-    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == 13., "Profile text has a 13pt cap")
+            not runtime.objects[caption].state.get("hidden", False), "A saved 1.77r3 icon-only setting leaves the native caption visible")
+    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == (12. if compact_reader else 13.),
+            "Profile text uses its compact font cap")
     require(runtime.objects[cell].state["frame"] == (78, 0, 70, 60) and runtime.objects[cell].state["userInteractionEnabled"],
             "Native cell remains the unchanged touch target")
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
@@ -259,7 +294,7 @@ def main_checks(data, labels):
     call(cpu, labels, "LFQH_ProfileEntryGlass", cell, 0)
     require(runtime.objects[caption].state["font"] == newer_font and
             not call(cpu, labels, "LFQH_FQHSurface", content)["result"], "Recycled non-shortcut cells keep newer host fonts and remove glass")
-    cases.append("profile caption, 20pt artwork, 13pt text, touch identity, disable and reuse")
+    cases.append("profile caption with an old icon preference, compact artwork and text, touch identity, disable and reuse")
     return {"passed": True, "device_tested": False, "cases": cases,
             "limits": ["Actual candidate ARM64 code with explicit UIKit/Foundation boundaries.",
                        "No device share sheet, GPU rendering or optical screenshot comparison was performed."]}

@@ -14,7 +14,7 @@ from pathlib import Path
 from arm64 import require
 from test_feed_viewport import labels_for
 from test_bottom_appearance178 import (
-    ENTRY_LABELS, ICONS, Runtime, button_contents, call, check_input, fixture,
+    ICONS, Runtime, bottom_labels, button_contents, call, check_input, fixture,
     overlay_image, overlays, repair,
 )
 
@@ -168,7 +168,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), ENTRY_LABELS)
+    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), bottom_labels(data))
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "late_layout": late_layout_and_restore(data, labels),
               "host_updates": host_updates_and_native_fallback(data, labels),

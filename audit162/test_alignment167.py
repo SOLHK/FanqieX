@@ -51,7 +51,8 @@ class Runtime(PreviousRuntime):
                     state[name[3].lower()+name[4:-1]]=bool(cpu.x[2]);return self.finish(cpu)
                 if name in ('insertSubview:atIndex:','insertSubview:belowSubview:') and self.class_names[self.objects[cpu.x[2]].cls]=='FQXGlassBackground167':
                     child=cpu.x[2];cs=self.objects[child].state
-                    require(cs['frame'][2:] in ((36.,36.),(28.,28.),(76.,32.),(54.,30.),(88.,36.)),'Final native background bounds before insertion')
+                    require(cs['frame'][2:] in ((36.,36.),(34.,34.),(28.,28.),(76.,32.),(54.,30.),(50.,30.),(88.,36.),(88.,34.)),
+                            'Final native background bounds before insertion')
                     conf=self.objects[cs['configuration']].state
                     require(conf['style']=='glass' and not conf.get('image') and not conf.get('title'),'Glass configuration contains no copied host image/title')
                     require(self.transaction_stack[-1]['disableActions'],'Background publication is nonanimated')
@@ -98,15 +99,18 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
-    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6')
+    compact_reader=release_version(data)=='1.78R7'
+    nav_diameter=34. if compact_reader else 36.
+    nav_padding=(nav_diameter-24.)*0.5
+    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7')
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
@@ -126,10 +130,11 @@ def exercise(data,labels,baseline):
         require(r.reentered==1,'Configuration publication reenters the guarded reader callback')
         for b in controls:
             glass=material(c,r,labels,b);st=r.objects[glass].state
-            require(st['frame']==((0.,-6.,36.,36.) if b==back else (-6.,-6.,36.,36.)),'Every background centered on original 24pt artwork, including custom download')
+            require(st['frame']==((6.-nav_padding if b==back else -nav_padding),-nav_padding,nav_diameter,nav_diameter),
+                    'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
-        expected_back=(14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.)
+        expected_back=(15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
         require(r.objects[r.objects[back].state['imageView']].state['frame']==expected_back,
                 '1.78 refines the back artwork to 20pt; older versions retain their 24pt optical contract')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
@@ -144,8 +149,9 @@ def exercise(data,labels,baseline):
             for b in controls:
                 glyph=r.objects[b].state['imageView']
                 if glyph in refined_glyphs:
-                    require(r.objects[glyph].state['frame']==(expected_back if b==back else (2.,2.,20.,20.)),
-                            'Only the reviewed reader glyph rectangles change to the exact 20pt contract')
+                    expected_glyph=(3.,3.,18.,18.) if compact_reader else (2.,2.,20.,20.)
+                    require(r.objects[glyph].state['frame']==(expected_back if b==back else expected_glyph),
+                            'Only the reviewed reader glyph rectangles change to the versioned optical size')
                 require(hit_contains(r,b,((-4.,-10.,44.,44.) if b==back else (-10.,-10.,44.,44.))),
                         'Refined reader controls retain a 44pt minimum hit target')
         original_targets={b:before[b]['control_targets'] for b in controls}
@@ -226,7 +232,7 @@ def exercise(data,labels,baseline):
         send(c,r,nav,'layoutSubviews')
         require(glass not in siblings and not material(c,r,labels,download_label),
                 'Switching back to the icon clears the old sibling glass')
-        require(r.objects[material(c,r,labels,download_icon)].state['frame']==(-6.,-6.,36.,36.),
+        require(r.objects[material(c,r,labels,download_icon)].state['frame']==(-nav_padding,-nav_padding,nav_diameter,nav_diameter),
                 'The native icon variant keeps its round material')
         for control, x in zip(controls[1:],(388,344,268,312)):
             r.objects[control].state['frame']=(x,10,24,24)
@@ -242,11 +248,11 @@ def exercise(data,labels,baseline):
         send(c,r,nav,'layoutSubviews')
         shelf_glass=material(c,r,labels,shelf_label)
         require(shelf_glass and siblings[siblings.index(shelf_label)-1]==shelf_glass and
-                r.objects[shelf_glass].state['frame']==(166.,4.,88.,36.) and
-                shelf_state['frame']==(178.,11.,64.,22.) and hit_contains(r,shelf_label,(-12.,-7.,88.,36.)),
+                r.objects[shelf_glass].state['frame']==(166.,22.-nav_diameter*0.5,88.,nav_diameter) and
+                shelf_state['frame']==(178.,11.,64.,22.) and hit_contains(r,shelf_label,(-12.,11.-nav_diameter*0.5,88.,nav_diameter)),
                 'Native label is centered with 12pt symmetric padding and the adjacent icon height')
-        require(r.objects[download_icon].state['frame'][0]-6-(166+88)==8.,
-                'Widening left preserves the captured 8pt gap to the right download lens')
+        require(r.objects[download_icon].state['frame'][0]-nav_padding-(166+88)>=8.,
+                'Widening left preserves at least 8pt to the right download lens')
         for text_value in ('已加书架','加入书架'):
             shelf_state['text']=r.text_object(text_value)
             send(c,r,nav,'layoutSubviews')
@@ -256,7 +262,7 @@ def exercise(data,labels,baseline):
                     'Both native shelf states keep the same glass, live caption and original gesture')
         r.objects[text].state['frame']=(98,10,70,24)
         send(c,r,nav,'layoutSubviews')
-        require(r.objects[shelf_glass].state['frame']==(176.,4.,78.,36.) and shelf_state['frame']==(183.,11.,64.,22.),
+        require(r.objects[shelf_glass].state['frame']==(176.,22.-nav_diameter*0.5,78.,nav_diameter) and shelf_state['frame']==(183.,11.,64.,22.),
                 'A tighter native title reserves its 8pt gap while keeping the label centered')
         r.objects[text].state['frame']=(60,10,90,24)
         shelf_state['frame']=(184,11,64,22)

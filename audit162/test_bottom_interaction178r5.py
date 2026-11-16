@@ -16,14 +16,15 @@ from pathlib import Path
 
 from arm64 import release_version, require
 from test_bottom_appearance178 import (
-    BUTTON_WIDTH, COMPACT, ENTRY_LABELS, HEIGHT, ICONS, ICON_SIZE, LENGTH,
-    Runtime as AppearanceRuntime, call, check_input, host_geometry, send_pan,
+    BUTTON_WIDTH, COMPACT, HEIGHT, ICONS, ICON_SIZE, LENGTH, PAGE_HOOK,
+    Runtime as AppearanceRuntime, bottom_labels, call, check_input, host_geometry,
+    page_drag, send_pan, tap_expand,
 )
 from test_feed_viewport import labels_for
 from test_native_orchestration162 import make, repair
 
 
-LABELS = [*ENTRY_LABELS, "Lbutton_frame", "LMproxy_frame"]
+FRAME_LABELS = ["Lbutton_frame", "LMproxy_frame"]
 
 
 class Runtime(AppearanceRuntime):
@@ -66,6 +67,8 @@ def fixture(data, labels, *, fallback=False, selected=1, stock=(20., 0., 400., 5
         frame=(0., 0., *stock[2:]), bounds=(0., 0., *stock[2:]))
     for button, frame in zip(runtime.buttons, stock_buttons(stock, len(runtime.buttons))):
         runtime.objects[button].state.update(frame=frame, bounds=(0., 0., *frame[2:]))
+    if PAGE_HOOK in labels:
+        cpu.run(labels[PAGE_HOOK], max_steps=3000000)
     return cpu, runtime, entries
 
 
@@ -105,6 +108,7 @@ def stable_custom_layout(data, labels):
                 # tab under the user's finger. Maintenance must keep it.
                 runtime.objects[control].state.update(tracking=True, selectedSegmentIndex=3)
             before_allocations = sum(event["event"] == "native_alloc" for event in runtime.events)
+            before_tints = sum(event["event"] == "native_selected_tint" for event in runtime.events)
             initial_routes = len(runtime.route_calls)
             start = len(runtime.frame_changes)
             for _ in range(3):
@@ -123,6 +127,9 @@ def stable_custom_layout(data, labels):
                     before_allocations,
                     "Maintenance does not reallocate UIKit's tracking control")
             if control:
+                if PAGE_HOOK in labels:
+                    require(sum(event["event"] == "native_selected_tint" for event in runtime.events) == before_tints,
+                            "Maintenance does not reapply the selected tint during native touch tracking")
                 require(runtime.objects[control].state["selectedSegmentIndex"] == 3 and
                         runtime.objects[control].state["tracking"],
                         "An active drag preview survives stock host layout callbacks")
@@ -224,17 +231,23 @@ def pan_does_not_force_layout(data, labels):
     repair(cpu, runtime, entries)
     expanded = runtime.objects[runtime.PROXY].state["frame"]
     start = len(runtime.synchronous_layouts)
-    send_pan(cpu, runtime, pan, 1)
-    send_pan(cpu, runtime, pan, 2, (0., -48.))
+    if PAGE_HOOK in labels:
+        page_drag(cpu, runtime, feed, 1, 2)
+    else:
+        send_pan(cpu, runtime, pan, 1)
+        send_pan(cpu, runtime, pan, 2, (0., -48.))
     require(not runtime.synchronous_layouts[start:],
             "The host feed pan callback does not synchronously recurse into bar layout")
     repair(cpu, runtime, entries)
     compact = runtime.objects[runtime.PROXY].state["frame"]
     require(compact[2] < expanded[2], "Deferred pan layout still compacts the dock")
-    send_pan(cpu, runtime, pan, 2, (0., -15.))
+    if PAGE_HOOK in labels:
+        tap_expand(cpu, runtime)
+    else:
+        send_pan(cpu, runtime, pan, 2, (0., -15.))
     repair(cpu, runtime, entries)
     require(runtime.objects[runtime.PROXY].state["frame"] == expanded,
-            "Reversing the host pan still restores the custom expanded size")
+            "Expansion restores the custom expanded size")
     return {"synchronous_layout_calls": 0, "compact_and_expand": True}
 
 
@@ -272,9 +285,9 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6"),
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7"),
             "This regression targets the R4 custom geometry fault and its R5 repair")
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS)
+    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), [*bottom_labels(data), *FRAME_LABELS])
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "stable_custom_layout": stable_custom_layout(data, labels),
               "settings": settings_yield_before_layout(data, labels),

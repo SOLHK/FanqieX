@@ -946,6 +946,13 @@ static void RestoreAppearanceFont(Obj label) {
     objc_setAssociatedObject(label,AppearanceFontStockKey,0,1);
     objc_setAssociatedObject(label,AppearanceFontAppliedKey,0,1);
 }
+static B HasCaptionAttributes(Obj text) {
+    U length=((U(*)(Obj,Sel))Message)(text,sel_registerName("length"));
+    if (!length) return 0;
+    U range[2]={0};
+    Obj attributes=((Obj(*)(Obj,Sel,U,U *))Message)(text,sel_registerName("attributesAtIndex:effectiveRange:"),0,range);
+    return range[1]!=length || ((U(*)(Obj,Sel))Message)(attributes,sel_registerName("count"))!=0;
+}
 static void AppearanceFont(Obj label,double maximum) {
     if (!Kind(label,"UILabel") || !Responds(label,"setFont:")) return;
     Obj current=Get(label,"font");
@@ -955,9 +962,9 @@ static void AppearanceFont(Obj label,double maximum) {
     Obj original=ours ? objc_getAssociatedObject(label,AppearanceFontStockKey) : current;
     double size=((double(*)(Obj,Sel))Message)(original,sel_registerName("pointSize"));
     if (!__builtin_isfinite(size) || size<=0) return;
-    // Preserve intentionally smaller captions and the host's attributed runs.
-    // Rebuilding attributed text would lose links and per-run theme semantics.
-    if (Get(label,"attributedText") || size<=maximum) { RestoreAppearanceFont(label); return; }
+    // UIKit also exposes plain label text as an unstyled attributed string.
+    // Leave captions with explicit runs under the host's styling.
+    if (size<=maximum || HasCaptionAttributes(Get(label,"attributedText"))) { RestoreAppearanceFont(label); return; }
     if (ours && ((double(*)(Obj,Sel))Message)(current,sel_registerName("pointSize"))==maximum) return;
     Obj font=((Obj(*)(Obj,Sel,double))Message)(original,sel_registerName("fontWithSize:"),maximum);
     if (!font) return;
@@ -1041,7 +1048,7 @@ static Rect ReaderShelfMaterial(Obj label,Obj holder,Rect bounds) {
         objc_setAssociatedObject(label,ReaderShelfStockFrameKey,0,1);
         objc_setAssociatedObject(label,ReaderShelfStyledFrameKey,0,1);
     }
-    return (Rect){bounds.x-6-shift,bounds.y+(bounds.height-36)*0.5,bounds.width+12+2*shift,36};
+    return (Rect){bounds.x-6-shift,bounds.y+(bounds.height-34)*0.5,bounds.width+12+2*shift,34};
 }
 typedef enum { IconNone, IconGeneric, IconReaderBack, IconReaderMore, IconReaderSearch,
     IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconReaderShelf, IconShelfSearch, IconShelfMore,
@@ -1104,7 +1111,7 @@ static void Icon(Obj view,IconRole role) {
         Rect base=UnboxRect(old),adjusted=base;
         if (readerIcon) {
             double longest=__builtin_fmax(base.width,base.height);
-            double scale=longest>20 ? 20/longest : 1;
+            double scale=longest>18 ? 18/longest : 1;
             adjusted.width=base.width*scale; adjusted.height=base.height*scale;
             adjusted.x+=(base.width-adjusted.width)*0.5+(back ? base.width*0.5 : 0);
             adjusted.y+=(base.height-adjusted.height)*0.5;
@@ -1118,7 +1125,7 @@ static void Icon(Obj view,IconRole role) {
         if (!applied || !SameRect(previous,adjusted)) objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
         if (newGlyph) objc_setAssociatedObject(view,GlyphViewKey,glyph,1);
     }
-    double diameter=shelf ? 28 : 36;
+    double diameter=shelf ? 28 : (readerIcon ? 34 : 36);
     double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(role==IconShelfSearch ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
     B readerText=(role==IconReaderDownload || role==IconReaderShelf) && Kind(view,"UILabel");
@@ -1130,8 +1137,8 @@ static void Icon(Obj view,IconRole role) {
         // The label draws its text in its own layer. A child glass would cover it.
         material=(Rect){bounds.x-6,bounds.y-5,bounds.width+12,bounds.height+10};
     } else if (role==IconReaderChapter) {
-        double height=bounds.height+6>30 ? bounds.height+6 : 30;
-        material=(Rect){bounds.x-6,bounds.y+(bounds.height-height)*0.5,bounds.width+12,height};
+        double height=__builtin_fmax(30,bounds.height+2);
+        material=(Rect){bounds.x-4,bounds.y+(bounds.height-height)*0.5,bounds.width+8,height};
     }
     if (!VisibleRect(material)) { RestoreIcon(view,glass); objc_setAssociatedObject(view,BusyKey,0,0); return; }
     if (!glass) {
@@ -1182,7 +1189,7 @@ static void Icon(Obj view,IconRole role) {
     if (changeHighlighted) VB(glass,"setHighlighted:",highlighted);
     if (readerIcon || role==IconReaderShelf || role==IconReaderChapter) {
         Obj caption=Kind(view,"UILabel") ? view : Get(view,"titleLabel");
-        TrackAppearanceLabel(view,Kind(caption,"UILabel") ? caption : (Obj)0,role==IconReaderChapter ? 13 : 14);
+        TrackAppearanceLabel(view,Kind(caption,"UILabel") ? caption : (Obj)0,role==IconReaderChapter ? 12 : 13);
     }
     EnsureHit(view,(readerIcon || role==IconReaderShelf || role==IconReaderChapter) ? MinimumHitRect(material,44) : material);
     if (transaction) V0(transaction,"commit");
@@ -1565,6 +1572,14 @@ static void ShelfButtonLayout(Obj self,Sel cmd) {
 static void ListenLabelKey(void) {}
 static void ListenColorKey(void) {}
 static void ListenTintKey(void) {}
+static void OpticalGlyph(Obj glyph,double maximum);
+static void RestoreOpticalFrame(Obj view);
+static void ApplyReaderListenSurface(Obj view) {
+    Rect bounds=Bounds(view);
+    double diameter=__builtin_fmin(48,__builtin_fmin(bounds.width,bounds.height));
+    ApplySurface(view,(Rect){bounds.x+(bounds.width-diameter)*0.5,bounds.y+(bounds.height-diameter)*0.5,
+        diameter,diameter},0);
+}
 B FQHIsEdit(Obj view) {
     return Kind(view,"UIControl") && Kind(Get(view,"superview"),"SSBookshelfEditBottomView");
 }
@@ -1586,13 +1601,15 @@ void FQHListen(Obj view) {
     if (!Kind(view,"SSReaderFloatingCommonButton")) return;
     Obj label=ListenCaption(view,2),saved=objc_getAssociatedObject(view,ListenLabelKey);
     if (!Enabled() || !label || !FQHGlassAvailable()) {
+        TrackAppearanceLabel(view,0,0);
         if (saved) V1(saved,"setTextColor:",objc_getAssociatedObject(view,ListenColorKey));
         objc_setAssociatedObject(view,ListenLabelKey,0,1);objc_setAssociatedObject(view,ListenColorKey,0,1);
         objc_setAssociatedObject(view,ListenTintKey,0,1);
         Restore(view,FQHSurface(view));return;
     }
-    FQHApply(view);
+    ApplyReaderListenSurface(view);
     Obj surface=FQHSurface(view);if (!surface) return;
+    TrackAppearanceLabel(view,label,22);
     if (saved!=label) {
         if(saved)V1(saved,"setTextColor:",objc_getAssociatedObject(view,ListenColorKey));
         objc_setAssociatedObject(view,ListenLabelKey,label,1);
@@ -1621,6 +1638,7 @@ static void SetSpeechImage(Obj button,Obj image) {
 static void SpeechGlass(Obj view) {
     Obj button=Get(view,"speechBtn");
     if (!Kind(button,"UIButton") || !Belongs(button,view)) return;
+    Obj imageView=Get(button,"imageView");
     Obj image=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("imageForState:"),0);
     Obj glyph=objc_getAssociatedObject(button,SpeechGlyphKey);
     Obj foreground=O0(Lookup("UIColor"),"labelColor");
@@ -1635,6 +1653,7 @@ static void SpeechGlass(Obj view) {
             objc_setAssociatedObject(button,SpeechGlyphKey,0,1);
             objc_setAssociatedObject(button,SpeechTintKey,0,1);
         }
+        RestoreOpticalFrame(imageView);
         Restore(button,FQHSurface(button));
         return;
     }
@@ -1645,7 +1664,7 @@ static void SpeechGlass(Obj view) {
         glyph=((Obj(*)(Obj,Sel,I))Message)(artwork,sel_registerName("imageWithRenderingMode:"),2);
         if (!glyph) return;
     }
-    FQHApply(button);
+    ApplyReaderListenSurface(button);
     if (!FQHSurface(button)) return;
     if (!hasTint) {
         objc_setAssociatedObject(button,SpeechTintKey,tint,1);
@@ -1656,6 +1675,7 @@ static void SpeechGlass(Obj view) {
         objc_setAssociatedObject(button,SpeechGlyphKey,glyph,1);
         SetSpeechImage(button,glyph);
     }
+    OpticalGlyph(imageView,46);
 }
 static void SpeechLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSReaderSpeechButton","fqx175_originalSpeechLayout"))(self,cmd);
@@ -1861,18 +1881,19 @@ static void UpdateCatalogTap(Obj view,B needed) {
     V0(gesture,"release");
     V0(observer,"release");
 }
+enum { ReaderToolWidth=60, ReaderToolHeight=44 };
 static double ReaderDivertWidth(Obj view,Obj toolbar,Rect bounds) {
-    if (!InstanceABI(view,"titleLabel","@16@0:8")) return 64;
+    if (!InstanceABI(view,"titleLabel","@16@0:8")) return ReaderToolWidth;
     Obj label=O0(view,"titleLabel");
-    if (!Kind(label,"UILabel") || O0(label,"superview")!=view) return 64;
+    if (!Kind(label,"UILabel") || O0(label,"superview")!=view) return ReaderToolWidth;
     Rect caption=Frame(label);
-    if (!VisibleRect(caption)) return 64;
+    if (!VisibleRect(caption)) return ReaderToolWidth;
     double center=bounds.x+bounds.width*0.5;
     double left=center-caption.x,right=caption.x+caption.width-center;
     // The capsule narrows at the caption baseline. Leave room for both
     // the rounded ends and the visible padding beyond the native label.
     double half=(left>right ? left : right)+18;
-    if (half<=32) return 64;
+    if (half<=ReaderToolWidth*0.5) return ReaderToolWidth;
 
     Rect slot=Frame(view),row=Bounds(toolbar);
     center=slot.x+slot.width*0.5;
@@ -1882,15 +1903,15 @@ static double ReaderDivertWidth(Obj view,Obj toolbar,Rect bounds) {
     if (right<half) half=right;
     Obj items=Get(toolbar,"itemViews");
     U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
-    for (U i=0;i<count && half>32;++i) {
+    for (U i=0;i<count && half>ReaderToolWidth*0.5;++i) {
         Obj item=At(items,i);
         if (item==view || O0(item,"superview")!=toolbar || Flag(item,"isHidden")) continue;
         Rect neighbor=Frame(item);
-        double occupied=neighbor.width>64 ? neighbor.width*0.5 : 32;
+        double occupied=__builtin_fmax(neighbor.width,ReaderToolWidth)*0.5;
         double room=__builtin_fabs(center-(neighbor.x+neighbor.width*0.5))-occupied-8;
         if (room<half) half=room;
     }
-    return half>32 ? half*2 : 64;
+    return __builtin_fmax(half*2,ReaderToolWidth);
 }
 static void ReaderOpticalChildrenKey(void) {}
 static void OpticalFrameStockKey(void) {}
@@ -1941,7 +1962,7 @@ static void ReaderBottomOptics(Obj owner,B enabled) {
             } else {
                 Obj glyph=Kind(view,"UIImageView") ? view : (Kind(view,"UIButton") ? Get(view,"imageView") : (Obj)0);
                 if (Kind(glyph,"UIImageView") && Belongs(glyph,owner) && !Flag(glyph,"isHidden")) {
-                    OpticalGlyph(glyph,20);
+                    OpticalGlyph(glyph,18);
                     V1(current,"addObject:",glyph);
                 }
             }
@@ -1960,8 +1981,8 @@ static void ReaderBottomOptics(Obj owner,B enabled) {
 static void ReaderBottomGlass(Obj view,Obj toolbar) {
     Rect bounds=Bounds(view);
     if (!VisibleRect(bounds)) { ReaderBottomOptics(view,0); PageRestore(view); RestoreHit(view); return; }
-    double width=toolbar ? ReaderDivertWidth(view,toolbar,bounds) : 64;
-    Rect glass={bounds.x+(bounds.width-width)*0.5,bounds.y+(bounds.height-48)*0.5,width,48};
+    double width=toolbar ? ReaderDivertWidth(view,toolbar,bounds) : ReaderToolWidth;
+    Rect glass={bounds.x+(bounds.width-width)*0.5,bounds.y+(bounds.height-ReaderToolHeight)*0.5,width,ReaderToolHeight};
     ApplySurface(view,glass,0);
     Obj surface=FQHSurface(view);
     if (!surface) { ReaderBottomOptics(view,0); RestoreHit(view); return; }
@@ -2391,6 +2412,109 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
         DramaClearBackground(content,0);
     }
     DramaSpacingForEntry178R2(self);
+}
+
+static B DefaultEnabled(Obj key);
+static void DramaVisibilityOwnersKey(void) {}
+static void DramaVisibilityHiddenKey(void) {}
+
+static Obj DramaVisibilityOwners(void) {
+    Obj owner=Lookup("SSVideoSeriesFeedHeaderView");
+    Obj owners=objc_getAssociatedObject(owner,DramaVisibilityOwnersKey);
+    if (!owners) {
+        owners=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(owner,DramaVisibilityOwnersKey,owners,1);
+    }
+    return owners;
+}
+
+static void DramaVisibilityTrack(Obj owner) {
+    if (objc_getAssociatedObject(owner,DramaVisibilityOwnersKey)) return;
+    Obj owners=DramaVisibilityOwners();
+    if (!owners) return;
+    V1(owners,"addObject:",owner);
+    objc_setAssociatedObject(owner,DramaVisibilityOwnersKey,BoolBox(1),1);
+}
+
+static void DramaVisibilitySet(Obj view,B visible) {
+    if (!Kind(view,"UIView")) return;
+    Obj owned=objc_getAssociatedObject(view,DramaVisibilityHiddenKey);
+    B hidden=Flag(view,"isHidden");
+    if (!visible && !hidden) {
+        objc_setAssociatedObject(view,DramaVisibilityHiddenKey,BoolBox(1),1);
+        VB(view,"setHidden:",1);
+    } else if (visible && owned) {
+        if (hidden) VB(view,"setHidden:",0);
+        objc_setAssociatedObject(view,DramaVisibilityHiddenKey,0,1);
+    }
+}
+
+static void DramaVisibilityApplyHeader(Obj header) {
+    if (!Kind(header,"SSVideoSeriesFeedHeaderView")) return;
+    Obj delegate=Get(header,"delegate");
+    if (!Kind(delegate,"SSVideoSeriesFeedViewController") || Get(delegate,"headerView")!=header) return;
+    DramaVisibilityTrack(header);
+    Obj categories=Get(header,"tabContainer");
+    if (Belongs(categories,header))
+        DramaVisibilitySet(categories,DefaultEnabled(Text("FanqieX.DramaCategories.1")));
+    Obj search=Get(header,"searchViewContainer");
+    if (!Kind(search,"SSVideoSeriesFeedHeaderSearchView")) return;
+    // The native search coordinator temporarily moves the slot to a launch
+    // overlay. The exact getter still owns the same icon and tap region.
+    Obj slot=Get(search,"searchButtonSlotView");
+    if (Belongs(Get(search,"searchButtonView"),slot))
+        DramaVisibilitySet(slot,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+}
+
+static void DramaVisibilityHeaderAttached(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx178r7_originalHeaderAttached"))(self,cmd);
+    DramaVisibilityApplyHeader(self);
+}
+
+static void DramaVisibilityHeaderTabs(Obj self,Sel cmd,Size size) {
+    ((void(*)(Obj,Sel,Size))Original("SSVideoSeriesFeedHeaderView","fqx178r7_originalHeaderTabs:"))(self,cmd,size);
+    DramaVisibilityApplyHeader(self);
+}
+
+static void DramaVisibilityHeaderLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedViewController","fqx178r7_originalDramaHeaderLayout"))(self,cmd);
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+
+static B DramaVisibilityAuthorIsMainFeed(Obj manager) {
+    Obj config=Get(Get(manager,"vcContext"),"config");
+    return Kind(config,"FQVShortVideoListConfig") && InstanceABI(config,"feedType","q16@0:8") &&
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4;
+}
+
+static B DramaVisibilityAuthor(Obj self,Sel cmd) {
+    B visible=((B(*)(Obj,Sel))Original("SSShortVideoBelowLeftContainerViewManager",
+        "fqx178r7_originalShouldAddAiUsageView"))(self,cmd);
+    if (!DramaVisibilityAuthorIsMainFeed(self)) return visible;
+    DramaVisibilityTrack(self);
+    return visible && DefaultEnabled(Text("FanqieX.DramaAuthorDeclaration.1"));
+}
+
+static void DramaVisibilityRefresh(void) {
+    Obj owners=Get(DramaVisibilityOwners(),"allObjects");
+    U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj owner=At(owners,i);
+        if (Kind(owner,"SSVideoSeriesFeedHeaderView")) DramaVisibilityApplyHeader(owner);
+        else if (DramaVisibilityAuthorIsMainFeed(owner)) V0(owner,"updateSubViews");
+    }
+}
+
+static void DramaVisibilityInstall(void) {
+    const char *header="SSVideoSeriesFeedHeaderView";
+    Hook(header,"didMoveToWindow","fqx178r7_originalHeaderAttached","v16@0:8",(Imp)DramaVisibilityHeaderAttached);
+    Hook(header,"updateTabViewWithContentSize:","fqx178r7_originalHeaderTabs:",
+         "v32@0:8{CGSize=dd}16",(Imp)DramaVisibilityHeaderTabs);
+    Hook("SSVideoSeriesFeedViewController","relayoutHeaderView","fqx178r7_originalDramaHeaderLayout",
+         "v16@0:8",(Imp)DramaVisibilityHeaderLayout);
+    const char *manager="SSShortVideoBelowLeftContainerViewManager";
+    if (Signature(manager,"updateSubViews","v16@0:8"))
+        Hook(manager,"shouldAddAiUsageView","fqx178r7_originalShouldAddAiUsageView","B16@0:8",(Imp)DramaVisibilityAuthor);
 }
 
 // Measure the glass and the playback track in the same coordinate space.
@@ -3087,7 +3211,7 @@ static void ProfileEntryGlass(Obj self,B order) {
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
     double height=__builtin_fmin(b.height,__builtin_fmax(44,label.y+label.height-b.y+5));
     double textY=__builtin_fmin(label.y,b.y+height-label.height-10);
-    double glyphHeight=__builtin_fmin(__builtin_fmin(20,label.y-b.y-10),textY-b.y-6);
+    double glyphHeight=__builtin_fmin(__builtin_fmin(18,label.y-b.y-10),textY-b.y-6);
     if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
         return;
@@ -3095,12 +3219,12 @@ static void ProfileEntryGlass(Obj self,B order) {
     // Move the whole caption inward, retaining its native text, visibility and
     // full frame. Only oversized plain fonts are reduced; attributed runs stay.
     // Leave room for the full title at the curved end of the compact 47pt cell.
-    ApplySurface(content,(Rect){b.x,b.y,b.width,height},1);
+    ApplySurface(content,(Rect){b.x+3,b.y,b.width-6,height},1);
     if (!FQHSurface(content)) {
         RestoreProfileEntry(content);
         return;
     }
-    TrackAppearanceLabel(content,caption,13);
+    TrackAppearanceLabel(content,caption,12);
     // Never enlarge the host's original bitmap canvas just to fill the pill.
     double scale=__builtin_fmin(1,glyphHeight/__builtin_fmax(icon.width,icon.height));
     double top=__builtin_fmin(b.y+5,textY-glyphHeight-3);
@@ -3215,7 +3339,8 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
 
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
        MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption,
-       ShelfFilterOption, ReaderThemeIsolationOption };
+       ShelfFilterOption, ReaderThemeIsolationOption, DramaCategoriesOption,
+       DramaSearchOption, DramaAuthorDeclarationOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -3230,6 +3355,9 @@ static Obj PagePreference(I option) {
         case FullscreenFillOption: key="FanqieX.FullscreenFill.1"; break;
         case ShelfFilterOption: key="FanqieX.ShelfFilterButton.1"; break;
         case ReaderThemeIsolationOption: key="FanqieX.ReaderThemeIsolation.1"; break;
+        case DramaCategoriesOption: key="FanqieX.DramaCategories.1"; break;
+        case DramaSearchOption: key="FanqieX.DramaSearch.1"; break;
+        case DramaAuthorDeclarationOption: key="FanqieX.DramaAuthorDeclaration.1"; break;
         default: return 0;
     }
     return Text(key);
@@ -4424,10 +4552,12 @@ static void ShelfCompactInstall(void) {
         Hook("SSBookShelfFunctionCell","layoutContainerSubviews","fqx178_originalShelfFunctionLayout","v16@0:8",(Imp)ShelfFunctionLayout);
 }
 
+static void BottomCompactInstall178R7(void);
 void FQHPageInstall(void) {
     ReaderGlassStyleInstall();
     ReaderThemeIsolationInstall();
     DramaSpacingInstall178R2();
+    DramaVisibilityInstall();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
@@ -4485,6 +4615,7 @@ void FQHPageInstall(void) {
     Hook("SSBookShelfSubViewController","saveOpeningData:indexPath:","fqx185_originalSaveOpeningData:index:","v32@0:8@16@24",(Imp)ShelfSaveOpeningData);
     Hook("SSBookShelfSubViewController","fetchBookCoverTransitionInfo:","fqx185_originalCoverTransition:","@24@0:8Q16",(Imp)ShelfCoverTransitionInfo);
     ShelfCompactInstall();
+    BottomCompactInstall178R7();
     DramaBackdropInstall();
     Hook("SSTabBarController","tabbarVCAndAttributeInit","fqx176_originalTabPlan","@16@0:8",(Imp)TabPlan);
     Hook("SSTabBarController","viewDidAppear:","fqx176_originalTabAppear:","v20@0:8B16",(Imp)TabOwnerAppear);
@@ -4541,11 +4672,9 @@ static void BottomButtons178Key(void) {}
 static void BottomBars178Key(void) {}
 static void BottomCompact178Key(void) {}
 static void BottomSelectedBox178Key(void) {}
-static void BottomObserver178Key(void) {}
-static void BottomPanBox178Key(void) {}
-static void BottomPanY178Key(void) {}
-static void BottomPanActive178Key(void) {}
-static void BottomPanVertical178Key(void) {}
+static void BottomDragStart178R7Key(void) {}
+static void BottomCompactButton178R7Key(void) {}
+static void BottomCompactOverlay178R7Key(void) {}
 static void BottomSymbol178Key(void) {}
 static void BottomSymbolName178Key(void) {}
 static void BottomSymbolSize178Key(void) {}
@@ -4571,12 +4700,15 @@ static Obj BottomPreference178(I tag) {
         case 12: return Text("FanqieX.BottomHeightScale.1");
         case 13: return Text("FanqieX.BottomButtonWidthScale.1");
         case 14: return Text("FanqieX.BottomIconPointSize.1");
+        case 21: return PagePreference(DramaCategoriesOption);
+        case 22: return PagePreference(DramaSearchOption);
+        case 23: return PagePreference(DramaAuthorDeclarationOption);
     }
     return 0;
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
-    return value && Responds(value,"boolValue") && Flag(value,"boolValue");
+    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : tag>=21;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
@@ -4635,6 +4767,10 @@ static B BottomVisible178(Obj view,Obj window) {
 static B BottomIsDrama178(Obj owner) {
     if (!Kind(owner,"SSTabBarController")) return 0;
     Obj types=Get(owner,"typeArray"),page=Get(owner,"selectedViewController");
+    if (Kind(page,"SSShortVideoRcmdMainViewController") ||
+        Kind(Get(page,"topViewController"),"SSShortVideoRcmdMainViewController")) return 1;
+    if (InstanceABI(owner,"currentSelectedVCTabType","i16@0:8"))
+        return ((int(*)(Obj,Sel))Message)(owner,sel_registerName("currentSelectedVCTabType"))==7;
     U count=TabCount(types);
     if (!count || count>8 || !page) return 0;
     if (Responds(owner,"selectedIndex")) {
@@ -4647,126 +4783,79 @@ static B BottomIsDrama178(Obj owner) {
         if (At(controllers,i)==page) return TabOption(owner,At(types,i))==DramaOption;
     return 0;
 }
-static Obj BottomFindFeed178(Obj root,Obj window,int depth,int *budget) {
-    if (!root || depth<=0 || *budget<=0 || !BottomVisible178(root,window)) return 0;
-    --*budget;
-    if (Kind(root,"FQFeedListCollectionView")) {
-        Rect placed=Convert(root,Bounds(root),window),screen=Bounds(window);
-        // A horizontal tab transition and an offscreen reused feed are rejected.
-        if (BottomRect178(placed) && placed.height>placed.width &&
-            __builtin_fabs(placed.x-screen.x)<2 && placed.width>=screen.width-4 &&
-            placed.y<screen.y+screen.height && placed.y+placed.height>screen.y)
-            return root;
-        return 0;
-    }
-    Obj children=Get(root,"subviews");
-    U count=TabCount(children);
-    for (U i=0;i<count && *budget>0;++i) {
-        Obj found=BottomFindFeed178(At(children,i),window,depth-1,budget);
-        if (found) return found;
-    }
-    return 0;
+static B BottomCompactActive178R7(Obj bar) {
+    return BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
 }
 static void BottomSetCompact178(Obj bar,B compact) {
-    B previous=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
-    if (previous==compact) return;
+    if (BottomCompactActive178R7(bar)==compact) return;
     objc_setAssociatedObject(bar,BottomCompact178Key,compact ? BoolBox(1) : (Obj)0,1);
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"compact",BoolBox(compact));
     Put(record,"videoGeometryChanged",BoolBox(0));
     FQDRecord("bottomCompact178",record);
+    V0(bar,"setNeedsLayout");
 }
-static void BottomDetachPan178(Obj bar) {
-    Obj observer=objc_getAssociatedObject(bar,BottomObserver178Key);
-    Obj pan=BottomWeakValue178(observer,BottomPanBox178Key);
-    if (pan) ((void(*)(Obj,Sel,Obj,Sel))Message)(pan,
-        sel_registerName("removeTarget:action:"),observer,sel_registerName("fqx178_bottomPan:"));
-    objc_setAssociatedObject(observer,BottomPanActive178Key,0,1);
-    objc_setAssociatedObject(observer,BottomPanVertical178Key,0,1);
-    objc_setAssociatedObject(observer,BottomPanBox178Key,0,1);
-    objc_setAssociatedObject(bar,BottomObserver178Key,0,1);
-    BottomSetCompact178(bar,0);
-}
-void FQHBottomPan178(Obj observer,Sel cmd,Obj pan) {
-    (void)cmd;
-    Obj bar=BottomWeakValue178(observer,BottomBarBox178Key);
-    Obj owner=Get(bar,"delegate"),window=Get(bar,"window");
-    if (!bar || pan!=BottomWeakValue178(observer,BottomPanBox178Key)) return;
-    Obj scroll=Get(pan,"view"),page=Get(owner,"selectedViewController");
-    B valid=Enabled() && BottomFlag178(2) && BottomIsDrama178(owner) &&
-        !Get(owner,"presentedViewController") && BottomVisible178(bar,window) &&
-        BottomVisible178(scroll,window) && Belongs(scroll,Get(page,"viewIfLoaded"));
-    Rect placed=valid ? Convert(scroll,Bounds(scroll),window) : (Rect){0,0,0,0};
-    Rect screen=valid ? Bounds(window) : (Rect){0,0,0,0};
-    valid=valid && BottomRect178(placed) && placed.height>placed.width &&
-        __builtin_fabs(placed.x-screen.x)<2 && placed.width>=screen.width-4;
-    I state=((I(*)(Obj,Sel))Message)(pan,sel_registerName("state"));
-    B before=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
-    if (!valid || state==4 || state==5) {
-        objc_setAssociatedObject(observer,BottomPanActive178Key,0,1);
-        BottomSetCompact178(bar,0);
-    } else if (state==1) {
-        objc_setAssociatedObject(observer,BottomPanActive178Key,BoolBox(1),1);
-        objc_setAssociatedObject(observer,BottomPanVertical178Key,0,1);
-        objc_setAssociatedObject(observer,BottomPanY178Key,Number(0),1);
-    } else if (state==2 && objc_getAssociatedObject(observer,BottomPanActive178Key)) {
-        Point p=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),scroll);
-        if (!__builtin_isfinite(p.x) || !__builtin_isfinite(p.y)) return;
-        if (!objc_getAssociatedObject(observer,BottomPanVertical178Key)) {
-            if (__builtin_fabs(p.y)<24 || __builtin_fabs(p.x)>__builtin_fabs(p.y)*0.7) return;
-            objc_setAssociatedObject(observer,BottomPanVertical178Key,BoolBox(1),1);
-        }
-        double last=Double(objc_getAssociatedObject(observer,BottomPanY178Key));
-        // Scroll down through the feed (finger upward) compacts; reversing
-        // toward the previous item expands. Hysteresis prevents noisy toggles.
-        if (p.y-last<=-24) BottomSetCompact178(bar,1);
-        else if (p.y-last>=32) BottomSetCompact178(bar,0);
-        B after=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
-        if (before!=after || (after && p.y<last) || (!after && p.y>last))
-            objc_setAssociatedObject(observer,BottomPanY178Key,Number(p.y),1);
-    } else if (state==3) {
-        objc_setAssociatedObject(observer,BottomPanActive178Key,0,1);
-    }
-    if (before!=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue")) {
-        V0(bar,"setNeedsLayout");
-    }
-}
-static Obj BottomPanClass178(void) {
-    Obj cls=Lookup("FanqieXBottomPan178");
-    if (cls) return cls;
-    cls=AllocateClass(Lookup("NSObject"),"FanqieXBottomPan178",0);
-    if (!cls) return 0;
-    class_addMethod(cls,sel_registerName("fqx178_bottomPan:"),(Imp)FQHBottomPan178,"v24@0:8@16");
-    RegisterClass(cls);
-    return cls;
-}
-static void BottomAttachPan178(Obj bar) {
-    Obj owner=Get(bar,"delegate"),window=Get(bar,"window");
-    Obj page=Get(owner,"selectedViewController");
-    if (BottomWeakValue178(bar,BottomSelectedBox178Key)!=page) {
-        BottomDetachPan178(bar);
-        BottomSetWeak178(bar,BottomSelectedBox178Key,page);
-    }
+static Obj BottomDramaPage178R7(Obj bar) {
+    Obj owner=Get(bar,"delegate"), page=Get(owner,"selectedViewController");
     if (!Enabled() || !BottomFlag178(2) || !BottomIsDrama178(owner) ||
-        Get(owner,"presentedViewController") || !BottomVisible178(bar,window)) {
-        BottomDetachPan178(bar);
-        return;
+        Get(owner,"presentedViewController") || !BottomVisible178(bar,Get(bar,"window"))) return 0;
+    return page;
+}
+static Obj BottomDramaScrollBar178R7(Obj list,Obj scroll) {
+    Obj window=Get(scroll,"window");
+    if (!Kind(scroll,"FQFeedListCollectionView") || Get(list,"collectionView")!=scroll ||
+        !BottomVisible178(scroll,window)) return 0;
+    Rect placed=Convert(scroll,Bounds(scroll),window),screen=Bounds(window);
+    if (!BottomRect178(placed) || placed.height<=placed.width ||
+        __builtin_fabs(placed.x-screen.x)>=2 || placed.width<screen.width-4 ||
+        placed.y>=screen.y+screen.height || placed.y+placed.height<=screen.y) return 0;
+    Obj bars=Get(BottomBars178(),"allObjects");
+    U count=TabCount(bars);
+    for (U i=0;i<count;++i) {
+        Obj bar=At(bars,i);
+        if (Get(bar,"window")!=window) continue;
+        Obj page=BottomDramaPage178R7(bar);
+        if (page && Belongs(scroll,Get(page,"viewIfLoaded"))) return bar;
     }
-    int budget=160;
-    Obj scroll=BottomFindFeed178(Get(page,"viewIfLoaded"),window,8,&budget);
-    Obj pan=Get(scroll,"panGestureRecognizer");
-    Obj observer=objc_getAssociatedObject(bar,BottomObserver178Key);
-    if (!pan || !Responds(pan,"addTarget:action:")) { BottomDetachPan178(bar); return; }
-    if (BottomWeakValue178(observer,BottomPanBox178Key)==pan) return;
-    BottomDetachPan178(bar);
-    observer=O0(BottomPanClass178(),"new");
-    if (!observer) return;
-    BottomSetWeak178(observer,BottomBarBox178Key,bar);
-    BottomSetWeak178(observer,BottomPanBox178Key,pan);
-    ((void(*)(Obj,Sel,Obj,Sel))Message)(pan,sel_registerName("addTarget:action:"),
-        observer,sel_registerName("fqx178_bottomPan:"));
-    objc_setAssociatedObject(bar,BottomObserver178Key,observer,1);
-    V0(observer,"release");
+    return 0;
+}
+static Obj BottomDramaVisibleIndex178R7(Obj scroll) {
+    Rect bounds=Bounds(scroll);
+    Point center={bounds.x+bounds.width*0.5,bounds.y+bounds.height*0.5};
+    return ((Obj(*)(Obj,Sel,Point))Message)(scroll,sel_registerName("indexPathForItemAtPoint:"),center);
+}
+static void BottomDramaDragBegan178R7(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("FQFeedListView","fqx178R7_originalDragBegan:"))(self,cmd,scroll);
+    Obj bar=BottomDramaScrollBar178R7(self,scroll);
+    // Capture the active video at the start of the actual host drag.
+    Obj start=bar && !BottomCompactActive178R7(bar) ? BottomDramaVisibleIndex178R7(scroll) : (Obj)0;
+    objc_setAssociatedObject(scroll,BottomDragStart178R7Key,start,1);
+}
+static void BottomDramaDragSettled178R7(Obj list,Obj scroll) {
+    Obj start=O0(objc_getAssociatedObject(scroll,BottomDragStart178R7Key),"retain");
+    if (!start) return;
+    objc_setAssociatedObject(scroll,BottomDragStart178R7Key,0,1);
+    Obj bar=BottomDramaScrollBar178R7(list,scroll);
+    Obj current=bar ? BottomDramaVisibleIndex178R7(scroll) : (Obj)0;
+    if (((I(*)(Obj,Sel,Obj))Message)(current,sel_registerName("compare:"),start)>0)
+        BottomSetCompact178(bar,1);
+    V0(start,"release");
+}
+static void BottomDramaDragEnded178R7(Obj self,Sel cmd,Obj scroll,B decelerates) {
+    ((void(*)(Obj,Sel,Obj,B))Original("FQFeedListView","fqx178R7_originalDragEnded:decelerates:"))(self,cmd,scroll,decelerates);
+    if (!decelerates) BottomDramaDragSettled178R7(self,scroll);
+}
+static void BottomDramaDecelerated178R7(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("FQFeedListView","fqx178R7_originalDecelerated:"))(self,cmd,scroll);
+    BottomDramaDragSettled178R7(self,scroll);
+}
+static void BottomCompactInstall178R7(void) {
+    if (!Signature("FQFeedListView","scrollViewWillBeginDragging:","v24@0:8@16") ||
+        !Signature("FQFeedListView","scrollViewDidEndDragging:willDecelerate:","v28@0:8@16B24") ||
+        !Signature("FQFeedListView","scrollViewDidEndDecelerating:","v24@0:8@16")) return;
+    Hook("FQFeedListView","scrollViewWillBeginDragging:","fqx178R7_originalDragBegan:","v24@0:8@16",(Imp)BottomDramaDragBegan178R7);
+    Hook("FQFeedListView","scrollViewDidEndDragging:willDecelerate:","fqx178R7_originalDragEnded:decelerates:","v28@0:8@16B24",(Imp)BottomDramaDragEnded178R7);
+    Hook("FQFeedListView","scrollViewDidEndDecelerating:","fqx178R7_originalDecelerated:","v24@0:8@16",(Imp)BottomDramaDecelerated178R7);
 }
 static void BottomRestoreFrame178(Obj view,const void *stockKey,const void *appliedKey) {
     Obj stock=objc_getAssociatedObject(view,stockKey),applied=objc_getAssociatedObject(view,appliedKey);
@@ -4821,13 +4910,15 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
     double high=__builtin_fmin(70,available.height);
     if (maximum<=0 || high<44) return base;
     double minimum=count*(icons ? 44 : 52)+8;
-    double width=BottomClamp178(base.width*BottomValue178(11)*0.01*(compact ? 0.78 : 1),
-        __builtin_fmin(minimum,maximum),maximum);
-    double height=BottomClamp178(base.height*BottomValue178(12)*0.01*(compact ? 0.86 : 1),
+    double width=compact ? __builtin_fmin(60,__builtin_fmin(maximum,high)) :
+        BottomClamp178(base.width*BottomValue178(11)*0.01,__builtin_fmin(minimum,maximum),maximum);
+    double height=compact ? width : BottomClamp178(base.height*BottomValue178(12)*0.01,
         __builtin_fmin(48,high),high);
+    double x=compact ? __builtin_fmin(base.x+base.width,available.x+available.width-8)-width :
+        available.x+(available.width-width)*0.5;
     double scale=((double(*)(Obj,Sel))Message)(Get(Get(bar,"window"),"screen"),sel_registerName("scale"));
     if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
-    return (Rect){BottomPixel178(available.x+(available.width-width)*0.5,scale),
+    return (Rect){BottomPixel178(x,scale),
         BottomPixel178(BottomClamp178(base.y+base.height-height,available.y,
             available.y+available.height-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
 }
@@ -5018,7 +5109,7 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
     if (changed) {
         if (name) {
             Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
-                sel_registerName("configurationWithPointSize:weight:scale:"),size,5,2);
+                sel_registerName("configurationWithPointSize:weight:scale:"),size,4,2);
             if (Responds(Lookup("UIImage"),"systemImageNamed:withConfiguration:"))
                 image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
                     sel_registerName("systemImageNamed:withConfiguration:"),signature,config);
@@ -5058,13 +5149,68 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
     Rect b=Bounds(button);
     Rect frame={b.x+(b.width-size)*0.5,b.y+(b.height-size)*0.5,size,size};
     if (!SameRect(Frame(symbol),frame)) SetFrame(symbol,frame);
-    Obj foreground=O0(Lookup("UIColor"),"labelColor");
+    Obj foreground=O0(Lookup("UIColor"),BoolProp(button,"isSelected") ? "labelColor" : "secondaryLabelColor");
     if (!SameColor(Get(symbol,"tintColor"),foreground)) V1(symbol,"setTintColor:",foreground);
     if (title && !((B(*)(Obj,Sel,Obj))Message)(title,sel_registerName("isEqual:"),Get(button,"accessibilityLabel")))
         V1(button,"setAccessibilityLabel:",title);
     BottomSuppressTitles178R2(button,title);
     // The native selector owns accessibility when active; its original,
     // transparent segment titles remain intact. Fallback buttons keep theirs.
+}
+static void BottomMaterial178R7Key(void) {}
+static void BottomMaterialMode178R7Key(void) {}
+static void BottomVisualFrame178R7Key(void) {}
+static void BottomVisualCompact178R7Key(void) {}
+
+void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
+    Rect frame=Frame(proxy);
+    Obj lastFrame=objc_getAssociatedObject(proxy,BottomVisualFrame178R7Key);
+    Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
+    B compact=BottomCompactActive178R7(BottomWeakValue178(proxy,BottomBarBox178Key));
+    if (lastFrame && lastCompact && BoolProp(lastCompact,"boolValue")!=compact) {
+        Rect from=UnboxRect(lastFrame),bounds=Bounds(proxy);
+        Point center={from.x+from.width*0.5,from.y+from.height*0.5};
+        from=(Rect){bounds.x,bounds.y,from.width,from.height};
+        Obj layer=Get(proxy,"layer"),value=Lookup("NSValue"),animationClass=Lookup("CABasicAnimation");
+        for (U i=0;i<2;++i) {
+            Obj key=Text(i ? "position" : "bounds");
+            Obj animation=O1(animationClass,"animationWithKeyPath:",key);
+            Obj start=i ? ((Obj(*)(Obj,Sel,Point))Message)(value,sel_registerName("valueWithCGPoint:"),center) : RectBox(from);
+            V1(animation,"setFromValue:",start);
+            ((void(*)(Obj,Sel,double))Message)(animation,sel_registerName("setDuration:"),0.22);
+            ((void(*)(Obj,Sel,Obj,Obj))Message)(layer,sel_registerName("addAnimation:forKey:"),animation,key);
+            if (compact && i) {
+                Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
+                Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+                ((void(*)(Obj,Sel,Obj,Obj))Message)(Get(button,"layer"),sel_registerName("addAnimation:forKey:"),animation,key);
+            }
+        }
+    }
+    if (!lastFrame || !SameRect(UnboxRect(lastFrame),frame))
+        objc_setAssociatedObject(proxy,BottomVisualFrame178R7Key,RectBox(frame),1);
+    if (!lastCompact || BoolProp(lastCompact,"boolValue")!=compact)
+        objc_setAssociatedObject(proxy,BottomVisualCompact178R7Key,BoolBox(compact),1);
+    B icons=Enabled() && BottomFlag178(1);
+    Obj effect=Get(proxy,"effect"), previous=objc_getAssociatedObject(proxy,BottomMaterial178R7Key);
+    Obj mode=objc_getAssociatedObject(proxy,BottomMaterialMode178R7Key);
+    if (Kind(effect,"UIGlassEffect") && (icons || previous) &&
+        (effect!=previous || !mode || BoolProp(mode,"boolValue")!=icons)) {
+        Obj glass=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIGlassEffect"),sel_registerName("effectWithStyle:"),icons ? 1 : 0);
+        if (glass) {
+            VB(glass,"setInteractive:",1);
+            V1(proxy,"setEffect:",glass);
+            objc_setAssociatedObject(proxy,BottomMaterial178R7Key,glass,1);
+            objc_setAssociatedObject(proxy,BottomMaterialMode178R7Key,BoolBox(icons),1);
+        }
+    }
+    if (!icons) return;
+    I style=((I(*)(Obj,Sel))Message)(proxy,sel_registerName("overrideUserInterfaceStyle"));
+    Obj color=((Obj(*)(Obj,Sel,double,double))Message)(Lookup("UIColor"),
+        sel_registerName("colorWithWhite:alpha:"),style==2 ? 0 : 1,style==2 ? 0.625 : 0.5);
+    if (native && !SameColor(Get(native,"selectedSegmentTintColor"),color))
+        V1(native,"setSelectedSegmentTintColor:",color);
+    Obj content=Get(lens,"contentView");
+    if (content && !SameColor(Get(content,"backgroundColor"),color)) V1(content,"setBackgroundColor:",color);
 }
 void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     if (!Kind(bar,"SSTabBar") || Get(proxy,"superview")!=bar) return;
@@ -5100,7 +5246,11 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     BottomSetWeak178(bar,BottomProxyBox178Key,proxy);
     objc_setAssociatedObject(proxy,BottomButtons178Key,buttons,1);
     V1(BottomBars178(),"addObject:",bar);
-    BottomAttachPan178(bar);
+    Obj page=BottomDramaPage178R7(bar);
+    if (!page || BottomWeakValue178(bar,BottomSelectedBox178Key)!=page) {
+        BottomSetCompact178(bar,0);
+        BottomSetWeak178(bar,BottomSelectedBox178Key,page);
+    }
     B icons=BottomFlag178(1);
     Obj saved=objc_getAssociatedObject(proxy,BottomBaseFrame178Key);
     Obj applied=objc_getAssociatedObject(proxy,BottomAppliedFrame178Key);
@@ -5143,6 +5293,70 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
         BottomApplyFrame178(button,frame,BottomButtonStock178Key,BottomButtonApplied178Key);
     }
 }
+static void BottomExpand178R7(Obj button,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    Obj bar=BottomWeakValue178(button,BottomBarBox178Key);
+    if (bar && Get(button,"superview")==bar && objc_getAssociatedObject(bar,BottomCompactButton178R7Key)==button)
+        BottomSetCompact178(bar,0);
+}
+static Obj BottomCompactButton178R7(Obj bar) {
+    Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+    if (button) return button;
+    Obj cls=Lookup("FanqieXCompactBottomButton178R7");
+    if (!cls) {
+        cls=AllocateClass(Lookup("UIButton"),"FanqieXCompactBottomButton178R7",0);
+        if (!cls) return 0;
+        class_addMethod(cls,sel_registerName("fqx178R7_expandBottom:"),(Imp)BottomExpand178R7,"v24@0:8@16");
+        RegisterClass(cls);
+    }
+    Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
+        sel_registerName("configurationWithPointSize:weight:scale:"),24.,5,2);
+    Obj image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
+        sel_registerName("systemImageNamed:withConfiguration:"),Text("play.rectangle.fill"),config);
+    if (!image) return 0;
+    button=O0(cls,"new");
+    if (!button) return 0;
+    SetSpeechImage(button,image);
+    V1(button,"setTintColor:",O0(Lookup("UIColor"),"whiteColor"));
+    V1(button,"setAccessibilityLabel:",Text("展开底栏"));
+    BottomSetWeak178(button,BottomBarBox178Key,bar);
+    ((void(*)(Obj,Sel,Obj,Sel,U))Message)(button,sel_registerName("addTarget:action:forControlEvents:"),
+        button,sel_registerName("fqx178R7_expandBottom:"),64);
+    objc_setAssociatedObject(bar,BottomCompactButton178R7Key,button,1);
+    V0(button,"release");
+    return button;
+}
+static void BottomCompactPresentation178R7(Obj bar,Obj proxy,Obj buttons,Obj native) {
+    B compact=BottomCompactActive178R7(bar);
+    Obj content=Get(proxy,"contentView"), overlay=0, button=0;
+    if (compact) {
+        button=BottomCompactButton178R7(bar);
+        if (!button) BottomSetCompact178(bar,0);
+        else if (!native) {
+            Obj parent=Get(At(buttons,0),"superview");
+            if (parent && parent!=proxy && Get(parent,"superview")==bar) overlay=parent;
+        }
+    }
+    Obj previous=BottomWeakValue178(bar,BottomCompactOverlay178R7Key);
+    if (previous!=overlay) {
+        BottomRestoreHidden178(previous);
+        BottomSetWeak178(bar,BottomCompactOverlay178R7Key,overlay);
+    }
+    if (!button) {
+        BottomRestoreHidden178(content);
+        Obj oldButton=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+        if (Get(oldButton,"superview")==bar) V0(oldButton,"removeFromSuperview");
+        return;
+    }
+    // Keep the glass itself and the native selection objects mounted. The
+    // compact button alone receives touches until the original tabs expand.
+    BottomHide178(content);
+    BottomHide178(overlay);
+    Rect frame=Frame(proxy);
+    if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
+    if (Get(button,"superview")!=bar) V1(bar,"addSubview:",button);
+    else if (Get(Get(bar,"subviews"),"lastObject")!=button) V1(bar,"bringSubviewToFront:",button);
+}
 void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     if (!Enabled()) { FQHBottomReset178(bar,proxy); return; }
     U count=TabCount(buttons);
@@ -5164,6 +5378,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
             BottomSymbol178(button,TabCount(items)==count ? At(items,i) : (Obj)0,icons,size);
         }
     }
+    BottomCompactPresentation178R7(bar,proxy,buttons,native);
     if (icons || BottomValue178(11)!=100 || BottomValue178(12)!=100 || BottomValue178(13)!=100 ||
         BottomFlag178(2)) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
@@ -5173,7 +5388,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         Put(record,"frame",RectArray(Frame(proxy))); Put(record,"iconPointSize",Number(size));
         Put(record,"buttonWidthPercent",Number(BottomValue178(13)));
         Put(record,"renderer",Text(native ? "native" : "buttons"));
-        Put(record,"scrollPanAttached",BoolBox(BottomWeakValue178(objc_getAssociatedObject(bar,BottomObserver178Key),BottomPanBox178Key)!=0));
+        Put(record,"compactTrigger",Text("hostSettledFeedPage"));
         Obj previous=objc_getAssociatedObject(proxy,BottomLayoutLog178Key);
         if (!previous || !((B(*)(Obj,Sel,Obj))Message)(previous,sel_registerName("isEqual:"),record)) {
             FQDRecord("bottomAppearance178",record);
@@ -5182,7 +5397,10 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     }
 }
 void FQHBottomReset178(Obj bar,Obj proxy) {
-    BottomDetachPan178(bar);
+    BottomSetCompact178(bar,0);
+    BottomSetWeak178(bar,BottomSelectedBox178Key,0);
+    BottomCompactPresentation178R7(bar,proxy,0,0);
+    objc_setAssociatedObject(bar,BottomCompactButton178R7Key,0,1);
     Obj buttons=objc_getAssociatedObject(proxy,BottomButtons178Key);
     U count=TabCount(buttons);
     for (U i=0;i<count && i<8;++i) {
@@ -5204,7 +5422,7 @@ static void BottomRefresh178(void) {
     U count=TabCount(bars);
     for (U i=0;i<count;++i) {
         Obj bar=At(bars,i);
-        if (!BottomFlag178(2)) BottomDetachPan178(bar);
+        if (!BottomFlag178(2)) BottomSetCompact178(bar,0);
         V0(bar,"setNeedsLayout");
     }
 }
@@ -5218,10 +5436,14 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
     Obj key=BottomPreference178(tag);
     if (!key) return;
     B changed;
-    if (tag==1 || tag==2) {
+    if (tag==1 || tag==2 || tag>=21) {
         B value=BoolProp(sender,"isOn");
         changed=BottomFlag178(tag)!=value;
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
+        if (tag>=21) {
+            if (changed) DramaVisibilityRefresh();
+            return;
+        }
     }
     else {
         float raw=((float(*)(Obj,Sel))Message)(sender,sel_registerName("value"));
@@ -5257,6 +5479,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
     for (U i=0;i<count;++i) {
         Obj control=At(controls,i);
         I tag=((I(*)(Obj,Sel))Message)(control,sel_registerName("tag"));
+        if (tag>=21) continue;
         if (tag<10) ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
         else {
             ((void(*)(Obj,Sel,float,B))Message)(control,sel_registerName("setValue:animated:"),(float)BottomValue178(tag),1);
@@ -5280,7 +5503,7 @@ static Obj BottomSettingsLabel178(Obj parent,Rect frame,const char *text,double 
 static void BottomSettingsSwitch178(Obj controller,Obj parent,double y,I tag,const char *title,const char *detail) {
     double width=Bounds(parent).width;
     BottomSettingsLabel178(parent,(Rect){20,y,width-106,28},title,16,0);
-    BottomSettingsLabel178(parent,(Rect){20,y+33,width-40,38},detail,12,1);
+    if (detail) BottomSettingsLabel178(parent,(Rect){20,y+33,width-40,38},detail,12,1);
     Obj toggle=O0(Lookup("UISwitch"),"new");
     SetFrame(toggle,(Rect){width-72,y-1,51,31});
     Q1(toggle,"setAutoresizingMask:",1);
@@ -5315,6 +5538,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
+static const double BottomSettingsHeight178R7=1000;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -5333,13 +5557,13 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     VB(scroll,"setAlwaysBounceVertical:",1);
     V1(root,"addSubview:",scroll);
     Obj content=O0(Lookup("UIView"),"new");
-    SetFrame(content,(Rect){0,0,frame.width,802});
+    SetFrame(content,(Rect){0,0,frame.width,BottomSettingsHeight178R7});
     Q1(content,"setAutoresizingMask:",2);
     V1(scroll,"addSubview:",content);
-    ((void(*)(Obj,Sel,Size))Message)(scroll,sel_registerName("setContentSize:"),(Size){frame.width,802});
+    ((void(*)(Obj,Sel,Size))Message)(scroll,sel_registerName("setContentSize:"),(Size){frame.width,BottomSettingsHeight178R7});
     BottomSettingsLabel178(content,(Rect){20,18,frame.width-40,28},"显示方式",19,0);
     BottomSettingsSwitch178(self,content,66,1,"底栏仅显示图标","开启后隐藏文字，保留原入口和朗读名称。");
-    BottomSettingsSwitch178(self,content,152,2,"短剧滚动自动收缩","浏览下一条时收缩，反向滑动展开；切换页面恢复。");
+    BottomSettingsSwitch178(self,content,152,2,"短剧滚动自动收缩","滑到下一条后缩到右侧，点小按钮展开。");
     BottomSettingsLabel178(content,(Rect){20,252,frame.width-40,28},"尺寸",19,0);
     BottomSettingsSlider178(self,content,296,11,"胶囊长度",50,100);
     BottomSettingsSlider178(self,content,382,12,"胶囊高度",80,125);
@@ -5354,6 +5578,10 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel,Obj,Sel,U))Message)(reset,sel_registerName("addTarget:action:forControlEvents:"),
         self,sel_registerName("fqx178_resetBottom:"),64);
     V1(content,"addSubview:",reset);
+    BottomSettingsLabel178(content,(Rect){20,792,frame.width-40,28},"短剧页面",19,0);
+    BottomSettingsSwitch178(self,content,838,21,"显示顶部分类",0);
+    BottomSettingsSwitch178(self,content,886,22,"显示搜索按钮",0);
+    BottomSettingsSwitch178(self,content,934,23,"显示作者声明",0);
     V0(content,"release");
     V0(scroll,"release");
 }
@@ -5364,7 +5592,7 @@ static void BottomSettingsLayout178(Obj self,Sel cmd) {
     Rect bounds=Bounds(Get(self,"view"));
     if (!scroll || !BottomRect178(bounds)) return;
     if (!SameRect(Frame(scroll),bounds)) SetFrame(scroll,bounds);
-    ((void(*)(Obj,Sel,Size))Message)(scroll,sel_registerName("setContentSize:"),(Size){bounds.width,802});
+    ((void(*)(Obj,Sel,Size))Message)(scroll,sel_registerName("setContentSize:"),(Size){bounds.width,BottomSettingsHeight178R7});
 }
 static Obj BottomSettingsClass178(void) {
     Obj cls=Lookup("FanqieXBottomAppearance178Controller");
