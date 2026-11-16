@@ -90,8 +90,13 @@ def material(data,d,make):
     require([e['event'] for e in actions] == ['setFrame','addSubview','bring_front'],
             'Actual original caller sets nonzero geometry before attachment and front placement')
     require(actions[1]['frame'] == [12.0,3.0,366.0,56.0],'Attachment observes final nonzero frame')
+    before_material = set(rt.associations)
     first = cpu.run(d['material_update'],rt.BAR,rt.PROXY)
     require(first['result'] == 1,'Visible valid proxy installs fresh Regular effect')
+    material_metadata = {key for key in rt.associations if key[0] == rt.PROXY and key not in before_material}
+    require(len(material_metadata) == 2 and
+            {rt.associations[key] for key in material_metadata} == {rt.PROXY, rt.WINDOW},
+            'Fresh material caches only its mounted marker and current window')
     effect = rt.objects[rt.PROXY].state['effect']
     require(rt.objects[effect].state == {'style':0,'tintColor':0,'interactive':True},'Regular style and public glass options')
     writes = [e for e in rt.events if e['event'] == 'setEffect']
@@ -112,7 +117,9 @@ def material(data,d,make):
     # Window lifecycle uses the real installed didMoveToWindow hook.
     cpu.run(d['installer']); rt.reparent(rt.ROOT,0)
     cpu.run(d['window'],rt.BAR,rt.sel('didMoveToWindow'))
-    require(not any(o == rt.PROXY and k >= 0x11900 for o,k in rt.associations),
+    # Newer bottom-bar appearance code has independent association keys in
+    # the extension. Invalidate this material's cache, not every later key.
+    require(all(key not in rt.associations for key in material_metadata),
             'Window detach invalidates material metadata')
     new_window = rt.view('UIWindow','new_window',(0,0,390,844))
     rt.reparent(rt.ROOT,new_window)

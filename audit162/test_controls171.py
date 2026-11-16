@@ -1,6 +1,6 @@
 import argparse,json,struct
 from pathlib import Path
-from arm64 import CPU,require
+from arm64 import CPU,require,release_version
 from test_alignment167 import Runtime as Base,call
 from test_home_glass165 import LABELS
 from test_feed_viewport import labels_for
@@ -40,7 +40,10 @@ def run(data,labels):
  call(c,labels,'LFQH_FQHListen',floating)
  surface=call(c,labels,'LFQH_FQHSurface',floating)['result'];require(surface,'Listen gets a real native effect surface')
  require(r.objects[label].state['textColor']==r.colors['labelColor'],'Semantic foreground remains readable in light/dark mode')
- effect=r.objects[surface].state['effect'];require(r.objects[effect].state['style']==0 and r.objects[effect].state['tintColor'],'Regular material with readability tint')
+ effect=r.objects[surface].state['effect']
+ neutral=release_version(data) in ('1.78R8','1.78R9','1.78R10','1.78R11')
+ require(r.objects[effect].state['style']==0 and bool(r.objects[effect].state.get('tintColor'))!=neutral,
+         'Regular material preserves the release palette: R8+ removes the extra Listen tint')
  writes=r.frames.count(surface)
  for _ in range(100):call(c,labels,'LFQH_FQHListen',floating)
  require(call(c,labels,'LFQH_FQHSurface',floating)['result']==surface and r.frames.count(surface)==writes,'100 settled layouts reuse one material without frame writes')

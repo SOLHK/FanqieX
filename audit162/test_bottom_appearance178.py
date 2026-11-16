@@ -66,8 +66,9 @@ class Runtime(AppearanceRuntime):
         ):
             if cls not in self.classes:
                 self._class(cls, parent)
-        self.feed_class = "FQVCollectionView" if release_version(self.data) == "1.78R9" else "FQFeedListCollectionView"
-        self.feed_owner_class = "FQVShortVideoListVCScrollComponent" if release_version(self.data) == "1.78R9" else "FQFeedListView"
+        real_video_feed = release_version(self.data) in ("1.78R9", "1.78R10", "1.78R11")
+        self.feed_class = "FQVCollectionView" if real_video_feed else "FQFeedListCollectionView"
+        self.feed_owner_class = "FQVShortVideoListVCScrollComponent" if real_video_feed else "FQFeedListView"
         for owner in ("FQFeedListView", "FQVShortVideoListVCScrollComponent"):
             self._add(self.classes[owner], "collectionView", self.LAYOUT_IMP, "@16@0:8")
             for selector, encoding, imp in DRAG_METHODS:

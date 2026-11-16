@@ -170,7 +170,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R9", "1.78R10"), "Use R9 or R10")
+    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11"), "Use R9, R10 or R11")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {"passed": True, "candidate_sha256": hashlib.sha256(data).hexdigest(),
               **exercise(data, labels), "device_tested": False}
