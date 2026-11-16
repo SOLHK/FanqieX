@@ -94,7 +94,7 @@ def icon(runtime, *args, **kwargs):
 
 def main_checks(data, labels):
     cases = []
-    require(release_version(data) in ("1.78", "1.78R2", "1.78R3"), "These changed visual contracts apply only to 1.78")
+    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4"), "These changed visual contracts apply only to 1.78")
     for route in ("insert_accessibility", "direct_action", "nested_identifier", "runtime_insert_class", "runtime_view_class"):
         cpu, runtime = build_fixture(data, labels)
         nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 62, 402, 44), runtime.ROOT)

@@ -117,7 +117,7 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    visible_track_spacing = release_version(data) == "1.78R3"
+    visible_track_spacing = release_version(data) in ("1.78R3", "1.78R4")
     expected_shift = 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
         for kind in ("distribution", "album"):

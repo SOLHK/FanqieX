@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.78R3
+name: Verify FanqieX 1.78R4
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: verify178r3-${{ github.ref }}
+  group: verify178r4-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
 
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.78R3'
+        run: test "$(cat VERSION)" = '1.78R4'
 
       - name: Check the runner's preinstalled LLVM and Clang
         shell: bash
@@ -53,11 +53,11 @@ jobs:
             run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then
               gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.dylib
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.validation.json
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.composed.s
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.preextend
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.extension.bin
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.validation.json
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.composed.s
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.preextend
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.extension.bin
               test -s build/xcode27-artifact/build/xcode27/xcode-build-report.json
               exit 0
             fi
@@ -67,7 +67,7 @@ jobs:
           exit 1
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.78R3 --output build/ci178r3 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.78R3.dylib
+        run: python3 scripts/verify162.py --version 1.78R4 --output build/ci178r4 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.78R4.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -75,8 +75,8 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci178r3/*.json
-            build/ci178r3/logs/
+            build/ci178r4/*.json
+            build/ci178r4/logs/
           if-no-files-found: warn
           retention-days: 30
 
@@ -85,18 +85,18 @@ jobs:
         run: |
           set -euo pipefail
           # Rebuild the committed distribution from this run after verification.
-          rm -rf dist/1.78R3 verification/1.78R3
-          python3 scripts/package162.py --version 1.78R3 --verification-dir build/ci178r3
+          rm -rf dist/1.78R4 verification/1.78R4
+          python3 scripts/package162.py --version 1.78R4 --verification-dir build/ci178r4
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.78R3
+          name: FanqieX-1.78R4
           path: |
-            dist/1.78R3/FanqieX-1.78R3.dylib
-            dist/1.78R3/FanqieX-1.78R3.zip
-            dist/1.78R3/SHA256SUMS.txt
-            dist/1.78R3/VERIFICATION.json
+            dist/1.78R4/FanqieX-1.78R4.dylib
+            dist/1.78R4/FanqieX-1.78R4.zip
+            dist/1.78R4/SHA256SUMS.txt
+            dist/1.78R4/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30

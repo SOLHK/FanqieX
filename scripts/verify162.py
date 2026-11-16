@@ -90,7 +90,7 @@ def validated_xcode_bundle(candidate: Path, version: str, expected_commit: str):
         raise RuntimeError('Xcode build does not belong to the verified source commit')
     if report.get('xcode', '').splitlines()[:1] != ['Xcode 27.2'] or report.get('sdk_version', '').split('.')[:2] != ['27', '2']:
         raise RuntimeError('Xcode artifact was not built with the required Apple toolchain')
-    if version in ('1.78', '1.78R2', '1.78R3'):
+    if version in ('1.78', '1.78R2', '1.78R3', '1.78R4'):
         if report.get('composed_assembly_sha256') != digest(composed_path):
             raise RuntimeError('Xcode composed assembly changed after the build')
         audit_hashes = report.get('audit_input_sha256', {})
@@ -108,7 +108,7 @@ def validated_xcode_bundle(candidate: Path, version: str, expected_commit: str):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "build" / "ci162")
-    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"), default="1.6.2")
+    parser.add_argument("--version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"), default="1.6.2")
     parser.add_argument("--expect-candidate", type=Path,
                         help="Also require the rebuild to match this already-delivered dylib exactly")
     parser.add_argument("--xcode-candidate", type=Path,
@@ -189,7 +189,7 @@ def main():
         baseline = ROOT / "baseline" / "FanqieAdBlock-1.5.8.dylib"
         baseline157 = ROOT / "baseline" / "FanqieAdBlock-1.5.7.dylib"
         validation = candidate.with_suffix(".validation.json")
-        if args.version in ('1.78', '1.78R2', '1.78R3'):
+        if args.version in ('1.78', '1.78R2', '1.78R3', '1.78R4'):
             run('neon-instruction-semantics178', ['-m', 'unittest', 'discover', '-s',
                 'tests', '-p', 'test_neon178.py', '-v'])
             run('xcode-artifact-provenance', ['-m', 'unittest', 'discover', '-s',
@@ -218,7 +218,7 @@ def main():
             candidate.with_suffix('.composed.s').write_bytes(composed_path.read_bytes())
             for suffix in ('.preextend', '.extension.bin'):
                 artifact = xcode_candidate.with_suffix(suffix)
-                if args.version in ('1.78', '1.78R2', '1.78R3') or artifact.is_file():
+                if args.version in ('1.78', '1.78R2', '1.78R3', '1.78R4') or artifact.is_file():
                     candidate.with_suffix(suffix).write_bytes(artifact.read_bytes())
             summary["candidate_sha256"] = digest(candidate)
             summary["candidate_size"] = candidate.stat().st_size
@@ -277,10 +277,10 @@ def main():
             "--report", output / "native-readability162-audit.json"])
         run("native-orchestration162", ["audit162/test_native_orchestration162.py",
             "--candidate", candidate, "--report", output / "native-orchestration162-audit.json"])
-        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("hook-ownership163", ["audit162/test_hook_ownership163.py", candidate,
                 "--report", output / "hook-ownership163-audit.json"])
-        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("ad-decisions164", ["audit162/test_ad_decisions164.py", candidate,
                 "--report", output / "ad-decisions164-audit.json"])
             run("startup-popup164", ["audit162/test_startup_popup164.py", candidate,
@@ -296,7 +296,7 @@ def main():
                 "--report", output / "load-diagnostics164-audit.json"])
             run("native-compiler-boundaries", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_compile_diagnostics.py", "-v"])
             run("native-unwind", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_native_unwind.py", "-v"])
-        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("home-glass165", ["audit162/test_home_glass165.py", candidate,
                 "--report", output / "home-glass165.json"])
             run("home-compiler", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_home_compiler.py", "-v"])
@@ -304,35 +304,40 @@ def main():
             run("control-glass166", ["audit162/test_control_glass166.py", candidate,
                 "--baseline", ROOT / "dist/1.6.5/FanqieX-1.6.5.dylib",
                 "--report", output / "control-glass166.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("conditional-compare", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_conditional_compare.py", "-v"])
             run("alignment167", ["audit162/test_alignment167.py", candidate,
                 "--baseline", ROOT / "dist/1.6.6/FanqieX-1.6.6.dylib",
                 "--report", output / "alignment167.json"])
-        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("controls171", ["audit162/test_controls171.py", candidate,
                 "--report", output / "controls171.json"])
-        if args.version in ("1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("header173", ["audit162/test_header173.py", candidate,
                 "--report", output / "header173.json"])
-        if args.version in ("1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("page-glass174", ["audit162/test_page_glass174.py", candidate,
                 "--report", output / "page-glass174.json"])
             run("top-chrome", ["audit162/test_top_chrome.py", candidate,
                 "--report", output / "top-chrome.json"])
-        if args.version in ("1.75", "1.76", "1.78", "1.78R2", "1.78R3"):
+        if args.version in ("1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4"):
             run("tab-appearance175", ["audit162/test_tab_appearance175.py", candidate,
                 "--report", output / "tab-appearance175.json"])
-        if args.version in ('1.78', '1.78R2', '1.78R3'):
+        if args.version in ('1.78', '1.78R2', '1.78R3', '1.78R4'):
             run('bottom-appearance178', ['audit162/test_bottom_appearance178.py', candidate,
                 '--report', output / 'bottom-appearance178.json'])
             run('reader-controls178', ['audit162/test_reader_controls178.py', candidate,
                 '--report', output / 'reader-controls178.json'])
-        if args.version in ('1.78R2', '1.78R3'):
+        if args.version in ('1.78R2', '1.78R3', '1.78R4'):
             run('bottom-icons178r2', ['audit162/test_bottom_icons178r2.py', candidate,
                 '--report', output / 'bottom-icons178r2.json'])
             run('drama-spacing178r2', ['audit162/test_drama_spacing178r2.py', candidate,
                 '--report', output / 'drama-spacing178r2.json'])
+        if args.version == '1.78R4':
+            run('bottom-icons178r4', ['audit162/test_bottom_icons178r4.py', candidate,
+                '--report', output / 'bottom-icons178r4.json'])
+            run('drama-dock178r4', ['audit162/test_drama_dock178r4.py', candidate,
+                '--report', output / 'drama-dock178r4.json'])
         # Fail if any step replaced the binary underneath the recorded reports.
         if digest(candidate) != summary["candidate_sha256"]:
             raise RuntimeError("Candidate bytes changed during verification")

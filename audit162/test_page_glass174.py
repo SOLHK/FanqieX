@@ -1763,7 +1763,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4") else (23, 3, 24, 24)
             x, _, label_width, label_height = caption_frame
             adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
@@ -1949,10 +1949,10 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3") else 512.0
+    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4") else 512.0
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
-    if release_version(data) in ("1.78", "1.78R2", "1.78R3"):
+    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4"):
         entries = [item for item in runtime.objects[header].state["subviews"]
                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
@@ -2652,8 +2652,8 @@ def exercise_drama_glass(data, labels):
     return True
 
 
-def exercise_drama_dock_backdrop(data, labels):
-    native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
+def make_drama_dock_runtime(data, labels, before_install=None):
+    """Expose host ABI/geometry only; candidate code decides all dock policy."""
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -2722,8 +2722,21 @@ def exercise_drama_dock_backdrop(data, labels):
 
     cpu, runtime = make(data, BackdropRuntime)
     runtime.labels = labels
+    if before_install:
+        before_install(runtime)
     call(cpu, labels, "LFQH_FQHPageInstall")
-    black = runtime.color("blackColor")
+    return cpu, runtime
+
+
+def exercise_drama_dock_backdrop(data, labels):
+    native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
+    transparent_dock = release_version(data) == "1.78R4"
+    config_class = "FQVShortVideoListConfig"
+    color_selector = "listVCBackgroundColor"
+    rgb_selector = "getRed:green:blue:alpha:"
+    white_selector = "getWhite:alpha:"
+    cpu, runtime = make_drama_dock_runtime(data, labels)
+    applied_color = runtime.color("clearColor" if transparent_dock else "blackColor")
     require(runtime.methods[runtime.get_method(runtime.classes["UIView"], runtime.sel("setFrame:"))]["imp"]
             == runtime.COLOR_METHOD, "the portrait overlay hook leaves the shared UIView setter intact")
     if native_video_geometry:
@@ -2738,15 +2751,16 @@ def exercise_drama_dock_backdrop(data, labels):
     other = runtime.obj("UIColor", "non-stock gray", **{rgb_selector: (28/255,)*3 + (1.,)})
 
     def check(stock, feed_type, expected):
+        ui = runtime.obj("FQVShortVideoListUIConfig", "native dock configuration", safeBottom=6.)
         config = runtime.obj(config_class, "native feed config", feedType=feed_type,
-                             listVCBackgroundColor=stock)
+                             listVCBackgroundColor=stock, portraitVideoSize=(0., 876.), uiConfig=ui)
         for _ in range(2):
             require(send(cpu, runtime, config, color_selector)["result"] == expected,
                     "the feed canvas and corner masks obtain the same configured paint")
         require(runtime.objects[config].state[color_selector] == stock, "native config storage stays intact")
 
-    check(rgb, 4, black)
-    check(gray, 4, black)
+    check(rgb, 4, applied_color)
+    check(gray, 4, applied_color)
     check(rgb, 5, rgb)
     check(other, 4, other)
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = True
@@ -2754,7 +2768,7 @@ def exercise_drama_dock_backdrop(data, labels):
     require([record["installed"] for event, record in runtime.records if event == "dramaDockBackdropInstall"]
             == [True], "hook installation is recorded")
     require([record for event, record in runtime.records if event == "dramaDockBackdrop"]
-            == [{"feedType": 4., "stock": "#1D1D1D", "applied": "#000000"}]*2,
+            == [{"feedType": 4., "stock": "#1D1D1D", "applied": "clear" if transparent_dock else "#000000"}]*2,
             "background substitution is recorded once per matching config")
     prefs = runtime.objects[runtime.DEFAULTS].state["values"]
     offsets = {"infoViewOffsetY": -8., "bottomGradientOffsetY": 0., "progressContainerViewOffsetY": -2.}
@@ -2782,7 +2796,7 @@ def exercise_drama_dock_backdrop(data, labels):
             expected_video_height = height-dock_height if native_video_geometry else height
             expected_overlay_height = height if native_video_geometry else height-dock_height
             require((cpu.fp(0), cpu.fp(1)) == (requested_width, expected_video_height),
-                    "1.78 keeps the native paging size; earlier versions retain their full-height paging contract")
+                    "The paging getter supplies the version's consistent native or floating-dock viewport")
             # setupVideoSizes resolves zero to the container width before sizing
             # both the collection's clipping bounds and its paged video cells.
             resolved_width = cpu.fp(0) if cpu.fp(0) > 0 else width
@@ -2790,7 +2804,7 @@ def exercise_drama_dock_backdrop(data, labels):
                     "automatic width resolution preserves the version's explicitly checked native viewport height")
             send(cpu, runtime, controls, "setFrame:", fp=full_frame)
             require(controls_state["bounds"][3] == expected_overlay_height,
-                    "1.78 leaves the requested overlay intact; earlier versions reserve their dock inset")
+                    "The control overlay retains the version's independently verified native control height")
             send(cpu, runtime, controls, "setFrame:", fp=controls_state["frame"])
             require(controls_state["bounds"][3] == expected_overlay_height,
                     "reusing an already adjusted overlay frame does not accumulate an inset")
@@ -2815,7 +2829,12 @@ def exercise_drama_dock_backdrop(data, labels):
         send(cpu, runtime, controls, "setFrame:", fp=full_frame)
         prefs["FanqieAdBlock.GlassDisabled.1"] = True
         send(cpu, runtime, controls, "setFrame:", fp=controls_state["frame"])
-        require(controls_state["frame"] == full_frame, "disabling glass restores the saved native overlay frame")
+        disabled_frame = (0., 0., width, height-dock_height) if transparent_dock else full_frame
+        require(controls_state["frame"] == disabled_frame,
+                "disabling R4 preserves the host's current request; earlier versions retain their snapshot restoration")
+        send(cpu, runtime, controls, "setFrame:", fp=full_frame)
+        require(controls_state["frame"] == full_frame,
+                "disabling glass also preserves the host's explicit full-height request")
         send(cpu, runtime, config, "portraitVideoSize")
         require(cpu.fp(1) == height-dock_height, "disabling glass restores native paging geometry")
         send(cpu, runtime, ui, "safeBottom")

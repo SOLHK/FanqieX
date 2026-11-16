@@ -3672,6 +3672,94 @@ static void InstallTabRecovery(Obj owner) {
     V0(observer,"release");
 }
 static void DramaDockLogKey(void) {}
+static void DramaDockViewport178R4Key(void) {}
+static void DramaDockControlApplied178R4Key(void) {}
+
+// The root drama feed reserves a dock-height strip in portraitVideoSize. A
+// transparent tab bar cannot reveal a video which stops above that strip.
+// Supply one consistent canvas to the host's own paging/layout code instead of
+// stretching a render subview beyond clipped/recycled collection cells.
+static B DramaDockCanvas178R4(Obj config,Size stock,Size *canvas) {
+    *canvas=stock;
+    if (!Enabled() || !Kind(config,"FQVShortVideoListConfig") ||
+        !InstanceABI(config,"feedType","q16@0:8") ||
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))!=4 ||
+        !__builtin_isfinite(stock.width) || !__builtin_isfinite(stock.height)) return 0;
+    Rect screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
+    if (!__builtin_isfinite(screen.width) || !__builtin_isfinite(screen.height)) return 0;
+    double width=__builtin_fmin(screen.width,screen.height);
+    double height=__builtin_fmax(screen.width,screen.height);
+    double inset=height-stock.height;
+    if (!__builtin_isfinite(width) || !__builtin_isfinite(height) || width<=0 ||
+        stock.height<=width || (stock.width!=0 && __builtin_fabs(stock.width-width)>1) ||
+        inset<40 || inset>120) return 0;
+    // A zero width is the host's automatic-container-width sentinel.
+    canvas->height=height;
+    return 1;
+}
+
+static Size DramaDockPortraitSize178R4(Obj self,Sel cmd) {
+    Size stock=((Size(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx178r4_originalPortraitSize"))(self,cmd);
+    Size canvas=stock;
+    B applied=DramaDockCanvas178R4(self,stock,&canvas);
+    Rect state={stock.width,stock.height,canvas.width,canvas.height};
+    Obj previous=objc_getAssociatedObject(self,DramaDockViewport178R4Key);
+    if ((applied || previous) && (!previous || !SameRect(state,UnboxRect(previous)))) {
+        objc_setAssociatedObject(self,DramaDockViewport178R4Key,RectBox(state),1);
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"revision",Text("floating-canvas-178R4"));
+        Put(record,"applied",BoolBox(applied));
+        Put(record,"requestedWidth",Number(stock.width));
+        Put(record,"stockHeight",Number(stock.height));
+        Put(record,"viewportHeight",Number(canvas.height));
+        Put(record,"controlsBottomInset",Number(canvas.height-stock.height));
+        FQDRecord("dramaDockViewport",record);
+    }
+    return canvas;
+}
+
+static void DramaDockControlFrame178R4(Obj self,Sel cmd,Rect requested) {
+    Obj previous=objc_getAssociatedObject(self,DramaDockControlApplied178R4Key);
+    // Absolute native height is idempotent. Never reinterpret an incoming
+    // native-height frame as an old full-height request: after disabling or
+    // reuse the host can legitimately request exactly our previous result.
+    Rect target=requested;
+    Obj context=InstanceABI(self,"listVCContext","@16@0:8") ? O0(self,"listVCContext") : (Obj)0;
+    Obj config=InstanceABI(context,"config","@16@0:8") ? O0(context,"config") : (Obj)0;
+    if (!config) config=Get(self,"listVCConfig");
+    if (Kind(config,"FQVShortVideoListConfig") &&
+        InstanceABI(config,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8") &&
+        __builtin_isfinite(requested.width) && __builtin_isfinite(requested.height) &&
+        requested.height>requested.width && requested.width>0) {
+        Size stock=((Size(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx178r4_originalPortraitSize"))(
+            config,sel_registerName("portraitVideoSize"));
+        Size canvas=stock;
+        Rect screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
+        double width=__builtin_fmin(screen.width,screen.height);
+        if (DramaDockCanvas178R4(config,stock,&canvas) &&
+            __builtin_fabs(requested.width-width)<1 &&
+            __builtin_fabs(requested.height-canvas.height)<1)
+            // Keep the native info/episode/seek anchors above the dock. Never
+            // subtract from a frame which already has the original height.
+            target.height=stock.height;
+    }
+    B adjusted=!SameRect(requested,target);
+    B changed=(adjusted && (!previous || !SameRect(target,UnboxRect(previous)))) || (previous && !adjusted);
+    if (adjusted) {
+        if (changed) objc_setAssociatedObject(self,DramaDockControlApplied178R4Key,RectBox(target),1);
+    } else if (previous) {
+        objc_setAssociatedObject(self,DramaDockControlApplied178R4Key,0,1);
+    }
+    ((void(*)(Obj,Sel,Rect))Original("FQVShortVideoVPlayerControlView","fqx178r4_originalDockControlFrame:"))(self,cmd,target);
+    if (changed) {
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"revision",Text("floating-canvas-178R4"));
+        Put(record,"requestedFrame",RectArray(requested));
+        Put(record,"controlsFrame",RectArray(target));
+        Put(record,"reservedBottom",Number(requested.height-target.height));
+        FQDRecord("dramaDockControls",record);
+    }
+}
 
 static B DramaDockStockChannel(double value) {
     return value>=0 && value<=1 && (int)(value*256+0.5)==29;
@@ -3691,31 +3779,60 @@ static Obj DramaDockBackground(Obj self,Sel cmd) {
     Obj stock=((Obj(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx193_originalDramaDockColor"))(self,cmd);
     if (!stock || ((I(*)(Obj,Sel))Message)(self,sel_registerName("feedType"))!=4 ||
         !DramaDockStockColor(stock) || !Enabled()) return stock;
+    if (!InstanceABI(self,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8")) return stock;
+    Size native=((Size(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx178r4_originalPortraitSize"))(
+        self,sel_registerName("portraitVideoSize"));
+    Size canvas=native;
+    if (!DramaDockCanvas178R4(self,native,&canvas)) {
+        // The host also gives its corner views a resolved full-height copy of
+        // the config. It is safe to clear that paint, but not an unrelated or
+        // malformed canvas which this repair cannot extend.
+        Rect screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
+        double width=__builtin_fmin(screen.width,screen.height);
+        double height=__builtin_fmax(screen.width,screen.height);
+        if (!__builtin_isfinite(screen.width) || !__builtin_isfinite(screen.height) ||
+            !__builtin_isfinite(native.width) || !__builtin_isfinite(native.height) ||
+            width<=0 || height<=width ||
+            (native.width!=0 && __builtin_fabs(native.width-width)>1) ||
+            __builtin_fabs(native.height-height)>1) return stock;
+    }
 
     // The feed root and both sets of rounded corner images all read this color.
+    // Clear their paint; black merely recolors the opaque strip outside glass.
     if (!objc_getAssociatedObject(self,DramaDockLogKey)) {
         objc_setAssociatedObject(self,DramaDockLogKey,BoolBox(1),1);
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"feedType",Number(4));
         Put(record,"stock",Text("#1D1D1D"));
-        Put(record,"applied",Text("#000000"));
+        Put(record,"applied",Text("clear"));
         FQDRecord("dramaDockBackdrop",record);
     }
-    return O0(Lookup("UIColor"),"blackColor");
+    return O0(Lookup("UIColor"),"clearColor");
 }
 
 static void DramaBackdropInstall(void) {
     const char *config="FQVShortVideoListConfig", *alias="fqx193_originalDramaDockColor";
     Obj owner=Lookup(config);
     if (!owner) return;
-    if (FQHGlassAvailable() && Signature(config,"feedType","q16@0:8"))
-        Hook(config,"listVCBackgroundColor",alias,"@16@0:8",(Imp)DramaDockBackground);
+    const char *control="FQVShortVideoVPlayerControlView";
+    B compatible=FQHGlassAvailable() && Signature(config,"feedType","q16@0:8") &&
+        Signature(config,"listVCBackgroundColor","@16@0:8") &&
+        Signature(config,"portraitVideoSize","{CGSize=dd}16@0:8") &&
+        Signature(control,"listVCConfig","@16@0:8") &&
+        Signature(control,"setFrame:","v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16");
+    if (compatible) {
+        Hook(control,"setFrame:","fqx178r4_originalDockControlFrame:",
+             "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16",(Imp)DramaDockControlFrame178R4);
+        if (Signature(control,"fqx178r4_originalDockControlFrame:","v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16"))
+            Hook(config,"portraitVideoSize","fqx178r4_originalPortraitSize",
+                 "{CGSize=dd}16@0:8",(Imp)DramaDockPortraitSize178R4);
+        if (Signature(config,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8"))
+            Hook(config,"listVCBackgroundColor",alias,"@16@0:8",(Imp)DramaDockBackground);
+    }
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
     Put(record,"installed",BoolBox(class_getInstanceMethod(owner,sel_registerName(alias))!=0));
-    // Preserve the native video-size fix evidenced by the uploaded 1.77r3 log.
-    // Bottom appearance must never resize the player or its control container.
-    Put(record,"revision",Text("native-video-size-178"));
-    Put(record,"videoSizeOverridden",BoolBox(0));
+    Put(record,"revision",Text("floating-canvas-178R4"));
+    Put(record,"videoSizeOverridden",BoolBox(Signature(config,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8")));
     FQDRecord("dramaDockBackdropInstall",record);
 }
 
@@ -4295,13 +4412,13 @@ static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
 }
 static double BottomValue178(I tag) {
-    double fallback=tag==14 ? 20 : 100;
+    double fallback=tag==14 ? 28 : 100;
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
     if (!Responds(value,"doubleValue")) return fallback;
     double number=Double(value);
     if (!__builtin_isfinite(number)) return fallback;
     double low=tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16;
-    double high=tag==12 ? 125 : tag==14 ? 26 : 100;
+    double high=tag==12 ? 125 : tag==14 ? 32 : 100;
     return BottomClamp178(number,low,high);
 }
 static Obj BottomWeak178(Obj object) {
@@ -4972,7 +5089,7 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     BottomSettingsSlider178(self,content,296,11,"胶囊长度",50,100);
     BottomSettingsSlider178(self,content,382,12,"胶囊高度",80,125);
     BottomSettingsSlider178(self,content,468,13,"按钮宽度",70,100);
-    BottomSettingsSlider178(self,content,554,14,"图标大小",16,26);
+    BottomSettingsSlider178(self,content,554,14,"图标大小",16,32);
     BottomSettingsLabel178(content,(Rect){20,638,frame.width-40,60},
         "按钮宽度调整胶囊内的按钮区域。过小的尺寸会自动保留点击空间；尺寸即时生效。",12,1);
     Obj reset=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIButton"),sel_registerName("buttonWithType:"),1);
