@@ -370,7 +370,8 @@ def merge(core, export):
     for data, image_segments in ((core, core_segs), (export, outer_segs)):
         info = inspect(data)
         need((info["cpu"], info["subtype"], info["kind"], info["platform"]) == (0x100000C, 0, 6, 2) and
-             not info["encrypted"] and verify_signature(data)["page_hashes_valid"],
+             not info["encrypted"] and
+             verify_signature(data, allow_linker_padding=(data is export))["page_hashes_valid"],
              "Expected valid signed ARM64 iOS dylib")
         need(all(item["vmaddr"] == item["fileoff"] and item["vmaddr"] % PAGE == 0 and
                  item["initprot"] & 6 != 6 for item in image_segments) and

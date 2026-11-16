@@ -48,26 +48,32 @@ def sections(data):
                    'reloc_count': nreloc, 'flags': flags}
 
 
-def signature_directory(data):
+def signature_directory(data, *, allow_linker_padding=False):
     locations = [(o, struct.unpack_from('<II', data, o + 8))
                  for cmd, o, length in macho_commands(data) if cmd == 0x1d]
     if len(locations) != 1:
         raise ValueError('Expected one LC_CODE_SIGNATURE')
     lcoff, (sigoff, sigsize) = locations[0]
-    if sigoff + sigsize != len(data):
+    if sigoff + sigsize != len(data) or sigsize < 20:
         raise ValueError('Signature must be at end of this file')
     magic, length, count = struct.unpack_from('>III', data, sigoff)
-    if magic != 0xfade0cc0 or length != sigsize or count != 1:
-        raise ValueError('Expected one ad-hoc SuperBlob slot')
+    if magic != 0xfade0cc0 or count != 1 or not 20 <= length <= sigsize:
+        raise ValueError(f'Expected one ad-hoc SuperBlob slot (magic {magic:#x}, count {count}, size {length}/{sigsize})')
+    blob_end = sigoff + length
+    # Apple ld pads the load-command range to an eight-byte boundary.
+    padding = sigsize - length
+    if padding and (not allow_linker_padding or padding >= 8 or any(data[blob_end:])):
+        raise ValueError(f'Unexpected linker signature padding ({padding} bytes)')
     typ, relative = struct.unpack_from('>II', data, sigoff + 12)
-    if typ != 0:
-        raise ValueError('Expected CodeDirectory slot')
+    if typ != 0 or not 20 <= relative <= length - 40:
+        raise ValueError('Expected a bounded CodeDirectory slot')
     off = sigoff + relative
     magic, length, version, flags, hash_offset, ident_offset, special, codeslots, codelimit = struct.unpack_from('>9I', data, off)
     hashsize, hashtype, platform, pagelog = struct.unpack_from('>4B', data, off + 36)
     if magic != 0xfade0c02 or not flags & 2 or special != 0 or hashtype != 2 or hashsize != 32:
         raise ValueError('Unsupported CodeDirectory signing format')
-    if codelimit != sigoff or hash_offset + codeslots * hashsize > length:
+    if (codelimit != sigoff or off + length > blob_end or
+            not 40 <= ident_offset < hash_offset or hash_offset + codeslots * hashsize > length):
         raise ValueError('Inconsistent signature bounds')
     pagesize = 1 << pagelog
     if (codelimit + pagesize - 1) // pagesize != codeslots:
@@ -79,11 +85,11 @@ def signature_directory(data):
             'page_size': pagesize, 'signature_offset': sigoff, 'signature_size': sigsize}
 
 
-def verify_signature(data):
-    cd = signature_directory(data)
+def verify_signature(data, *, allow_linker_padding=False):
+    cd = signature_directory(data, allow_linker_padding=allow_linker_padding)
     off = cd['offset']
     start = off + cd['ident_offset']
-    ident = data[start:data.index(b'\0', start)].decode('utf-8')
+    ident = data[start:data.index(b'\0', start, off + cd['hash_offset'])].decode('utf-8')
     bad = []
     for i in range(cd['code_slots']):
         a, b = i * cd['page_size'], min((i + 1) * cd['page_size'], cd['code_limit'])
