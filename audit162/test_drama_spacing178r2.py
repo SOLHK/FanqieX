@@ -4,13 +4,15 @@
 The screenshots establish the collision, not a particular private progress
 getter. Fixtures expose only subviews, geometry, class identity and existing
 host actions. The production code performs discovery and all layout decisions.
+R3 also reproduces the submitted R2 log's exact window-space rectangles. Its
+unreported parent hierarchy remains an explicit synthetic UIKit boundary.
 """
 import argparse
 import copy
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import require, release_version
 from test_control_glass166 import send
 from test_controls171 import call
 from test_feed_viewport import labels_for
@@ -92,18 +94,41 @@ def global_rect(runtime, view):
     return x, y, *state["bounds"][2:]
 
 
+def logged_geometry(data, labels):
+    """Use only the observed geometry; do not infer an unreported host tree."""
+    cpu, rt, v = fixture(data, labels)
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, v["root"], "layoutSubviews")
+    rt.reparent(v["entry"], v["root"])
+    rt.objects[v["entry"]].state.update(frame=(0., 832., 440., 44.),
+                                         bounds=(0., 0., 440., 44.))
+    rt.objects[v["content"]].state.update(frame=(0., 0., 440., 44.),
+                                           bounds=(0., 0., 440., 44.))
+    rt.objects[v["progress"]].state.update(frame=(0., 851., 440., 30.),
+                                            bounds=(0., 0., 440., 30.))
+    rt.objects[v["track"]].state["frame"] = (16., 22., 408., 2.)
+    # A fill narrower than half the control width is not the full seek track.
+    for child in rt.objects[v["progress"]].state["subviews"]:
+        if child != v["track"]:
+            rt.objects[child].state["frame"] = (16., 22., 81.6, 2.)
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
+    return cpu, rt, v
+
+
 def verify(data, labels):
     cases = []
+    visible_track_spacing = release_version(data) == "1.78R3"
+    expected_shift = 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
         for kind in ("distribution", "album"):
             cpu, rt, views = fixture(data, labels, width, height, kind)
             states = {key: rt.objects[value].state for key, value in views.items()}
             root, info, entry, progress, track = (views[k] for k in ("root", "info", "entry", "progress", "track"))
             row_rect = global_rect(rt, entry)
-            progress_rect = global_rect(rt, progress)
-            require(progress_rect[1] - row_rect[1] - row_rect[3] == 8.,
-                    "Episode tap region is separated from the unchanged 40pt seek region")
-            require(states["info"]["frame"] == (0., height-310, width, 200.),
+            spacing_reference = global_rect(rt, track if visible_track_spacing else progress)
+            require(spacing_reference[1] - row_rect[1] - row_rect[3] == 8.,
+                    "Episode entry has the intended gap to its version's spacing reference")
+            require(states["info"]["frame"] == (0., height-284-expected_shift, width, 200.),
                     "The complete information group moves once, preserving title-to-entry spacing")
             preserved = {key: copy.deepcopy(states[key]) for key in ("player", "progress", "track", "caption", "entry", "content")}
             info_frame = states["info"]["frame"]
@@ -118,7 +143,7 @@ def verify(data, labels):
             require(len([r for event, r in rt.records if event == "dramaControlSpacing178R2"]) == records,
                     "Settled layouts do not emit repeated diagnostics")
             record = [r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]
-            require(record["status"] == "separated" and record["shiftY"] == 26. and
+            require(record["status"] == "separated" and record["shiftY"] == expected_shift and
                     record["episodeWindowRect"] == list(row_rect) and record["progressWindowRect"] == list(global_rect(rt, track)),
                     "Diagnostics report actual converted geometry and displacement")
             rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
@@ -135,6 +160,35 @@ def verify(data, labels):
             send(cpu, rt, root, "layoutSubviews")
             require(states["info"]["frame"] == newer, "Disabling preserves the latest host layout")
             cases.append(f"{int(width)}x{int(height)} {kind}: collision, exact actions, repeated layouts, disable, host rewrite")
+
+    cpu, rt, v = logged_geometry(data, labels)
+    states = {key: rt.objects[value].state for key, value in v.items()}
+    preserved = {key: copy.deepcopy(states[key]) for key in ("player", "progress", "track", "info", "caption")}
+    for _ in range(5):
+        send(cpu, rt, v["root"], "layoutSubviews")
+        send(cpu, rt, v["entry"], "layoutSubviews")
+        require(global_rect(rt, v["entry"]) == (0., 821. if visible_track_spacing else 799., 440., 44.),
+                "The observed 440pt screen gets only the necessary lift, without cumulative movement")
+    record = [r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]
+    require(record["shiftY"] == (11. if visible_track_spacing else 33.) and
+            record["progressWindowRect"] == [16., 873., 408., 2.] and
+            record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
+            "The regression reproduces the R2 log's actual visible track and native owner geometry")
+    if visible_track_spacing:
+        require(record["revision"] == "visible-track-178R3" and
+                record["spacingReference"] == "visibleTrack" and record["trackGap"] == 8. and
+                "seekRegionHeight" not in record,
+                "Diagnostics distinguish visible spacing from the unchanged native touch region")
+    for key in preserved:
+        for prop in ("frame", "bounds", "gestureRecognizers", "userInteractionEnabled", "progress", "subviews"):
+            require(states[key].get(prop) == preserved[key].get(prop),
+                    "Logged geometry preserves host geometry, actions and ordering: "+key+" "+prop)
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, v["root"], "layoutSubviews")
+    require(global_rect(rt, v["entry"]) == (0., 832., 440., 44.),
+            "Disabling restores the original episode entry from the log")
+    cases.append("submitted R2 geometry: minimal 11pt lift to 8pt visible gap" if visible_track_spacing else
+                 "submitted R2 geometry: reproduces 33pt lift and 30pt visible gap")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)
@@ -166,15 +220,41 @@ def verify(data, labels):
     rt.objects[v["track"]].state["frame"] = (0., 31., 408., 2.)
     send(cpu, rt, v["root"], "layoutSubviews")
     row = global_rect(rt, v["entry"])
-    require(842.-row[1]-row[3] == 8., "A 64pt native seek owner keeps its complete touch region despite its 2pt track")
-    cases.append("64pt seek owner: native touch region survives thin-track discovery")
+    reference_top = 873. if visible_track_spacing else 842.
+    require(reference_top-row[1]-row[3] == 8. and
+            rt.objects[v["progress"]].state["frame"] == (16., 842., 408., 64.) and
+            rt.objects[v["progress"]].state["gestureRecognizers"] == ["host seek pan"],
+            "A 64pt native seek owner remains unchanged and cannot inflate the visible gap in R3")
+    cases.append("64pt seek owner: native geometry and gestures preserved; version-specific gap checked")
+
+    if visible_track_spacing:
+        for scenario in ("hidden_track", "missing_track", "thick_track"):
+            cpu, rt, v = fixture(data, labels)
+            progress_state = rt.objects[v["progress"]].state
+            for child in list(progress_state["subviews"]):
+                if scenario == "hidden_track":
+                    rt.objects[child].state["hidden"] = True
+                elif scenario == "missing_track":
+                    rt.reparent(child, 0)
+                else:
+                    old = rt.objects[child].state["frame"]
+                    rt.objects[child].state.update(frame=(*old[:3], 12.), bounds=(0., 0., old[2], 12.))
+            owner = copy.deepcopy(progress_state)
+            send(cpu, rt, v["root"], "layoutSubviews")
+            require(rt.objects[v["info"]].state["frame"] == (0., 672., 440., 200.) and
+                    global_rect(rt, v["entry"])[1:] == (832., 440., 40.),
+                    "An unresolved thin track cannot turn its native seek container into a visual boundary")
+            require([r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]["status"] ==
+                    "progressTrackUnresolved", "Unknown visual track is explicitly diagnosed")
+            require(progress_state == owner, "An unresolved track leaves the native seek owner untouched")
+            cases.append(scenario+": restore episode frame; never guess from the large seek owner")
 
     cpu, rt, v = fixture(data, labels)
     shared = rt.view("UIView", "short shared parent", (0., 780., 440., 90.), v["root"], clipsToBounds=True)
     rt.reparent(v["entry"], shared)
     rt.objects[v["entry"]].state["frame"] = (0., 10., 440., 40.)
     rt.reparent(v["progress"], shared)
-    rt.objects[v["progress"]].state["frame"] = (16., 38., 408., 40.)
+    rt.objects[v["progress"]].state["frame"] = (16., 16., 408., 40.)
     send(cpu, rt, v["root"], "layoutSubviews")
     require(rt.objects[v["entry"]].state["frame"] == (0., 10., 440., 40.) and
             rt.objects[v["info"]].state["frame"] == (0., 672., 440., 200.),
@@ -189,7 +269,7 @@ def verify(data, labels):
     rt.objects[v["progress"]].state["frame"] = (16., 730., 408., 40.)
     for _ in range(4):
         send(cpu, rt, v["root"], "layoutSubviews")
-        require(rt.objects[v["info"]].state["frame"] == (0., 222., 440., 500.),
+        require(rt.objects[v["info"]].state["frame"] == (0., 241. if visible_track_spacing else 222., 440., 500.),
                 "Stock projection prevents oscillation when the applied group crosses the discovery threshold")
     cases.append("threshold crossing: stable stock-based discovery on repeated layouts")
 

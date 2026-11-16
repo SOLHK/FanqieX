@@ -2391,9 +2391,12 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
     DramaSpacingForEntry178R2(self);
 }
 
-// The 1.78R1 screenshot puts the episode pill on the playback seek track.
-// Work inside the observed portrait control class, using actual view geometry.
-// Neither the player, paging size, seek control nor its gestures are modified.
+// Keep a small visual gap above the rendered playback track. In 1.78R2 the
+// invisible seek container added 22pt of unnecessary lift on the observed host,
+// pushing the episode pill into the disclosure above it. Its hit region must
+// remain native, but must not be treated as visible paint when placing the pill.
+// Retain the R2 hook/association identities for continuity; diagnostics identify
+// the R3 positioning rule explicitly. The player and seek gestures are untouched.
 static void DramaSpacingBusy178R2Key(void) {}
 static void DramaSpacingTarget178R2Key(void) {}
 static void DramaSpacingStock178R2Key(void) {}
@@ -2489,8 +2492,12 @@ void FQHDramaSpacing178R2(Obj root) {
     if (eligible) {
         U entries=0; int budget=128;
         DramaSpacingScan178R2(root,root,8,&budget,0,&entry,&entries,&progress,&track);
-        status=budget<=0 ? "scanLimit" : entries!=1 ? "noUniqueEpisodeEntry" : !progress ? "progressNotResolved" : "measured";
-        if (entries==1 && progress && budget>0) {
+        // A broad progress container is not evidence of the visible track's
+        // position. If the thin track is hidden or absent, keep the host layout.
+        B visibleTrack=progress && track.height<=8;
+        status=budget<=0 ? "scanLimit" : entries!=1 ? "noUniqueEpisodeEntry" : !progress ? "progressNotResolved" :
+            !visibleTrack ? "progressTrackUnresolved" : "measured";
+        if (entries==1 && visibleTrack && budget>0) {
             row=DramaSpacingMeasure178R2(entry,root);
             target=entry;
             // Move the compact information block as a unit when it owns the
@@ -2514,20 +2521,17 @@ void FQHDramaSpacing178R2(Obj root) {
         Rect targetInRoot=Convert(target,targetBounds,root);
         row=Convert(entry,Bounds(entry),root);
         row.y+=stock.y-current.y;
-        // A thin rendered track still needs a 40pt vertical seek region.
-        // The actual seek view, thumb and target/action remain exactly native.
-        double seekTop=track.height>=40 ? track.y : track.y+track.height*0.5-20;
-        // Preserve a larger existing seek container as well. A thin child
-        // track does not reduce its parent's original interactive region.
+        // Keep the host seek owner for diagnostics only. Its invisible touch
+        // padding does not add visual clearance; no seek frame, gesture,
+        // target/action or sibling ordering is changed.
         for (Obj seek=progress;seek && seek!=root;seek=Get(seek,"superview")) {
             Rect r=Convert(seek,Bounds(seek),root);
             if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
                 r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) {
-                seekTop=__builtin_fmin(seekTop,r.y);
                 seekOwner=seek;
             }
         }
-        shift=__builtin_fmax(0,row.y+row.height+8-seekTop);
+        shift=__builtin_fmax(0,row.y+row.height+8-track.y);
         B safe=VisibleRect(stock) && __builtin_fabs(targetInRoot.width-targetBounds.width)<0.5 &&
             __builtin_fabs(targetInRoot.height-targetBounds.height)<0.5 && shift<=80 &&
             targetInRoot.y+(stock.y-current.y)-shift>=b.y+8;
@@ -2554,7 +2558,12 @@ void FQHDramaSpacing178R2(Obj root) {
     if (eligible || previous) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
-        Put(record,"seekRegionHeight",Number(40)); Put(record,"gap",Number(8));
+        Put(record,"revision",Text("visible-track-178R3"));
+        Put(record,"spacingReference",Text("visibleTrack")); Put(record,"gap",Number(8));
+        if (entry && progress && track.height<=8) {
+            Rect actualRow=Convert(entry,Bounds(entry),root);
+            Put(record,"trackGap",Number(track.y-actualRow.y-actualRow.height));
+        }
         if (entry) Put(record,"episodeWindowRect",RectArray(Convert(entry,Bounds(entry),window)));
         if (progress) {
             Put(record,"progressWindowRect",RectArray(Convert(progress,Bounds(progress),window)));
