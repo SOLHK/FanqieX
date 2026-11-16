@@ -605,6 +605,18 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu, self.color("secondaryLabelColor"))
             if receiver == self.classes["UIApplication"] and name == "sharedApplication" and hasattr(self, "tab_app"):
                 return self.finish(cpu, self.tab_app)
+            if receiver == self.classes["NSURL"] and name == "URLWithString:":
+                return self.finish(cpu, self.url(self.string_value(cpu.x[2])))
+            if receiver == self.classes["NSDictionary"] and name == "dictionary":
+                return self.finish(cpu, self.box({}))
+            if receiver == getattr(self, "tab_app", None) and name == "openURL:options:completionHandler:":
+                url, options, completion = cpu.x[2:5]
+                require(self.is_kind(url, self.classes["NSURL"]) and
+                        self.is_kind(options, self.classes["NSDictionary"]) and
+                        self.objects[options].state["items"] == {} and completion == 0,
+                        "the channel uses the standard UIApplication URL opening API")
+                self.objects[receiver].state.setdefault("opened_urls", []).append(self.string_value(url))
+                return self.finish(cpu)
             if receiver in self.metaclasses and name == "alloc" and self.class_names[receiver] in (
                     "UIView", "UILabel", "UISwitch"):
                 return self.finish(cpu, self.view(self.class_names[receiver], "settings control"))
@@ -1967,18 +1979,35 @@ def exercise(data, labels):
     # Settings are installed on the real lazily-created table and persist before refreshing.
     table = runtime.view("UITableView", "plugin settings", (0, 0, 0, 0), runtime.ROOT)
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
+    runtime.tab_app = runtime.obj("UIApplication", "plugin settings app", opened_urls=[])
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8") else 512.0
+    version = release_version(data)
+    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8")
+    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version == "1.78R8")
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
-    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8"):
+    if has_bottom_settings:
         entries = [item for item in runtime.objects[header].state["subviews"]
                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
         require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
                 len(runtime.objects[entries[0]].state["control_targets"]) == 1,
                 "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
+    if version == "1.78R8":
+        channels = [item for item in runtime.objects[header].state["subviews"]
+                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
+                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
+        require(len(channels) == 1, "the settings header exposes exactly one Telegram channel entry")
+        channel = runtime.objects[channels[0]].state
+        require(channel["frame"] == (16., 576., 288., 48.) and len(channel["control_targets"]) == 1,
+                "the channel entry sits below bottom appearance with a 48pt tap target")
+        opened_urls = runtime.objects[runtime.tab_app].state["opened_urls"]
+        require(opened_urls == [], "opening settings does not open the Telegram channel")
+        target, action, event = channel["control_targets"][0]
+        require(event == 64, "the channel entry opens on touch-up-inside")
+        send(cpu, runtime, target, runtime.selector_names[action], channels[0])
+        require(opened_urls == ["https://t.me/Naloiafeed"], "tapping the channel entry opens the requested HTTPS URL once")
     switches = [item for item in runtime.objects[header].state["subviews"]
                 if runtime.is_kind(item, runtime.classes["UISwitch"])]
     switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])

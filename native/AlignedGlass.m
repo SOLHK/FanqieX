@@ -17,7 +17,7 @@ Rect FQHBottomNativeRect178(Obj proxy,Rect bounds);
 Rect FQHBottomProxyFrame178R5(Obj proxy,Rect stock);
 Rect FQHBottomButtonFrame178R5(Obj button,Rect stock);
 void FQHBottomReset178(Obj bar,Obj proxy);
-static void BottomOptionsEntry178(Obj controller,Obj container);
+static void OptionsEntries178(Obj controller,Obj container);
 static void RefreshFullscreenFill(void);
 extern void Message(void) __asm__("_objc_msgSend");
 extern Obj Lookup(const char *) __asm__("_objc_getClass");
@@ -4402,7 +4402,7 @@ void FQHInstallOptionsToggles(Obj controller) {
     Q1(note,"setAutoresizingMask:",2);
     V1(container,"addSubview:",note);
     V0(note,"release");
-    BottomOptionsEntry178(controller,container);
+    OptionsEntries178(controller,container);
     objc_setAssociatedObject(container,ToggleObserverKey,observer,1);
     V1(table,"setTableHeaderView:",container);
     V0(container,"release");
@@ -5703,27 +5703,42 @@ static void BottomOpenSettings178(Obj self,Sel cmd,Obj sender) {
     ((void(*)(Obj,Sel,Obj,B))Message)(nav,sel_registerName("pushViewController:animated:"),controller,1);
     V0(controller,"release");
 }
-static void BottomOptionsEntry178(Obj controller,Obj container) {
+static void OpenTelegramChannel178(Obj self,Sel cmd,Obj sender) {
+    (void)self; (void)cmd; (void)sender;
+    Obj url=O1(Lookup("NSURL"),"URLWithString:",Text("https://t.me/Naloiafeed"));
+    Obj app=O0(Lookup("UIApplication"),"sharedApplication");
+    Obj options=O0(Lookup("NSDictionary"),"dictionary");
+    ((void(*)(Obj,Sel,Obj,Obj,Obj))Message)(app,
+        sel_registerName("openURL:options:completionHandler:"),url,options,0);
+}
+static void OptionsEntry178(Obj container,Obj observer,Rect frame,const char *title,const char *label,const char *action) {
+    Obj button=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIButton"),sel_registerName("buttonWithType:"),1);
+    SetFrame(button,frame);
+    Q1(button,"setAutoresizingMask:",2);
+    ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitle:forState:"),Text(title),0);
+    V1(button,"setAccessibilityLabel:",Text(label));
+    ((void(*)(Obj,Sel,Obj,Sel,U))Message)(button,sel_registerName("addTarget:action:forControlEvents:"),
+        observer,sel_registerName(action),64);
+    objc_setAssociatedObject(button,BottomOptionsOwner178Key,observer,1);
+    V1(container,"addSubview:",button);
+}
+static void OptionsEntries178(Obj controller,Obj container) {
     Obj cls=Lookup("FanqieXBottomOptionsRouter178");
     if (!cls) {
         cls=AllocateClass(Lookup("NSObject"),"FanqieXBottomOptionsRouter178",0);
         if (!cls) return;
         class_addMethod(cls,sel_registerName("fqx178_openBottom:"),(Imp)BottomOpenSettings178,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx178_openTelegram:"),(Imp)OpenTelegramChannel178,"v24@0:8@16");
         RegisterClass(cls);
     }
     Obj observer=O0(cls,"new");
     BottomSetWeak178(observer,BottomOptionsOwner178Key,controller);
-    Obj button=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIButton"),sel_registerName("buttonWithType:"),1);
     Rect frame=Frame(container);
-    SetFrame(button,(Rect){16,frame.height+4,frame.width-32,48});
-    Q1(button,"setAutoresizingMask:",2);
-    ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitle:forState:"),Text("底栏外观与尺寸  ›"),0);
-    V1(button,"setAccessibilityLabel:",Text("底栏外观与尺寸"));
-    ((void(*)(Obj,Sel,Obj,Sel,U))Message)(button,sel_registerName("addTarget:action:forControlEvents:"),
-        observer,sel_registerName("fqx178_openBottom:"),64);
-    objc_setAssociatedObject(button,BottomOptionsOwner178Key,observer,1);
-    V1(container,"addSubview:",button);
+    OptionsEntry178(container,observer,(Rect){16,frame.height+4,frame.width-32,48},
+        "底栏外观与尺寸  ›","底栏外观与尺寸","fqx178_openBottom:");
+    OptionsEntry178(container,observer,(Rect){16,frame.height+64,frame.width-32,48},
+        "Telegram 频道  ›","Telegram 频道","fqx178_openTelegram:");
     V0(observer,"release");
-    frame.height+=60;
+    frame.height+=120;
     SetFrame(container,frame);
 }
