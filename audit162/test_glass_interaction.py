@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import struct
 
 from arm64 import require
 from interaction_runtime import make
@@ -12,6 +13,7 @@ from interaction_runtime import make
 
 def run_all(data):
     cases = []
+    has_drag_glass = struct.unpack_from('<I', data, 0x818)[0] == 0x14e0e
 
     def fixture(**options):
         c, r, e = make(data, **options)
@@ -77,10 +79,18 @@ def run_all(data):
 
     finger = begin(c, r, e, 17)
     drag_effect = r.objects[lens].state['effect']
-    require(drag_effect == 0 and r.objects[overlay].state['subviews'][0] == lens,
-            'Fallback drag keeps the plain indicator below sharp labels without stacking glass')
-    require(r.objects[content].state['backgroundColor'] == r.color('secondarySystemFillColor'),
-            'The fallback selected fill remains legible while dragging')
+    if has_drag_glass:
+        require(drag_effect and r.class_names[r.objects[drag_effect].cls] == 'UIGlassEffect' and
+                r.objects[drag_effect].state['style'] == 1 and
+                r.objects[overlay].state['subviews'][-1] == lens,
+                'The active Clear lens samples the icons above the base')
+        require(not r.objects[lens].state['userInteractionEnabled'],
+                'The lens remains decorative throughout the gesture')
+    else:
+        require(drag_effect == 0 and r.objects[overlay].state['subviews'][0] == lens,
+                'Legacy fallback drag keeps the plain indicator below sharp labels')
+        require(r.objects[content].state['backgroundColor'] == r.color('secondarySystemFillColor'),
+                'The legacy fallback selected fill remains legible while dragging')
     initial = r.objects[lens].state['frame']
     fire(c, r, e, 2, finger+35)
     moved = r.objects[lens].state['frame']

@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_feed_viewport import labels_for
 from test_native_orchestration162 import Runtime as Base, make, repair, effect_writes
 
@@ -96,8 +96,10 @@ def exercise(data, labels, slide):
             'A black drama page makes the real mounted glass dark in a light system')
     effect = runtime.objects[runtime.PROXY].state['effect']
     control = runtime.control()
-    require(effect and control and runtime.objects[effect].state['style'] == 0,
-            'Dark appearance retains the same Regular native glass and selection control')
+    drag_selection = release_version(data) == '1.78R14'
+    input_surface = runtime.associated(runtime.PROXY, 'overlay') if drag_selection else control
+    require(effect and input_surface and runtime.objects[effect].state['style'] == 0,
+            'Dark appearance retains Regular glass and the active input surface')
     require(runtime.objects[runtime.PROXY].state['backgroundColor'] == runtime.color('clearColor'),
             'Appearance does not add an opaque mask behind the glass')
     for button in runtime.buttons:
@@ -120,6 +122,10 @@ def exercise(data, labels, slide):
         repair(cpu, runtime, entries)
         require(runtime.objects[runtime.PROXY].state['overrideUserInterfaceStyle'] == expected,
                 'Page switches refresh the local material appearance')
+        if drag_selection:
+            require(all(runtime.objects[button].state['overrideUserInterfaceStyle'] == expected
+                        for button in runtime.buttons),
+                    'The buttons over the glass inherit the same page-local appearance')
         require(runtime.model_reads[-1] == model, 'Current subtab model reaches the host resolver')
     runtime.objects[runtime.BAR].state['userInterfaceStyle'] = 2
     runtime.background = runtime.fresh_color(dynamic={1: (1, 1, 1, 1), 2: (0, 0, 0, 1)})
@@ -145,15 +151,24 @@ def exercise(data, labels, slide):
     repair(cpu, runtime, entries)
     require(runtime.objects[runtime.buttons[0]].state['titleColors'][4] == runtime.color('labelColor'),
             'Late selected-state ink is repaired')
-    require(all(view == runtime.PROXY for view, _ in runtime.style_writes),
+    styled_views = (runtime.PROXY, *runtime.buttons) if drag_selection else (runtime.PROXY,)
+    require(all(view in styled_views for view, _ in runtime.style_writes),
             'Window, page, reader and global app appearance are never overridden')
     require(all(runtime.objects[view].state['frame'] == frame for view, frame in frames.items()),
             'Appearance changes preserve the accepted video, control and dock geometry')
-    require(runtime.objects[runtime.PROXY].state['effect'] == effect and runtime.control() == control,
-            'Light/dark switches reuse the existing effect and input surface')
-    runtime.fire(cpu, index=0)
-    require(runtime.route_calls == [0], 'Native selection still navigates once')
-    return {'slide': hex(slide), 'local_style_sequence': [value for _, value in runtime.style_writes],
+    require(runtime.objects[runtime.PROXY].state['effect'] == effect,
+            'Light/dark switches reuse the existing effect')
+    if drag_selection:
+        require(runtime.associated(runtime.PROXY, 'overlay') == input_surface,
+                'Light/dark switches reuse the drag overlay')
+        cpu.run(0x56c0, runtime.BAR, runtime.sel('fqab_homeTabPressed:'), runtime.buttons[0],
+                max_steps=3000000)
+    else:
+        require(runtime.control() == control, 'Light/dark switches reuse native input')
+        runtime.fire(cpu, index=0)
+    require(runtime.route_calls == [0], 'The original selection route still navigates once')
+    return {'slide': hex(slide),
+            'local_style_sequence': [value for view, value in runtime.style_writes if view == runtime.PROXY],
             'material_writes': len(effect_writes(runtime)), 'geometry_unchanged': True,
             'global_appearance_untouched': True, 'late_ink_repaired': True}
 

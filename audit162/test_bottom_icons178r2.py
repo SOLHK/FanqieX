@@ -11,7 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_feed_viewport import labels_for
 from test_bottom_appearance178 import (
     ICONS, Runtime, bottom_labels, button_contents, call, check_input, fixture,
@@ -84,7 +84,7 @@ def late_layout_and_restore(data, labels):
         require(button_contents(runtime) == original,
                 "Disabling icons restores every plain and attributed title state")
         require(not any(overlays(runtime, b) for b in runtime.buttons), "Disable removes all owned symbol views")
-        cases.append({"renderer": "buttons" if fallback else "native", "late_layout_captionless": True,
+        cases.append({"renderer": "native" if control else "buttons", "late_layout_captionless": True,
                       "all_title_states_restored": True, "route_calls": runtime.route_calls})
     return cases
 
@@ -109,15 +109,18 @@ def host_updates_and_native_fallback(data, labels):
         runtime.objects[runtime.items[0]].state["title"] = 0
         repair(cpu, runtime, entries)
         assert_captionless(runtime)
-        if not fallback:
-            control = runtime.control()
+        control = runtime.control()
+        if not fallback and release_version(data) != '1.78R14':
             require(control and runtime.string_value(runtime.objects[control].state["segments"][0]) == "首页",
                     "Suppression cannot invalidate native segment construction when an item title is missing")
+        else:
+            require(overlay_image(runtime, button) and runtime.objects[button].state['userInteractionEnabled'],
+                    "An item temporarily missing its title keeps its icon and button input")
         runtime.defaults(**{ICONS: False})
         repair(cpu, runtime, entries)
         require(runtime.objects[button].state["titles"][0] == replacement,
                 "Disable restores the latest host title rather than the stale snapshot")
-        cases.append({"renderer": "buttons" if fallback else "native", "latest_host_title_preserved": True,
+        cases.append({"renderer": "native" if control else "buttons", "latest_host_title_preserved": True,
                       "missing_item_title_supported": True})
     return cases
 
@@ -128,6 +131,18 @@ def renderer_transition(data, labels):
     runtime.defaults(**{ICONS: True})
     repair(cpu, runtime, entries)
     assert_captionless(runtime)
+    if release_version(data) == '1.78R14':
+        pan = runtime.associated(runtime.PROXY, 'pan')
+        require(pan and not runtime.control(), 'Icon mode mounts the drag renderer')
+        runtime.missing_classes.remove("UISegmentedControl")
+        repair(cpu, runtime, entries)
+        require(runtime.associated(runtime.PROXY, 'pan') == pan and not runtime.control(),
+                'Availability of UISegmentedControl does not replace the active drag renderer')
+        assert_captionless(runtime)
+        runtime.defaults(**{ICONS: False})
+        repair(cpu, runtime, entries)
+        require(button_contents(runtime) == original, 'Icon mode restores all original titles')
+        return {"stable_drag_renderer": True, "restored": True}
     runtime.missing_classes.remove("UISegmentedControl")
     repair(cpu, runtime, entries)
     require(bool(runtime.control()), "Fallback can become a native selector while icon mode stays enabled")

@@ -52,6 +52,7 @@ LXupdate: // (bar, proxy), called inside Lrepair's busy scope
     mov x0, x19
     mov x1, x20
     bl LXnative_update
+.if FQ_VERSION < 0x14e0e
     mov x0, x19
     mov x1, x20
     bl LNupdate
@@ -65,6 +66,7 @@ LXupdate: // (bar, proxy), called inside Lrepair's busy scope
     mov x0, x20
     bl LNpresentation
     b LXupdate_monitor
+.endif
 LXupdate_fallback:
     mov x0, x19
     mov x1, x20
@@ -756,6 +758,11 @@ LXsnapshot_done_rows:
     adr x9, LXrenderer_fallback
     cmp w0, #0
     csel x0, x8, x9, ne
+.if FQ_VERSION >= 0x14e0e
+    adr x8, LXrenderer_drag
+    cmp x22, #0
+    csel x0, x8, x0, ne
+.endif
     bl Lstr
     mov x2, x0
     mov x0, x20
@@ -853,6 +860,7 @@ LXnative_selection_field: .asciz "nativeSelectionControl"
 LXrenderer_field: .asciz "bottomBarRenderer"
 LXrenderer_native: .asciz "UISegmentedControl"
 LXrenderer_fallback: .asciz "RegularGlassPlainSelectionFallback"
+LXrenderer_drag: .asciz "RegularGlassDragSelection"
 LXmain_bundle: .asciz "mainBundle"
 LXbundle_info: .asciz "objectForInfoDictionaryKey:"
 LXcompat_key: .asciz "UIDesignRequiresCompatibility"

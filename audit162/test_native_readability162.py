@@ -14,9 +14,11 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from native_selection_runtime import make as make_component
-from test_native_orchestration162 import make as make_full, repair, effect_writes
+from test_native_orchestration162 import (
+    make as make_full, repair, effect_writes, require_fallback, send_interaction_pan,
+)
 
 
 RELEASED_161_SHA = '8c8aedc3643c52efa1180119a983c8cd22006123ea095db617ea901be0fbcf8e'
@@ -51,6 +53,22 @@ def hit_test(rt, receiver, point, depth=0):
 
 
 def assert_public_readable_state(rt):
+    if release_version(rt.data) == '1.78R14':
+        overlay = require_fallback(rt)
+        lens = rt.associated(rt.PROXY, 'lens')
+        content = rt.objects[lens].state['contentView']
+        require(rt.objects[content].state['backgroundColor'] == rt.color('secondarySystemFillColor'),
+                'The idle selection uses explicit adaptive gray')
+        ox, oy, _, _ = rt.objects[overlay].state['frame']
+        for button in rt.buttons:
+            state = rt.objects[button].state
+            x, y, w, h = state['frame']
+            require(hit_test(rt, rt.BAR, (ox + x + w / 2, oy + y + h / 2)) == button and
+                    state['isAccessibilityElement'] and not state['accessibilityElementsHidden'],
+                    'The original button still owns its complete tap and accessibility target')
+            require(state['backgroundColor'] == rt.color('clearColor'),
+                    'Original buttons do not paint a second selection background')
+        return
     control = rt.control()
     require(control, 'Candidate installs native input')
     effect = rt.objects[rt.PROXY].state['effect']
@@ -202,12 +220,24 @@ def existing_visual_content_and_stable_material(candidate):
     assert_public_readable_state(rt)
     initial_effect = rt.objects[rt.PROXY].state['effect']
     initial_writes = len(effect_writes(rt))
+    drag_selection = release_version(candidate) == '1.78R14'
+    if drag_selection:
+        lens = rt.associated(rt.PROXY, 'lens')
+        x, _, width, _ = rt.objects[lens].state['frame']
+        send_interaction_pan(cpu, rt, 1, x + width / 2)
+        send_interaction_pan(cpu, rt, 2, x + width / 2 + 20)
+        preview = rt.objects[lens].state['frame']
     for alpha in (1.0, 0.75, 0.5, 1.0, 1.0):
         rt.objects[rt.ROOT].state['alpha'] = alpha
-        rt.objects[rt.control()].state.update(tracking=True, selectedSegmentIndex=1)
+        if not drag_selection:
+            rt.objects[rt.control()].state.update(tracking=True, selectedSegmentIndex=1)
         repair(cpu, rt, entries)
-        require(rt.objects[rt.control()].state['selectedSegmentIndex'] == 1,
-                'Presentation/material maintenance preserves native tracking preview')
+        if drag_selection:
+            require(rt.objects[lens].state['frame'] == preview and rt.objects[lens].state['effect'],
+                    'Presentation and material maintenance preserve the moving glass lens')
+        else:
+            require(rt.objects[rt.control()].state['selectedSegmentIndex'] == 1,
+                    'Presentation and material maintenance preserve native tracking preview')
         require(rt.objects[rt.PROXY].state['effect'] == initial_effect and
                 len(effect_writes(rt)) == initial_writes,
                 'Visibility/fade/maintenance never clears or replaces a usable Regular material')
@@ -215,8 +245,12 @@ def existing_visual_content_and_stable_material(candidate):
             require({key: rt.objects[button].state[key] for key in saved} == saved,
                     'Existing text, optional image content, layout and host route stay intact')
     rt.objects[rt.ROOT].state['alpha'] = 1.0
-    rt.objects[rt.control()].state['tracking'] = False
-    rt.fire(cpu, index=3)
+    if drag_selection:
+        x, _, width, _ = rt.objects[rt.buttons[3]].state['frame']
+        send_interaction_pan(cpu, rt, 3, x + width / 2)
+    else:
+        rt.objects[rt.control()].state['tracking'] = False
+        rt.fire(cpu, index=3)
     require(rt.route_calls == [3] and rt.selected_index() == 3,
             'Original content presentation does not intercept or duplicate navigation')
     assert_public_readable_state(rt)

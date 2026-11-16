@@ -15,7 +15,7 @@ class SettingsBoundary178R13:
         delta = frame[2] - state["frame"][2]
         state["frame"] = frame
         state["bounds"] = (0., 0., frame[2], frame[3])
-        if delta:
+        if delta and state.get("autoresizesSubviews", True):
             for child in state.get("subviews", ()):
                 child_state = self.objects[child].state
                 mask = child_state.get("settings_mask", 0)
@@ -32,7 +32,8 @@ class SettingsBoundary178R13:
                 return True
             if name == "lowercaseString" and obj.cls == self.classes.get("NSString"):
                 return True
-            if name in ("accessibilityIdentifier", "navigationItem", "tableFooterView") and name in obj.state:
+            if name in ("accessibilityIdentifier", "navigationItem", "tableFooterView",
+                        "navigationController", "viewIfLoaded") and name in obj.state:
                 return True
         return super().responds(receiver, name)
 
@@ -67,6 +68,9 @@ class SettingsBoundary178R13:
             if name == "setAutoresizingMask:":
                 state["settings_mask"] = value
                 return self.finish(cpu)
+            if name == "setAutoresizesSubviews:":
+                state["autoresizesSubviews"] = value
+                return self.finish(cpu)
             if name == "setFrame:" and "frame" in state:
                 self.size_settings_view(receiver, tuple(cpu.fp(i) for i in range(4)))
                 return self.finish(cpu)
@@ -89,7 +93,8 @@ class SettingsBoundary178R13:
                 key = "isOn" if name == "setOn:" else name[3].lower() + name[4:-1]
                 state[key] = value
                 return self.finish(cpu)
-            if name in ("navigationItem", "rightBarButtonItem", "accessibilityIdentifier", "tableFooterView"):
+            if name in ("navigationItem", "rightBarButtonItem", "accessibilityIdentifier", "tableFooterView",
+                        "navigationController", "viewIfLoaded"):
                 return self.finish(cpu, state.get(name, 0))
             if name == "setSearchBarStyle:":
                 return self.finish(cpu)
@@ -170,11 +175,22 @@ def check_settings(cpu, runtime, labels, options, titles):
                              and runtime.is_kind(v, runtime.classes["UISwitch"]))
     require(bool(state(diagnostic_switch)["isOn"]) == new_layout, "The UI reflects the release diagnostics default")
     if new_layout:
+        viewport = runtime.view("UIView", "settings sheet viewport", (0., 0., 440., 806.))
+        state(options)["navigationController"] = runtime.obj("UINavigationController", "settings navigation",
+                                                              viewIfLoaded=viewport)
         for width in (320., 428.):
-            runtime.size_settings_view(table, (0., 0., width, 806.))
+            table_width = width + 40.
+            runtime.size_settings_view(table, (0., 0., table_width, 806.))
+            runtime.size_settings_view(viewport, (0., 0., width, 806.))
+            for wrapper in (header, footer):
+                x, y, _, height = state(wrapper)["frame"]
+                runtime.size_settings_view(wrapper, (x, y, table_width, height))
             send(cpu, runtime, options, "viewDidLayoutSubviews")
-            require(state(header)["frame"][2] == state(footer)["frame"][2] == width,
-                    "Header and footer use settled table width")
+            require(state(header)["frame"][2] == state(footer)["frame"][2] == table_width,
+                    "Header and footer keep the settled width owned by UITableView")
+            cards = [v for panel in (header, footer) for v in state(panel)["subviews"] if v != search]
+            require(all(state(v)["frame"][0] == 20. and state(v)["frame"][2] == width - 40. for v in cards),
+                    "All cards fit the visible settings viewport with symmetric insets")
             for panel in (header, footer):
                 for switch in descendants(panel):
                     if not runtime.is_kind(switch, runtime.classes["UISwitch"]):

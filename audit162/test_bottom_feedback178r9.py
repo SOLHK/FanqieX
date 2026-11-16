@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_bottom_appearance178 import (
     BUTTON_WIDTH, COMPACT, HEIGHT, ICONS, LENGTH, PAGE_HOOK, DRAG_METHODS,
     bottom_labels, compact_button, page_drag, settled_scroll_lifecycle,
@@ -20,6 +20,7 @@ from test_native_orchestration162 import repair
 
 def observed_dock(data, labels):
     cases = []
+    drag_selection = release_version(data) == '1.78R14'
     for fallback in (False, True):
         for icons, minimum in ((False, 64), (True, 56)):
             cpu, rt, entries = fixture(data, labels, fallback=fallback)
@@ -40,7 +41,16 @@ def observed_dock(data, labels):
                     require(frame[0] >= 0 and frame[0] + frame[2] <= capsule[2] and
                             frame[1] >= 0 and frame[1] + frame[3] <= capsule[3],
                             'Every visible target is inside the capsule and its hit-test ancestors')
-                if not fallback:
+                if drag_selection:
+                    overlay = rt.associated(rt.PROXY, 'overlay')
+                    require(overlay and not rt.control() and
+                            rt.objects[overlay].state['frame'] == capsule and
+                            rt.objects[overlay].state['userInteractionEnabled'] and
+                            all(rt.objects[button].state['superview'] == overlay and
+                                rt.objects[button].state['userInteractionEnabled']
+                                for button in rt.buttons),
+                            'Drag overlay and original buttons cover the same full hit area')
+                elif not fallback:
                     control = rt.objects[rt.control()].state
                     require(control.get('userInteractionEnabled', True) and
                             rt.objects[rt.PROXY].state.get('userInteractionEnabled', True) and
@@ -55,7 +65,8 @@ def observed_dock(data, labels):
                     host_layout(cpu, rt, entries, labels, stock)
                 require(not changes_for(rt, start, (rt.PROXY, rt.PROXY_CONTENT, *rt.buttons, rt.control())),
                         'Repeated native layout cannot shrink or move a target during tracking')
-                cases.append({'renderer': 'fallback' if fallback else 'native', 'icons': icons,
+                renderer = 'explicit pan' if drag_selection else 'fallback' if fallback else 'native'
+                cases.append({'renderer': renderer, 'icons': icons,
                               'length': length, 'height': height, 'button_width': button_width,
                               'capsule': capsule, 'minimum_target_width': min(f[2] for f in frames)})
     return cases

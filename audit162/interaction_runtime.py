@@ -124,6 +124,17 @@ class Runtime(FoundationRuntime):
         if name == 'initWithEffect:':
             st['effect'] = a[2]
             return self.finish(cpu, receiver)
+        if name == 'clipsToBounds':
+            return self.finish(cpu, int(st.get('clipsToBounds', False)))
+        if name == 'setClipsToBounds:':
+            st['clipsToBounds'] = bool(a[2])
+            return self.finish(cpu)
+        if name == 'cornerRadius' and self.is_kind(receiver, self.classes['CALayer']):
+            return self.finish(cpu, fp=(st['cornerRadius'],))
+        if name == 'isEqual:' and self.is_kind(receiver, self.classes['UIColor']):
+            return self.finish(cpu, int(receiver == a[2]))
+        if name == 'isEnabled' and self.is_kind(receiver, self.classes['UIButton']):
+            return self.finish(cpu, int(st.get('enabled', True)))
         if name in ('setUserInteractionEnabled:', 'setAccessibilityElementsHidden:'):
             st[{'setUserInteractionEnabled:': 'userInteractionEnabled',
                 'setAccessibilityElementsHidden:': 'accessibilityElementsHidden'}[name]] = bool(a[2])

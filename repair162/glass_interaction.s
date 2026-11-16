@@ -1,8 +1,7 @@
-// Compatibility fallback for the owned floating bottom bar.
-// Primary interaction is a public UISegmentedControl (native_selection.s).
-// When it cannot be installed, use one regular glass base and a PLAIN gray
-// selected capsule. Never stack or mix a second glass material. Original
-// button identities, target/action and accessibility remain intact.
+// Horizontal selection for the floating bottom bar. The pan drives an owned
+// lens, while the original buttons keep their tap targets and accessibility.
+// R14 uses this path with a Clear glass lens for the duration of a drag.
+// Older builds use the plain indicator when native selection is unavailable.
 //
 // Public: LIupdate(bar, proxy), LIrestore(bar, proxy), LIpan(self, _cmd, pan),
 // LIshould_begin(self, _cmd, pan). All callers and UIKit callbacks are main-thread.
@@ -279,8 +278,6 @@ LIbuild:
     mov x0, x23
     bl Lpatch + (0x711c - PATCH_BASE)
 
-    // The fallback indicator is only a filled view; it has no optical effect.
-    // UIKit owns the system selection lens on the successful native path.
     adr x0, LIpan_name
     adr x1, LIalloc
     bl Lfactory
@@ -440,11 +437,16 @@ LIupdate_overlay:
     GET x24, LIframe
     ldp d4, d5, [sp, #96]
     ldp d6, d7, [sp, #112]
+.if FQ_VERSION >= 0x14e0e
+    bl LFQH_BottomSameFrame178
+    cbnz w0, LIupdate_bounds
+.else
     fcmp d0, d4
     fccmp d1, d5, #0, eq
     fccmp d2, d6, #0, eq
     fccmp d3, d7, #0, eq
     b.eq LIupdate_bounds
+.endif
     mov x0, x20
     bl LIcancel
     ldp d0, d1, [sp, #96]
@@ -462,11 +464,16 @@ LIupdate_bounds:
     GET x24, Lbounds
     ldp d4, d5, [sp, #96]
     ldp d6, d7, [sp, #112]
+.if FQ_VERSION >= 0x14e0e
+    bl LFQH_BottomSameFrame178
+    cbnz w0, LIupdate_parent
+.else
     fcmp d0, d4
     fccmp d1, d5, #0, eq
     fccmp d2, d6, #0, eq
     fccmp d3, d7, #0, eq
     b.eq LIupdate_parent
+.endif
     mov x0, x20
     bl LIcancel
     ldp d0, d1, [sp, #96]
@@ -1001,6 +1008,20 @@ LIpan_move:
     bl LIrecord_transition
     mov x0, x19
     bl LIclear_state
+.if FQ_VERSION >= 0x14e0e
+    // Restore idle appearance before routing; the host can reject the change
+    // or replace this bar synchronously. A host sync snaps a successful route.
+    mov x0, x21
+    mov x1, x22
+    bl LIupdate
+    cbz w0, LIpan_done
+    AGET x22, LIbuttons_key
+    mov x1, x0
+    mov x0, x21
+    mov x2, x26
+    bl LFQH_FQHBottomDragCanRoute178
+    cbz w0, LIpan_done
+.endif
     mov x0, x21
     mov x1, #0
     mov x2, x26
@@ -1038,9 +1059,11 @@ LIpan_done:
     ldp x29, x30, [sp], #112
     ret
 
-// (plain indicator, dragging). Keep a stable fill below the original labels.
-// No system glass effect is installed here and drag never moves it over text.
+// (lens, dragging). Current builds add optical glass only during a drag.
 LIappearance:
+.if FQ_VERSION >= 0x14e0e
+    b LFQH_FQHBottomDragAppearance178
+.else
     stp x29, x30, [sp, #-48]!
     mov x29, sp
     stp x19, x20, [sp, #16]
@@ -1066,6 +1089,7 @@ LIappearance_done:
     ldp x19, x20, [sp, #16]
     ldp x29, x30, [sp], #48
     ret
+.endif
 
 // @COMPONENT_DATA
 LIcontroller_name:    .asciz "FQABGlassInteraction158"

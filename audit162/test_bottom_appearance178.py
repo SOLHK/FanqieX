@@ -467,11 +467,17 @@ def overlay_image(runtime, button):
     return runtime.objects[image].state
 
 
+def dock_renderer(data, fallback):
+    if release_version(data) == "1.78R14":
+        return "drag"
+    return "fallback" if fallback else "native"
+
+
 def check_input(runtime, cpu, fallback, expected):
     previous_count = len(runtime.route_calls)
     icon_mode = runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False)
     effect_style = int(release_version(runtime.data) == "1.78R7" and icon_mode)
-    if fallback:
+    if fallback or release_version(runtime.data) == "1.78R14":
         require_fallback(runtime, effect_style=effect_style)
         # The unchanged original button IMP maps the current array identity.
         cpu.run(0x56c0, runtime.BAR, runtime.sel("fqab_homeTabPressed:"),
@@ -515,7 +521,7 @@ def default_and_geometry(data, labels):
                             rect[0] + rect[2] <= proxy[2] + 0.5 and
                             rect[1] + rect[3] <= proxy[3] + 0.5,
                             "Buttons stay inside the resized capsule")
-                if fallback:
+                if fallback or release_version(data) == "1.78R14":
                     lens = runtime.associated(runtime.PROXY, "lens")
                     require(runtime.objects[lens].state["frame"] == runtime.objects[
                         runtime.buttons[runtime.selected_index()]].state["frame"],
@@ -540,7 +546,7 @@ def default_and_geometry(data, labels):
                     "Restoring dimension defaults returns the exact stock capsule")
             require(button_contents(runtime) == content, "Resizing never rewrites native button content")
             check_input(runtime, cpu, fallback, len(titles)-1)
-            cases.append({"renderer": "fallback" if fallback else "native", "tabs": len(titles),
+            cases.append({"renderer": dock_renderer(data, fallback), "tabs": len(titles),
                           "sizes_restored": True, "host_geometry_unchanged": True})
     return cases
 
@@ -620,7 +626,7 @@ def icon_lifecycle(data, labels):
             require(all(runtime.objects[obj].state["hidden"] == hidden for obj, hidden in stock_visibility.items()),
                     "Turning pure-icon mode off restores original hidden flags")
             require(button_contents(runtime) == original, "Disable restores content without losing alternate states")
-            cases.append({"renderer": "fallback" if fallback else "native", "tabs": list(titles),
+            cases.append({"renderer": dock_renderer(data, fallback), "tabs": list(titles),
                           "icons_reversible": True, "voiceover_titles_preserved": True})
     require(len(set(symbols_by_title.values())) == len(symbols_by_title),
             "Different navigation roles have distinguishable icons")
@@ -654,7 +660,7 @@ def unknown_and_failure(data, labels):
             runtime.defaults(**{ICONS: False})
             repair(cpu, runtime, entries)
             require(button_contents(runtime) == content, "Disabling icons restores all original title states")
-            cases.append({"renderer": "fallback" if fallback else "native", "host_image": original_image})
+            cases.append({"renderer": dock_renderer(data, fallback), "host_image": original_image})
         cpu, runtime, entries = fixture(data, labels, fallback=fallback)
         runtime.symbol_nil = True
         runtime.defaults(**{ICONS: True})
@@ -735,7 +741,7 @@ def scroll_lifecycle(data, labels):
         require(runtime.objects[pan].state["delegate"] == host_target,
                 "The host keeps gesture arbitration")
         require(host_geometry(runtime, (feed,)) == before, "No scroll or video geometry/insets are changed")
-        cases.append({"renderer": "fallback" if fallback else "native", "long_drag_reversal": True,
+        cases.append({"renderer": dock_renderer(data, fallback), "long_drag_reversal": True,
                       "cancel_and_disable_expand": True, "host_gesture_and_geometry_preserved": True})
     return cases
 
@@ -815,7 +821,7 @@ def settled_scroll_lifecycle(data, labels):
         compact_animations = runtime.objects[runtime.layer(button)].state.get("animations", [])
         require([runtime.string_value(key) for _, key in compact_animations] == ["position"],
                 "The visible compact icon moves with the glass")
-        if fallback:
+        if fallback or release_version(data) == "1.78R14":
             require(runtime.objects[runtime.objects[runtime.buttons[0]].state["superview"]].state["hidden"],
                     "The fallback overlay does not leave hidden tab targets active")
         else:
@@ -843,7 +849,7 @@ def settled_scroll_lifecycle(data, labels):
                 "Original feed touch routing and geometry remain intact")
         require(any(event["event"] == "host_feed_callback" for event in runtime.events),
                 "The host paging callbacks still execute")
-        cases.append({"renderer": "fallback" if fallback else "native",
+        cases.append({"renderer": dock_renderer(data, fallback),
                       "forward_only": True, "tap_expands": True, "host_paging_preserved": True})
     return cases
 
@@ -1004,7 +1010,7 @@ def layout_direction_and_disable(data, labels):
                 "Global glass disable restores original button presentation")
         require(host_geometry(runtime, (feed,)) == before_disable,
                 "Global disable cannot rewrite host viewport or feed geometry")
-        cases.append({"renderer": "fallback" if fallback else "native",
+        cases.append({"renderer": dock_renderer(data, fallback),
                       "reversed_order_preserved": True, "page_change_detaches": True,
                       "global_disable_restores": True})
     return cases

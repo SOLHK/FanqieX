@@ -17,10 +17,6 @@ LIrecord_transition:
     mov x19, x0
     mov x20, x1
     mov x21, x2
-    .if FQ_VERSION >= 0x14e0d
-    bl LDiagnosticsEnabled
-    cbz w0, LITrecord_done
-    .endif
     cbz x19, LITrecord_done
     adr x8, LIphase_begin
     cmp x20, x8
@@ -36,6 +32,10 @@ LITrecord_thread:
     adr x1, LSmain_thread
     bl Lfactory
     cbz w0, LITrecord_done       // no UIKit access or queue mutation off main
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LITrecord_done
+    .endif
     AGET x19, LIcontroller_key
     mov x23, x0
     AGET x19, LIlens_key

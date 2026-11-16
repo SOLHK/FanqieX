@@ -6036,7 +6036,7 @@ static void BottomCompactInstall178R7(void) {
 }
 // UIKit derives frame from center and bounds; a fractional pixel can come
 // back one representable CGFloat away from the value written by the layout.
-static B BottomSameFrame178(Rect a,Rect b) {
+B BottomSameFrame178(Rect a,Rect b) {
     const double tolerance=0.125;
     return __builtin_fabs(a.x-b.x)<tolerance && __builtin_fabs(a.y-b.y)<tolerance &&
         __builtin_fabs(a.width-b.width)<tolerance && __builtin_fabs(a.height-b.height)<tolerance;
@@ -6074,21 +6074,41 @@ Rect FQHBottomNativeRect178(Obj proxy,Rect bounds) {
 void FQHBottomSetNativeFrame178R14(Obj control,Rect target) {
     if (!BottomSameFrame178(Frame(control),target)) SetFrame(control,target);
 }
-void FQHBottomClearNativeTrack178R14(Obj control) {
-    // One transparent 1x1 pixel supplies the normal segment background and
-    // dividers at intrinsic size. UIKit still owns selected tint and tracking.
-    Obj data=((Obj(*)(Obj,Sel,Obj,U))Message)(O0(Lookup("NSData"),"alloc"),
-        sel_registerName("initWithBase64EncodedString:options:"),
-        Text("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII="),0);
-    Obj image=O1(Lookup("UIImage"),"imageWithData:",data);
-    V0(data,"release");
-    if (!image) return;
-    ((void(*)(Obj,Sel,Obj,U,I))Message)(control,
-        sel_registerName("setBackgroundImage:forState:barMetrics:"),image,0,0);
-    Sel divider=sel_registerName("setDividerImage:forLeftSegmentState:rightSegmentState:barMetrics:");
-    for (U left=0;left<=4;left+=4)
-        for (U right=0;right<=4;right+=4)
-            ((void(*)(Obj,Sel,Obj,U,U,I))Message)(control,divider,image,left,right,0);
+B FQHBottomDragCanRoute178(Obj bar,Obj buttons,Obj button) {
+    U index=((U(*)(Obj,Sel,Obj))Message)(buttons,sel_registerName("indexOfObjectIdenticalTo:"),button);
+    Obj items=Get(bar,"items");
+    if (index>=TabCount(items) || !Flag(button,"isEnabled")) return 0;
+    Obj item=At(items,index);
+    return item!=Get(bar,"selectedItem") && (!Responds(item,"isEnabled") || Flag(item,"isEnabled"));
+}
+void FQHBottomDragAppearance178(Obj lens,B dragging) {
+    Obj effect=Get(lens,"effect"),overlay=Get(lens,"superview");
+    if (dragging && !effect) {
+        // Clear glass samples the live dock and page underneath the moving lens.
+        effect=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIGlassEffect"),sel_registerName("effectWithStyle:"),1);
+        if (effect) {
+            VB(effect,"setInteractive:",1);
+            Obj content=Get(lens,"contentView");
+            V1(content,"setBackgroundColor:",O0(Lookup("UIColor"),"clearColor"));
+            VB(content,"setClipsToBounds:",0);
+            V1(lens,"setEffect:",effect);
+        }
+    }
+    if (dragging && effect) {
+        if (Get(Get(overlay,"subviews"),"lastObject")!=lens) V1(overlay,"bringSubviewToFront:",lens);
+        return;
+    }
+    if (effect) {
+        V1(lens,"setEffect:",0);
+        V1(overlay,"sendSubviewToBack:",lens);
+    }
+    Obj content=Get(lens,"contentView");
+    Obj fill=O0(Lookup("UIColor"),"secondarySystemFillColor");
+    if (!SameColor(Get(content,"backgroundColor"),fill)) V1(content,"setBackgroundColor:",fill);
+    Rect bounds=Bounds(lens);
+    double radius=(bounds.width<bounds.height ? bounds.width : bounds.height)*0.5;
+    if (Radius(content)!=radius) SetRadius(content,radius);
+    if (!Flag(content,"clipsToBounds")) VB(content,"setClipsToBounds:",1);
 }
 static B BottomOwnsButton178(Obj button,Obj proxy,Obj bar) {
     if (!Kind(button,"UIButton")) return 0;
@@ -6398,7 +6418,8 @@ void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
     if (native && !SameColor(Get(native,"selectedSegmentTintColor"),color))
         V1(native,"setSelectedSegmentTintColor:",color);
     Obj content=Get(lens,"contentView");
-    if (content && !SameColor(Get(content,"backgroundColor"),color)) V1(content,"setBackgroundColor:",color);
+    if (content && !Get(lens,"effect") && !SameColor(Get(content,"backgroundColor"),color))
+        V1(content,"setBackgroundColor:",color);
 }
 void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     if (!Kind(bar,"SSTabBar") || Get(proxy,"superview")!=bar) return;
@@ -6836,29 +6857,44 @@ static Obj OptionsEntry178(Obj container,Obj observer,Rect frame,const char *tit
 static void SettingsHeader178R13Key(void) {}
 static void SettingsSearch178R13Key(void) {}
 static void SettingsGroups178R13Key(void) {}
-static void SettingsWidth178R14Key(void) {}
 
-static void SettingsTableWidth178R14(Obj controller) {
+static void SettingsContentWidth178R14(Obj controller) {
     Obj table=Get(controller,"tableView"),header=objc_getAssociatedObject(controller,SettingsHeader178R13Key);
     Obj footer=Get(table,"tableFooterView");
     double width=Bounds(table).width;
-    Obj last=objc_getAssociatedObject(controller,SettingsWidth178R14Key);
-    if (!header || !footer || width<240 || !__builtin_isfinite(width) ||
-        (last && Double(last)==width)) return;
-    objc_setAssociatedObject(controller,SettingsWidth178R14Key,Number(width),1);
-    Rect headerFrame=Frame(header),footerFrame=Frame(footer);
-    headerFrame.width=width;
-    footerFrame.width=width;
-    SetFrame(header,headerFrame);
-    V1(table,"setTableHeaderView:",header);
-    SetFrame(footer,footerFrame);
-    V1(table,"setTableFooterView:",footer);
+    Obj navigationView=Get(Get(controller,"navigationController"),"viewIfLoaded");
+    double viewportWidth=navigationView ? Bounds(navigationView).width : width;
+    if (viewportWidth>0 && viewportWidth<width) width=viewportWidth;
+    if (!header || !footer || width<240 || !__builtin_isfinite(width)) return;
+    // UITableView owns the header and footer frames. Size the plugin's content
+    // directly so a change to either wrapper cannot expand the cards twice.
+    Obj search=objc_getAssociatedObject(controller,SettingsSearch178R13Key);
+    Rect frame=Frame(search);
+    if (frame.width!=width-32) {
+        frame.width=width-32;
+        SetFrame(search,frame);
+    }
+    Obj groups=objc_getAssociatedObject(header,SettingsGroups178R13Key);
+    for (U i=0,count=TabCount(groups);i<count;++i) {
+        Obj group=At(groups,i);
+        frame=Frame(group);
+        if (frame.width!=width-40) {
+            frame.width=width-40;
+            SetFrame(group,frame);
+        }
+    }
+    Obj card=At(Get(footer,"subviews"),0);
+    frame=Frame(card);
+    if (frame.width!=width-40) {
+        frame.width=width-40;
+        SetFrame(card,frame);
+    }
 }
 
 static void SettingsDidLayout178R14(Obj self,Sel cmd) {
     Method saved=class_getInstanceMethod(object_getClass(self),sel_registerName("fqx178r14_originalSettingsLayout"));
     ((void(*)(Obj,Sel))method_getImplementation(saved))(self,cmd);
-    SettingsTableWidth178R14(self);
+    SettingsContentWidth178R14(self);
 }
 
 static void SettingsInstallLayout178R14(Obj controller) {
@@ -7072,6 +7108,7 @@ static void SettingsInstall178R13(Obj controller) {
     if (width<240) width=390;
     Obj header=O0(Lookup("UIView"),"new");
     SetFrame(header,(Rect){0,0,width,64});
+    VB(header,"setAutoresizesSubviews:",0);
     objc_setAssociatedObject(controller,SettingsHeader178R13Key,header,1);
     objc_setAssociatedObject(header,SettingsGroups178R13Key,O0(Lookup("NSMutableArray"),"array"),1);
     Obj search=O0(Lookup("UISearchBar"),"new");
@@ -7127,6 +7164,7 @@ static void SettingsInstall178R13(Obj controller) {
 
     Obj footer=O0(Lookup("UIView"),"new");
     SetFrame(footer,(Rect){0,0,width,280});
+    VB(footer,"setAutoresizesSubviews:",0);
     Obj card=SettingsPanel178R13(footer,(Rect){20,8,width-40,256},1);
     double cardWidth=Bounds(card).width;
     BottomSettingsLabel178(card,(Rect){16,10,cardWidth-32,26},"诊断与测试",14,1);
@@ -7146,7 +7184,7 @@ static void SettingsInstall178R13(Obj controller) {
     OptionsEntry178(card,router,(Rect){0,193,cardWidth,48},"模拟立即领取","模拟立即领取","fqx178_testListenReward:");
     V1(table,"setTableFooterView:",footer);
     SettingsInstallLayout178R14(controller);
-    SettingsTableWidth178R14(controller);
+    SettingsContentWidth178R14(controller);
     V0(footer,"release");
     V0(router,"release");
 }

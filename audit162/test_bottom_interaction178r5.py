@@ -13,8 +13,6 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import struct
-import zlib
 
 from arm64 import release_version, require
 from test_bottom_appearance178 import (
@@ -23,7 +21,7 @@ from test_bottom_appearance178 import (
     page_drag, send_pan, tap_expand,
 )
 from test_feed_viewport import labels_for
-from test_native_orchestration162 import make, repair
+from test_native_orchestration162 import make, repair, send_interaction_pan
 
 
 FRAME_LABELS = ["Lbutton_frame", "LMproxy_frame"]
@@ -150,12 +148,12 @@ def stable_custom_layout(data, labels):
                 runtime.objects[control].state["tracking"] = False
             require(len(runtime.route_calls) == initial_routes,
                     "Layout is never a synthetic navigation action")
-            check_input(runtime, cpu, fallback, 3)
+            check_input(runtime, cpu, fallback or release_version(data) == "1.78R14", 3)
             require(host_geometry(runtime, (feed,)) == before_host,
                     "Custom dock layout cannot move the host page or scroll view")
             require(runtime.objects[pan].state["delegate"] == host_target,
                     "The original scroll gesture keeps its host delegate")
-            cases.append({"renderer": "fallback" if fallback else "native",
+            cases.append({"renderer": "native" if control else "explicit pan",
                           "length_percent": length, "height_percent": height,
                           "button_width_percent": width, "stable_frame_writes": 0,
                           "one_original_route": True})
@@ -232,7 +230,7 @@ def viewport_and_restore(data, labels):
         call(cpu, labels, "FQHBottomReset178", runtime.BAR, runtime.PROXY)
         require(runtime.objects[runtime.PROXY].state["frame"] == stock,
                 "Teardown restores the newest host proposal, not a stale portrait frame")
-        cases.append({"renderer": "fallback" if fallback else "native",
+        cases.append({"renderer": "native" if runtime.control() else "explicit pan",
                       "new_stock": list(stock), "custom": list(target),
                       "restored_current_host_geometry": True})
     return cases
@@ -286,7 +284,7 @@ def layout_direction_change(data, labels):
             require(not changes_for(runtime, start, (runtime.PROXY, runtime.PROXY_CONTENT,
                                                      *runtime.buttons, runtime.control())),
                     "The changed host order remains stable without transient frame writes")
-            cases.append({"renderer": "fallback" if fallback else "native",
+            cases.append({"renderer": "native" if runtime.control() else "explicit pan",
                           "direction": "RTL" if reversed_order else "LTR",
                           "correct_after_one_layout": True,
                           "stable_frame_writes": 0})
@@ -299,46 +297,43 @@ def fractional_frame_round_trip(data, labels):
     runtime.defaults(**{ICONS: True, LENGTH: 80, HEIGHT: 90, BUTTON_WIDTH: 80})
     stock = runtime.objects[runtime.PROXY].state["frame"]
     repair(cpu, runtime, entries)
-    control = runtime.control()
-    require(control, "Resized four-tab capsule keeps its native tracking control")
+    overlay = runtime.associated(runtime.PROXY, "overlay")
+    lens = runtime.associated(runtime.PROXY, "lens")
+    pan = runtime.associated(runtime.PROXY, "pan")
+    require(overlay and lens and pan and not runtime.control(),
+            "Resized four-tab capsule keeps the actual drag gesture")
     frame = runtime.objects[runtime.PROXY].state["frame"]
     require(frame == (60., 17 / 3, 320., 151 / 3),
             "The device's 3x fractional-height setup applies the requested width once")
     require((frame[1] + frame[3] / 2) - frame[3] / 2 != frame[1],
             "Fixture genuinely exercises UIView fractional frame roundoff")
-    runtime.objects[control].state.update(tracking=True, selectedSegmentIndex=0)
+    center = runtime.objects[lens].state["frame"][0] + runtime.objects[lens].state["frame"][2] / 2
+    send_interaction_pan(cpu, runtime, 1, center)
+    send_interaction_pan(cpu, runtime, 2, center - 30)
+    preview = runtime.objects[lens].state["frame"]
+    effect = runtime.objects[lens].state["effect"]
+    require(effect, "A drag on the resized capsule uses the refracting lens")
     start = len(runtime.frame_writes)
     for _ in range(3):
         repair(cpu, runtime, entries)
     require(runtime.objects[runtime.PROXY].state["frame"] == frame and
-            not any(view in (runtime.PROXY, runtime.PROXY_CONTENT, control, *runtime.buttons)
+            not any(view in (runtime.PROXY, runtime.PROXY_CONTENT, overlay, lens, *runtime.buttons)
                     for view in runtime.frame_writes[start:]),
             "Presentation roundoff neither shrinks the capsule twice nor touches an active selector frame")
-    require(runtime.control() == control and runtime.objects[control].state["selectedSegmentIndex"] == 0,
-            "Repeated no-op layouts preserve UIKit's preview under the finger")
-    runtime.objects[control].state["tracking"] = False
-    check_input(runtime, cpu, False, 3)
-
-    state = runtime.objects[control].state
-    background = state.get("background_images", {})
-    require((0, 0) in background, "The native normal track has explicit artwork replacing UIKit's default fill")
-    art = runtime.objects[background[0, 0]].state["data"]
-    require(art.startswith(b"\x89PNG\r\n\x1a\n") and
-            struct.unpack_from(">IIBB", art, 16) == (1, 1, 8, 6),
-            "The linked image is one real RGBA pixel")
-    length, label = struct.unpack_from(">I4s", art, 33)
-    require(label == b"IDAT" and zlib.decompress(art[41:41 + length]) == b"\0" * 5,
-            "The UIKit track receives no paint")
-    require(state.get("divider_images") ==
-            {(left, right, 0): background[0, 0] for left in (0, 4) for right in (0, 4)} and
-            state["selectedSegmentTintColor"],
-            "All normal/selected divider pairs stay transparent while selected tint remains configured")
+    require(runtime.associated(runtime.PROXY, "pan") == pan and
+            runtime.objects[lens].state["frame"] == preview and
+            runtime.objects[lens].state["effect"] == effect and runtime.cancel_callbacks == 0,
+            "Repeated no-op layouts preserve the refracting preview under the finger")
+    last = runtime.objects[runtime.buttons[3]].state["frame"]
+    send_interaction_pan(cpu, runtime, 3, last[0] + last[2] / 2)
+    require(runtime.route_calls == [3] and not runtime.objects[lens].state["effect"],
+            "The fractional frame still routes to the visible target and rests with plain fill")
 
     call(cpu, labels, "FQHBottomReset178", runtime.BAR, runtime.PROXY)
     require(runtime.objects[runtime.PROXY].state["frame"] == stock,
             "Reset restores the true stock capsule after fractional-size layout")
     return {"proxy_width": frame[2], "no_geometry_writes_during_tracking": True,
-            "stock_restored": True, "transparent_normal_track_and_dividers": True}
+            "stock_restored": True, "refracting_preview_preserved": True}
 
 
 def main():

@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import struct
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from interaction_runtime import read_entries
 from legacy_runtime import Runtime as Legacy
 from native_selection_runtime import Runtime as Native, native_entries
@@ -236,11 +236,132 @@ def diagnostics_and_original_restore(data):
             'original_restore_all_extensions': True}
 
 
+def send_interaction_pan(cpu, rt, state, x, y=28):
+    pan = rt.associated(rt.PROXY, 'pan')
+    rt.objects[pan].state.update(state=state, location=(x, y))
+    rt.callback(cpu, pan)
+
+
+def drag_selection_lifecycle(data):
+    rows = []
+    for slide in (0, 0x180000000):
+        cpu, rt, entries = make(data, slide=slide)
+        repair(cpu, rt, entries)
+        overlay = require_fallback(rt)
+        lens = rt.associated(rt.PROXY, 'lens')
+        controller = rt.associated(rt.PROXY, 'controller')
+        pan = rt.associated(rt.PROXY, 'pan')
+        lens_state = rt.objects[lens].state
+        overlay_state = rt.objects[overlay].state
+        pan_state = rt.objects[pan].state
+        require(pan_state['view'] == overlay and overlay_state['subviews'][0] == lens and
+                not lens_state['userInteractionEnabled'],
+                'The installed overlay tracks gestures, while the idle lens preserves button hit paths')
+        for button in rt.buttons:
+            state = rt.objects[button].state
+            require(state['superview'] == overlay and state['userInteractionEnabled'] and
+                    state['isAccessibilityElement'] and not state['accessibilityElementsHidden'],
+                    'The original tab buttons own taps and accessibility')
+        monitor = rt.associations[(rt.BAR, slide + entries['monitor_key'])]
+        timer = rt.associations[(monitor, slide + entries['timer_key'])]
+        require((timer, 'kCFRunLoopCommonModes') in rt.objects[rt.main_runloop].state['timers'],
+                'Full dock maintenance runs during touch tracking')
+        writes = len(effect_writes(rt))
+        x, _, width, _ = lens_state['frame']
+        start = x + width / 2
+        require(cpu.run(entries['should_begin'], controller,
+                        rt.sel('gestureRecognizerShouldBegin:'), pan)['result'],
+                'Production dock accepts horizontal drag')
+        send_interaction_pan(cpu, rt, 1, start)
+        glass = lens_state['effect']
+        require(glass and rt.class_names[rt.objects[glass].cls] == 'UIGlassEffect' and
+                rt.objects[glass].state['style'] == 1 and rt.objects[glass].state['interactive'],
+                'An active drag installs interactive Clear Liquid Glass')
+        require(overlay_state['subviews'][-1] == lens and not lens_state['userInteractionEnabled'],
+                'The Clear lens samples the tab artwork while the overlay still owns the gesture')
+        send_interaction_pan(cpu, rt, 2, start - 35)
+        preview = lens_state['frame']
+        require(preview[0] == x - 35 and rt.route_calls == [],
+                'Movement previews continuously without navigating')
+        for _ in range(4):
+            rt.now += 0.25
+            cpu.run(entries['poll'], monitor, rt.sel('fqabPoll:'), timer, max_steps=3000000)
+        require(lens_state['frame'] == preview and lens_state['effect'] == glass and
+                rt.associated(rt.PROXY, 'pan') == pan and rt.cancel_callbacks == 0 and
+                len(effect_writes(rt)) == writes,
+                'Maintenance preserves the moving lens, gesture and base glass')
+        x, _, width, _ = rt.objects[rt.buttons[0]].state['frame']
+        destination = x + width / 2
+        send_interaction_pan(cpu, rt, 3, destination)
+        require(rt.route_calls == [0] and rt.selected_index() == 0 and
+                lens_state['frame'] == rt.objects[rt.buttons[0]].state['frame'] and
+                not lens_state['effect'] and overlay_state['subviews'][0] == lens,
+                'Release routes once, then restores the resting selection below the icons')
+        send_interaction_pan(cpu, rt, 3, start)
+        require(rt.route_calls == [0], 'A repeated end callback cannot route again')
+        send_interaction_pan(cpu, rt, 1, destination)
+        send_interaction_pan(cpu, rt, 2, start)
+        send_interaction_pan(cpu, rt, 4, start)
+        require(rt.route_calls == [0] and rt.selected_index() == 0 and
+                lens_state['frame'] == rt.objects[rt.buttons[0]].state['frame'] and
+                not lens_state['effect'],
+                'Cancelling a drag snaps to the selected host tab without navigation')
+        rt.objects[rt.buttons[3]].state['enabled'] = False
+        for target in (rt.buttons[0], rt.buttons[3]):
+            x, _, width, _ = rt.objects[target].state['frame']
+            center = x + width / 2
+            send_interaction_pan(cpu, rt, 1, destination)
+            send_interaction_pan(cpu, rt, 3, center)
+            require(rt.route_calls == [0] and rt.selected_index() == 0 and
+                    lens_state['frame'] == rt.objects[rt.buttons[0]].state['frame'] and
+                    not lens_state['effect'],
+                    'Releasing over the current or a disabled tab restores idle without navigation')
+        rows.append({'slide': hex(slide), 'stable_preview': True, 'glass_style': 'Clear',
+                     'original_routes': 1, 'cancel_does_not_route': True,
+                     'same_and_disabled_tab_do_not_route': True})
+    return rows
+
+
+def drag_selection_diagnostics_and_restore(data):
+    cpu, rt, entries = make(data)
+    repair(cpu, rt, entries)
+    overlay = require_fallback(rt)
+    pan = rt.associated(rt.PROXY, 'pan')
+    controller = rt.associated(rt.PROXY, 'controller')
+    monitor = rt.associations[(rt.BAR, entries['monitor_key'])]
+    timer = rt.associations[(monitor, entries['timer_key'])]
+    rt.flush_main(cpu)
+    rt.drain_operations(cpu)
+    rows = [row['data'] for row in saved(rt) if row['event'] == 'bottom_bar_state_changed']
+    require(rows and rows[-1]['bottomBarRenderer'] == 'RegularGlassDragSelection' and
+            rows[-1]['glassSelectionLens'] is not None and
+            rows[-1]['nativeSelectionControl'] is None,
+            'Durable diagnostics identify the installed drag lens')
+    send_interaction_pan(cpu, rt, 1, 259)
+    require(rt.associated(controller, 'drag'), 'Teardown starts with an active drag')
+    cpu.run(0x6db4, rt.BAR, rt.PROXY, max_steps=3000000)
+    require(not any(rt.associated(rt.PROXY, key) for key in
+                    ('overlay', 'lens', 'controller', 'pan', 'owned_buttons')) and
+            not rt.associated(controller, 'drag'),
+            'Original restore clears all drag ownership')
+    require(not rt.objects[overlay].state['superview'] and not rt.objects[pan].state['view'] and
+            not rt.objects[timer].state['valid'] and not rt.objects[rt.EDGE].state['hidden'],
+            'Original restore detaches gesture, overlay and monitor and restores the scroll edge')
+    require(rt.route_calls == [] and all(rt.objects[button].state['superview'] == rt.PROXY_CONTENT
+                                       for button in rt.buttons),
+            'Active drag teardown neither navigates nor loses original buttons')
+    return {'persisted_drag_renderer': True, 'original_restore_all_extensions': True}
+
+
 def run(data):
     cases = []
-    for function in (first_mount_and_stability, fallback_to_native_during_fade,
+    if release_version(data) == '1.78R14':
+        functions = (drag_selection_lifecycle, drag_selection_diagnostics_and_restore)
+    else:
+        functions = (first_mount_and_stability, fallback_to_native_during_fade,
                      native_failure_and_recovery, live_monitor_and_host_sync,
-                     diagnostics_and_original_restore):
+                     diagnostics_and_original_restore)
+    for function in functions:
         details = function(data)
         cases.append({'name': function.__name__, 'passed': True, 'details': details})
     return {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),

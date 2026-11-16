@@ -363,10 +363,6 @@ LNappearance_states:
     add x22, x22, #1
     cmp x22, #8
     b.lo LNappearance_states
-.if FQ_VERSION >= 0x14e0e
-    mov x0, x19
-    bl LFQH_FQHBottomClearNativeTrack178R14
-.endif
     mov w0, #1
     b LNappearance_done
 LNappearance_no:
