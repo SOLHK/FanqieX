@@ -11,17 +11,19 @@ from verify162 import digest, validated_xcode_bundle
 
 
 class XcodeArtifactTests(unittest.TestCase):
+    VERSION = '1.78'
+
     def fixture(self, folder):
-        candidate = Path(folder) / 'FanqieX-1.78.dylib'
+        candidate = Path(folder) / f'FanqieX-{self.VERSION}.dylib'
         # This test isolates provenance validation. Real Mach-O, assembly and
         # unwind checks remain separate mandatory verify162.py audit steps.
         candidate.write_bytes(b'provenance test candidate')
         for suffix in ('.composed.s', '.preextend', '.extension.bin'):
             candidate.with_suffix(suffix).write_bytes(suffix.encode())
-        validation = {'version': '1.78', 'candidate_sha256': digest(candidate),
+        validation = {'version': self.VERSION, 'candidate_sha256': digest(candidate),
                       'native_unwind': {'passed': True}}
         report = {
-            'plugin_version': '1.78', 'candidate_sha256': digest(candidate),
+            'plugin_version': self.VERSION, 'candidate_sha256': digest(candidate),
             'passed': True, 'two_builds_identical': True,
             'github_sha': 'a' * 40, 'xcode': 'Xcode 27.2\nBuild version test',
             'sdk_version': '27.2',
@@ -40,7 +42,7 @@ class XcodeArtifactTests(unittest.TestCase):
     def test_complete_same_commit_artifact_is_accepted(self):
         with tempfile.TemporaryDirectory() as folder:
             candidate, _, _ = self.fixture(folder)
-            validation, composed, report = validated_xcode_bundle(candidate, '1.78', 'a' * 40)
+            validation, composed, report = validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
             self.assertEqual(validation, candidate.with_suffix('.validation.json'))
             self.assertEqual(composed, candidate.with_suffix('.composed.s'))
             self.assertEqual(report, candidate.parent / 'xcode-build-report.json')
@@ -51,14 +53,14 @@ class XcodeArtifactTests(unittest.TestCase):
                 candidate, _, _ = self.fixture(folder)
                 candidate.with_suffix(suffix).unlink()
                 with self.assertRaises(RuntimeError):
-                    validated_xcode_bundle(candidate, '1.78', 'a' * 40)
+                    validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
         for suffix in ('.dylib', '.composed.s', '.preextend', '.extension.bin'):
             with self.subTest(modified=suffix), tempfile.TemporaryDirectory() as folder:
                 candidate, _, _ = self.fixture(folder)
                 path = candidate.with_suffix(suffix)
                 path.write_bytes(path.read_bytes() + b'modified')
                 with self.assertRaises(RuntimeError):
-                    validated_xcode_bundle(candidate, '1.78', 'a' * 40)
+                    validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
 
     def test_foreign_or_failed_reports_are_rejected(self):
         mutations = {
@@ -77,13 +79,27 @@ class XcodeArtifactTests(unittest.TestCase):
                 report.update(mutation)
                 (candidate.parent / 'xcode-build-report.json').write_text(json.dumps(report))
                 with self.assertRaises(RuntimeError):
-                    validated_xcode_bundle(candidate, '1.78', 'a' * 40)
+                    validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
         with tempfile.TemporaryDirectory() as folder:
             candidate, validation, _ = self.fixture(folder)
             validation['native_unwind']['passed'] = False
             candidate.with_suffix('.validation.json').write_text(json.dumps(validation))
             with self.assertRaises(RuntimeError):
-                validated_xcode_bundle(candidate, '1.78', 'a' * 40)
+                validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
+
+
+class XcodeR2ArtifactTests(XcodeArtifactTests):
+    VERSION = '1.78R2'
+
+    def test_previous_release_metadata_cannot_be_renamed_to_r2(self):
+        with tempfile.TemporaryDirectory() as folder:
+            candidate, validation, report = self.fixture(folder)
+            validation['version'] = '1.78'
+            report['plugin_version'] = '1.78'
+            candidate.with_suffix('.validation.json').write_text(json.dumps(validation))
+            (candidate.parent / 'xcode-build-report.json').write_text(json.dumps(report))
+            with self.assertRaises(RuntimeError):
+                validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
 
 
 if __name__ == '__main__':

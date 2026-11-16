@@ -1,8 +1,9 @@
 """Mandatory, dependency-free instruction checks using independent oracle data.
 
-The checked-in values come from LLVM-assembled instructions executed by Unicorn,
+The geometry fixture comes from LLVM-assembled instructions executed by Unicorn,
 not from this repository's Python interpreter. The generator is a separate,
-explicit developer tool; missing Unicorn never skips these CI assertions.
+explicit developer tool; missing Unicorn never skips these CI assertions. MOVI
+uses fixed LLVM-assembled opcodes and Arm's specified per-byte immediate values.
 """
 import json
 from pathlib import Path
@@ -65,6 +66,46 @@ class GeometrySIMD(unittest.TestCase):
             with self.subTest(op=hex(op)):
                 cpu = CPU(struct.pack("<I", op), Boundary())
                 with self.assertRaisesRegex(AssertionError, "Unsupported instruction"):
+                    cpu.step()
+
+
+class ByteImmediateMOVI(unittest.TestCase):
+    def test_fixed_opcodes_write_only_the_destination_and_preserve_flags(self):
+        # LLVM 19 assembly bytes; semantics: Arm Instruction Set Reference Guide
+        # 100076_0100_00_en, D6.123 MOVI (vector), 8-bit arrangement.
+        # Literal expected bytes deliberately do not reuse the decoder's masks.
+        cases = (
+            (0x4f00e400, 0, bytes(16)),                  # movi v0.16b, #0
+            (0x0f00e407, 7, bytes(16)),                  # movi v7.8b, #0
+            (0x4f00e433, 19, b'\x01' * 16),             # movi v19.16b, #1
+            (0x0f02e75f, 31, b'\x5a' * 8 + bytes(8)),   # movi v31.8b, #0x5a
+            (0x4f04e408, 8, b'\x80' * 16),              # movi v8.16b, #0x80
+            (0x0f07e7e4, 4, b'\xff' * 8 + bytes(8)),    # movi v4.8b, #0xff
+            (0x4f07e7ff, 31, b'\xff' * 16),             # movi v31.16b, #0xff
+        )
+        for opcode, destination, expected_bytes in cases:
+            for nzcv in (0, 5, 10, 15):
+                with self.subTest(opcode=hex(opcode), nzcv=nzcv):
+                    cpu = CPU(struct.pack('<I', opcode), Boundary())
+                    expected = cpu.v[:]
+                    expected[destination] = int.from_bytes(expected_bytes, 'little')
+                    original_x, original_sp = cpu.x[:], cpu.sp
+                    cpu.flags_imm(nzcv)
+                    flags = (cpu.n, cpu.z, cpu.c, cpu.overflow)
+                    cpu.step()
+                    self.assertEqual(cpu.v, expected)
+                    self.assertEqual(cpu.x, original_x)
+                    self.assertEqual(cpu.sp, original_sp)
+                    self.assertEqual((cpu.n, cpu.z, cpu.c, cpu.overflow), flags)
+                    self.assertEqual(cpu.pc, 4)
+
+    def test_other_immediate_shapes_and_reserved_bits_stay_unsupported(self):
+        for opcode in (0x4f000400, 0x4f008400, 0x4f00c400,  # 32/16-bit lanes
+                       0x2f00e400, 0x6f00e400,              # 64-bit bitmasks
+                       0x4f00ec00, 0x4f08e400, 0xcf00e400): # unrelated/reserved
+            with self.subTest(opcode=hex(opcode)):
+                cpu = CPU(struct.pack('<I', opcode), Boundary())
+                with self.assertRaisesRegex(AssertionError, 'Unsupported instruction'):
                     cpu.step()
 
 

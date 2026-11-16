@@ -16,7 +16,7 @@ class ReleaseCapacityTests(unittest.TestCase):
     def test_production_directory_keeps_old_thirteen_page_limit(self):
         header = bytearray((ROOT / 'dist/1.75/FanqieX-1.75.dylib').read_bytes()[0x800:0x900])
         extension = struct.unpack_from('<I', header, 60 * 4)[0]
-        for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000)):
+        for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000), (0x14e02, 0x3c000)):
             struct.pack_into('<I', header, 6 * 4, version)
             for capacity in (0x34000, 0x38000, 0x3c000, 0x40000):
                 struct.pack_into('<I', header, 63 * 4, extension + capacity)
@@ -33,7 +33,8 @@ class ReleaseCapacityTests(unittest.TestCase):
         payload = bytes.fromhex('c0035fd6')
         for capacity in (0x34000, 0x38000, 0x3c000):
             image = Image(extend(source, payload, capacity=capacity))
-            self.assertEqual(check_layout(old, image, '1.78')['extension_capacity'], capacity)
+            for version in ('1.78', '1.78R2'):
+                self.assertEqual(check_layout(old, image, version)['extension_capacity'], capacity)
             if capacity == 0x34000:
                 check_layout(old, image, '1.76')
             else:

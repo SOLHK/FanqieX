@@ -2,19 +2,22 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78 测试版
+## FanqieX 1.78R2 测试版
 
-新增底栏纯图标、短剧滚动收缩和独立尺寸设置，补齐阅读分享按钮的玻璃适配，并统一阅读与个人页工具控件的图标、文字比例。
+继续 `test` 分支的 1.78R1 测试，修复纯图标底栏偶发显示文字、短剧进度条与观看全集入口重叠，以及横屏铺满开关未实际裁剪填充的问题。保留底栏滚动收缩、独立尺寸设置、阅读分享玻璃和控件比例优化。
+
+本轮插件文件名、设置页、诊断日志与 Mach-O 构建标识均使用 **1.78R2**。横屏铺满按比例裁剪视频，画面边缘可能被裁去；关闭后恢复宿主播放布局。最终显示、切集和触控效果仍需 iPhone 验收。
 
 设置入口：**FanqieX 设置 → 底栏外观与尺寸**。纯图标和自动收缩默认关闭；可调胶囊长度、高度、按钮宽度及图标大小，支持恢复默认。
 
-- [本版说明、范围与安装方式](docs/REPAIR_1.78.md)
+- [本版说明、范围与安装方式](docs/REPAIR_1.78R2.md)
+- [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 - 测试产物由对应提交的 Actions 提供，本分支不会自动发布 Release。
 
 完整验证执行候选 ARM64 指令并检查 Mach-O、签名页、展开表和实际构建来源。最终 iPhone 渲染与注入效果需在设备上确认。
 
-1.78 的可核验源码基线为下方 1.76；已纳入上传 1.77r3 日志能确认的原生视频尺寸处理，无法证实的未公开改动不声称已继承。
+1.78R2 以 `test` 分支的 1.78R1 提交为基线；测试修复继续递增 R 序号，仅正式发布时更新 `main`。最初 1.78R1 对应二进制内部仍显示 1.78，这一历史记录保留在 [TESTING.md](TESTING.md)。
 
 ## FanqieX 1.76
 
@@ -45,7 +48,7 @@
 ZIP 中没有传统 class-dump、方法体或 ARM64 反汇编清单；它提供 97,348 个重建 Header、
 Mach-O 元数据、Info.plist、Frameworks 和 Swift 元数据列表。缺失项已明确记录在修复说明中。
 
-## 主要修改
+## 1.76 历史修改
 
 - 短剧视频延伸到底栏后方，底栏保持单层悬浮玻璃；全集、合集入口与底栏分别布局。
 - 底栏根据当前页面的背景色自动切换深浅材质、文字及选中态，切回浅色页面时同步恢复。
@@ -89,14 +92,14 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.76 --output build/ci176
+python3 scripts/verify162.py --version 1.78R2 --output build/ci178r2
 ```
 
 macOS / Xcode 27.2 构建：
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
-python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.76
+python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R2
 ```
 
 Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建检查：
@@ -104,7 +107,7 @@ Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建�
 ```powershell
 $env:FQ_ASSEMBLER = "clang"
 $env:FQ_CLANG = "C:\Program Files\LLVM\bin\clang.exe"
-python scripts/verify162.py --version 1.76 --output build/ci176
+python scripts/verify162.py --version 1.78R2 --output build/ci178r2
 ```
 
 该 Windows 路径不替代 Xcode 27.2 发布构建；它只用于执行同一套 ARM64 指令、结构审计和回归测试。

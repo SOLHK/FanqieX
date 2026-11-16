@@ -21,7 +21,7 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"), default="1.6.2")
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
     good = audit(baseline, data, expected_version=args.expected_version)
@@ -97,20 +97,21 @@ def main():
     case("stale_signature_version", flip(cd + 88 + len("FanqieX-") + last_version_digit),
          "version_consistency", resign=False)
     case("stale_settings_version", flip(0xEC84 + 2 * last_version_digit), "version_consistency")
-    if args.expected_version in ("1.74", "1.75", "1.76", "1.78"):
-        case("stale_settings_footer_length", u64(0x114B0, 33), "version_consistency")
+    if args.expected_version in ("1.74", "1.75", "1.76", "1.78", "1.78R2"):
+        footer_length = unpack("<Q", data, 0x114B0)[0]
+        case("stale_settings_footer_length", u64(0x114B0, footer_length + 1), "version_consistency")
     case("stale_shared_runtime_version", flip(runtime_version + last_version_digit), "version_consistency")
-    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.1": 27, "1.7.2": 27, "1.7.3": 27, "1.7.4": 27, "1.74": 27, "1.75": 27, "1.76": 27, "1.78": 27}[args.expected_version]
+    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.1": 27, "1.7.2": 27, "1.7.3": 27, "1.7.4": 27, "1.74": 27, "1.75": 27, "1.76": 27, "1.78": 27, "1.78R2": 27}[args.expected_version]
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
+    if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
-    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78"):
+    if args.expected_version in ("1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2"):
         unwind_slot = next(section for section in image.sections if section['name'] == '__unwind_info')
         unwind_at = unwind_slot['offset']
         page = unpack('<I', data, unwind_at + 32)[0]
         entry_at, entry_count = unpack('<HH', data, unwind_at + page + 4)
         page_kind = unpack('<I', data, unwind_at + page)[0]
-        if args.expected_version == '1.78' and page_kind == 3:
+        if args.expected_version in ('1.78', '1.78R2') and page_kind == 3:
             common_at, common_count = unpack('<II', data, unwind_at + 4)
             local_at, local_count = unpack('<HH', data, unwind_at + page + 8)
             encodings = list(unpack('<' + 'I' * common_count, data, unwind_at + common_at))

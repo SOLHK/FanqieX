@@ -139,6 +139,8 @@ class Runtime(AppearanceRuntime):
                 "imageWithRenderingMode:", "imageByApplyingSymbolConfiguration:", "size",
             ):
                 return True
+            if self.is_kind(receiver, self.classes["UISegmentedControl"]) and name == "titleTextAttributesForState:":
+                return True
             if self.is_kind(receiver, self.classes["UIFont"]) and name in (
                 "pointSize", "fontWithSize:",
             ):
@@ -201,14 +203,25 @@ class Runtime(AppearanceRuntime):
             cls = self.class_names[self.objects[receiver].cls]
             if name == "isEqual:" and not self.is_kind(receiver, self.classes["UIColor"]):
                 return self.finish(cpu, int(self.object_equal(receiver, args[2])))
+            if name == "titleTextAttributesForState:" and cls == "UISegmentedControl":
+                attributes=state.get("titleTextAttributes", {}).get(args[2])
+                return self.finish(cpu, self.dict_pointer(attributes) if attributes is not None else 0)
+            if name == "setTitle:forSegmentAtIndex:" and cls == "UISegmentedControl":
+                require(args[3] < len(state["segments"]), "Native title segment index is in range")
+                state["segments"][args[3]] = args[2]
+                return self.finish(cpu)
             if name in ("imageForState:", "titleForState:", "attributedTitleForState:"):
                 field = {"imageForState:": "images", "titleForState:": "titles",
                          "attributedTitleForState:": "attributedTitles"}[name]
-                return self.finish(cpu, state.get(field, {}).get(args[2], 0))
+                values=state.get(field, {})
+                return self.finish(cpu, values.get(args[2], values.get(0, 0)))
             if name in ("setImage:forState:", "setTitle:forState:", "setAttributedTitle:forState:"):
                 field = {"setImage:forState:": "images", "setTitle:forState:": "titles",
                          "setAttributedTitle:forState:": "attributedTitles"}[name]
-                state.setdefault(field, {})[args[3]] = args[2]
+                if args[2]:
+                    state.setdefault(field, {})[args[3]] = args[2]
+                else:
+                    state.setdefault(field, {}).pop(args[3], None)
                 if field == "titles" and args[3] == 0:
                     state["title"] = args[2]
                 self.content_writes.append((receiver, name, args[3], args[2]))
@@ -343,6 +356,12 @@ def button_contents(runtime):
             for button in runtime.buttons}
 
 
+def route_and_images(contents):
+    return {button: {key: value for key, value in state.items()
+                     if key not in ("titles", "attributedTitles")}
+            for button, state in contents.items()}
+
+
 def overlays(runtime, button):
     return [child for child in runtime.objects[button].state["subviews"]
             if runtime.objects[child].name == "owned symbol overlay"]
@@ -462,7 +481,8 @@ def icon_lifecycle(data, labels):
                 require(runtime.objects[state["titleLabel"]].state["hidden"] and
                         runtime.objects[state["imageView"]].state["hidden"],
                         "Pure-icon mode hides both original visual content views")
-            require(button_contents(runtime) == original, "Pure-icon mode preserves all original state artwork and text")
+            require(route_and_images(button_contents(runtime)) == route_and_images(original),
+                    "Pure-icon mode preserves original state artwork and target/action")
             control = runtime.control()
             if control:
                 require([runtime.string_value(value) for value in runtime.objects[control].state["segments"]] == list(titles),
@@ -512,7 +532,11 @@ def unknown_and_failure(data, labels):
                 label = runtime.objects[unknown].state["titleLabel"]
                 require(not runtime.objects[label].state["hidden"] and not overlays(runtime, unknown),
                         "An unrecognized tab without artwork stays identifiable by text")
-            require(button_contents(runtime) == content, "Unknown-tab fallback preserves original artwork")
+            require(route_and_images(button_contents(runtime)) == route_and_images(content),
+                    "Unknown-tab fallback preserves original artwork and routes")
+            runtime.defaults(**{ICONS: False})
+            repair(cpu, runtime, entries)
+            require(button_contents(runtime) == content, "Disabling icons restores all original title states")
             cases.append({"renderer": "fallback" if fallback else "native", "host_image": original_image})
         cpu, runtime, entries = fixture(data, labels, fallback=fallback)
         runtime.symbol_nil = True

@@ -21,8 +21,10 @@ def require(test, detail):
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
     require(version in (0x10602, 0x10603, 0x10604, 0x10605, 0x10606, 0x10607,
-                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00),
+                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00, 0x14e02),
             'Expected a recognized FanqieX release candidate')
+    if version == 0x14e02:
+        return '1.78R2'
     if version in (0x14a00, 0x14b00, 0x14c00, 0x14e00):
         return f'{version >> 16}.{(version >> 8) & 0xff}'
     return f'{version >> 16}.{(version >> 8) & 0xff}.{version & 0xff}'
@@ -162,12 +164,20 @@ class CPU:
     def geometry_simd(self, op):
         """Selected AdvSIMD encodings emitted for the audited CGRect math.
 
-        This is deliberately bounded to 64-bit FP lanes and the exact integer
-        reduction shapes used by Clang. Exceptional arithmetic/conversions fail
-        closed: this interpreter does not model FPCR/FPSR exception state.
+        This is deliberately bounded to byte-immediate moves, 64-bit FP lanes
+        and the exact integer reduction shapes used by Clang. Exceptional
+        arithmetic/conversions fail closed: this interpreter does not model
+        FPCR/FPSR exception state.
         """
         dst, src, rhs = op & 31, (op >> 5) & 31, (op >> 16) & 31
         mask128 = (1 << 128) - 1
+        if op & 0xbff8fc00 == 0x0f00e400:  # MOVI Vd.8B / Vd.16B, #imm8
+            # Only Q, abc:defgh and Rd vary: op=0, cmode=1110, op2=0.
+            # A 64-bit vector write clears the upper half of the V register.
+            immediate = (((op >> 16) & 7) << 5) | ((op >> 5) & 31)
+            byte_count = 16 if op & (1 << 30) else 8
+            self.v[dst] = int.from_bytes(bytes([immediate]) * byte_count, 'little')
+            return True
         if op & 0xffefbc00 == 0x6e080400:  # INS Vd.D[index], Vn.D[index]
             target_lane, source_lane = (op >> 20) & 1, (op >> 14) & 1
             value = (self.v[src] >> (source_lane * 64)) & MASK64

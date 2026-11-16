@@ -16,6 +16,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native);
 Rect FQHBottomNativeRect178(Obj proxy,Rect bounds);
 void FQHBottomReset178(Obj bar,Obj proxy);
 static void BottomOptionsEntry178(Obj controller,Obj container);
+static void RefreshFullscreenFill(void);
 extern void Message(void) __asm__("_objc_msgSend");
 extern Obj Lookup(const char *) __asm__("_objc_getClass");
 extern Sel sel_registerName(const char *);
@@ -2224,6 +2225,7 @@ static void DramaGlassKey(void) {}
 static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
 static void DramaWatchContentKey(void) {}
+static void DramaSpacingForEntry178R2(Obj entry);
 
 static void RemoveDramaGlass(Obj owner) {
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
@@ -2365,11 +2367,13 @@ static void DramaWatchGlass(Obj owner,Obj model) {
 static void DramaWatchLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchLayout"))(self,cmd);
     DramaWatchGlass(self,Get(self,"lastRenderModel"));
+    DramaSpacingForEntry178R2(self);
 }
 
 static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchRender:"))(self,cmd,model);
     DramaWatchGlass(self,model);
+    DramaSpacingForEntry178R2(self);
 }
 
 static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
@@ -2384,6 +2388,211 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
         RemoveDramaGlass(content);
         DramaClearBackground(content,0);
     }
+    DramaSpacingForEntry178R2(self);
+}
+
+// The 1.78R1 screenshot puts the episode pill on the playback seek track.
+// Work inside the observed portrait control class, using actual view geometry.
+// Neither the player, paging size, seek control nor its gestures are modified.
+static void DramaSpacingBusy178R2Key(void) {}
+static void DramaSpacingTarget178R2Key(void) {}
+static void DramaSpacingStock178R2Key(void) {}
+static void DramaSpacingApplied178R2Key(void) {}
+static void DramaSpacingLog178R2Key(void) {}
+
+static B DramaSpacingVisible178R2(Obj view) {
+    return Kind(view,"UIView") && !Flag(view,"isHidden") &&
+        ((double(*)(Obj,Sel))Message)(view,sel_registerName("alpha"))>0.01 && VisibleRect(Bounds(view));
+}
+static B DramaProgressName178R2(Obj view) {
+    if (Kind(view,"UISlider")) return 1;
+    Obj name=Get(object_getClass(view),"description");
+    if (!Kind(name,"NSString")) return 0;
+    name=O0(name,"lowercaseString");
+    return ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("progress")) ||
+           ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("slider"));
+}
+static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
+    Rect result=Convert(view,Bounds(view),root);
+    Obj target=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
+    Obj stock=objc_getAssociatedObject(target,DramaSpacingStock178R2Key);
+    Obj applied=objc_getAssociatedObject(target,DramaSpacingApplied178R2Key);
+    // Discovery uses the host baseline, never the previous repaired position.
+    // Otherwise a shifted row crossing a scan threshold can alternate forever.
+    if (stock && applied && Belongs(view,target) && SameRect(Frame(target),UnboxRect(applied)))
+        result.y+=UnboxRect(stock).y-UnboxRect(applied).y;
+    return result;
+}
+static void DramaSpacingScan178R2(Obj view,Obj root,int depth,int *budget,B progressBranch,
+                                 Obj *entry,U *entries,Obj *progress,Rect *track) {
+    if (!depth || *budget<=0 || !DramaSpacingVisible178R2(view)) return;
+    --*budget;
+    Rect bounds=Bounds(root),r=DramaSpacingMeasure178R2(view,root);
+    if (!VisibleRect(r) || r.y>=bounds.y+bounds.height || r.y+r.height<=bounds.y) return;
+    if ((Kind(view,"SSShortVideoBottomDistributionView") &&
+         objc_getAssociatedObject(view,DramaWatchContentKey)) ||
+        (Kind(view,"SSShortVideoAlbumSeriesBottomInsertView") && Get(view,"albumDetailInfo"))) {
+        if (r.width>=bounds.width*0.5 && r.height>=24 && r.height<=100 && r.y>bounds.y+bounds.height*0.5) {
+            *entry=view; ++*entries;
+        }
+        return; // A decorated episode row is never a progress candidate.
+    }
+    progressBranch=progressBranch || DramaProgressName178R2(view);
+    // A public slider or a thin full-width child of the host's progress view.
+    // Exclude labels, counters, vertical rails and unrelated one-pixel dividers.
+    if (progressBranch && !Kind(view,"UILabel") && r.width>=bounds.width*0.5 &&
+        r.height<=64 && r.y>bounds.y+bounds.height*0.6 &&
+        (!*progress || r.height<track->height || (r.height==track->height && r.y>track->y))) {
+        *progress=view; *track=r;
+    }
+    Obj children=Get(view,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    for (U i=0;i<count && *budget>0;++i)
+        DramaSpacingScan178R2(At(children,i),root,depth-1,budget,progressBranch,entry,entries,progress,track);
+}
+static void DramaSpacingRestore178R2(Obj root) {
+    Obj target=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
+    Obj stock=objc_getAssociatedObject(target,DramaSpacingStock178R2Key);
+    Obj applied=objc_getAssociatedObject(target,DramaSpacingApplied178R2Key);
+    if (stock && applied && SameRect(Frame(target),UnboxRect(applied))) SetFrame(target,UnboxRect(stock));
+    objc_setAssociatedObject(target,DramaSpacingStock178R2Key,0,1);
+    objc_setAssociatedObject(target,DramaSpacingApplied178R2Key,0,1);
+    objc_setAssociatedObject(root,DramaSpacingTarget178R2Key,0,1);
+}
+static B DramaSpacingContained178R2(Obj target,Rect wanted,Obj root) {
+    Obj parent=Get(target,"superview");
+    for (Obj ancestor=parent;ancestor;ancestor=Get(ancestor,"superview")) {
+        Rect r=Convert(parent,wanted,ancestor),b=Bounds(ancestor);
+        // Even unclipped UIView parents reject outside hits. Keep the full
+        // original tap target inside every parent instead of widening hitTest.
+        if (!VisibleRect(r) || !VisibleRect(b) || r.x<b.x-0.5 || r.y<b.y-0.5 ||
+            r.x+r.width>b.x+b.width+0.5 || r.y+r.height>b.y+b.height+0.5) return 0;
+        if (ancestor==root) return 1;
+    }
+    return 0;
+}
+void FQHDramaSpacing178R2(Obj root) {
+    if (!Kind(root,"FQVShortVideoVPlayerControlView") || objc_getAssociatedObject(root,DramaSpacingBusy178R2Key)) return;
+    objc_setAssociatedObject(root,DramaSpacingBusy178R2Key,root,0);
+    Obj window=Get(root,"window"),entry=0,progress=0,target=0,seekOwner=0;
+    Rect b=Bounds(root),screen=window ? Bounds(window) : (Rect){0},track={0},row={0};
+    double shift=0;
+    const char *status="inactive";
+    B eligible=Enabled() && window && DramaSpacingVisible178R2(root) &&
+        screen.height>screen.width && b.height>b.width && b.width>=screen.width-4;
+    if (eligible) {
+        Rect placed=Convert(root,b,window);
+        eligible=VisibleRect(placed) && placed.y<screen.y+screen.height && placed.y+placed.height>screen.y &&
+            __builtin_fabs(placed.x-screen.x)<2 && __builtin_fabs(placed.width-b.width)<0.5 &&
+            __builtin_fabs(placed.height-b.height)<0.5;
+    }
+    if (eligible) {
+        U entries=0; int budget=128;
+        DramaSpacingScan178R2(root,root,8,&budget,0,&entry,&entries,&progress,&track);
+        status=budget<=0 ? "scanLimit" : entries!=1 ? "noUniqueEpisodeEntry" : !progress ? "progressNotResolved" : "measured";
+        if (entries==1 && progress && budget>0) {
+            row=DramaSpacingMeasure178R2(entry,root);
+            target=entry;
+            // Move the compact information block as a unit when it owns the
+            // episode row. This retains spacing to its title/caption above.
+            for (Obj parent=Get(target,"superview");parent && parent!=root;parent=Get(parent,"superview")) {
+                Rect p=DramaSpacingMeasure178R2(parent,root);
+                if (!Belongs(parent,root) || Belongs(progress,parent) || !VisibleRect(p) ||
+                    p.height>b.height*0.6 || p.width<row.width*0.75 ||
+                    p.y<b.y+b.height*0.3 || p.y+p.height>row.y+row.height+16) break;
+                target=parent;
+            }
+        }
+    }
+    Obj previous=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
+    if (previous && previous!=target) DramaSpacingRestore178R2(root);
+    if (target) {
+        Rect current=Frame(target),targetBounds=Bounds(target);
+        Obj applied=objc_getAssociatedObject(target,DramaSpacingApplied178R2Key);
+        Obj saved=objc_getAssociatedObject(target,DramaSpacingStock178R2Key);
+        Rect stock=applied && saved && SameRect(current,UnboxRect(applied)) ? UnboxRect(saved) : current;
+        Rect targetInRoot=Convert(target,targetBounds,root);
+        row=Convert(entry,Bounds(entry),root);
+        row.y+=stock.y-current.y;
+        // A thin rendered track still needs a 40pt vertical seek region.
+        // The actual seek view, thumb and target/action remain exactly native.
+        double seekTop=track.height>=40 ? track.y : track.y+track.height*0.5-20;
+        // Preserve a larger existing seek container as well. A thin child
+        // track does not reduce its parent's original interactive region.
+        for (Obj seek=progress;seek && seek!=root;seek=Get(seek,"superview")) {
+            Rect r=Convert(seek,Bounds(seek),root);
+            if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
+                r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) {
+                seekTop=__builtin_fmin(seekTop,r.y);
+                seekOwner=seek;
+            }
+        }
+        shift=__builtin_fmax(0,row.y+row.height+8-seekTop);
+        B safe=VisibleRect(stock) && __builtin_fabs(targetInRoot.width-targetBounds.width)<0.5 &&
+            __builtin_fabs(targetInRoot.height-targetBounds.height)<0.5 && shift<=80 &&
+            targetInRoot.y+(stock.y-current.y)-shift>=b.y+8;
+        Rect wanted=stock; wanted.y-=shift;
+        safe=safe && DramaSpacingContained178R2(target,wanted,root);
+        if (safe && shift>0) {
+            if (!saved || !SameRect(stock,UnboxRect(saved)))
+                objc_setAssociatedObject(target,DramaSpacingStock178R2Key,RectBox(stock),1);
+            if (!applied || !SameRect(wanted,UnboxRect(applied)))
+                objc_setAssociatedObject(target,DramaSpacingApplied178R2Key,RectBox(wanted),1);
+            if (previous!=target) {
+                Obj weak=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+                V1(weak,"addObject:",target);
+                objc_setAssociatedObject(root,DramaSpacingTarget178R2Key,weak,1);
+            }
+            if (!SameRect(current,wanted)) SetFrame(target,wanted);
+            status="separated";
+        } else {
+            DramaSpacingRestore178R2(root);
+            status=safe ? "alreadySeparated" : "unsupportedGeometry";
+            shift=0;
+        }
+    }
+    if (eligible || previous) {
+        Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
+        Put(record,"seekRegionHeight",Number(40)); Put(record,"gap",Number(8));
+        if (entry) Put(record,"episodeWindowRect",RectArray(Convert(entry,Bounds(entry),window)));
+        if (progress) {
+            Put(record,"progressWindowRect",RectArray(Convert(progress,Bounds(progress),window)));
+            Put(record,"progressClass",Get(object_getClass(progress),"description"));
+        }
+        if (seekOwner) {
+            Put(record,"seekOwnerClass",Get(object_getClass(seekOwner),"description"));
+            Put(record,"seekOwnerWindowRect",RectArray(Convert(seekOwner,Bounds(seekOwner),window)));
+        }
+        Obj last=objc_getAssociatedObject(root,DramaSpacingLog178R2Key);
+        if (!last || !((B(*)(Obj,Sel,Obj))Message)(last,sel_registerName("isEqual:"),record)) {
+            FQDRecord("dramaControlSpacing178R2",record);
+            objc_setAssociatedObject(root,DramaSpacingLog178R2Key,record,1);
+        }
+    }
+    objc_setAssociatedObject(root,DramaSpacingBusy178R2Key,0,0);
+}
+static void DramaSpacingForEntry178R2(Obj entry) {
+    Obj parent=Get(entry,"superview");
+    for (int depth=0;parent && depth<8;++depth,parent=Get(parent,"superview")) {
+        if (Kind(parent,"FQVShortVideoVPlayerControlView")) { FQHDramaSpacing178R2(parent); return; }
+    }
+}
+static void DramaControlsLayout178R2(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178R2_originalControlsLayout"))(self,cmd);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaSeriesControlsLayout178R2(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerSeriesControlView","fqx178R2_originalSeriesControlsLayout"))(self,cmd);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaSpacingInstall178R2(void) {
+    Method base=class_getInstanceMethod(Lookup("FQVShortVideoVPlayerControlView"),sel_registerName("layoutSubviews"));
+    Method series=class_getInstanceMethod(Lookup("FQVShortVideoVPlayerSeriesControlView"),sel_registerName("layoutSubviews"));
+    B ownsSeries=series && series!=base;
+    Hook("FQVShortVideoVPlayerControlView","layoutSubviews","fqx178R2_originalControlsLayout","v16@0:8",(Imp)DramaControlsLayout178R2);
+    if (ownsSeries)
+        Hook("FQVShortVideoVPlayerSeriesControlView","layoutSubviews","fqx178R2_originalSeriesControlsLayout","v16@0:8",(Imp)DramaSeriesControlsLayout178R2);
 }
 
 static void ShelfTitleGlassFontKey(void) {}
@@ -2920,7 +3129,7 @@ static Obj PageOptionLabel(I option) {
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
-        case FullscreenFillOption: label="横屏原比例铺满（背景延展）"; break;
+        case FullscreenFillOption: label="横屏画面铺满（等比裁切）"; break;
         case ShelfFilterOption: label="书架显示筛选按钮"; break;
         case ReaderThemeIsolationOption: label="书外主题跟随系统"; break;
         default: label="阅读菜单显示上下栏背景"; break;
@@ -3374,6 +3583,7 @@ static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
         else if (tag==MineBenefitsOption) RefreshMineBenefits();
         else if (tag==ShelfFilterOption) RefreshShelfFilter();
         else if (tag==ReaderThemeIsolationOption && on) FQHApplyReaderThemeIsolation();
+        else if (tag==FullscreenFillOption) RefreshFullscreenFill();
         return;
     }
     Obj owner=ActiveTabOwner();
@@ -3677,10 +3887,23 @@ void FQHInstallOptionsToggles(Obj controller) {
 }
 
 static void FullscreenScaleBaselineKey(void) {}
-static void FullscreenAmbientKey(void) {}
-// Native aspect-fit preserves the complete video; the renderer fills its unused
-// canvas with the same decoded frame's dynamic Gaussian background.
-enum { FullscreenAspectFitMode=1, FullscreenDynamicBlurOption=40092 };
+static void FullscreenPlayersKey(void) {}
+static void FullscreenLogStateKey(void) {}
+static void FullscreenLogBoundsKey(void) {}
+// TTVideoEngineScalingModeAspectFill=2 is the native, proportional crop mode.
+// Only its video surface fills the canvas; the player's controls keep their size.
+// https://docs.volcengine.com/docs/video-on-demand/ios-player-types?lang=zh
+enum { FullscreenAspectFillMode=2 };
+
+static Obj FullscreenPlayers(void) {
+    Obj cls=Lookup("FQVPlayer");
+    Obj players=objc_getAssociatedObject(cls,FullscreenPlayersKey);
+    if (!players) {
+        players=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(cls,FullscreenPlayersKey,players,1);
+    }
+    return players;
+}
 
 static B FullscreenFillViewport(Obj player,Rect *viewport) {
     if (!Flag(player,"isFullScreen") || !FullscreenFillEnabled()) return 0;
@@ -3706,52 +3929,69 @@ static B FullscreenFillViewport(Obj player,Rect *viewport) {
     return 1;
 }
 
-static void FullscreenAmbient(Obj engine,B fill) {
-    Obj previous=objc_getAssociatedObject(engine,FullscreenAmbientKey);
-    if (!fill) {
-        if (previous) {
-            ((void(*)(Obj,Sel,I,Obj))Message)(engine,sel_registerName("setOptionForKey:value:"),FullscreenDynamicBlurOption,previous);
-            objc_setAssociatedObject(engine,FullscreenAmbientKey,0,1);
-        }
-        return;
-    }
-    Obj key=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),FullscreenDynamicBlurOption);
-    Obj stock=O1(engine,"getOptionBykey:",key);
-    if (Kind(stock,"NSNumber") && Flag(stock,"boolValue")) return;
-    if (!previous) objc_setAssociatedObject(engine,FullscreenAmbientKey,Kind(stock,"NSNumber") ? stock : BoolBox(0),1);
-    ((void(*)(Obj,Sel,I,Obj))Message)(engine,sel_registerName("setOptionForKey:value:"),FullscreenDynamicBlurOption,BoolBox(1));
-    // Match the host's ALMOwnPlayerWrapper dynamic-background configuration.
-    Obj effect=O0(Lookup("NSMutableDictionary"),"dictionary");
-    Put(effect,"kProcessorAction",Number(0));
-    Put(effect,"kProcessorEffectType",Number(12));
-    ((void(*)(Obj,Sel,Obj,Obj))Message)(effect,sel_registerName("setObject:forKey:"),Number(2),Number(5));
-    ((void(*)(Obj,Sel,Obj,Obj))Message)(effect,sel_registerName("setObject:forKey:"),Number(1),Number(13));
-    Put(effect,"kProcessorUseEffect",Number(1));
-    Put(effect,"pGradientLength",Number(0));
-    Put(effect,"pDGBOffsety",Number(0));
-    Put(effect,"pDYGBTexMaxLen",Number(320));
-    Put(effect,"kDYGBControNum",Number(1));
-    V1(engine,"setEffectParams:",effect);
-    Q1(engine,"dynamicGaussianBlurResetViewSize:",1);
-    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
-    Put(record,"mode",Text("aspectFitWithAmbientBackground"));
-    FQDRecord("dramaFullscreenMode",record);
-}
-
 static void FullscreenScale(Obj engine,B fill) {
     if (!engine) return;
-    FullscreenAmbient(engine,fill);
     Obj baseline=objc_getAssociatedObject(engine,FullscreenScaleBaselineKey);
     if (!fill && !baseline) return;
     I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode"));
-    if (fill && mode!=FullscreenAspectFitMode) {
+    if (fill && mode!=FullscreenAspectFillMode) {
         Obj box=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),mode);
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,box,1);
-        Q1(engine,"setScaleMode:",FullscreenAspectFitMode);
+        Q1(engine,"setScaleMode:",FullscreenAspectFillMode);
     } else if (!fill) {
         I previous=((I(*)(Obj,Sel))Message)(baseline,sel_registerName("integerValue"));
         objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,0,1);
-        if (mode==FullscreenAspectFitMode) Q1(engine,"setScaleMode:",previous);
+        if (mode==FullscreenAspectFillMode) Q1(engine,"setScaleMode:",previous);
+    }
+}
+
+static void FullscreenDiagnostics(Obj player,B fill) {
+    Obj last=objc_getAssociatedObject(player,FullscreenLogStateKey);
+    B full=Flag(player,"isFullScreen");
+    // Inactive portrait feeds need no new per-layout diagnostic work.
+    if (!last && !full) return;
+    B enabled=FullscreenFillEnabled();
+    if (!last && !enabled) return;
+    Obj engine=O0(player,"videoEngine"),window=Get(player,"window");
+    I mode=engine ? ((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode")) : -1;
+    I state=(mode+1)*16+(fill ? 8 : 0)+(full ? 4 : 0)+(enabled ? 2 : 0)+(window ? 1 : 0);
+    Rect bounds=Bounds(player);
+    Obj oldBounds=objc_getAssociatedObject(player,FullscreenLogBoundsKey);
+    if (last && ((I(*)(Obj,Sel))Message)(last,sel_registerName("integerValue"))==state &&
+        oldBounds && SameRect(UnboxRect(oldBounds),bounds)) return;
+    objc_setAssociatedObject(player,FullscreenLogStateKey,Number(state),1);
+    objc_setAssociatedObject(player,FullscreenLogBoundsKey,RectBox(bounds),1);
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"revision",Text("aspect-fill-178R2"));
+    B applied=fill && engine && mode==FullscreenAspectFillMode;
+    Put(record,"mode",Text(applied ? "aspectFill" : "native"));
+    Put(record,"enabled",BoolBox(enabled)); Put(record,"isFullscreen",BoolBox(full));
+    Put(record,"eligibleViewport",BoolBox(fill));
+    Put(record,"applied",BoolBox(applied)); Put(record,"scaleMode",Number(mode));
+    Put(record,"playerBounds",RectArray(bounds));
+    if (window) {
+        Put(record,"windowBounds",RectArray(Bounds(window)));
+        Put(record,"playerInWindow",RectArray(Convert(player,bounds,window)));
+    }
+    FQDRecord("dramaFullscreenMode",record);
+}
+
+static B FullscreenApplyPlayer(Obj player) {
+    Rect viewport;
+    B fill=FullscreenFillViewport(player,&viewport);
+    FullscreenScale(O0(player,"videoEngine"),fill);
+    FullscreenDiagnostics(player,fill);
+    return fill;
+}
+
+static void RefreshFullscreenFill(void) {
+    Obj players=O0(FullscreenPlayers(),"allObjects");
+    U count=TabCount(players);
+    for (U i=0;i<count;++i) {
+        Obj player=At(players,i);
+        FullscreenApplyPlayer(player);
+        // Returning to stock also needs the host to recompute its video frame.
+        if (Get(player,"window")) V0(player,"updatePlayerLayout");
     }
 }
 
@@ -3763,8 +4003,8 @@ static Rect FullscreenPlayerFrame(Obj self,Sel cmd) {
 
 static void FullscreenPlayerLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVPlayer","fqx190_originalPlayerLayout"))(self,cmd);
-    Rect viewport;
-    FullscreenScale(O0(self,"videoEngine"),FullscreenFillViewport(self,&viewport));
+    if (Flag(self,"isFullScreen")) V1(FullscreenPlayers(),"addObject:",self);
+    FullscreenApplyPlayer(self);
 }
 
 static void FullscreenPlayerState(Obj self,Sel cmd,B full) {
@@ -3777,12 +4017,12 @@ static void FullscreenPlayerEngine(Obj self,Sel cmd,Obj engine) {
     Obj old=O0(self,"videoEngine");
     if (old!=engine) FullscreenScale(old,0);
     ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerEngine:"))(self,cmd,engine);
+    FullscreenApplyPlayer(self);
 }
 
 static void FullscreenRefresh(Obj player) {
-    Rect viewport;
-    B fill=FullscreenFillViewport(player,&viewport);
-    FullscreenScale(O0(player,"videoEngine"),fill);
+    if (Flag(player,"isFullScreen")) V1(FullscreenPlayers(),"addObject:",player);
+    B fill=FullscreenApplyPlayer(player);
     if (fill) V0(player,"updatePlayerLayout");
 }
 
@@ -3797,6 +4037,8 @@ static void FullscreenPlayerPrepare(Obj self,Sel cmd,Obj info,B async) {
 static void FullscreenPlayerReady(Obj self,Sel cmd,Obj engine) {
     if (engine && engine==O0(self,"videoEngine")) FullscreenRefresh(self);
     ((void(*)(Obj,Sel,Obj))Original("FQVPlayer","fqx190_originalPlayerReady:"))(self,cmd,engine);
+    // The host may set its default scale while exposing a prepared frame.
+    if (engine && engine==O0(self,"videoEngine")) FullscreenApplyPlayer(self);
 }
 
 static void FullscreenCellDisplay(Obj self,Sel cmd) {
@@ -3821,10 +4063,6 @@ static void FullscreenFillInstall(void) {
         !Signature(cell,"isInPlayerScaleMode","B16@0:8") ||
         !Signature(cell,"modelDidDisplay","v16@0:8") ||
         !Signature("TTVideoEngine","scaleMode","q16@0:8") ||
-        !Signature("TTVideoEngine","getOptionBykey:","@24@0:8@16") ||
-        !Signature("TTVideoEngine","setOptionForKey:value:","v32@0:8q16@24") ||
-        !Signature("TTVideoEngine","setEffectParams:","v24@0:8@16") ||
-        !Signature("TTVideoEngine","dynamicGaussianBlurResetViewSize:","v24@0:8q16") ||
         !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16")) return;
     Hook("FQVPlayer","landscapePlayerViewFrame","fqx190_originalLandscapeFrame",
          "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8",(Imp)FullscreenPlayerFrame);
@@ -3894,6 +4132,7 @@ static void ShelfCompactInstall(void) {
 void FQHPageInstall(void) {
     ReaderGlassStyleInstall();
     ReaderThemeIsolationInstall();
+    DramaSpacingInstall178R2();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
@@ -4022,6 +4261,8 @@ static void BottomOptionValue178Key(void) {}
 static void BottomSettingViews178Key(void) {}
 static void BottomSettingsScroll178Key(void) {}
 static void BottomLayoutLog178Key(void) {}
+static void BottomTitles178R2Key(void) {}
+static void BottomTitleFallback178R2Key(void) {}
 
 static Obj BottomDefaults178(void) {
     return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
@@ -4279,7 +4520,88 @@ static void BottomHide178(Obj view) {
         objc_setAssociatedObject(view,BottomHidden178Key,BoolBox(Flag(view,"isHidden")),1);
     if (!Flag(view,"isHidden")) VB(view,"setHidden:",1);
 }
+static void BottomRestoreTitles178R2(Obj button) {
+    Obj saved=objc_getAssociatedObject(button,BottomTitles178R2Key);
+    if (TabCount(saved)!=32) return;
+    Obj currentNormalAttribute=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("attributedTitleForState:"),0);
+    // Restore normal last: the public getters fall back to normal for an
+    // unset state, so restoring it first would disguise an owned nil value.
+    for (U index=16;index>0;--index) {
+        U state=index-1;
+        Obj title=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("titleForState:"),state);
+        Obj attributed=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("attributedTitleForState:"),state);
+        // The empty string and nil attributed title are the exact values we
+        // own. A newer nonempty title written by a host sync takes precedence.
+        B owned=Equal(title,"");
+        if (owned) {
+            Obj original=At(saved,state*2);
+            ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitle:forState:"),
+                Kind(original,"NSNull") ? (Obj)0 : original,state);
+        }
+        if (owned && (!attributed || (state && attributed==currentNormalAttribute))) {
+            Obj original=At(saved,state*2+1);
+            if (!Kind(original,"NSNull"))
+                ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setAttributedTitle:forState:"),original,state);
+        }
+    }
+    objc_setAssociatedObject(button,BottomTitles178R2Key,0,1);
+}
+static void BottomSuppressTitles178R2(Obj button,Obj title) {
+    // UIButton owns titleLabel.hidden and can reset it in a later layout or
+    // highlight update. Suppress its public content states instead of relying
+    // on the timing of a parent layout. Keep the original routing and a11y.
+    Obj previous=objc_getAssociatedObject(button,BottomTitles178R2Key);
+    if (TabCount(previous)==32) {
+        B changed=0;
+        for (U state=0;state<16;++state) {
+            Obj current=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("titleForState:"),state);
+            Obj attributed=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("attributedTitleForState:"),state);
+            if (!Equal(current,"") || attributed) changed=1;
+        }
+        // Settled layouts do not toggle titles or invalidate intrinsic sizes.
+        if (!changed) return;
+        BottomRestoreTitles178R2(button);
+    }
+    Obj saved=O0(Lookup("NSMutableArray"),"array"),null=O0(Lookup("NSNull"),"null");
+    Obj empty=Text("");
+    if (!saved || !null || !empty) return;
+    for (U state=0;state<16;++state) {
+        Obj original=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("titleForState:"),state);
+        Obj attributed=((Obj(*)(Obj,Sel,U))Message)(button,sel_registerName("attributedTitleForState:"),state);
+        V1(saved,"addObject:",original ? original : null);
+        V1(saved,"addObject:",attributed ? attributed : null);
+        // The UIKit getters return normal when a state has no override. Clear
+        // normal after saving it so those inherited values remain nil in our
+        // snapshot, rather than becoming stale explicit overrides on restore.
+        if (!state) {
+            ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitle:forState:"),(Obj)0,0);
+            if (attributed)
+                ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setAttributedTitle:forState:"),(Obj)0,0);
+        }
+    }
+    objc_setAssociatedObject(button,BottomTitles178R2Key,saved,1);
+    if (title) objc_setAssociatedObject(button,BottomTitleFallback178R2Key,title,1);
+    for (U state=0;state<16;++state) {
+        ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setTitle:forState:"),empty,state);
+        if (!Kind(At(saved,state*2+1),"NSNull"))
+            ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setAttributedTitle:forState:"),(Obj)0,state);
+    }
+}
+static void BottomNativeTitles178R2(Obj native) {
+    if (!Kind(native,"UISegmentedControl") || !Responds(native,"titleTextAttributesForState:")) return;
+    Obj clear=O0(Lookup("UIColor"),"clearColor"),key=Text("NSColor");
+    for (U state=0;state<16;++state) {
+        Obj current=((Obj(*)(Obj,Sel,U))Message)(native,sel_registerName("titleTextAttributesForState:"),state);
+        if (SameColor(O1(current,"objectForKey:",key),clear)) continue;
+        Obj attributes=current ? O0(current,"mutableCopy") : O0(Lookup("NSMutableDictionary"),"new");
+        if (!attributes) continue;
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(attributes,sel_registerName("setObject:forKey:"),clear,key);
+        ((void(*)(Obj,Sel,Obj,U))Message)(native,sel_registerName("setTitleTextAttributes:forState:"),attributes,state);
+        V0(attributes,"release");
+    }
+}
 static void BottomRestoreSymbol178(Obj button) {
+    BottomRestoreTitles178R2(button);
     Obj symbol=objc_getAssociatedObject(button,BottomSymbol178Key);
     if (Get(symbol,"superview")==button) V0(symbol,"removeFromSuperview");
     BottomRestoreHidden178(objc_getAssociatedObject(button,BottomLabel178Key));
@@ -4289,11 +4611,14 @@ static void BottomRestoreSymbol178(Obj button) {
     objc_setAssociatedObject(button,BottomSymbolSize178Key,0,1);
     objc_setAssociatedObject(button,BottomLabel178Key,0,1);
     objc_setAssociatedObject(button,BottomStockImage178Key,0,1);
+    objc_setAssociatedObject(button,BottomTitleFallback178R2Key,0,1);
 }
 static Obj BottomTitle178(Obj item,Obj button) {
     Obj title=Get(item,"title");
     if (!Kind(title,"NSString") || !((U(*)(Obj,Sel))Message)(title,sel_registerName("length")))
         title=Get(button,"currentTitle");
+    if (!Kind(title,"NSString") || !((U(*)(Obj,Sel))Message)(title,sel_registerName("length")))
+        title=objc_getAssociatedObject(button,BottomTitleFallback178R2Key);
     if (!title) title=Get(Get(button,"titleLabel"),"text");
     return title;
 }
@@ -4364,6 +4689,7 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
     if (!SameColor(Get(symbol,"tintColor"),foreground)) V1(symbol,"setTintColor:",foreground);
     if (title && !((B(*)(Obj,Sel,Obj))Message)(title,sel_registerName("isEqual:"),Get(button,"accessibilityLabel")))
         V1(button,"setAccessibilityLabel:",title);
+    BottomSuppressTitles178R2(button,title);
     // The native selector owns accessibility when active; its original,
     // transparent segment titles remain intact. Fallback buttons keep theirs.
 }
@@ -4372,6 +4698,26 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     if (!Enabled()) { FQHBottomReset178(bar,proxy); return; }
     U count=TabCount(buttons);
     if (!count || count>8 || !BottomRect178(Frame(proxy)) || !BottomRect178(Bounds(bar))) return;
+    Obj previousButtons=objc_getAssociatedObject(proxy,BottomButtons178Key);
+    U previousCount=TabCount(previousButtons);
+    for (U i=0;i<previousCount && i<8;++i) {
+        Obj previous=At(previousButtons,i);
+        B retained=0;
+        for (U j=0;j<count;++j) if (At(buttons,j)==previous) retained=1;
+        if (!retained) BottomRestoreSymbol178(previous);
+    }
+    // LNtitle needs genuine button strings only if UITabBarItem.title is
+    // unavailable. Restore for that synchronous sync, then Finish suppresses
+    // them before UIKit commits a frame. Normal repeated layouts do not churn
+    // button content or intrinsic size invalidations.
+    Obj items=Get(bar,"items");
+    U itemCount=TabCount(items);
+    for (U i=0;i<count;++i) {
+        Obj button=At(buttons,i);
+        Obj title=itemCount==count ? Get(At(items,i),"title") : (Obj)0;
+        if ((!Kind(title,"NSString") || !((U(*)(Obj,Sel))Message)(title,sel_registerName("length"))) &&
+            BottomOwnsButton178(button,proxy,bar)) BottomRestoreTitles178R2(button);
+    }
     BottomSetWeak178(proxy,BottomBarBox178Key,bar);
     BottomSetWeak178(bar,BottomProxyBox178Key,proxy);
     objc_setAssociatedObject(proxy,BottomButtons178Key,buttons,1);
@@ -4432,6 +4778,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     U count=TabCount(buttons);
     if (!count || count>8 || Get(proxy,"superview")!=bar) return;
     B icons=Enabled() && BottomFlag178(1);
+    if (icons) BottomNativeTitles178R2(native);
     Obj items=Get(bar,"items");
     double size=BottomValue178(14);
     I style=((I(*)(Obj,Sel))Message)(proxy,sel_registerName("overrideUserInterfaceStyle"));
@@ -4451,6 +4798,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         BottomFlag178(2)) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"iconsOnly",BoolBox(icons)); Put(record,"autoCompact",BoolBox(BottomFlag178(2)));
+        if (icons) Put(record,"titleSuppression",Text("controlStates178R2"));
         Put(record,"compact",BoolBox(BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue")));
         Put(record,"frame",RectArray(Frame(proxy))); Put(record,"iconPointSize",Number(size));
         Put(record,"buttonWidthPercent",Number(BottomValue178(13)));
