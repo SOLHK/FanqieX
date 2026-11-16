@@ -537,7 +537,11 @@ LIupdate_snap:
     bl LIrect_valid
     cbz w0, LIupdate_restore
     mov x0, x27
+.if FQ_VERSION >= 0x14e0f
+    bl LFQH_FQHBottomSnapDrag178R15
+.else
     bl Lpatch + (0x711c - PATCH_BASE)
+.endif
 LIupdate_yes:
     AGET x20, LIlens_key
     mov x27, x0
@@ -936,6 +940,22 @@ LIpan_begin:
     GET x0, LIframe
     bl LIrect_valid
     cbz w0, LIpan_snap
+.if FQ_VERSION >= 0x14e0f
+    mov x0, x20
+    mov x1, x23
+    bl LFQH_FQHBottomDragOffset178R15
+    FINITE d0, LIpan_snap
+    fmov d8, d0
+    mov x2, x23
+    GET x20, LIlocation
+    FINITE d0, LIpan_snap
+    FINITE d1, LIpan_snap
+    fsub d0, d0, d8
+    mov x0, x22
+    bl LIplace
+    cbz x0, LIpan_snap
+    fmov d0, d8
+.else
     // Save the true selected rectangle, not an assumed visual index. A drag
     // beginning outside it must start at the finger, rather than carry a
     // huge offset from the selected item (which routed to the wrong page).
@@ -963,6 +983,7 @@ LIpan_begin_at_finger:
     fmov d0, xzr
 LIpan_begin_offset:
     FINITE d0, LIpan_snap
+.endif
     bl Lnumber
     ASET x19, LIoffset_key, x0, 1
     GET x21, Lselected_item
@@ -972,6 +993,11 @@ LIpan_begin_offset:
     mov x0, x24
     mov w1, #1
     bl LIappearance
+.if FQ_VERSION >= 0x14e0f
+    mov x0, x24
+    mov x1, x23
+    bl LFQH_FQHBottomLiftLens178R15
+.endif
     mov x0, x22
     adr x1, LIphase_begin
     mov x2, #0
@@ -1006,9 +1032,24 @@ LIpan_move:
     adr x1, LIphase_ended
     mov x2, x26
     bl LIrecord_transition
+.if FQ_VERSION >= 0x14e0f
+    mov x0, x24
+    bl LFQH_FQHBottomRememberDrag178R15
+.endif
     mov x0, x19
     bl LIclear_state
-.if FQ_VERSION >= 0x14e0e
+.if FQ_VERSION >= 0x14e0f
+    // A route can replace the bar synchronously. Resolve the final selection
+    // through the normal host sync, then settle the still-owned bar if needed.
+    GET x21, Lretain
+    GET x22, Lretain
+    AGET x22, LIbuttons_key
+    mov x1, x0
+    mov x0, x21
+    mov x2, x26
+    bl LFQH_FQHBottomDragCanRoute178
+    cbz w0, LIpan_finish
+.elseif FQ_VERSION >= 0x14e0e
     // Restore idle appearance before routing; the host can reject the change
     // or replace this bar synchronously. A host sync snaps a successful route.
     mov x0, x21
@@ -1026,6 +1067,14 @@ LIpan_move:
     mov x1, #0
     mov x2, x26
     bl Lpatch + (0x56c0 - PATCH_BASE)
+.if FQ_VERSION >= 0x14e0f
+LIpan_finish:
+    mov x0, x21
+    mov x1, x22
+    bl LIupdate
+    GET x22, Lrelease
+    GET x21, Lrelease
+.endif
     b LIpan_done
 LIpan_cancel:
     mov x0, x22
@@ -1033,6 +1082,10 @@ LIpan_cancel:
 LIpan_snap:
     AGET x19, LIdrag_key
     cbz x0, LIpan_snap_clear
+.if FQ_VERSION >= 0x14e0f
+    mov x0, x24
+    bl LFQH_FQHBottomRememberDrag178R15
+.endif
     mov x0, x22
     adr x1, LIphase_cancel
     mov x2, #0

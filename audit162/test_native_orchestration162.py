@@ -236,16 +236,20 @@ def diagnostics_and_original_restore(data):
             'original_restore_all_extensions': True}
 
 
-def send_interaction_pan(cpu, rt, state, x, y=28):
+def send_interaction_pan(cpu, rt, state, x, y=28, translation=0):
     pan = rt.associated(rt.PROXY, 'pan')
-    rt.objects[pan].state.update(state=state, location=(x, y))
+    rt.objects[pan].state.update(state=state, location=(x, y), translation=(translation, 0))
     rt.callback(cpu, pan)
 
 
 def drag_selection_lifecycle(data):
     rows = []
+    spring_tracking = release_version(data) == '1.78R15'
     for slide in (0, 0x180000000):
         cpu, rt, entries = make(data, slide=slide)
+        if spring_tracking:
+            rt.objects[rt.MAIN_BUNDLE].state['info'] = {
+                'UIDesignRequiresCompatibility': True, 'DTSDKName': 'iphoneos26.0'}
         repair(cpu, rt, entries)
         overlay = require_fallback(rt)
         lens = rt.associated(rt.PROXY, 'lens')
@@ -272,16 +276,21 @@ def drag_selection_lifecycle(data):
         require(cpu.run(entries['should_begin'], controller,
                         rt.sel('gestureRecognizerShouldBegin:'), pan)['result'],
                 'Production dock accepts horizontal drag')
-        send_interaction_pan(cpu, rt, 1, start)
+        send_interaction_pan(cpu, rt, 1, start + 6 if spring_tracking else start,
+                             translation=6 if spring_tracking else 0)
         glass = lens_state['effect']
         require(glass and rt.class_names[rt.objects[glass].cls] == 'UIGlassEffect' and
                 rt.objects[glass].state['style'] == 1 and rt.objects[glass].state['interactive'],
                 'An active drag installs interactive Clear Liquid Glass')
         require(overlay_state['subviews'][-1] == lens and not lens_state['userInteractionEnabled'],
                 'The Clear lens samples the tab artwork while the overlay still owns the gesture')
+        if spring_tracking:
+            lift_x, _, lift_width, _ = lens_state['frame']
+            require(lift_width > width and abs(lift_x + lift_width / 2 - start - 6) < 0.001,
+                    'The touch translation is preserved when the glass lifts')
         send_interaction_pan(cpu, rt, 2, start - 35)
         preview = lens_state['frame']
-        require(preview[0] == x - 35 and rt.route_calls == [],
+        require(abs(preview[0] + preview[2] / 2 - (start - 35)) < 0.001 and rt.route_calls == [],
                 'Movement previews continuously without navigating')
         for _ in range(4):
             rt.now += 0.25
@@ -292,11 +301,19 @@ def drag_selection_lifecycle(data):
                 'Maintenance preserves the moving lens, gesture and base glass')
         x, _, width, _ = rt.objects[rt.buttons[0]].state['frame']
         destination = x + width / 2
-        send_interaction_pan(cpu, rt, 3, destination)
+        release_x = destination + 20 if spring_tracking else destination
+        send_interaction_pan(cpu, rt, 3, release_x)
         require(rt.route_calls == [0] and rt.selected_index() == 0 and
                 lens_state['frame'] == rt.objects[rt.buttons[0]].state['frame'] and
                 not lens_state['effect'] and overlay_state['subviews'][0] == lens,
                 'Release routes once, then restores the resting selection below the icons')
+        if spring_tracking:
+            springs = rt.objects[rt.layer(lens)].state['springs']
+            landing = rt.objects[springs['position']].state
+            origin = rt.objects[landing['fromValue']].state['geometry']
+            require(abs(origin[0] - release_x) < 0.001 and landing['duration'] == 0.32 and
+                    springs.get('bounds'),
+                    'The spring settles from the actual release position and expanded size')
         send_interaction_pan(cpu, rt, 3, start)
         require(rt.route_calls == [0], 'A repeated end callback cannot route again')
         send_interaction_pan(cpu, rt, 1, destination)
@@ -353,10 +370,31 @@ def drag_selection_diagnostics_and_restore(data):
     return {'persisted_drag_renderer': True, 'original_restore_all_extensions': True}
 
 
+def current_uikit_owns_tracking(data):
+    cpu, rt, entries = make(data)
+    rt.objects[rt.MAIN_BUNDLE].state['info'] = {
+        'UIDesignRequiresCompatibility': False, 'DTSDKName': 'iphoneos26.0'}
+    repair(cpu, rt, entries)
+    control = require_native(rt)
+    require(not rt.objects[control].state.get('selectedSegmentTintColor'),
+            'Modern UIKit keeps its original thumb color and rendering')
+    rt.fire(cpu, index=0)
+    require(rt.route_calls == [0] and rt.selected_index() == 0 and require_native(rt) == control,
+            'UIKit valueChanged reaches the original tab route exactly once')
+    cpu2, rt2, entries2 = make(data)
+    rt2.objects[rt2.MAIN_BUNDLE].state['info'] = {'DTSDKName': 'iphoneos25.5'}
+    repair(cpu2, rt2, entries2)
+    require_fallback(rt2)
+    return {'stock_uikit_tracking': True, 'one_original_route': True, 'older_sdk_uses_pan': True}
+
+
 def run(data):
     cases = []
-    if release_version(data) == '1.78R14':
+    version = release_version(data)
+    if version in ('1.78R14', '1.78R15'):
         functions = (drag_selection_lifecycle, drag_selection_diagnostics_and_restore)
+        if version == '1.78R15':
+            functions += (current_uikit_owns_tracking,)
     else:
         functions = (first_mount_and_stability, fallback_to_native_during_fade,
                      native_failure_and_recovery, live_monitor_and_host_sync,

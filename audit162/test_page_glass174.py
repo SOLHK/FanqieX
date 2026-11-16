@@ -868,12 +868,12 @@ def static_checks():
 
 
 def exercise(data, labels):
-    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14")
-    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14")
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14")
+    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14", "1.78R15")
+    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1854,7 +1854,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1866,7 +1866,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1898,9 +1898,9 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
                 corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
-                full_capsule = release_version(data) in ("1.78R13", "1.78R14")
+                full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15")
                 require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
                         runtime.objects[label].state["textAlignment"] == 1,
                         "the configured corner shape keeps the caption centered above the native tap area")
@@ -2061,7 +2061,7 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     runtime.tab_app = runtime.obj("UIApplication", "plugin settings app", opened_urls=[])
     version = release_version(data)
-    if version in ("1.78R13", "1.78R14"):
+    if version in ("1.78R13", "1.78R14", "1.78R15"):
         switches = exercise_settings(cpu, runtime, labels, options, titles)
     else:
         call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
@@ -2702,9 +2702,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2730,7 +2730,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14") else (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2875,7 +2875,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3027,11 +3027,11 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14") else []
+    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14", "1.78R15") else []
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA + settings_labels)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

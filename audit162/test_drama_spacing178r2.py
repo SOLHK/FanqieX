@@ -39,7 +39,7 @@ class Runtime(ReaderRuntime):
             ("NSLayoutConstraint", "NSObject"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
         self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
@@ -183,7 +183,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
-    if release_version(data) not in ("1.78R8", "1.78R14"):
+    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15"):
         return
 
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
@@ -224,7 +224,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     for selector, args, track_y in (("layoutProgressView", (), 871.),
                                      ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
         send(cpu, rt, progress, selector, *args)
-        if release_version(data) == "1.78R14":
+        if release_version(data) in ("1.78R14", "1.78R15"):
             glass = glass_rect(rt, v["content"])
             require(track_y-glass[1]-glass[3] == 8.,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
@@ -260,7 +260,7 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14")
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -320,7 +320,7 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else "episode-glass-178R6"
+        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "episode-glass-178R6"
         require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
@@ -345,7 +345,7 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
             cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):

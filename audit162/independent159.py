@@ -53,7 +53,7 @@ PATCH_SITES = (
     (0x60B8, "sync", False), (0x6C84, "frame", True),
     (0x6CE8, "proxy_frame", True), (0x6DB4, "restore", False),
 )
-MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14")
+MODERN_LAYOUT_VERSIONS = ("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
 EXTENSION_PATCH_SITES = {
     "1.6.3": ((0x4878, "reserved24", False),),
     "1.6.4": ((0x4878, "reserved24", False), (0x4650, "reserved25", False),
@@ -82,6 +82,7 @@ EXTENSION_PATCH_SITES["1.78R11"] = EXTENSION_PATCH_SITES["1.7.4"]
 EXTENSION_PATCH_SITES["1.78R12"] = EXTENSION_PATCH_SITES["1.7.4"]
 EXTENSION_PATCH_SITES["1.78R13"] = EXTENSION_PATCH_SITES["1.7.4"]
 EXTENSION_PATCH_SITES["1.78R14"] = EXTENSION_PATCH_SITES["1.7.4"]
+EXTENSION_PATCH_SITES["1.78R15"] = EXTENSION_PATCH_SITES["1.7.4"]
 ALLOWED_SECTION_BYTES = {
     address for start in [item[0] for item in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     for address in range(start, start + 4)
@@ -208,19 +209,19 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
     patch = new.segment("__FQPATCH")
     require(patch["vmaddr"] == patch["fileoff"] == EXT, "Extension has wrong start address")
     capacities = (0x4000, 0x8000, 0xC000, 0x10000, 0x20000)
-    if version in ("1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x24000, 0x28000, 0x2c000, 0x30000, 0x34000)
-    if version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x38000, 0x3c000)
-    if version in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x40000,)
-    if version in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x44000,)
-    if version in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x48000,)
-    if version in ("1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x4c000,)
-    if version in ("1.78R13", "1.78R14"):
+    if version in ("1.78R13", "1.78R14", "1.78R15"):
         capacities += (0x50000,)
     require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
             "Unsupported reviewed extension capacity")
@@ -253,13 +254,13 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
 def check_sections(old: Image, new: Image, version: str) -> dict:
     extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
     allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
-    settings_end = 0xECBC if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14") else 0xEC8E
-    if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    settings_end = 0xECBC if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else 0xEC8E
+    if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         allowed |= set(range(0xEC8E, settings_end)) | set(range(0x114B0, 0x114B8))
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         allowed |= set(range(0x4018,0x4020))
     unwind = None
-    if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14'):
+    if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15'):
         # Allow only a completely validated, compiler-frame-matching replacement
         # of this metadata slot; every original function entry stays identical.
         from unwind_audit import check_native_unwind
@@ -304,6 +305,8 @@ def version_word(version: str) -> int:
         return 0x14e05
     if version == "1.78R7":
         return 0x14e07
+    if version == "1.78R15":
+        return 0x14e0f
     if version == "1.78R14":
         return 0x14e0e
     if version == "1.78R13":
@@ -426,7 +429,7 @@ def check_instructions(image: Image, tables: dict) -> dict:
     version = tables["expected_version"]
     extension_sites = EXTENSION_PATCH_SITES.get(version, ())
     addresses += [pc for pc, _, _ in extension_sites]
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         data=image.data
         require(data.count(b"FQ165HOM")==1,"One home compatibility entry table")
         at=data.index(b"FQ165HOM")
@@ -650,9 +653,9 @@ def check_versions(image: Image, version: str, tables: dict, instructions: dict,
     require(tables["main_version"] == tables["extension_version"] == version_word(version),
             "Main/extension numeric versions differ")
     footer = f"插件版本 {version}。开关自动保存。完全退出番茄小说再打开后生效。".encode("utf-16le")
-    if version in ("1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         footer = f"插件版本 {version}。开关自动保存。完全退出番茄小说再打开生效。".encode("utf-16le")
-    if version in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         footer = f"插件版本 {version}。开关自动保存。退出番茄小说再打开生效。".encode("utf-16le")
     require(data[0xEC7A:0xECBE] == footer.ljust(0xECBE - 0xEC7A, b"\0"),
             "Settings footer text mismatch")
@@ -697,7 +700,7 @@ def check_versions(image: Image, version: str, tables: dict, instructions: dict,
             "Cannot establish distinct event/export writes of the shared version")
     dotted = [{"address": match.start(), "value": match.group().decode("ascii")}
               for match in re.finditer(version_pattern, data)]
-    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"):
+    if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
         host=[item for item in dotted if data[item["address"]:item["address"]+9]==b"7.4.3.33\0"]
         require(len(host)==1,"Exactly one pinned host build identifier")
         dotted=[item for item in dotted if item not in host]

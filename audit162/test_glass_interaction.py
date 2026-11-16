@@ -13,7 +13,8 @@ from interaction_runtime import make
 
 def run_all(data):
     cases = []
-    has_drag_glass = struct.unpack_from('<I', data, 0x818)[0] == 0x14e0e
+    version = struct.unpack_from('<I', data, 0x818)[0]
+    has_drag_glass = version >= 0x14e0e
 
     def fixture(**options):
         c, r, e = make(data, **options)
@@ -117,7 +118,9 @@ def run_all(data):
         fire(c2, r2, e2, 2, end_x)
         _, _, l2, _ = objects(r2)
         f = r2.objects[l2].state['frame']
-        require(4 <= f[0] <= 310 and f[0]+f[2] <= 412, 'Lens clamps inside actual tab extents')
+        minimum = 0 if version >= 0x14e0f else 4
+        require(minimum <= f[0] <= 310 and f[0]+f[2] <= 416-minimum,
+                'Lens clamps inside the dock as it reaches the first or last tab')
         fire(c2, r2, e2, 3, end_x)
         require(r2.route_calls == [expected], 'Actual centers choose correct RTL/LTR button')
     cases.append({'name': 'physical_centers_rtl_and_extreme_clamping', 'passed': True})

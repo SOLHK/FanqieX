@@ -434,7 +434,11 @@ Lrepair_edges:
     mov x21, x0
     AGET x20, LIlens_key
     mov x2, x0
+.if FQ_VERSION >= 0x14e0f
+    mov x1, #0               // Preserve UIKit's stock native thumb appearance.
+.else
     mov x1, x21
+.endif
     mov x0, x20
     bl LFQH_FQHBottomPolish178R7
 .endif

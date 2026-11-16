@@ -21,6 +21,7 @@ def read_entries(data):
                 0x10602:b'FQ162EXT', 0x10603:b'FQ162EXT', 0x10604:b'FQ162EXT', 0x10605:b'FQ162EXT', 0x10606:b'FQ162EXT', 0x10701:b'FQ162EXT', 0x10702:b'FQ162EXT', 0x10703:b'FQ162EXT', 0x10704:b'FQ162EXT', 0x14a00: b'FQ162EXT', 0x14b00: b'FQ162EXT', 0x14c00: b'FQ162EXT', 0x14e00: b'FQ162EXT', 0x14e02: b'FQ162EXT', 0x14e03: b'FQ162EXT', 0x14e04: b'FQ162EXT', 0x14e05: b'FQ162EXT', 0x14e06: b'FQ162EXT', 0x14e07: b'FQ162EXT', 0x14e08: b'FQ162EXT', 0x14e09: b'FQ162EXT', 0x14e0a: b'FQ162EXT', 0x14e0b: b'FQ162EXT', 0x14e0c: b'FQ162EXT'}
     versions[0x14e0d] = b'FQ162EXT'
     versions[0x14e0e] = b'FQ162EXT'
+    versions[0x14e0f] = b'FQ162EXT'
     require(words[6] in versions, 'Interaction audit requires a known version')
     extension = 0x800 + words[60]
     require(data[extension:extension+8] == versions[words[6]], 'Known extension directory')
@@ -49,6 +50,9 @@ class Runtime(FoundationRuntime):
         super().__init__(data, slide=slide, **options)
         self._class('UIGestureRecognizer', 'NSObject')
         self._class('UIPanGestureRecognizer', 'UIGestureRecognizer')
+        self._class('CASpringAnimation', 'NSObject')
+        if 'NSValue' not in self.classes:
+            self._class('NSValue', 'NSObject')
         for p, frame in ((self.WINDOW, (0, 0, 440, 956)),
                          (self.ROOT, (0, 0, 440, 956)),
                          (self.BAR, (0, 882, 440, 74)),
@@ -109,6 +113,13 @@ class Runtime(FoundationRuntime):
             cls = self.class_names[receiver]
             if name in ('alloc', 'new') and cls in self.fail_alloc:
                 return self.finish(cpu)
+            if cls == 'CASpringAnimation' and name == 'animationWithKeyPath:':
+                spring = self.obj(cls, 'drag spring', keyPath=self.string_value(a[2]))
+                return self.finish(cpu, spring)
+            if cls == 'NSValue' and name in ('valueWithCGPoint:', 'valueWithCGRect:'):
+                count = 2 if name == 'valueWithCGPoint:' else 4
+                value = self.obj(cls, 'drag geometry', geometry=tuple(cpu.fp(i) for i in range(count)))
+                return self.finish(cpu, value)
             if name in ('alloc', 'new') and cls in ('UIView', 'UIVisualEffectView'):
                 obj = self.view(cls, 'owned_'+cls)
                 self.retain_balance[obj] = 1
@@ -121,6 +132,29 @@ class Runtime(FoundationRuntime):
         if receiver not in self.objects:
             return super().handle(cpu, pc)
         st = self.objects[receiver].state
+        cls = self.class_names[self.objects[receiver].cls]
+        if cls == 'NSString' and name == 'hasPrefix:':
+            return self.finish(cpu, int(st['value'].startswith(self.string_value(a[2]))))
+        if cls == 'NSString' and name == 'substringFromIndex:':
+            return self.finish(cpu, self.text_object(st['value'][a[2]:]))
+        if cls == 'NSString' and name == 'doubleValue':
+            parts = st['value'].split('.')
+            return self.finish(cpu, fp=(float('.'.join(parts[:2])),))
+        if cls == 'NSValue' and name == 'CGRectValue':
+            return self.finish(cpu, fp=st['geometry'])
+        if cls == 'CASpringAnimation' and name == 'setFromValue:':
+            st['fromValue'] = a[2]
+            return self.finish(cpu)
+        if cls == 'CASpringAnimation' and name in ('setStiffness:', 'setDamping:', 'setDuration:'):
+            st[name[3:-1].lower()] = cpu.fp(0)
+            return self.finish(cpu)
+        if cls == 'CALayer' and name == 'removeAnimationForKey:':
+            st.setdefault('springs', {}).pop(self.string_value(a[2]), None)
+            return self.finish(cpu)
+        if cls == 'CALayer' and name == 'addAnimation:forKey:':
+            if self.is_kind(a[2], self.classes['CASpringAnimation']):
+                st.setdefault('springs', {})[self.string_value(a[3])] = a[2]
+                return self.finish(cpu)
         if name == 'initWithEffect:':
             st['effect'] = a[2]
             return self.finish(cpu, receiver)
@@ -183,6 +217,8 @@ class Runtime(FoundationRuntime):
             return self.finish(cpu, st.get(name, 0))
         if name in ('velocityInView:', 'locationInView:'):
             return self.finish(cpu, fp=st['velocity' if name == 'velocityInView:' else 'location'])
+        if name == 'translationInView:':
+            return self.finish(cpu, fp=st.get('translation', (0., 0.)))
         if name == 'setSelectIndex:':
             items = self.objects[st['items']].state['items']
             require(a[2] < len(items), 'Original selection route uses a valid actual index')

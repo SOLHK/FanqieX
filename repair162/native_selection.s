@@ -332,6 +332,7 @@ LNappearance: // native -> BOOL
     bl Lpatch + (0x73e0 - PATCH_BASE)
     mov w2, #0
     GET x19, LIset_opaque
+.if FQ_VERSION < 0x14e0f
     adr x0, LIcolor_class
     adr x1, LIgray_fill
     bl Lfactory
@@ -344,6 +345,7 @@ LNappearance: // native -> BOOL
     cbz x0, LNappearance_no
     mov x2, x0
     GET x19, LIset_tint
+.endif
     adr x0, LIcolor_class
     adr x1, LIclear_color
     bl Lfactory

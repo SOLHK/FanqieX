@@ -148,7 +148,7 @@ def stable_custom_layout(data, labels):
                 runtime.objects[control].state["tracking"] = False
             require(len(runtime.route_calls) == initial_routes,
                     "Layout is never a synthetic navigation action")
-            check_input(runtime, cpu, fallback or release_version(data) == "1.78R14", 3)
+            check_input(runtime, cpu, not runtime.control(), 3)
             require(host_geometry(runtime, (feed,)) == before_host,
                     "Custom dock layout cannot move the host page or scroll view")
             require(runtime.objects[pan].state["delegate"] == host_target,
@@ -236,6 +236,33 @@ def viewport_and_restore(data, labels):
     return cases
 
 
+def maximum_height_clearance(data, labels):
+    cpu, runtime, entries = fixture(data, labels, selected=3)
+    runtime.defaults(**{ICONS: True, HEIGHT: 125})
+    cases = []
+    for bar_height, stock_y, expected_height, expected_gap in (
+        (74., 0., 62., 12.),  # 440 x 956 iPhone geometry from device export
+        (90., 20., 70., 14.),  # a taller host can fit the full requested height
+        (62., 0., 56., 6.),  # a tighter host still keeps the stock clearance
+    ):
+        stock = (20., stock_y, 400., 56.)
+        bar = runtime.objects[runtime.BAR].state
+        bar.update(frame=(0., 956. - bar_height, 440., bar_height),
+                   bounds=(0., 0., 440., bar_height))
+        host_layout(cpu, runtime, entries, labels, stock)
+        _, y, _, height = runtime.objects[runtime.PROXY].state["frame"]
+        gap = 956. - (bar["frame"][1] + y + height)
+        require(y >= 0 and height == expected_height and gap == expected_gap,
+                f"The tallest dock must fit the {bar_height:g} pt host bar "
+                f"with {expected_gap:g} pt of bottom clearance; got {height:g} pt and {gap:g} pt")
+        cases.append({"host_height": bar_height, "dock_height": height, "screen_bottom_gap": gap})
+    runtime.defaults(**{HEIGHT: 100})
+    host_layout(cpu, runtime, entries, labels, stock)
+    require(runtime.objects[runtime.PROXY].state["frame"] == stock,
+            "Resetting the height restores the host's original dock geometry")
+    return cases
+
+
 def pan_does_not_force_layout(data, labels):
     cpu, runtime, entries = fixture(data, labels)
     feed, pan, _ = runtime.add_feed()
@@ -307,10 +334,14 @@ def fractional_frame_round_trip(data, labels):
             "The device's 3x fractional-height setup applies the requested width once")
     require((frame[1] + frame[3] / 2) - frame[3] / 2 != frame[1],
             "Fixture genuinely exercises UIView fractional frame roundoff")
-    center = runtime.objects[lens].state["frame"][0] + runtime.objects[lens].state["frame"][2] / 2
+    resting = runtime.objects[lens].state["frame"]
+    center = resting[0] + resting[2] / 2
     send_interaction_pan(cpu, runtime, 1, center)
     send_interaction_pan(cpu, runtime, 2, center - 30)
     preview = runtime.objects[lens].state["frame"]
+    if release_version(data) == "1.78R15":
+        require(preview[2] > resting[2] and preview[3] > resting[3],
+                "The selected glass lens stays lifted while it tracks across the resized dock")
     effect = runtime.objects[lens].state["effect"]
     require(effect, "A drag on the resized capsule uses the refracting lens")
     start = len(runtime.frame_writes)
@@ -342,15 +373,18 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"),
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"),
             "This regression targets the R4 custom geometry fault and its R5 repair")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), [*bottom_labels(data), *FRAME_LABELS])
-    fractional_frames = fractional_frame_round_trip(data, labels) if release_version(data) == "1.78R14" else None
+    version = release_version(data)
+    fractional_frames = fractional_frame_round_trip(data, labels) if version in ("1.78R14", "1.78R15") else None
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "fractional_frame_and_track": fractional_frames,
               "stable_custom_layout": stable_custom_layout(data, labels),
               "settings": settings_yield_before_layout(data, labels),
               "viewport_and_restore": viewport_and_restore(data, labels),
+              "maximum_height_clearance": maximum_height_clearance(data, labels)
+              if version == "1.78R15" else None,
               "scroll_callback": pan_does_not_force_layout(data, labels),
               "layout_direction": layout_direction_change(data, labels),
               "device_tested": False, "pixel_rendering_tested": False,

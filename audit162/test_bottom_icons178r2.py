@@ -110,7 +110,7 @@ def host_updates_and_native_fallback(data, labels):
         repair(cpu, runtime, entries)
         assert_captionless(runtime)
         control = runtime.control()
-        if not fallback and release_version(data) != '1.78R14':
+        if not fallback and release_version(data) not in ('1.78R14', '1.78R15'):
             require(control and runtime.string_value(runtime.objects[control].state["segments"][0]) == "首页",
                     "Suppression cannot invalidate native segment construction when an item title is missing")
         else:
@@ -131,7 +131,7 @@ def renderer_transition(data, labels):
     runtime.defaults(**{ICONS: True})
     repair(cpu, runtime, entries)
     assert_captionless(runtime)
-    if release_version(data) == '1.78R14':
+    if release_version(data) in ('1.78R14', '1.78R15'):
         pan = runtime.associated(runtime.PROXY, 'pan')
         require(pan and not runtime.control(), 'Icon mode mounts the drag renderer')
         runtime.missing_classes.remove("UISegmentedControl")

@@ -52,7 +52,11 @@ LXupdate: // (bar, proxy), called inside Lrepair's busy scope
     mov x0, x19
     mov x1, x20
     bl LXnative_update
-.if FQ_VERSION < 0x14e0e
+.if FQ_VERSION != 0x14e0e
+.if FQ_VERSION >= 0x14e0f
+    bl LFQH_FQHBottomUsesNativeTracking178R15
+    cbz w0, LXupdate_fallback
+.endif
     mov x0, x19
     mov x1, x20
     bl LNupdate
@@ -68,6 +72,11 @@ LXupdate: // (bar, proxy), called inside Lrepair's busy scope
     b LXupdate_monitor
 .endif
 LXupdate_fallback:
+.if FQ_VERSION >= 0x14e0f
+    mov x0, x19
+    mov x1, x20
+    bl LNrestore
+.endif
     mov x0, x19
     mov x1, x20
     bl LIupdate

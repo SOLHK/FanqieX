@@ -13,6 +13,7 @@ from test_page_glass174 import EXTRA, Runtime as PageRuntime, make
 HEADER = "SSVideoSeriesFeedHeaderView"
 SEARCH = "SSVideoSeriesFeedHeaderSearchView"
 CONTROLLER = "SSVideoSeriesFeedViewController"
+COORDINATOR = "SSVideoSeriesFeedSearchIconCoordinator"
 MANAGER = "SSShortVideoBelowLeftContainerViewManager"
 CONFIG = "FQVShortVideoListConfig"
 CONTEXT = "FQVShortVideoContextModel"
@@ -28,10 +29,12 @@ class Runtime(PageRuntime):
         super().__init__(data)
         for name, parent in (
             (HEADER, "UIView"), (SEARCH, "UIView"), (CONTROLLER, "UIViewController"),
-            (MANAGER, "NSObject"), (CONFIG, "NSObject"), (CONTEXT, "NSObject"),
+            (COORDINATOR, "NSObject"), (MANAGER, "NSObject"), (CONFIG, "NSObject"), (CONTEXT, "NSObject"),
         ):
             self._class(name, parent)
         for cls, selector, encoding, implementation in (
+            (HEADER, "setupSubViews", "v16@0:8", self.LAYOUT_IMP),
+            (COORDINATOR, "prepareColdStartSearchButtonIfNeeded", "v16@0:8", self.HOST_GETTER),
             (HEADER, "didMoveToWindow", "v16@0:8", self.LAYOUT_IMP),
             (HEADER, "updateTabViewWithContentSize:", "v32@0:8{CGSize=dd}16", self.LAYOUT_IMP),
             (CONTROLLER, "relayoutHeaderView", "v16@0:8", self.LAYOUT_IMP),
@@ -51,13 +54,16 @@ class Runtime(PageRuntime):
         name = self.selector_names.get(selector)
         if pc == self.HOST_GETTER:
             state = self.objects[receiver].state
+            if name == "prepareColdStartSearchButtonIfNeeded":
+                self.reparent(state["icon"], state["overlay"])
+                return self.finish(cpu)
             if name == "updateSubViews":
                 state["updates"] = state.get("updates", 0) + 1
                 return self.finish(cpu)
             return self.finish(cpu, int(state.get(name, 0)))
         if pc - self.slide == 0xa5d4 and name in (
             "headerView", "tabContainer", "searchViewContainer",
-            "searchButtonSlotView", "searchButtonView", "vcContext", "config",
+            "searchButtonSlotView", "searchButtonView", "vcContext", "config", "host",
         ) and receiver in self.objects:
             return self.finish(cpu, self.objects[receiver].state.get(name, 0))
         return super().handle(cpu, pc)
@@ -67,7 +73,7 @@ def exercise(data, labels):
     cpu, rt = make(data, Runtime)
     rt.labels = labels
     call(cpu, labels, "LFQH_FQHPageInstall")
-    header = rt.view(HEADER, "drama header", (0., 62., 440., 60.), rt.ROOT)
+    header = rt.view(HEADER, "drama header", (0., 62., 440., 60.))
     controller = rt.obj(CONTROLLER, "drama feed owner", headerView=header)
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
@@ -87,6 +93,25 @@ def exercise(data, labels):
     def native_declares():
         return bool(send(cpu, rt, manager, "shouldAddAiUsageView")["result"])
 
+    first_frame_checked = release_version(data) == "1.78R15"
+    if first_frame_checked:
+        options.update({CATEGORIES_KEY: False, SEARCH_KEY: False})
+        send(cpu, rt, header, "setupSubViews")
+        require(hidden(categories) and hidden(slot) and not hidden(bar),
+                "Saved switches apply before mounting, with the separate search field intact")
+        overlay = rt.view("UIView", "cold-start search overlay", (0., 0., 440., 956.), rt.ROOT)
+        coordinator = rt.obj(COORDINATOR, "native search coordinator", host=controller, icon=icon, overlay=overlay)
+        send(cpu, rt, coordinator, "prepareColdStartSearchButtonIfNeeded")
+        require(rt.objects[icon].state["superview"] == slot,
+                "A disabled magnifier never enters the cold-start overlay")
+        del options[SEARCH_KEY]
+        send(cpu, rt, coordinator, "prepareColdStartSearchButtonIfNeeded")
+        require(rt.objects[icon].state["superview"] == overlay,
+                "The enabled magnifier keeps its original cold-start presentation")
+        rt.reparent(icon, slot)
+        del options[CATEGORIES_KEY]
+
+    rt.reparent(header, rt.ROOT)
     send(cpu, rt, header, "didMoveToWindow")
     require(not hidden(categories) and not hidden(slot) and native_declares(),
             "Unset preferences defer to all three native visible states")
@@ -141,6 +166,7 @@ def exercise(data, labels):
 
     return {"independent_combinations": 8, "native_hidden_state_unchanged": True,
             "non_root_declaration_unchanged": True, "settings_apply_immediately": True,
+            "first_frame_and_cold_start_overlay_checked": first_frame_checked,
             "device_tested": False}
 
 
@@ -150,7 +176,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"), "Use the 1.78R7 or later candidate")
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"), "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])
     report = {"passed": True, **exercise(data, labels)}

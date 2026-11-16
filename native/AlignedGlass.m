@@ -2860,11 +2860,23 @@ static void DramaVisibilityApplyHeader(Obj header) {
         DramaVisibilitySet(categories,DefaultEnabled(Text("FanqieX.DramaCategories.1")));
     Obj search=Get(header,"searchViewContainer");
     if (!Kind(search,"SSVideoSeriesFeedHeaderSearchView")) return;
-    // The native search coordinator temporarily moves the slot to a launch
-    // overlay. The exact getter still owns the same icon and tap region.
     Obj slot=Get(search,"searchButtonSlotView");
     if (Belongs(Get(search,"searchButtonView"),slot))
         DramaVisibilitySet(slot,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+}
+
+static void DramaVisibilityHeaderSetup178R15(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx178r15_originalHeaderSetup"))(self,cmd);
+    // The feed sets the delegate before setup and mounts the header afterward.
+    DramaVisibilityApplyHeader(self);
+}
+
+static void DramaVisibilityColdStartSearch178R15(Obj self,Sel cmd) {
+    // This optional launch presentation moves the magnifier out of the slot
+    // and onto the startup overlay, where hiding the slot cannot hide it.
+    if (Kind(Get(self,"host"),"SSVideoSeriesFeedViewController") &&
+        !DefaultEnabled(Text("FanqieX.DramaSearch.1"))) return;
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedSearchIconCoordinator","fqx178r15_originalPrepareColdStartSearch"))(self,cmd);
 }
 
 static void DramaVisibilityHeaderAttached(Obj self,Sel cmd) {
@@ -3120,6 +3132,9 @@ static void DramaVisibilityRefresh(void) {
 
 static void DramaVisibilityInstall(void) {
     const char *header="SSVideoSeriesFeedHeaderView";
+    Hook(header,"setupSubViews","fqx178r15_originalHeaderSetup","v16@0:8",(Imp)DramaVisibilityHeaderSetup178R15);
+    Hook("SSVideoSeriesFeedSearchIconCoordinator","prepareColdStartSearchButtonIfNeeded","fqx178r15_originalPrepareColdStartSearch",
+         "v16@0:8",(Imp)DramaVisibilityColdStartSearch178R15);
     Hook(header,"didMoveToWindow","fqx178r7_originalHeaderAttached","v16@0:8",(Imp)DramaVisibilityHeaderAttached);
     Hook(header,"updateTabViewWithContentSize:","fqx178r7_originalHeaderTabs:",
          "v32@0:8{CGSize=dd}16",(Imp)DramaVisibilityHeaderTabs);
@@ -6081,6 +6096,63 @@ B FQHBottomDragCanRoute178(Obj bar,Obj buttons,Obj button) {
     Obj item=At(items,index);
     return item!=Get(bar,"selectedItem") && (!Responds(item,"isEnabled") || Flag(item,"isEnabled"));
 }
+B FQHBottomUsesNativeTracking178R15(void) {
+    Obj bundle=O0(Lookup("NSBundle"),"mainBundle");
+    Obj compatibility=O1(bundle,"objectForInfoDictionaryKey:",Text("UIDesignRequiresCompatibility"));
+    if (Flag(compatibility,"boolValue")) return 0;
+    Obj sdk=O1(bundle,"objectForInfoDictionaryKey:",Text("DTSDKName"));
+    if (!Kind(sdk,"NSString") ||
+        !((B(*)(Obj,Sel,Obj))Message)(sdk,sel_registerName("hasPrefix:"),Text("iphoneos"))) return 0;
+    Obj version=((Obj(*)(Obj,Sel,U))Message)(sdk,sel_registerName("substringFromIndex:"),8);
+    return Double(version)>=26;
+}
+double FQHBottomDragOffset178R15(Obj pan,Obj overlay,Rect selected) {
+    Point finger=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("locationInView:"),overlay);
+    Point translation=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),overlay);
+    double start=finger.x-translation.x;
+    return start>=selected.x && start<=selected.x+selected.width ?
+        BottomClamp178(start-(selected.x+selected.width*0.5),-8,8) : 0;
+}
+static void BottomDragPreview178R15Key(void) {}
+static void BottomDragSpring178R15(Obj layer,const char *path,Obj from,double duration) {
+    Obj key=Text(path),spring=O1(Lookup("CASpringAnimation"),"animationWithKeyPath:",key);
+    V1(spring,"setFromValue:",from);
+    ((void(*)(Obj,Sel,double))Message)(spring,sel_registerName("setStiffness:"),380.);
+    ((void(*)(Obj,Sel,double))Message)(spring,sel_registerName("setDamping:"),31.);
+    ((void(*)(Obj,Sel,double))Message)(spring,sel_registerName("setDuration:"),duration);
+    ((void(*)(Obj,Sel,Obj,Obj))Message)(layer,sel_registerName("addAnimation:forKey:"),spring,key);
+}
+void FQHBottomLiftLens178R15(Obj lens,Obj overlay) {
+    Obj layer=Get(lens,"layer");
+    V1(layer,"removeAnimationForKey:",Text("position"));
+    Rect frame=Frame(lens),limit=Bounds(overlay),start=Bounds(lens);
+    Rect lifted={frame.x-4,frame.y-3,frame.width+8,frame.height+6};
+    lifted.width=BottomClamp178(lifted.width,frame.width,limit.width);
+    lifted.height=BottomClamp178(lifted.height,frame.height,limit.height);
+    lifted.x=BottomClamp178(lifted.x,limit.x,limit.x+limit.width-lifted.width);
+    lifted.y=BottomClamp178(lifted.y,limit.y,limit.y+limit.height-lifted.height);
+    SetFrame(lens,lifted);
+    BottomDragSpring178R15(layer,"bounds",RectBox(start),0.24);
+}
+void FQHBottomRememberDrag178R15(Obj lens) {
+    Obj presentation=Get(Get(lens,"layer"),"presentationLayer");
+    Rect frame=Frame(presentation ? presentation : lens);
+    objc_setAssociatedObject(lens,BottomDragPreview178R15Key,RectBox(frame),1);
+}
+void FQHBottomSnapDrag178R15(Obj lens,Rect target) {
+    Obj preview=objc_getAssociatedObject(lens,BottomDragPreview178R15Key);
+    if (!BottomSameFrame178(Frame(lens),target)) SetFrame(lens,target);
+    if (!preview) return;
+    Rect from=UnboxRect(preview);
+    objc_setAssociatedObject(lens,BottomDragPreview178R15Key,0,1);
+    Obj layer=Get(lens,"layer");
+    Point center={from.x+from.width*0.5,from.y+from.height*0.5};
+    Rect bounds=Bounds(lens);
+    Rect start={bounds.x,bounds.y,from.width,from.height};
+    Obj value=((Obj(*)(Obj,Sel,Point))Message)(Lookup("NSValue"),sel_registerName("valueWithCGPoint:"),center);
+    BottomDragSpring178R15(layer,"position",value,0.32);
+    BottomDragSpring178R15(layer,"bounds",RectBox(start),0.32);
+}
 void FQHBottomDragAppearance178(Obj lens,B dragging) {
     Obj effect=Get(lens,"effect"),overlay=Get(lens,"superview");
     if (dragging && !effect) {
@@ -6130,7 +6202,12 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
     B icons=BottomFlag178(1);
     B compact=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
     double maximum=__builtin_fmin(base.width,available.width-8);
-    double high=__builtin_fmin(70,available.height);
+    // Once the dock reaches the top of its host bar, retain at least 12 pt
+    // of the original bottom clearance, or all of it on a tighter host.
+    double stockGap=(available.y+available.height)-(base.y+base.height);
+    double bottomGap=BottomClamp178(stockGap,0,12);
+    double bottom=available.y+available.height-bottomGap;
+    double high=__builtin_fmin(70,available.height-bottomGap);
     if (maximum<=0 || high<44) return base;
     double minimum=count*(icons ? 56 : 64)+8;
     double width=compact ? __builtin_fmin(60,__builtin_fmin(maximum,high)) :
@@ -6143,7 +6220,7 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
     if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
     return (Rect){BottomPixel178(x,scale),
         BottomPixel178(BottomClamp178(base.y+base.height-height,available.y,
-            available.y+available.height-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
+            bottom-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
 }
 static void BottomRememberRect178R5(Obj view,const void *key,Rect rect) {
     Obj saved=objc_getAssociatedObject(view,key);

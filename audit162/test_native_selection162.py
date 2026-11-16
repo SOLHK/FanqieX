@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import traceback
 
-from arm64 import require
+from arm64 import release_version, require
 from native_selection_runtime import make as runtime_make, native_entries
 
 
@@ -89,6 +89,9 @@ def build_and_sync(data):
                 'Native selection does not compete with the material-lifecycle owner')
         require(not state['momentary'] and not state['apportionsSegmentWidthsByContent'],
                 'Native control retains selection with equal segment widths')
+        if release_version(data) == '1.78R15':
+            require('selectedSegmentTintColor' not in state,
+                    "The R15 selector preserves UIKit's system selection tint")
         require(selected(rt) == 2 and all(not rt.objects[b].state['hidden'] for b in rt.buttons),
                 'True host selection is mirrored and original visual contents remain visible')
         require(all(not rt.objects[b].state['userInteractionEnabled'] and
