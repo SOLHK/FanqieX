@@ -241,6 +241,9 @@ def selftest(source):
     seventeen_page_payload = bytes.fromhex("1f2003d5") * (0x40000 // 4) + bytes.fromhex("c0035fd6")
     seventeen_page = extend(source, seventeen_page_payload, capacity=0x44000)
     reports.append(audit(source, seventeen_page, seventeen_page_payload))
+    eighteen_page_payload = bytes.fromhex("1f2003d5") * (0x44000 // 4) + bytes.fromhex("c0035fd6")
+    eighteen_page = extend(source, eighteen_page_payload, capacity=0x48000)
+    reports.append(audit(source, eighteen_page, eighteen_page_payload))
     candidate = extend(source, payload, capacity=0x4000)
     _, items, segs = parse(candidate)
     sig, _ = blob_range(items, 0x1D)
@@ -255,7 +258,7 @@ def selftest(source):
         "original_indirect_symbol_offset_not_moved": (single(items, 0xB)[1] + 8 + 12 * 4,
                                                       struct.pack("<I", 0x14F58)),
         "signature_code_slots_too_small": (sig + 24 + 28, struct.pack(">I", 22)),
-        "unreviewed_eighteen_page_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x48000)),
+        "unreviewed_nineteen_page_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x4c000)),
         "unaligned_extension_capacity": (segs[2]["lc"] + 48, struct.pack("<Q", 0x40004)),
     }
     rejected = []
@@ -300,7 +303,8 @@ def selftest(source):
         ("fifteen_page_overflow", source, bytes(0x3c004), 0x3c000),
         ("sixteen_page_overflow", source, bytes(0x40004), 0x40000),
         ("seventeen_page_overflow", source, bytes(0x44004), 0x44000),
-        ("eighteen_page_capacity", source, payload, 0x48000),
+        ("eighteen_page_overflow", source, bytes(0x48004), 0x48000),
+        ("nineteen_page_capacity", source, payload, 0x4c000),
         ("unaligned_sixteen_page_capacity", source, payload, 0x40004),
     ]
     occupied = bytearray(source)

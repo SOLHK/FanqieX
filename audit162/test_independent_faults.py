@@ -101,7 +101,7 @@ def main():
         footer_length = unpack("<Q", data, 0x114B0)[0]
         case("stale_settings_footer_length", u64(0x114B0, footer_length + 1), "version_consistency")
     case("stale_shared_runtime_version", flip(runtime_version + last_version_digit), "version_consistency")
-    reserved_word = {"1.6.2": 24, "1.6.3": 25, "1.6.4": 27, "1.6.5": 27, "1.6.6": 27, "1.7.1": 27, "1.7.2": 27, "1.7.3": 27, "1.7.4": 27, "1.74": 27, "1.75": 27, "1.76": 27, "1.78": 27, "1.78R2": 27, "1.78R3": 27, "1.78R4": 27, "1.78R5": 27, "1.78R6": 27, "1.78R7": 27, "1.78R8": 27}[args.expected_version]
+    reserved_word = {"1.6.2": 24, "1.6.3": 25}.get(args.expected_version, 27)
     case("nonzero_extension_reserved_word", u32(0x14010 + reserved_word * 4, 1), "repair_directories")
     if args.expected_version in ("1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11"):
         case("unaligned_hook_resolver", u32(0x14010 + 24 * 4, 1), "repair_directories")
