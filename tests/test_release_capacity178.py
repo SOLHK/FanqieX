@@ -18,7 +18,7 @@ class ReleaseCapacityTests(unittest.TestCase):
         header = bytearray((ROOT / 'dist/1.75/FanqieX-1.75.dylib').read_bytes()[0x800:0x900])
         extension = struct.unpack_from('<I', header, 60 * 4)[0]
         for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000), (0x14e02, 0x3c000), (0x14e03, 0x3c000),
-                                 (0x14e04, 0x40000), (0x14e05, 0x40000), (0x14e06, 0x40000), (0x14e07, 0x44000), (0x14e08, 0x44000), (0x14e09, 0x44000)):
+                                 (0x14e04, 0x40000), (0x14e05, 0x40000), (0x14e06, 0x40000), (0x14e07, 0x44000), (0x14e08, 0x44000), (0x14e09, 0x44000), (0x14e0a, 0x48000)):
             struct.pack_into('<I', header, 6 * 4, version)
             self.assertEqual(build_plugin.extension_limit(version), allowed)
             for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, 0x48000, allowed + 4):
@@ -30,14 +30,14 @@ class ReleaseCapacityTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             build_plugin.directory(header, version)
 
-    def test_independent_layout_allows_seventeen_pages_for_r7_and_r8(self):
+    def test_independent_layout_keeps_r10_eighteenth_page_version_scoped(self):
         source = (ROOT / 'baseline/FanqieAdBlock-1.5.6.dylib').read_bytes()
         old = Image((ROOT / 'baseline/FanqieAdBlock-1.5.8.dylib').read_bytes())
         payload = bytes.fromhex('c0035fd6')
-        for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000):
+        for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, 0x48000):
             image = Image(extend(source, payload, capacity=capacity))
             for version, allowed in (('1.76', 0x34000), ('1.78', 0x3c000), ('1.78R2', 0x3c000), ('1.78R3', 0x3c000),
-                                     ('1.78R4', 0x40000), ('1.78R5', 0x40000), ('1.78R6', 0x40000), ('1.78R7', 0x44000), ('1.78R8', 0x44000), ('1.78R9', 0x44000)):
+                                     ('1.78R4', 0x40000), ('1.78R5', 0x40000), ('1.78R6', 0x40000), ('1.78R7', 0x44000), ('1.78R8', 0x44000), ('1.78R9', 0x44000), ('1.78R10', 0x48000)):
                 with self.subTest(version=version, capacity=hex(capacity)):
                     if capacity <= allowed:
                         self.assertEqual(check_layout(old, image, version)['extension_capacity'], capacity)
@@ -45,9 +45,9 @@ class ReleaseCapacityTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             check_layout(old, image, version)
 
-    def test_sixteenth_and_seventeenth_page_payloads_are_fully_signed(self):
+    def test_sixteenth_through_eighteenth_pages_are_fully_signed(self):
         source = (ROOT / 'baseline/FanqieAdBlock-1.5.6.dylib').read_bytes()
-        for payload_size, capacity in ((0x3c004, 0x40000), (0x40000, 0x40000), (0x40004, 0x44000), (0x44000, 0x44000)):
+        for payload_size, capacity in ((0x3c004, 0x40000), (0x40000, 0x40000), (0x40004, 0x44000), (0x44000, 0x44000), (0x44004, 0x48000), (0x48000, 0x48000)):
             payload = bytes.fromhex('1f2003d5') * (payload_size // 4 - 1) + bytes.fromhex('c0035fd6')
             with self.subTest(bytes=hex(payload_size)):
                 image = extend(source, payload, capacity=capacity)
@@ -62,14 +62,14 @@ class ReleaseCapacityTests(unittest.TestCase):
     def test_overflow_and_unaligned_capacities_are_rejected(self):
         source = (ROOT / 'baseline/FanqieAdBlock-1.5.6.dylib').read_bytes()
         payload = bytes.fromhex('c0035fd6')
-        for capacity in (0x48000, 0x44004, 0x43fff, 0x41000):
+        for capacity in (0x4c000, 0x48004, 0x47fff, 0x41000):
             with self.subTest(capacity=hex(capacity)), self.assertRaises(ValueError):
                 extend(source, payload, capacity=capacity)
         for invalid in (bytes(0x44004), b'123', b''):
             with self.subTest(payload_bytes=len(invalid)), self.assertRaises(ValueError):
                 extend(source, invalid, capacity=0x44000)
         with self.assertRaises(ValueError):
-            extend(source, bytes(0x44004))
+            extend(source, bytes(0x48004))
 
 
 if __name__ == '__main__':

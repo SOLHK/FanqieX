@@ -315,7 +315,7 @@ void FQHApply(Obj view) {
     if (!Kind(view,"UIView")) return;
     Rect material=((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds"));
     if (FQHIsDuration(view)) {
-        double height=__builtin_fmin(material.height,28);
+        double height=__builtin_fmax(material.height,36);
         material.y+=(material.height-height)*0.5;
         material.height=height;
     }
@@ -983,9 +983,41 @@ static void RestoreReaderShelfFrame(Obj label) {
     objc_setAssociatedObject(label,ReaderShelfStockFrameKey,0,1);
     objc_setAssociatedObject(label,ReaderShelfStyledFrameKey,0,1);
 }
+static void ReaderBackInsetsKey(void) {}
+static void ReaderBackAppliedInsetsKey(void) {}
+static void RestoreReaderBackInsets(Obj button) {
+    Obj applied=objc_getAssociatedObject(button,ReaderBackAppliedInsetsKey);
+    if (!applied) return;
+    Rect current=((Rect(*)(Obj,Sel))Message)(button,sel_registerName("imageEdgeInsets"));
+    if (SameRect(current,UnboxRect(applied)))
+        ((void(*)(Obj,Sel,Rect))Message)(button,sel_registerName("setImageEdgeInsets:"),
+            UnboxRect(objc_getAssociatedObject(button,ReaderBackInsetsKey)));
+    objc_setAssociatedObject(button,ReaderBackInsetsKey,0,1);
+    objc_setAssociatedObject(button,ReaderBackAppliedInsetsKey,0,1);
+}
+static void ReaderBackImageInsets(Obj button,Rect base,Rect target) {
+    Rect current=((Rect(*)(Obj,Sel))Message)(button,sel_registerName("imageEdgeInsets"));
+    Obj applied=objc_getAssociatedObject(button,ReaderBackAppliedInsetsKey);
+    Obj original=objc_getAssociatedObject(button,ReaderBackInsetsKey);
+    if (!original || !applied || !SameRect(current,UnboxRect(applied))) {
+        original=RectBox(current);
+        objc_setAssociatedObject(button,ReaderBackInsetsKey,original,1);
+    }
+    Rect stock=UnboxRect(original);
+    // UIEdgeInsets are top, left, bottom, right. The actual plain UIButton
+    // reuses these in its own late layout, after the navigation parent lays out.
+    Rect wanted={stock.x+target.y-base.y,stock.y+target.x-base.x,
+        stock.width+base.y+base.height-target.y-target.height,
+        stock.height+base.x+base.width-target.x-target.width};
+    if (!SameRect(current,wanted))
+        ((void(*)(Obj,Sel,Rect))Message)(button,sel_registerName("setImageEdgeInsets:"),wanted);
+    if (!applied || !SameRect(UnboxRect(applied),wanted))
+        objc_setAssociatedObject(button,ReaderBackAppliedInsetsKey,RectBox(wanted),1);
+}
 static void RestoreIcon(Obj view,Obj glass) {
     TrackAppearanceLabel(view,0,0);
     RestoreReaderShelfFrame(view);
+    RestoreReaderBackInsets(view);
     RestoreGlyph(view);
     if (glass) { ObservePress(view,glass,0); V0(glass,"removeFromSuperview"); }
     objc_setAssociatedObject(view,IconGlassKey,0,1);
@@ -1101,19 +1133,24 @@ static void Icon(Obj view,IconRole role) {
             double longest=__builtin_fmax(base.width,base.height);
             double scale=longest>18 ? 18/longest : 1;
             adjusted.width=base.width*scale; adjusted.height=base.height*scale;
-            adjusted.x+=(base.width-adjusted.width)*0.5+(back ? base.width*0.5 : 0);
+            adjusted.x+=(base.width-adjusted.width)*0.5;
             adjusted.y+=(base.height-adjusted.height)*0.5;
+            if (back) {
+                adjusted.x=bounds.x+bounds.width*0.5+6-adjusted.width*0.5;
+                adjusted.y=bounds.y+bounds.height*0.5-adjusted.height*0.5;
+                ReaderBackImageInsets(view,base,adjusted);
+            }
         } else {
-            adjusted.width=base.width*0.75;adjusted.height=base.height*0.75;
-            adjusted.x+=base.width*0.125;adjusted.y+=base.height*0.125;
-            if (role==IconShelfSearch) adjusted.x-=12;
-            if (role==IconShelfMore) adjusted.x-=base.width*0.25;
+            double scale=__builtin_fmin(1,24/__builtin_fmax(base.width,base.height));
+            adjusted.width=base.width*scale; adjusted.height=base.height*scale;
+            adjusted.x=bounds.x+(bounds.width-adjusted.width)*0.5-(role==IconShelfSearch ? 12 : 0);
+            adjusted.y=bounds.y+(bounds.height-adjusted.height)*0.5;
         }
         if (!SameRect(current,adjusted)) SetFrame(glyph,adjusted);
         if (!applied || !SameRect(previous,adjusted)) objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
         if (newGlyph) objc_setAssociatedObject(view,GlyphViewKey,glyph,1);
     }
-    double diameter=shelf ? 28 : (readerIcon ? 34 : 36);
+    double diameter=shelf ? 36 : (readerIcon ? 34 : 36);
     double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(role==IconShelfSearch ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
     B readerText=(role==IconReaderDownload || role==IconReaderShelf) && Kind(view,"UILabel");
@@ -2208,7 +2245,6 @@ static void PageDiscussButtonLayout(Obj self,Sel cmd) {
     if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceView")) { PageRestore(self); return; }
     FQHApply(self);
 }
-static void ShelfTitleHostFontKey(void) {}
 static void DramaGlassKey(void) {}
 static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
@@ -2477,9 +2513,33 @@ static void LandscapeControlGlass178R9(Obj view,Obj owner,double maximum) {
             ((double(*)(Obj,Sel))Message)(view,sel_registerName("alpha")));
     }
 }
+static void LandscapeTitleStock178R10Key(void) {}
+static void LandscapeTitleApplied178R10Key(void) {}
+static void LandscapeTitleSpacing178R10(Obj owner) {
+    Obj title=Get(owner,"titleL"),back=Get(owner,"navBackImageView");
+    if (!Kind(title,"UILabel") || !Belongs(title,owner)) return;
+    Obj applied=objc_getAssociatedObject(title,LandscapeTitleApplied178R10Key);
+    Obj saved=objc_getAssociatedObject(title,LandscapeTitleStock178R10Key);
+    Rect current=Frame(title),base=saved && applied && SameRect(current,UnboxRect(applied)) ? UnboxRect(saved) : current;
+    Obj glass=objc_getAssociatedObject(back,DramaGlassKey);
+    if (!Enabled() || !glass || !Belongs(glass,owner)) {
+        if (saved && applied && SameRect(current,UnboxRect(applied))) SetFrame(title,base);
+        objc_setAssociatedObject(title,LandscapeTitleStock178R10Key,0,1);
+        objc_setAssociatedObject(title,LandscapeTitleApplied178R10Key,0,1);
+        return;
+    }
+    Rect capsule=Convert(glass,Bounds(glass),Get(title,"superview"));
+    double inset=__builtin_fmax(0,capsule.x+capsule.width+8-base.x);
+    if (inset>=base.width) return;
+    Rect target={base.x+inset,base.y,base.width-inset,base.height};
+    objc_setAssociatedObject(title,LandscapeTitleStock178R10Key,RectBox(base),1);
+    objc_setAssociatedObject(title,LandscapeTitleApplied178R10Key,RectBox(target),1);
+    if (!SameRect(current,target)) SetFrame(title,target);
+}
 static void LandscapeInfoGlass178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout"))(self,cmd);
     LandscapeControlGlass178R9(Get(self,"navBackImageView"),self,44);
+    LandscapeTitleSpacing178R10(self);
     LandscapeControlGlass178R9(Get(self,"playBtn"),self,56);
     LandscapeControlGlass178R9(Get(self,"nextBtn"),self,44);
     LandscapeControlGlass178R9(Get(self,"moreBtn"),self,44);
@@ -2509,9 +2569,29 @@ static void LandscapeNavLaidOut178R9(Obj self,Sel cmd) {
 }
 static void LandscapeBottomGlass178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout"))(self,cmd);
+    // These intrinsic-size buttons are arranged by a nested UIStackView. Its
+    // layout follows the outer view's layout, so settle that child subtree
+    // before reading button bounds for the material on the first frame.
+    Obj stack=Get(self,"stackView");
+    if (Kind(stack,"UIStackView") && Belongs(stack,self)) V0(stack,"layoutIfNeeded");
     LandscapeControlGlass178R9(Get(self,"seriesBtn"),self,0);
     LandscapeControlGlass178R9(Get(self,"playRateBtn"),self,0);
     LandscapeControlGlass178R9(Get(self,"resolutionBtn"),self,0);
+}
+static void LandscapeInputBackground178R10Key(void) {}
+static void LandscapeInputBackground178R10(Obj input,Obj background) {
+    if (!Kind(background,"UIView") || !Belongs(background,input)) return;
+    Obj saved=objc_getAssociatedObject(background,LandscapeInputBackground178R10Key);
+    B active=objc_getAssociatedObject(input,DramaGlassKey)!=0;
+    if (active) {
+        // The host can supply UIVisualEffectView here. Clearing its color
+        // leaves the blur opaque over our glass, so hide that exact layer.
+        if (!saved) objc_setAssociatedObject(background,LandscapeInputBackground178R10Key,BoolBox(Flag(background,"isHidden")),1);
+        if (!Flag(background,"isHidden")) VB(background,"setHidden:",1);
+    } else if (saved) {
+        if (Flag(background,"isHidden")) VB(background,"setHidden:",Flag(saved,"boolValue"));
+        objc_setAssociatedObject(background,LandscapeInputBackground178R10Key,0,1);
+    }
 }
 static void LandscapeSocialApply178R9(Obj self) {
     LandscapeControlGlass178R9(Get(self,"likeBtnView"),self,0);
@@ -2520,7 +2600,7 @@ static void LandscapeSocialApply178R9(Obj self) {
     LandscapeControlGlass178R9(Get(self,"danmakuBtnView"),self,36);
     Obj input=Get(self,"danmakuInputView"),background=Get(self,"danmakuInputBGView");
     LandscapeControlGlass178R9(input,self,0);
-    if (Belongs(background,input)) DramaClearBackground(background,Enabled() && FQHGlassAvailable());
+    LandscapeInputBackground178R10(input,background);
     LandscapeControlGlass178R9(Get(self,"danmakuPublishBtn"),self,0);
 }
 static void LandscapeSocialGlass178R9(Obj self,Sel cmd) {
@@ -3042,26 +3122,65 @@ static void DramaSpacingInstall178R2(void) {
          "v24@0:8B16B20",(Imp)DramaProgressPlaying);
 }
 
-static void ShelfTitleGlassFontKey(void) {}
-static void ShelfTitleFont(Obj label,B styled) {
-    if (!label) return;
-    Obj font=O0(label,"font"),applied=objc_getAssociatedObject(label,ShelfTitleGlassFontKey);
-    B hasGlassFont=applied && (font==applied ||
-        ((B(*)(Obj,Sel,Obj))Message)(font,sel_registerName("isEqual:"),applied));
-    if (!styled) {
-        if (!applied) return;
-        if (hasGlassFont) V1(label,"setFont:",objc_getAssociatedObject(label,ShelfTitleHostFontKey));
-        objc_setAssociatedObject(label,ShelfTitleHostFontKey,0,1);
-        objc_setAssociatedObject(label,ShelfTitleGlassFontKey,0,1);
-        return;
+static void CaptionGeometryStockKey(void) {}
+static void CaptionGeometryAppliedKey(void) {}
+static void CaptionAlignmentStockKey(void) {}
+static void ShelfMinimumFont(Obj label,B styled) {
+    if (!styled) { RestoreAppearanceFont(label); return; }
+    Obj current=Get(label,"font");
+    if (!Kind(label,"UILabel") || !Responds(current,"pointSize") || !Responds(current,"fontWithSize:")) return;
+    Obj applied=objc_getAssociatedObject(label,AppearanceFontAppliedKey);
+    B ours=applied && SameColor(current,applied);
+    Obj original=ours ? objc_getAssociatedObject(label,AppearanceFontStockKey) : current;
+    double size=((double(*)(Obj,Sel))Message)(original,sel_registerName("pointSize"));
+    if (size>=16 || HasCaptionAttributes(Get(label,"attributedText"))) { RestoreAppearanceFont(label); return; }
+    if (ours) return;
+    Obj font=((Obj(*)(Obj,Sel,double))Message)(original,sel_registerName("fontWithSize:"),16);
+    if (!font) return;
+    objc_setAssociatedObject(label,AppearanceFontStockKey,current,1);
+    objc_setAssociatedObject(label,AppearanceFontAppliedKey,font,1);
+    V1(label,"setFont:",font);
+}
+static void CenterCaption(Obj label,Obj owner,Rect content,B styled,B fit) {
+    if (!Kind(label,"UILabel")) return;
+    Rect bounds=Bounds(label);
+    Point center=((Point(*)(Obj,Sel))Message)(label,sel_registerName("center"));
+    Rect current={center.x,center.y,bounds.width,bounds.height},wanted=current;
+    Obj applied=objc_getAssociatedObject(label,CaptionGeometryAppliedKey);
+    Obj original=objc_getAssociatedObject(label,CaptionGeometryStockKey);
+    Obj alignment=objc_getAssociatedObject(label,CaptionAlignmentStockKey);
+    I currentAlignment=((I(*)(Obj,Sel))Message)(label,sel_registerName("textAlignment"));
+    styled=styled && Belongs(label,owner);
+    if (styled) {
+        Rect rect=Convert(owner,content,Get(label,"superview"));
+        wanted=(Rect){rect.x+rect.width*0.5,rect.y+rect.height*0.5,
+                      fit ? rect.width : bounds.width,fit ? rect.height : bounds.height};
+        if ((!applied || !SameRect(current,UnboxRect(applied))) &&
+            (!original || !SameRect(current,UnboxRect(original))))
+            objc_setAssociatedObject(label,CaptionGeometryStockKey,RectBox(current),1);
+        if (!applied || !SameRect(wanted,UnboxRect(applied)))
+            objc_setAssociatedObject(label,CaptionGeometryAppliedKey,RectBox(wanted),1);
+        if (currentAlignment!=1) {
+            if (!alignment || Double(alignment)!=currentAlignment)
+                objc_setAssociatedObject(label,CaptionAlignmentStockKey,Number(currentAlignment),1);
+            Q1(label,"setTextAlignment:",1);
+        }
+    } else {
+        if (applied && SameRect(current,UnboxRect(applied)))
+            wanted=UnboxRect(objc_getAssociatedObject(label,CaptionGeometryStockKey));
+        if (alignment && currentAlignment==1) Q1(label,"setTextAlignment:",(I)Double(alignment));
+        objc_setAssociatedObject(label,CaptionGeometryStockKey,0,1);
+        objc_setAssociatedObject(label,CaptionGeometryAppliedKey,0,1);
+        objc_setAssociatedObject(label,CaptionAlignmentStockKey,0,1);
     }
-    if (!font || hasGlassFont) return;
-    double size=((double(*)(Obj,Sel))Message)(font,sel_registerName("pointSize"));
-    Obj smaller=((Obj(*)(Obj,Sel,double))Message)(font,sel_registerName("fontWithSize:"),size*0.875);
-    if (!smaller) return;
-    objc_setAssociatedObject(label,ShelfTitleHostFontKey,font,1);
-    objc_setAssociatedObject(label,ShelfTitleGlassFontKey,smaller,1);
-    V1(label,"setFont:",smaller);
+    // Bounds and center preserve the host's title zoom transform; setting frame
+    // while a title is transformed would give an ambiguous layout rectangle.
+    if (bounds.width!=wanted.width || bounds.height!=wanted.height) {
+        bounds.width=wanted.width; bounds.height=wanted.height;
+        ((void(*)(Obj,Sel,Rect))Message)(label,sel_registerName("setBounds:"),bounds);
+    }
+    if (center.x!=wanted.x || center.y!=wanted.y)
+        ((void(*)(Obj,Sel,Point))Message)(label,sel_registerName("setCenter:"),(Point){wanted.x,wanted.y});
 }
 static void ShelfTabStyle(Obj view,Obj model,B selected) {
     (void)selected;
@@ -3070,16 +3189,17 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     // on padding so a capsule cannot run into the next tab during a swipe.
     double spacing=InstanceABI(model,"cellSpacing","d16@0:8") ?
         ((double(*)(Obj,Sel))Message)(model,sel_registerName("cellSpacing")) : 0;
-    double room=bounds.width+(spacing>6 ? spacing-6 : 0);
-    material.width=room<42 ? room : 42;
-    material.height=bounds.height-4<28 ? bounds.height-4 : 28;
+    double room=bounds.width+(spacing>2 ? spacing-2 : 0);
+    material.width=__builtin_fmin(room,50);
+    material.height=__builtin_fmax(bounds.height,36);
     material.x+=(bounds.width-material.width)*0.5;
     material.y+=(bounds.height-material.height)*0.5;
     ApplySurface(view,material,0);
     Obj surface=FQHSurface(view);
-    // The paired mask label must match during swipes. Keep the host zoom transforms.
-    ShelfTitleFont(Get(view,"titleLabel"),surface!=0);
-    ShelfTitleFont(Get(view,"maskTitleLabel"),surface!=0);
+    Rect caption={material.x+4,material.y,material.width-8,material.height};
+    // Their native mask layers track the original label bounds during swipes.
+    CenterCaption(Get(view,"titleLabel"),view,caption,surface!=0,0);
+    CenterCaption(Get(view,"maskTitleLabel"),view,caption,surface!=0,0);
 }
 static void PageShelfTabLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfTabSelectViewTitleCell","fqx174_originalShelfCategory"))(self,cmd);
@@ -3093,14 +3213,23 @@ static void PageShelfTabReload(Obj self,Sel cmd,Obj model) {
 static void ShelfFilterStyle(Obj view) {
     if (!HasAncestor(view,"SSBookShelfFilterMixRowCollectionView") ||
         !HasAncestor(view,"SSBookShelfFilterHeaderView")) {
+        ShelfMinimumFont(Get(view,"textLabel"),0);
+        CenterCaption(Get(view,"textLabel"),0,(Rect){0},0,0);
         PageRestore(view);
         return;
     }
     Rect material=Bounds(view);
-    double width=__builtin_fmin(material.width-2,42),height=__builtin_fmin(material.height-2,28);
+    double width=material.width-2,height=__builtin_fmax(material.height,36);
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(view,material,0);
+    Obj arrow=Get(view,"arrowView");
+    B plain=!arrow || Flag(arrow,"isHidden");
+    Obj caption=Get(view,"textLabel"),text=Get(caption,"text");
+    B shortCaption=Equal(text,"全部") || Equal(text,"阅读") || Equal(text,"听书") || Equal(text,"星标");
+    ShelfMinimumFont(caption,FQHSurface(view)!=0 && shortCaption);
+    CenterCaption(caption,view,
+        (Rect){material.x+8,material.y,material.width-16,material.height},FQHSurface(view)!=0 && plain,1);
 }
 static void PageShelfFilterLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterLayout"))(self,cmd);
@@ -3116,13 +3245,23 @@ static void PageShelfFilterBackground(Obj self,Sel cmd,Obj color) {
 }
 static void ShelfActionGlass(Obj button,B filter) {
     if (!Kind(button,"UIButton")) return;
-    if (Flag(button,"isHidden")) { PageRestore(button); return; }
+    if (Flag(button,"isHidden")) {
+        ShelfMinimumFont(Get(button,"titleLabel"),0);
+        CenterCaption(Get(button,"titleLabel"),0,(Rect){0},0,0);
+        PageRestore(button); return;
+    }
     Rect material=Bounds(button);
-    double height=__builtin_fmin(material.height-2,28);
-    double width=filter ? material.width-2 : __builtin_fmin(material.width,__builtin_fmax(42,material.width-12));
+    double height=__builtin_fmax(material.height,36);
+    double width=filter ? material.width-2 : __builtin_fmax(material.width,56);
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(button,material,0);
+    if (!filter) {
+        Obj caption=Get(button,"titleLabel");
+        ShelfMinimumFont(caption,FQHSurface(button)!=0 && Equal(Get(caption,"text"),"编辑"));
+        CenterCaption(caption,button,
+            (Rect){material.x+8,material.y,material.width-16,material.height},FQHSurface(button)!=0,1);
+    }
 }
 static void ShelfFilterHiddenKey(void) {}
 static void ShelfFilterHeadersKey(void) {}
@@ -3408,6 +3547,7 @@ static void ProfileSetFrame(Obj view,Rect current,Rect stock,Rect target) {
 static void RestoreProfileEntryFrame(Obj content,const void *key) {
     Obj view=objc_getAssociatedObject(content,key);
     if (!view) return;
+    if (key==ProfileCaptionKey) CenterCaption(view,0,(Rect){0},0,0);
     Rect current=Frame(view),stock=ProfileStockFrame(view,current);
     if (!SameRect(current,stock)) SetFrame(view,stock);
     objc_setAssociatedObject(view,GlyphOriginalKey,0,1);
@@ -3418,6 +3558,7 @@ static void RestoreProfileEntry(Obj content) {
     TrackAppearanceLabel(content,0,0);
     RestoreProfileEntryFrame(content,GlyphViewKey);
     RestoreProfileEntryFrame(content,ProfileCaptionKey);
+    RestoreHit(Get(content,"superview"));
     PageRestore(content);
 }
 static void ProfileEntryGlass(Obj self,B order) {
@@ -3437,30 +3578,49 @@ static void ProfileEntryGlass(Obj self,B order) {
     if (oldCaption!=caption) RestoreProfileEntryFrame(content,ProfileCaptionKey);
     Rect b=Bounds(content),labelFrame=Frame(caption),iconFrame=Frame(glyph);
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
-    double height=__builtin_fmin(b.height,52);
-    double textY=b.y+height-label.height-6;
-    double glyphHeight=__builtin_fmin(20,textY-b.y-8);
+    double height=__builtin_fmin(b.height+8,60);
+    double glyphHeight=__builtin_fmin(20,height-32),captionHeight=20;
     if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
         return;
     }
-    // Every item in the same shortcut row uses the same capsule height,
-    // independent of the host caption's baseline or current title.
-    ApplySurface(content,(Rect){b.x+3,b.y,b.width-6,height},1);
-    if (!FQHSurface(content)) {
+    // Use the real inter-item gap, leaving at least 4pt between neighboring
+    // glass surfaces. The cell itself retains its original layout and action.
+    double grow=__builtin_fmin(6,__builtin_fmax(0,(72-b.width)*0.5));
+    Rect cellFrame=Frame(self);
+    Obj siblings=Get(Get(self,"superview"),"subviews");
+    U count=((U(*)(Obj,Sel))Message)(siblings,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj sibling=At(siblings,i);
+        if (sibling==self || !Kind(sibling,"SSMyUserCollectionViewFunCell") || Flag(sibling,"isHidden")) continue;
+        Rect other=Frame(sibling);
+        if (other.y+other.height<=cellFrame.y || other.y>=cellFrame.y+cellFrame.height) continue;
+        double gap=other.x>=cellFrame.x+cellFrame.width ? other.x-cellFrame.x-cellFrame.width :
+            (cellFrame.x>=other.x+other.width ? cellFrame.x-other.x-other.width : 0);
+        grow=__builtin_fmin(grow,__builtin_fmax(0,(gap-4)*0.5));
+    }
+    Rect material={b.x-grow,b.y+(b.height-height)*0.5,b.width+grow*2,height};
+    Obj previousSurface=FQHSurface(content);
+    ApplySurface(content,material,1);
+    Obj surface=FQHSurface(content);
+    if (!surface) {
         RestoreProfileEntry(content);
         return;
     }
-    TrackAppearanceLabel(content,caption,12);
+    if (surface!=previousSurface)
+        V1(surface,"setCornerConfiguration:",((Obj(*)(Obj,Sel,double))Message)(Lookup("UICornerConfiguration"),
+            sel_registerName("capsuleConfigurationWithMaximumRadius:"),18));
+    TrackAppearanceLabel(content,caption,13);
+    EnsureHit(self,Convert(content,material,self));
     // Never enlarge the host's original bitmap canvas just to fill the pill.
     double scale=__builtin_fmin(1,glyphHeight/__builtin_fmax(icon.width,icon.height));
-    double top=b.y+6;
+    double top=material.y+(height-glyphHeight-4-captionHeight)*0.5;
     Rect adjusted={b.x+(b.width-icon.width*scale)*0.5,top+(glyphHeight-icon.height*scale)*0.5,
                    icon.width*scale,icon.height*scale};
     if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
     if (oldCaption!=caption) objc_setAssociatedObject(content,ProfileCaptionKey,caption,1);
     ProfileSetFrame(glyph,iconFrame,icon,adjusted);
-    ProfileSetFrame(caption,labelFrame,label,(Rect){label.x,textY,label.width,label.height});
+    CenterCaption(caption,content,(Rect){material.x+8,top+glyphHeight+4,material.width-16,captionHeight},1,1);
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);

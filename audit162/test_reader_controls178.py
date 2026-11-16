@@ -102,10 +102,10 @@ def icon(runtime, *args, **kwargs):
 
 def main_checks(data, labels):
     cases = []
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10")
     nav_glass_frame = (-5., -5., 34., 34.) if compact_reader else (-6., -6., 36., 36.)
     glyph_frame = (3., 3., 18., 18.) if compact_reader else (2., 2., 20., 20.)
-    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9"), "These changed visual contracts apply only to 1.78")
+    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10"), "These changed visual contracts apply only to 1.78")
     for route in ("insert_accessibility", "direct_action", "nested_identifier", "runtime_insert_class", "runtime_view_class"):
         cpu, runtime = build_fixture(data, labels)
         nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 62, 402, 44), runtime.ROOT)
@@ -272,14 +272,20 @@ def main_checks(data, labels):
     call(cpu, labels, "LFQH_ProfileEntryGlass", cell, 0)
     surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
     require(surface, "Known profile shortcut receives glass")
-    glyph_size = 20. if release_version(data) == "1.78R9" else 18. if compact_reader else 20.
-    if compact_reader:
+    glyph_size = 20. if release_version(data) in ("1.78R9","1.78R10") else 18. if compact_reader else 20.
+    if release_version(data)=="1.78R10":
+        require(runtime.objects[surface].state["frame"]==(-1.,0.,72.,60.),
+                "Profile glass expands with padded captions and remains within the row gap")
+        require(runtime.objects[caption].state["frame"]==(7.,32.,56.,20.) and
+                runtime.objects[caption].state["textAlignment"]==1,
+                "Profile caption is centered with eight points of horizontal padding")
+    elif compact_reader:
         profile_height = 52. if release_version(data) == "1.78R9" else 58.
         require(runtime.objects[surface].state["frame"] == (3., 0., 64., profile_height), "Profile glass leaves room between shortcuts")
     require(runtime.objects[glyph].state["frame"][2:] == (glyph_size, glyph_size), "Profile large-row artwork is capped")
     require(runtime.string_value(runtime.objects[caption].state["text"]) == "浏览历史" and
             not runtime.objects[caption].state.get("hidden", False), "A saved 1.77r3 icon-only setting leaves the native caption visible")
-    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == (12. if compact_reader else 13.),
+    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == (13. if release_version(data)=="1.78R10" else 12. if compact_reader else 13.),
             "Profile text uses its compact font cap")
     require(runtime.objects[cell].state["frame"] == (78, 0, 70, 60) and runtime.objects[cell].state["userInteractionEnabled"],
             "Native cell remains the unchanged touch target")

@@ -43,6 +43,9 @@ class Runtime(PreviousRuntime):
                 if name=='btd_hitTestEdgeInsets': return self.finish(cpu,fp=state.get('hitInsets',(0.,0.,0.,0.)))
                 if name=='setBtd_hitTestEdgeInsets:':
                     state['hitInsets']=tuple(cpu.fp(i) for i in range(4));return self.finish(cpu)
+                if name=='imageEdgeInsets': return self.finish(cpu,fp=state.get('imageEdgeInsets',(0.,0.,0.,0.)))
+                if name=='setImageEdgeInsets:':
+                    state['imageEdgeInsets']=tuple(cpu.fp(i) for i in range(4));return self.finish(cpu)
                 if name in ('isSelected','isHighlighted'):
                     return self.finish(cpu,int(state.get(name[2:].lower(),False)))
                 if name in ('setHighlighted:','setSelected:','setEnabled:'):
@@ -77,7 +80,7 @@ def icon(r,parent,name,frame,*,download=False,canvas=(0,0,24,24),image_size=(64,
     iv=r.view('UIImageView',name+'_original_image',canvas,b)
     r.objects[iv].state.update(image=image,contentMode=1)
     r.objects[b].state.update(imageView=iv,images={0:image},titles={},attributedTitles={},configuration=0,
-                              hitInsets=(0.,0.,0.,0.),enabled=True,selected=False,highlighted=False,
+                              hitInsets=(0.,0.,0.,0.),imageEdgeInsets=(0.,0.,0.,0.),enabled=True,selected=False,highlighted=False,
                               userInteractionEnabled=True,control_targets=[(0x123456,r.sel('hostTap:'),64)])
     if download:
         r.objects[b].state['defaultIconView']=iv
@@ -99,18 +102,18 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
-    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9')
+    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9', '1.78R10')
     nav_diameter=34. if compact_reader else 36.
     nav_padding=(nav_diameter-24.)*0.5
-    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9')
+    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10')
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
@@ -134,7 +137,7 @@ def exercise(data,labels,baseline):
                     'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
-        expected_back=(15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
+        expected_back=(9.,3.,18.,18.) if release_version(data)=='1.78R10' else (15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
         require(r.objects[r.objects[back].state['imageView']].state['frame']==expected_back,
                 '1.78 refines the back artwork to 20pt; older versions retain their 24pt optical contract')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
@@ -285,13 +288,13 @@ def exercise(data,labels,baseline):
             send(c,r,vc,'viewDidLayoutSubviews')
             require(r.objects[parent].state['frame']==(348.,y,56.,24.),'Toolbar stays at host-selected safe-area/header origin')
             require(r.objects[search].state['frame']==(0,0,24,24) and r.objects[more].state['frame']==(32,0,24,24),'Shelf buttons retain host-local frames')
-            require(hit_contains(r,parent,(-14.,-2.,72.,28.)),'Container also admits touches on both visible outer rims')
+            require(hit_contains(r,parent,(-18.,-6.,80.,36.)),'Container also admits touches on both larger visible outer rims')
         a=r.objects[material(c,r,labels,search)].state['frame'];z=r.objects[material(c,r,labels,more)].state['frame']
-        require(32+z[0]-(a[0]+a[2])==16,'Device-reported 32pt host centers produce a 16pt visual gap')
+        require(32+z[0]-(a[0]+a[2])==8,'Device-reported host centers retain an 8pt gap between the larger glass circles')
         require(not r.host_mutations,'No host geometry mutation anywhere in shelf/reader paths')
-        require(r.objects[r.objects[search].state['imageView']].state['frame']==(-9.,3.,18.,18.),'Search artwork has balanced 5pt padding in 28pt lens')
-        require(r.objects[r.objects[more].state['imageView']].state['frame']==(-3.,3.,18.,18.),'More asset transparent padding is compensated at the image, not by shifting the lens')
-        for button,expected in ((search,(-9.,3.,18.,18.)),(more,(-3.,3.,18.,18.))):
+        require(r.objects[r.objects[search].state['imageView']].state['frame']==(-12.,0.,24.,24.),'Search artwork has balanced 6pt padding in the 36pt lens')
+        require(r.objects[r.objects[more].state['imageView']].state['frame']==(0.,0.,24.,24.),'More artwork and glass share the same center instead of a 6pt left offset')
+        for button,expected in ((search,(-12.,0.,24.,24.)),(more,(0.,0.,24.,24.))):
             iv=r.objects[button].state['imageView']
             for _ in range(10):
                 r.objects[iv].state['frame']=(0.,0.,24.,24.)
@@ -303,11 +306,11 @@ def exercise(data,labels,baseline):
         iv=r.objects[search].state['imageView'];r.objects[iv].state['frame']=(7.,10.,18.,16.);r.objects[iv].state['bounds']=(0.,0.,18.,16.)
         send(c,r,vc,'viewDidLayoutSubviews')
         glass=material(c,r,labels,search)
-        require(r.objects[glass].state['frame']==(-9.,5.,28.,28.),'Nonzero bounds and asymmetric image rectangles stay centered')
+        require(r.objects[glass].state['frame']==(-13.,1.,36.,36.),'Nonzero bounds and asymmetric image rectangles stay centered')
         replacement=r.view('UIImageView','host_recreated_image',(9.,9.,16.,20.),search)
         r.objects[search].state['imageView']=replacement
         send(c,r,vc,'viewDidLayoutSubviews')
-        require(r.objects[glass].state['frame']==(-9.,5.,28.,28.),'Host-recreated image drives the new center without a stale image reference')
+        require(r.objects[glass].state['frame']==(-13.,1.,36.,36.),'Host-recreated image drives the new center without a stale image reference')
         r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
         send(c,r,vc,'viewDidLayoutSubviews')
         require(r.objects[parent].state['hitInsets']==(0.,0.,0.,0.),'Shelf container hit expansion is restored on disable')

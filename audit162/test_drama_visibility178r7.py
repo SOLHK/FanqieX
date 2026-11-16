@@ -150,7 +150,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9"), "Use the 1.78R7 or later candidate")
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10"), "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])
     report = {"passed": True, **exercise(data, labels)}
