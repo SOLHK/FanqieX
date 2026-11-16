@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import struct
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from interaction_runtime import Runtime as Interaction, read_entries
 from legacy_runtime import Runtime as Legacy
 
@@ -77,10 +77,18 @@ def run(data):
     records=saved(r)
     selection_records = [item.get('data', {}) for item in records
                          if item.get('data', {}).get('glassSelectionLens')]
-    require(selection_records, 'Actual snapshots include the fallback selection fill')
-    require(all(row['glassSelectionLens'].get('effectClass') in (None, 'nil', 'NSNull')
-                for row in selection_records),
-            'Fallback selection fill never adds a second glass material')
+    require(selection_records, 'Actual snapshots include the selection lens')
+    if release_version(data) in ('1.78R14', '1.78R15'):
+        active = [row for row in selection_records if row.get('glassSelectionDragging')]
+        idle = [row for row in selection_records if not row.get('glassSelectionDragging')]
+        require(active and all(row['glassSelectionLens'].get('effectClass') == 'UIGlassEffect'
+                              for row in active),
+                'Active drag snapshots show system glass on the moving lens')
+    else:
+        idle = selection_records
+    require(idle and all(row['glassSelectionLens'].get('effectClass') in (None, 'nil', 'NSNull')
+                         for row in idle),
+            'The resting selection uses adaptive fill')
     effect = r.objects[r.PROXY].state['effect']
     require(effect and r.class_names[r.objects[effect].cls] == 'UIGlassEffect' and
             r.objects[effect].state['style'] == 0,

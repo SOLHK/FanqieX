@@ -10,7 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from execution_audit import directory, make as make_material
 from interaction_runtime import make
 
@@ -59,6 +59,7 @@ def material_style(data):
 
 
 def run(candidate, previous):
+    optical_drag = release_version(candidate) == "1.78R15"
     require(hashlib.sha256(previous).hexdigest() ==
             '2da6826d63d5e05ec6c2f20d3375d58186474490c9c92dc09c2cc734529560b1',
             'The negative control is the exact shipped 1.6.0')
@@ -82,10 +83,18 @@ def run(candidate, previous):
 
     for offset in (-45, -17, 0, 17, 45):
         cpu, runtime, entries = fixture(candidate)
-        fire(cpu, runtime, entries, 1, 259 + offset)
-        require(lens_center(runtime) == 259, 'Grabbing inside the selection does not jump')
-        fire(cpu, runtime, entries, 2, 290 + offset)
-        require(lens_center(runtime) == 290, 'Inside selection keeps the actual grab offset')
+        finger = 259 + offset
+        fire(cpu, runtime, entries, 1, finger)
+        began_center = lens_center(runtime)
+        if optical_drag:
+            require(abs(began_center - finger) <= 8 and
+                    min(259, finger) <= began_center <= max(259, finger),
+                    'An inside grab stays close to the finger without overshooting')
+        else:
+            require(began_center == 259, 'Grabbing inside the selection does not jump')
+        fire(cpu, runtime, entries, 2, finger + 31)
+        require(lens_center(runtime) == began_center + 31,
+                'Inside selection retains a stable grab offset while moving')
         fire(cpu, runtime, entries, 4, 290 + offset)
         require(lens_center(runtime) == 259 and not runtime.route_calls,
                 'Cancel restores the true selected item without a page change')
@@ -98,31 +107,45 @@ def run(candidate, previous):
     cpu, runtime, entries = fixture(candidate)
     controller, pan, lens, overlay = objects(runtime)
     initial_effect = runtime.objects[lens].state['effect']
-    require(initial_effect == 0, 'The compatibility selection must not add a second glass material')
+    require(initial_effect == 0, 'The resting selection uses ordinary adaptive fill')
     initial_effect_writes = [event for event in runtime.events if event['event'] == 'setEffect']
+    expected_effect_writes = []
     for terminal in (3, 4, 5):
         fire(cpu, runtime, entries, 1, lens_center(runtime))
-        require(runtime.objects[overlay].state['subviews'][0] == lens,
-                'The compatibility indicator stays below readable labels')
+        active_effect = runtime.objects[lens].state['effect']
+        lens_position = -1 if optical_drag else 0
+        if optical_drag:
+            effect = runtime.objects[active_effect]
+            require(runtime.class_names[effect.cls] == 'UIGlassEffect' and
+                    effect.state['style'] == 1 and effect.state['interactive'],
+                    'Dragging installs interactive Clear Liquid Glass')
+            expected_effect_writes.extend([active_effect, initial_effect])
+        else:
+            require(active_effect == initial_effect, 'Legacy dragging uses ordinary adaptive fill')
+        require(runtime.objects[overlay].state['subviews'][lens_position] == lens,
+                'The active selection has the expected layer order relative to labels')
         for x in (90, 130, 170, 210, 250, 290, 330):
             fire(cpu, runtime, entries, 2, x)
             cpu.run(entries['update'], runtime.BAR, runtime.PROXY)
-            require(runtime.objects[lens].state['effect'] == initial_effect,
-                    'Movement and maintenance do not reset the native backdrop')
-            require(runtime.objects[overlay].state['subviews'][0] == lens,
-                    'Maintenance never stacks glass above labels')
+            require(runtime.objects[lens].state['effect'] == active_effect,
+                    'Movement and maintenance preserve the active lens material')
+            require(runtime.objects[overlay].state['subviews'][lens_position] == lens,
+                    'Maintenance preserves the active lens layer order')
         fire(cpu, runtime, entries, terminal, 330)
         require(runtime.objects[overlay].state['subviews'][0] == lens,
                 'Every terminal path restores sharp labels above the lens')
         require(runtime.objects[lens].state['effect'] == initial_effect,
-                'Ending and cancelling retain the same system material')
+                'Every terminal path restores the resting material')
         require(not runtime.associated(controller, 'drag'), 'Every terminal path clears dragging')
-    require([event for event in runtime.events if event['event'] == 'setEffect'] == initial_effect_writes,
-            'There is no effect nil/glass alternation across complete gestures')
+    effect_writes = [event for event in runtime.events if event['event'] == 'setEffect']
+    new_writes = effect_writes[len(initial_effect_writes):]
+    require(all(event['self'] == lens for event in new_writes) and
+            [event['value'] for event in new_writes] == expected_effect_writes,
+            'Material changes occur only when optical dragging starts and ends')
     require(runtime.objects[lens].state['userInteractionEnabled'] is False and
             runtime.objects[lens].state['alpha'] == 1,
             'The optical surface neither intercepts touches nor fades labels')
-    cases.append({'name': 'fallback_keeps_one_glass_and_readable_labels', 'passed': True})
+    cases.append({'name': 'fallback_tracks_material_and_restores_readable_labels', 'passed': True})
     return {'passed': True, 'candidate_sha256': hashlib.sha256(candidate).hexdigest(),
             'negative_control_sha256': hashlib.sha256(previous).hexdigest(), 'cases': cases,
             'case_count': len(cases), 'device_tested': False,
