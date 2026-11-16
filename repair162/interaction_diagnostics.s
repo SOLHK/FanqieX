@@ -17,6 +17,10 @@ LIrecord_transition:
     mov x19, x0
     mov x20, x1
     mov x21, x2
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LITrecord_done
+    .endif
     cbz x19, LITrecord_done
     adr x8, LIphase_begin
     cmp x20, x8

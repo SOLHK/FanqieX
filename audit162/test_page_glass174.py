@@ -20,6 +20,7 @@ from test_header173 import drawn_rect
 from test_home_glass165 import LABELS
 from test_feed_viewport import labels_for
 from top_chrome_runtime import TopChromeRuntime
+from settings_runtime178r13 import EXTRA_SETTINGS_LABELS, SettingsBoundary178R13, exercise_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = [
@@ -101,7 +102,7 @@ HOOKS = [
 ]
 
 
-class Runtime(TopChromeRuntime, GlassRuntime):
+class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
     SHELF_RELOAD = 0x330c1000
     SHELF_APPEARANCE = 0x330c1100
     SHELF_BACKGROUND = 0x330c1200
@@ -867,12 +868,12 @@ def static_checks():
 
 
 def exercise(data, labels):
-    aligned_shelf = release_version(data) == "1.78R12"
-    stable_shelf = release_version(data) in ("1.78R11", "1.78R12")
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
+    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13")
+    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13")
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1853,7 +1854,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1865,7 +1866,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1897,10 +1898,12 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data)in ("1.78R10", "1.78R11", "1.78R12"):
-                require(runtime.objects[runtime.objects[surface].state["cornerConfiguration"]].state["max_radius"]==18 and
-                        runtime.objects[label].state["textAlignment"]==1,
-                        "limited corner curvature and an 8pt inset keep four-character captions away from the rim")
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13"):
+                corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
+                full_capsule = release_version(data) == "1.78R13"
+                require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
+                        runtime.objects[label].state["textAlignment"] == 1,
+                        "the configured corner shape keeps the caption centered above the native tap area")
             if legacy_order:
                 require(runtime.objects[overlay].state["frame"] == adjusted_glyph,
                         "the native layout copies the normalized order glyph frame to its product overlay")
@@ -2057,44 +2060,47 @@ def exercise(data, labels):
     table = runtime.view("UITableView", "plugin settings", (0, 0, 0, 0), runtime.ROOT)
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     runtime.tab_app = runtime.obj("UIApplication", "plugin settings app", opened_urls=[])
-    call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
-    header = runtime.objects[table].state["tableHeaderView"]
     version = release_version(data)
-    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
-    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"))
-    require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
-            "an unsized table starts with a consistent header and control width")
-    if has_bottom_settings:
-        entries = [item for item in runtime.objects[header].state["subviews"]
-                   if runtime.is_kind(item, runtime.classes["UIButton"]) and
-                   runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
-        require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
-                len(runtime.objects[entries[0]].state["control_targets"]) == 1,
-                "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
-    if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"):
-        channels = [item for item in runtime.objects[header].state["subviews"]
-                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
-                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
-        require(len(channels) == 1, "the settings header exposes exactly one Telegram channel entry")
-        channel = runtime.objects[channels[0]].state
-        require(channel["frame"] == (16., 576., 288., 48.) and len(channel["control_targets"]) == 1,
-                "the channel entry sits below bottom appearance with a 48pt tap target")
-        opened_urls = runtime.objects[runtime.tab_app].state["opened_urls"]
-        require(opened_urls == [], "opening settings does not open the Telegram channel")
-        target, action, event = channel["control_targets"][0]
-        require(event == 64, "the channel entry opens on touch-up-inside")
-        send(cpu, runtime, target, runtime.selector_names[action], channels[0])
-        require(opened_urls == ["https://t.me/Naloiafeed"], "tapping the channel entry opens the requested HTTPS URL once")
-    switches = [item for item in runtime.objects[header].state["subviews"]
-                if runtime.is_kind(item, runtime.classes["UISwitch"])]
-    switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
-                     for item in switches]
-    require(switch_labels == [f"底栏显示：{title}" for title in titles] + [
-                "书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景",
-                "横屏画面铺满（等比裁切）", "书架显示筛选按钮", "书外主题跟随系统"],
-            "all page preferences have a settings switch")
-    require([bool(runtime.objects[item].state["isOn"]) for item in switches] == [True] * 8 + [False, True, False],
-            "filter stays visible and the two override modes default off")
+    if version == "1.78R13":
+        switches = exercise_settings(cpu, runtime, labels, options, titles)
+    else:
+        call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
+        header = runtime.objects[table].state["tableHeaderView"]
+        has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
+        expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"))
+        require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
+                "an unsized table starts with a consistent header and control width")
+        if has_bottom_settings:
+            entries = [item for item in runtime.objects[header].state["subviews"]
+                       if runtime.is_kind(item, runtime.classes["UIButton"]) and
+                       runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
+            require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
+                    len(runtime.objects[entries[0]].state["control_targets"]) == 1,
+                    "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
+        if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"):
+            channels = [item for item in runtime.objects[header].state["subviews"]
+                        if runtime.is_kind(item, runtime.classes["UIButton"]) and
+                        runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
+            require(len(channels) == 1, "the settings header exposes exactly one Telegram channel entry")
+            channel = runtime.objects[channels[0]].state
+            require(channel["frame"] == (16., 576., 288., 48.) and len(channel["control_targets"]) == 1,
+                    "the channel entry sits below bottom appearance with a 48pt tap target")
+            opened_urls = runtime.objects[runtime.tab_app].state["opened_urls"]
+            require(opened_urls == [], "opening settings does not open the Telegram channel")
+            target, action, event = channel["control_targets"][0]
+            require(event == 64, "the channel entry opens on touch-up-inside")
+            send(cpu, runtime, target, runtime.selector_names[action], channels[0])
+            require(opened_urls == ["https://t.me/Naloiafeed"], "tapping the channel entry opens the requested HTTPS URL once")
+        switches = [item for item in runtime.objects[header].state["subviews"]
+                    if runtime.is_kind(item, runtime.classes["UISwitch"])]
+        switch_labels = [runtime.string_value(runtime.objects[item].state["accessibilityLabel"])
+                         for item in switches]
+        require(switch_labels == [f"底栏显示：{title}" for title in titles] + [
+                    "书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景",
+                    "横屏画面铺满（等比裁切）", "书架显示筛选按钮", "书外主题跟随系统"],
+                "all page preferences have a settings switch")
+        require([bool(runtime.objects[item].state["isOn"]) for item in switches] == [True] * 8 + [False, True, False],
+                "filter stays visible and the two override modes default off")
     exercise_fullscreen_fill(cpu, runtime, switches[8], prefs)
     for index, key, enabled in ((9, "FanqieX.ShelfFilterButton.1", False),
                                 (10, "FanqieX.ReaderThemeIsolation.1", True)):
@@ -2696,9 +2702,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2724,7 +2730,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12") else (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13") else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2869,7 +2875,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3021,10 +3027,11 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
+    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) == "1.78R13" else []
+    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA + settings_labels)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

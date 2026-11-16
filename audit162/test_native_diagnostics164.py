@@ -48,8 +48,8 @@ HOOKS = (
 
 
 class Runtime(FoundationRuntime):
-    def __init__(self, data, slide):
-        super().__init__(data, slide)
+    def __init__(self, data, slide, **options):
+        super().__init__(data, slide, **options)
         self.hosts = {}
         self.original_calls = []
         self.forbidden_messages = []
@@ -296,6 +296,28 @@ def comment_detail_budget(data, labels, slide):
     mutations = ('setIdeaCount:', 'setBubbleData:', 'updateIdeaLabelCount')
 
     send(cpu, rt, bubble, 'setModel:', model)
+    if release_version(data) == '1.78R13':
+        for value in range(1, 13):
+            send(cpu, rt, model, mutations[0], value)
+            send(cpu, rt, model, mutations[1], payload)
+            send(cpu, rt, bubble, mutations[2])
+        rows = journal(cpu, rt, data)
+        names = [r['event'] for r in rows]
+        require([n for n in names if n in counters] == list(counters) * 2 and
+                names.count('commentBubbleCountUI') == 4,
+                'Master opt-in activates the same bounded detail without a second setting')
+        rt.now += 0.25
+        send(cpu, rt, model, mutations[0], 13)
+        send(cpu, rt, bubble, mutations[2])
+        rows = journal(cpu, rt, data)
+        require(sum(r['event'] == 'commentCountChanged' for r in rows) == 3 and
+                sum(r['event'] == 'commentBubbleCountUI' for r in rows) == 5,
+                'Master-enabled sampling windows reopen after 250 ms')
+        require(rt.objects[model].state['ideaCount'] == 13 and
+                [sum(n == selector for _, n, _, _ in rt.original_calls) for selector in mutations] == [13, 12, 13],
+                'Every sampled and skipped call forwards the original operation exactly once')
+        return {'enhanced_model_snapshots_per_window': 4, 'enhanced_ui_snapshots_per_window': 4,
+                'host_calls_preserved': True}
     for value in range(1, 13):
         send(cpu, rt, model, mutations[0], value)
         send(cpu, rt, model, mutations[1], payload)
@@ -435,9 +457,10 @@ def enhanced_actions(data, labels, slide):
     page=rt.obj('UIViewController','page')
     control=rt.view('UIControl','control',parent=rt.ROOT)
     rt.objects[control].state['nextResponder']=page
-    send(cpu,rt,app,'sendAction:to:from:forEvent:',rt.sel('hostAction:'),page,control,0)
-    require(not rt.delayed, 'Normal mode schedules no action watcher')
-    rt.objects[rt.DEFAULTS].state['values']['FanqieX.EnhancedDiagnostics.1']=1
+    if release_version(data) != '1.78R13':
+        send(cpu,rt,app,'sendAction:to:from:forEvent:',rt.sel('hostAction:'),page,control,0)
+        require(not rt.delayed, 'Normal mode schedules no action watcher')
+        rt.objects[rt.DEFAULTS].state['values']['FanqieX.EnhancedDiagnostics.1']=1
     send(cpu,rt,app,'sendAction:to:from:forEvent:',rt.sel('hostAction:'),page,control,0)
     require(len(rt.delayed)==1 and rt.delayed[0][3]==2.0, 'Enhanced mode schedules a two-second observation')
     observer,selector,token,_=rt.delayed[0]
@@ -447,7 +470,7 @@ def enhanced_actions(data, labels, slide):
     require([r['event'] for r in selected]==['uiActionBegin','uiActionReturned','uiActionObservationTimeout'], 'Action and observation timeout are ordered')
     require(selected[-1]['data']['result']=='noObservedTransition' and
             selected[-1]['data']['coverage']=='monitoredHostEventsOnly', 'Timeout states its observable scope')
-    return {'slide':hex(slide),'normal_mode_passive':True,'enhanced_timeout':True}
+    return {'slide':hex(slide),'enhanced_timeout':True}
 
 
 def exceptions_and_navigation(data,labels,slide):
@@ -502,7 +525,8 @@ def main():
         cases.append({'ordered_requests':ordered_requests(data,labels,slide)})
         cases.append({'enhanced_actions':enhanced_actions(data,labels,slide)})
         cases.append({'exceptions_navigation':exceptions_and_navigation(data,labels,slide)})
-        cases.append({'settings':settings_mode(data,labels,slide)})
+        if release_version(data) != '1.78R13':
+            cases.append({'settings':settings_mode(data,labels,slide)})
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'cases': cases, 'device_tested': False, 'native_transport_executed': False,
               'scope': 'Actual compiled ARM64 diagnostics with explicit host and Foundation boundaries'}

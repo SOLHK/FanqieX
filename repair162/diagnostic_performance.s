@@ -25,6 +25,10 @@ LDobserve_semantic:
     stp x27, x28, [sp, #80]
     stp d8, d9, [sp, #96]
     mov x19, x0
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LDPobserve_done
+    .endif
     cbz x19, LDPobserve_done
     adr x0, LSthread_class
     adr x1, LSmain_thread

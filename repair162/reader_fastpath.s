@@ -1028,6 +1028,10 @@ LRback_log: // root, UIImage, reason, UIImageView, shifts d0/d1
     mov x24, x3
     fmov d8, d0
     fmov d9, d1
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LRback_log_done
+    .endif
     AGET x19, LRlog_image_key
     cmp x0, x20
     b.ne LRback_log_write
@@ -1296,8 +1300,14 @@ LRreader_panel: // self; original host layout has already returned exactly once
     cbnz x0, LRpanel_done
     ASET x19, LRbusy_key, x19, 0
     bl LRinstall_lifecycle
+    .if FQ_VERSION >= 0x14e0d
+    fmov d8, #-1.0
+    bl LDiagnosticsEnabled
+    cbz w0, LRpanel_sample_done
+    .endif
     bl LDsemantic_time
     fmov d8, d0
+LRpanel_sample_done:
     mov x0, x19
     bl LGscope
     cmp w0, #1
@@ -1632,6 +1642,10 @@ LRlayout_observe: // owner, remaining visits, start seconds in d0
     mov x19, x0
     mov w20, w1
     fmov d8, d0
+    .if FQ_VERSION >= 0x14e0d
+    fcmp d8, #0.0
+    b.lt LRobserve_done
+    .endif
     bl LDsemantic_time
     fmov d9, d0
     fsub d8, d9, d8

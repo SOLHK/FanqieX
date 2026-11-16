@@ -41,7 +41,7 @@ def run(data,labels):
  surface=call(c,labels,'LFQH_FQHSurface',floating)['result'];require(surface,'Listen gets a real native effect surface')
  require(r.objects[label].state['textColor']==r.colors['labelColor'],'Semantic foreground remains readable in light/dark mode')
  effect=r.objects[surface].state['effect']
- neutral=release_version(data) in ('1.78R8','1.78R9','1.78R10','1.78R11', '1.78R12')
+ neutral=release_version(data) in ('1.78R8','1.78R9','1.78R10','1.78R11', '1.78R12', '1.78R13')
  require(r.objects[effect].state['style']==0 and bool(r.objects[effect].state.get('tintColor'))!=neutral,
          'Regular material preserves the release palette: R8+ removes the extra Listen tint')
  writes=r.frames.count(surface)

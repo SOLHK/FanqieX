@@ -5,6 +5,9 @@ LStartupPopupInstall:
     mov x29, sp
     str x0, [sp, #16]
     str x19, [sp, #32]
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDInitDiagnosticsPolicy
+    .endif
     adr x0, LStartupLoadEntry
     bl LFQD_FQDLoadStage
     bl LFQD_FQDInstall
@@ -67,6 +70,10 @@ LStartupPopupSuppress:
     stp x29, x30, [sp, #-32]!
     mov x29, sp
     stp x19, x20, [sp, #16]
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LStartupPopupDone
+    .endif
     bl Lnewdict
     mov x19, x0
     cbz x19, LStartupPopupDone

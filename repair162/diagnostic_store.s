@@ -137,6 +137,10 @@ LDinitialize:
     .endif
     ASET x19, LDsingleton_key, x20, 1
     GET x20, LDrelease
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LDinitialize_done
+    .endif
     adr x0, LDtimer_sel
     bl Lpatch + (0xa5a4 - PATCH_BASE)
     mov x2, x0
@@ -157,6 +161,10 @@ LDstart_timer:
     stp x19, x20, [sp, #16]
     stp x21, x22, [sp, #32]
     mov x19, x0
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LDtimer_done
+    .endif
     AGET x19, LDtimer_key
     cbnz x0, LDtimer_done
     adr x0, LDtimer_class
@@ -194,6 +202,10 @@ LDdiag_maintenance:
     stp x29, x30, [sp, #-32]!
     mov x29, sp
     stp x19, x20, [sp, #16]
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LDmaintenance_done
+    .endif
     LDNEW LDmutable_dict
     mov x19, x0
     adr x0, LDtrue_string
@@ -201,6 +213,7 @@ LDdiag_maintenance:
     LDSET x19, LDmaintenance_field, x0
     mov x0, x19
     bl LDdiag_enqueue
+LDmaintenance_done:
     ldp x19, x20, [sp, #16]
     ldp x29, x30, [sp], #32
     ret
@@ -220,6 +233,13 @@ LDdiag_enqueue:
     adr x1, LDdict_class
     bl Lpatch + (0x7394 - PATCH_BASE)
     cbz w0, LDenqueue_done
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbnz w0, LDenqueue_available
+    LDGET x19, LDexport_target
+    cbz x0, LDenqueue_done
+LDenqueue_available:
+    .endif
     bl LDdiag_init
     mov x20, x0
     cbz x20, LDenqueue_done
@@ -228,6 +248,16 @@ LDdiag_enqueue:
     AGET x20, LDlock_key
     mov x21, x0
     GET x21, LDlock
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbnz w0, LDenqueue_locked
+    LDGET x19, LDexport_target
+    cbnz x0, LDenqueue_locked
+    GET x21, LDunlock
+    GET x19, LDrelease
+    b LDenqueue_done
+LDenqueue_locked:
+    .endif
     .if FQ_VERSION >= 0x10604
     mov x0, x20
     mov x1, x19
@@ -749,8 +779,10 @@ LDdrain:
     mov x19, x0
     bl Lpatch + (0xa5bc - PATCH_BASE)
     str x0, [sp, #96]
+    .if FQ_VERSION < 0x14e0d
     mov x0, x19
     bl LDload
+    .endif
 LDdrain_batch:
     AGET x19, LDlock_key
     mov x21, x0
@@ -813,6 +845,23 @@ LDprocess:
     stp x21, x22, [sp, #32]
     mov x19, x0
     mov x20, x1
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbnz w0, LDprocess_capturing
+    LDGET x20, LDexport_target
+    cbz x0, LDprocess_off_done
+    mov x0, x19
+    bl LDload
+    mov x0, x19
+    mov x1, x20
+    bl LDexport
+LDprocess_off_done:
+    mov w0, #0
+    b LDprocess_done
+LDprocess_capturing:
+    mov x0, x19
+    bl LDload
+    .endif
     LDGET x20, LDtimestamp_field
     GET x0, LDdouble_value
     mov x0, x19
@@ -1031,6 +1080,9 @@ LDlock_class: .asciz "NSLock"
 LDqueue_class: .asciz "NSOperationQueue"
 LDoperation_class: .asciz "NSInvocationOperation"
 LDtimer_class: .asciz "NSTimer"
+.if FQ_VERSION >= 0x14e0d
+LDinvalidate: .asciz "invalidate"
+.endif
 LDmutable_array: .asciz "NSMutableArray"
 LDmutable_dict: .asciz "NSMutableDictionary"
 LDdict_class: .asciz "NSDictionary"

@@ -507,6 +507,10 @@ LDrrecord: // geometry, phase; d0 uptime, d1 held seconds (terminal only)
     mov w20, w1
     fmov d8, d0
     fmov d9, d1
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LDrrecord_done
+    .endif
     bl Lnewdict
     mov x21, x0
     cbz x21, LDrrecord_done

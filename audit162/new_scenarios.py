@@ -9,7 +9,7 @@ import math
 import plistlib
 import tempfile
 
-from arm64 import bits, require
+from arm64 import bits, release_version, require
 
 
 def journal(rt):
@@ -41,11 +41,23 @@ def open_settings(cpu,rt,d,bootstrap=True):
         require(rt.string_value(rt.objects[options].state.get('title', 0)) == 'FanqieX',
                 'The complete settings opener presents the product as FanqieX')
     nav = rt.objects[rt.objects[options].state['navigationItem']].state
-    require(nav.get('left') and nav.get('right'),'New export and original close buttons coexist')
-    button = nav['left']
-    require(rt.objects[button].state['target'] == options,'Export button targets owned options controller')
-    require(rt.selector_names[rt.objects[button].state['action']] == 'fqab_156_exportDiagnostics:',
-            'Export button has actual installed action')
+    if release_version(rt.data) == '1.78R13':
+        require(not nav.get('left') and nav.get('right'),
+                'Legacy installer preserves Done and adds no toolbar export')
+        action = rt.sel('fqab_156_exportDiagnostics:')
+        require(rt.get_method(rt.objects[options].cls, action),
+                'Legacy installer still registers the action used by the bottom export button')
+        # This fixture models the bottom UIButton from the newer settings view.
+        # The actual export action and main-thread presenter still execute.
+        button = rt.view('UIButton', 'bottom_export', (20, 24, 130, 44),
+                         rt.objects[options].state['view'])
+        rt.objects[button].state.update(action=action, target=options, enabled=True)
+    else:
+        require(nav.get('left') and nav.get('right'),'New export and original close buttons coexist')
+        button = nav['left']
+        require(rt.objects[button].state['target'] == options,'Export button targets owned options controller')
+        require(rt.selector_names[rt.objects[button].state['action']] == 'fqab_156_exportDiagnostics:',
+                'Export button has actual installed action')
     require(0x4cbc in cpu.executed and d['ui_install'] in cpu.executed,'Original open menu reaches real hook')
     return options,button
 
@@ -180,8 +192,10 @@ def observation(data,d,make):
             'Actual FCVT converts layer float to diagnostic double')
     require(title['layerShadowRadius'] == 2.0 and 'layerShouldRasterize' in title,'Text layer diagnostics present')
     require('text' not in json.dumps(snapshot),'Snapshot does not read label text')
-    before = len(r.events);r.thread='worker';c.run(d['diagnostic_observe'],r.BAR);r.thread='main'
-    require(len(r.events) == before,'Off-main observer exits before view access')
+    before = r.semantic_view_reads
+    r.thread='worker';c.run(d['diagnostic_observe'],r.BAR);r.thread='main'
+    require(r.semantic_view_reads == before and not r.queued_operations,
+            'Off-main observer exits before view access and before queueing')
     # The build now also owns a 0.25s visibility monitor. Exercise the actual
     # diagnostic maintenance timer, not whichever timer happened to allocate first.
     timers = [p for p,o in r.objects.items() if r.class_names[o.cls] == 'NSTimer'
@@ -293,7 +307,12 @@ def io_and_ui(data,d,make):
             'Main callback restores sender and clears busy')
     share=r.objects[target].state['presentedViewController']
     require(r.class_names[r.objects[share].cls]=='UIActivityViewController','Actual UI presenter opens share controller')
-    require(r.objects[r.objects[share].state['popover']].state['anchor']==button,'Popover anchored to export button')
+    anchor = r.objects[r.objects[share].state['popover']].state
+    if release_version(data) == '1.78R13':
+        require(anchor['source_view'] == button and anchor['source_rect'] == (0, 0, 130, 44),
+                'Actual export presenter anchors to bottom button bounds')
+    else:
+        require(anchor['anchor'] == button, 'Popover anchored to toolbar export button')
     require(r.string_value(r.objects[r.objects[share].state['activityItems']].state['items'][0])==str(path),
             'Share item is exactly successful full export URL')
     # Retry persist, then fail export. The UI must show an error and reenable.
@@ -315,6 +334,7 @@ def io_and_ui(data,d,make):
     require(corrupted['storageError'] and any(e['event']=='plugin_start' for e in corrupted['entries']),
             'Corrupt restart history is surfaced while current diagnostics export')
     return {'passed':True,'whole_original_settings_menu_executed':True,'high_argument_ABI':True,
+            'bottom_export_button_modeled': release_version(data) == '1.78R13',
             'journal_atomic_failure_keeps_old_bytes':True,'memory_export_after_storage_failure':True,
             'duplicate_click_guard':True,'worker_to_main_share_and_popover':True,
             'retry_full_persist':True,'failed_export_error_UI':True,'corrupt_restart_reported':True,

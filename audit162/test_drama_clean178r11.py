@@ -17,6 +17,9 @@ CONTROL = 'FQVShortVideoListVCControlComponent'
 STATE = 'playerPlaybackStateDidChanged:'
 CLEAN = 'FanqieX.DramaDefaultClean.1'
 REVEAL = 'FanqieX.DramaRevealOnPause.1'
+PURE = 'FanqieX.DramaPureClean.1'
+MODE = 'enterCleanMode:changeType:'
+ENDED = 'controlViewDidEndDisplay'
 EXIT_ICON = 'cancelCleanScreenView'
 RIGHT_CONTROLS = 'cleanScreenModeRightInteractionView'
 
@@ -25,6 +28,8 @@ class Runtime(Base):
     HOST_PLAY = 0x33272000
     HOST_CLEAN = 0x33272004
     HOST_CLEAN_VIEW = 0x33272008
+    HOST_CLEAN_MODE = 0x3327200c
+    HOST_END_DISPLAY = 0x33272010
 
     def __init__(self, data):
         super().__init__(data)
@@ -39,11 +44,19 @@ class Runtime(Base):
             (VIEW, RIGHT_CONTROLS, self.HOST_CLEAN_VIEW, '@16@0:8'),
             (VIEW, 'listVCConfig', self.HOST_CLEAN_VIEW, '@16@0:8'),
             (VIEW, 'enableShowPlayRateInCleanMode', self.HOST_CLEAN_VIEW, 'B16@0:8'),
+            (VIEW, 'isCleanMode', self.HOST_CLEAN_VIEW, 'B16@0:8'),
+            (VIEW, MODE, self.HOST_CLEAN_MODE, 'B28@0:8B16Q20'),
+            (VIEW, ENDED, self.HOST_END_DISPLAY, 'v16@0:8'),
             (CONTROL, 'enterCleanMode', self.HOST_CLEAN, 'v16@0:8'),
             (CONTROL, 'exitCleanMode', self.HOST_CLEAN, 'v16@0:8'),
         ):
             self._add(self.classes[cls], selector, imp, encoding)
         self.clean_calls = []
+
+    def responds(self, receiver, name):
+        if name == 'anyObject' and self.is_kind(receiver, self.classes['NSHashTable']):
+            return True
+        return super().responds(receiver, name)
 
     def handle(self, cpu, pc):
         obj, sel = cpu.x[:2]
@@ -57,11 +70,21 @@ class Runtime(Base):
             return self.finish(cpu)
         if pc == self.HOST_CLEAN_VIEW:
             return self.finish(cpu, self.objects[obj].state[name])
+        if pc == self.HOST_CLEAN_MODE:
+            self.objects[obj].state['isCleanMode'] = bool(cpu.x[2])
+            return self.finish(cpu, 1)
+        if pc == self.HOST_END_DISPLAY:
+            self.objects[obj].state['endedDisplay'] = True
+            return self.finish(cpu)
         if pc - self.slide == 0xa5d4 and obj in self.objects:
             state = self.objects[obj].state
             if name in ('currentPlayModel', 'videoDataModel', 'listVCContext', 'controlContext',
-                        'stateContext', 'vPlayer', 'isFullScreen', 'isCleanMode') and name in state:
+                        'stateContext', 'vPlayer', 'isFullScreen', 'isCleanMode', 'progressContainer',
+                        'insertAboveProgressView', 'baseInfoView', 'nextResponder', 'rootTabBarController',
+                        'customTabBar', 'selectedViewController', 'viewIfLoaded', 'navBarComponent', 'navBar') and name in state:
                 return self.finish(cpu, state[name])
+            if name == 'containsObject:' and self.is_kind(obj, self.classes['NSHashTable']):
+                return self.finish(cpu, cpu.x[2] in state.get('items', []))
         return super().handle(cpu, pc)
 
 
@@ -70,7 +93,7 @@ def exercise(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    screen = rt.view('UIWindow', 'visible window')
+    screen = rt.view('UIWindow', 'visible window', (0., 0., 440., 956.))
     model = rt.obj('NSObject', 'episode one')
     second = rt.obj('NSObject', 'episode two')
     config = rt.obj(CONFIG, 'main feed config', feedType=4)
@@ -81,7 +104,7 @@ def exercise(data, labels):
     player = rt.obj('NSObject', 'portrait player', isFullScreen=False)
     view = rt.view(VIEW, 'main portrait player view', (0., 0., 440., 900.), screen,
                    window=screen, listVCContext=context, vPlayer=player,
-                   videoDataModel=model, hostPlaybackCallbacks=0)
+                   videoDataModel=model, hostPlaybackCallbacks=0, isCleanMode=False)
     view_state = rt.objects[view].state
 
     def callback(state):
@@ -124,7 +147,7 @@ def exercise(data, labels):
     require(len(rt.clean_calls) == 4 and view_state['hostPlaybackCallbacks'] == 13,
             'Pause switch off leaves the clean state and all original callbacks intact')
     results = {'real_play_pause_callbacks': True, 'defaults_and_manual_exit': True, 'scoped_to_active_portrait_feed': True}
-    if release_version(data) == '1.78R12':
+    if release_version(data) in ('1.78R12', '1.78R13'):
         container = rt.view('UIView', 'native exit circle', (370., 765., 36., 36.), view, hidden=False)
         icon = rt.view('UIImageView', 'native exit gesture target', (6., 6., 24., 24.), container, hidden=False)
         view_state.update({EXIT_ICON: icon, RIGHT_CONTROLS: container, 'listVCConfig': config,
@@ -140,6 +163,37 @@ def exercise(data, labels):
         send(cpu, rt, view, EXIT_ICON)
         require(not rt.objects[icon].state['hidden'], 'An unrelated feed keeps its native exit')
         results['portrait_clean_exit_hidden'] = True
+    if release_version(data) == '1.78R13':
+        rt.objects[config].state['feedType'] = 4
+        view_state.update(userInteractionEnabled=True)
+        rail = rt.view('UIView', 'native seek rail', (0., 835., 440., 26.), view, window=screen)
+        entry = rt.view('UIView', 'native episode link', (0., 790., 440., 36.), view, window=screen)
+        buttons = rt.view('UIView', 'native interaction buttons', (380., 500., 60., 200.), view, window=screen)
+        header = rt.view('UIView', 'native feed header', (0., 60., 440., 54.), screen, window=screen)
+        dock = rt.view('SSTabBar', 'native short-drama dock', (0., 880., 440., 76.), screen, window=screen)
+        mini = rt.view('UIView', 'compact dock button', (376., 10., 54., 54.), dock, window=screen)
+        selected = rt.obj('UIViewController', 'selected short-drama page', viewIfLoaded=screen)
+        tab = rt.obj('SSTabBarController', 'exact short-drama tab owner', customTabBar=dock, selectedViewController=selected)
+        owner = rt.obj('SSVideoSeriesFeedViewController', 'exact feed controller', headerView=header, rootTabBarController=tab)
+        view_state.update(progressContainer=rail, insertAboveProgressView=entry, baseInfoView=buttons, nextResponder=owner)
+        chrome = (rail, entry, buttons, header, dock)
+        require(send(cpu, rt, view, MODE, 1, 1)['result'] == 1 and
+                all(not rt.objects[child].state['hidden'] for child in chrome),
+                'The independent pure-clean switch defaults off and the native callback result is preserved')
+        switch = rt.view('UISwitch', 'pure-clean switch', tag=33, isOn=True)
+        call(cpu, labels, 'LFQH_FQHBottomOptionChanged178', 0, rt.sel('fqx178_bottomOptionChanged:'), switch)
+        require(prefs.get(PURE) is True and all(rt.objects[child].state['hidden'] for child in chrome) and
+                rt.objects[mini].state['superview'] == dock and view_state['userInteractionEnabled'] and not view_state['hidden'],
+                'Enabling pure clean during native clean hides the exact chrome while preserving its hierarchy and canvas input')
+        send(cpu, rt, view, MODE, 0, 1)
+        require(all(not rt.objects[child].state['hidden'] for child in chrome), 'The native exit restores owned controls')
+        rt.objects[buttons].state['hidden'] = True
+        send(cpu, rt, view, MODE, 1, 1)
+        send(cpu, rt, view, ENDED)
+        require(view_state['endedDisplay'] and rt.objects[buttons].state['hidden'] and
+                all(not rt.objects[child].state['hidden'] for child in chrome if child != buttons),
+                'Recycling keeps the native hidden baseline and clears the plugin ownership')
+        results['pure_clean_visual_ownership_and_native_exit'] = True
     return results
 
 

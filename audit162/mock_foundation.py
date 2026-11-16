@@ -22,7 +22,7 @@ class Runtime(ViewRuntime):
                              'startupPopupInstalled', 'legacyHooksInstalled',
                              'firstPageDidAppear', 'loadFinished', 'loggerReady'))
 
-    def __init__(self,data,slide=0,disk_root=None,**options):
+    def __init__(self,data,slide=0,disk_root=None,diagnostics_enabled=True,**options):
         self.dynamic_classes = set(); self.initialized = set()
         self.thread = 'main'; self.now = 1700000000.0
         self.thread_objects = {}
@@ -67,6 +67,9 @@ class Runtime(ViewRuntime):
         self.PROCESS = self.obj('NSProcessInfo','process')
         self.DEFAULTS = self.obj('NSUserDefaults','defaults',values={'FanqieAdBlock.Options.1':0x3ffff,
                                                                    'FanqieAdBlock.GlassDisabled.1':1})
+        # Existing logger audits exercise an opted-in installation. The master-switch audit uses an empty preference.
+        if diagnostics_enabled:
+            self.objects[self.DEFAULTS].state['values']['FanqieX.DiagnosticsEnabled'] = True
         self.FILEMANAGER = self.obj('NSFileManager','file_manager')
         self.MAIN_BUNDLE = self.obj('NSBundle', 'main_bundle', info={})
 
@@ -591,6 +594,14 @@ class Runtime(ViewRuntime):
                 result = st.setdefault('popover',self.obj('UIPopoverPresentationController','popover'))
             elif name == 'setBarButtonItem:':
                 st['anchor'] = a[2]
+            elif cls == 'UIPopoverPresentationController' and name == 'setSourceView:':
+                st['source_view'] = a[2]
+            elif cls == 'UIPopoverPresentationController' and name == 'setSourceRect:':
+                st['source_rect'] = tuple(cpu.fp(index) for index in range(4))
+            elif cls == 'NSTimer' and name == 'invalidate':
+                require(self.thread == 'main', 'Stop the diagnostic timer on main')
+                st['valid'] = False
+                self.event('invalidated_timer', receiver)
             elif name == 'presentViewController:animated:completion:':
                 require(self.thread == 'main' and a[3] == 1 and a[4] == 0,'UIKit presentation on main with preserved x4 nil completion')
                 st['presentedViewController'] = a[2]; self.event('present',receiver,controller=a[2])

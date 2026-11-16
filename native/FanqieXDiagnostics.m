@@ -25,6 +25,10 @@ extern void objc_setAssociatedObject(Obj, const void *, Obj, U);
 extern void FQDRecord(const char *, Obj);
 extern Obj FQDVersion(void);
 extern Method FQDResolveOwned(Obj, Sel, int, const char *);
+extern B FQDLegacyDiagnostics(void);
+extern void FQDStartDiagnosticStore(void);
+extern void FQDStopDiagnosticStore(void);
+void FQDInstall(void);
 
 #define O0(o, s) ((Obj (*)(Obj, Sel))objc_msgSend)((o), sel_registerName(s))
 #define O1(o, s, a) ((Obj (*)(Obj, Sel, Obj))objc_msgSend)((o), sel_registerName(s), (a))
@@ -51,6 +55,8 @@ static void StateKey(void) {
 static void LoadStateKey(void) {
 }
 static void EnhancedKey(void) {
+}
+static void DiagnosticsEnabledKey(void) {
 }
 static void ModelDetailKey(void) {
 }
@@ -129,7 +135,27 @@ static Obj Elapsed(Obj start) {
     return ((Obj (*)(Obj, Sel, double))objc_msgSend)(
         objc_getClass("NSNumber"), sel_registerName("numberWithDouble:"), now - before);
 }
+static B ReadDiagnosticsPolicy(Obj owner) {
+    Obj defaultsClass = objc_getClass("NSUserDefaults");
+    Obj defaults = O0(defaultsClass, "standardUserDefaults");
+    B enabled = B1(defaults, "boolForKey:", Text("FanqieX.DiagnosticsEnabled"));
+    objc_setAssociatedObject(owner, DiagnosticsEnabledKey, enabled ? owner : defaultsClass, 0);
+    return enabled;
+}
+B FQDDiagnosticsEnabled(void) {
+    Obj owner = Root();
+    Obj state = objc_getAssociatedObject(owner, DiagnosticsEnabledKey);
+    return state ? state == owner : ReadDiagnosticsPolicy(owner);
+}
+void FQDInitDiagnosticsPolicy(void) {
+    FQDDiagnosticsEnabled();
+}
+static B CaptureEnabled(void) {
+    return FQDLegacyDiagnostics() || FQDDiagnosticsEnabled();
+}
 static B Enhanced(void) {
+    if (!FQDLegacyDiagnostics())
+        return FQDDiagnosticsEnabled();
     Obj defaults = O0(objc_getClass("NSUserDefaults"), "standardUserDefaults");
     Obj key = objc_getAssociatedObject(defaults, EnhancedKey);
     if (!key) {
@@ -181,7 +207,7 @@ static Obj LoadTime(void) {
 static Obj LoadMetadata(Obj value, I limit) {
     return Kind(value, "NSString") && Q0(value, "length") <= limit ? value : (Obj)0;
 }
-static void LoadPrevious(Obj report, Obj url) {
+static void LoadPrevious(Obj report, Obj url, B sameVersion) {
     Obj manager = O0(objc_getClass("NSFileManager"), "defaultManager");
     Obj path = O0(url, "path");
     if (!B1(manager, "fileExistsAtPath:", path)) {
@@ -207,7 +233,7 @@ static void LoadPrevious(Obj report, Obj url) {
         data, 0, &error);
     if (!Kind(previous, "NSDictionary") ||
         !Kind(At(previous, "version"), "NSString") ||
-        !B1(At(previous, "version"), "isEqualToString:", FQDVersion()) ||
+        (sameVersion && !B1(At(previous, "version"), "isEqualToString:", FQDVersion())) ||
         !LoadStageKnown(At(previous, "stage")) ||
         !Kind(At(previous, "complete"), "NSNumber") ||
         !Kind(At(previous, "time"), "NSNumber")) {
@@ -220,9 +246,16 @@ static void LoadPrevious(Obj report, Obj url) {
     Put(summary, "stage", At(previous, "stage"));
     Put(summary, "complete", Num(B0(At(previous, "complete"), "boolValue")));
     Put(summary, "time", At(previous, "time"));
-    Put(summary, "version", FQDVersion());
+    if (B1(At(previous, "version"), "isEqualToString:", FQDVersion()))
+        Put(summary, "version", FQDVersion());
     Put(report, "previous", summary);
     Put(report, "previousRead", Text("loaded"));
+}
+static Obj LoadDirectory(void) {
+    Obj manager = O0(objc_getClass("NSFileManager"), "defaultManager");
+    Obj locations = ((Obj (*)(Obj, Sel, U, U))objc_msgSend)(
+        manager, sel_registerName("URLsForDirectory:inDomains:"), 9, 1);
+    return O1(O0(locations, "firstObject"), "URLByAppendingPathComponent:", Text("FanqieX"));
 }
 static Obj LoadState(void) {
     Obj owner = objc_getClass("NSProcessInfo");
@@ -247,16 +280,12 @@ static Obj LoadState(void) {
                                              Text("CFBundleVersion")), 64));
     Put(report, "stages", O0(objc_getClass("NSMutableArray"), "array"));
     Put(state, "report", report);
-    Obj manager = O0(objc_getClass("NSFileManager"), "defaultManager");
-    Obj locations = ((Obj (*)(Obj, Sel, U, U))objc_msgSend)(
-        manager, sel_registerName("URLsForDirectory:inDomains:"), 9, 1);
-    Obj documents = O0(locations, "firstObject");
-    if (documents) {
-        Obj directory = O1(documents, "URLByAppendingPathComponent:", Text("FanqieX"));
+    Obj directory = LoadDirectory();
+    if (directory) {
         Obj url = O1(directory, "URLByAppendingPathComponent:", Text("load-diagnostics.json"));
         Put(state, "directory", directory);
         Put(state, "url", url);
-        LoadPrevious(report, url);
+        LoadPrevious(report, url, 1);
     } else {
         Put(report, "previousRead", Text("documentsUnavailable"));
         Put(report, "writeFailed", Num(1));
@@ -271,6 +300,7 @@ static void LoadFailure(Obj report, const char *reason, Obj error) {
     Put(report, "writeErrorCode", Num(error ? Q0(error, "code") : 0));
 }
 static void LoadPersist(Obj state) {
+    if (!CaptureEnabled()) return;
     Obj report = At(state, "report");
     Obj url = At(state, "url");
     if (!url)
@@ -294,12 +324,20 @@ static void LoadPersist(Obj state) {
         LoadFailure(report, data ? "oversized" : "serializationFailed", error);
         return;
     }
+    if (!CaptureEnabled()) return;
     B written = ((B (*)(Obj, Sel, Obj, U, Obj *))objc_msgSend)(
         data, sel_registerName("writeToURL:options:error:"), url, 1, &error);
     if (!written)
         LoadFailure(report, "writeFailed", error);
 }
 Obj FQDLoadSummary(void) {
+    if (!CaptureEnabled()) {
+        Obj summary = Dict();
+        Obj directory = LoadDirectory();
+        if (directory)
+            LoadPrevious(summary, O1(directory, "URLByAppendingPathComponent:", Text("load-diagnostics.json")), 0);
+        return summary;
+    }
     Obj state = LoadState();
     Obj lock = At(state, "lock");
     V0(lock, "lock");
@@ -312,12 +350,17 @@ Obj FQDLoadSummary(void) {
     return O0(summary, "autorelease");
 }
 void FQDLoadStage(const char *stage) {
+    if (!CaptureEnabled()) return;
     Obj name = Text(stage);
     if (!LoadStageKnown(name))
         return;
     Obj state = LoadState();
     Obj lock = At(state, "lock");
     V0(lock, "lock");
+    if (!CaptureEnabled()) {
+        V0(lock, "unlock");
+        return;
+    }
     Obj report = At(state, "report");
     Obj stages = At(report, "stages");
     if (B0(At(report, "complete"), "boolValue") ||
@@ -354,6 +397,27 @@ static Obj State(void) {
 static Obj Lock(void) {
     return At(State(), "lock");
 }
+void FQDSetDiagnosticsEnabled(B enabled) {
+    Obj defaults = O0(objc_getClass("NSUserDefaults"), "standardUserDefaults");
+    ((void (*)(Obj, Sel, B, Obj))objc_msgSend)(
+        defaults, sel_registerName("setBool:forKey:"), enabled, Text("FanqieX.DiagnosticsEnabled"));
+    Obj owner = Root();
+    objc_setAssociatedObject(owner, DiagnosticsEnabledKey, enabled ? owner : objc_getClass("NSUserDefaults"), 0);
+    if (enabled) {
+        FQDInstall();
+        FQDStartDiagnosticStore();
+    } else {
+        FQDStopDiagnosticStore();
+        Obj state = State();
+        Obj observer = At(state, "observer");
+        if (observer)
+            V1(objc_getClass("NSObject"), "cancelPreviousPerformRequestsWithTarget:", observer);
+        Obj lock = At(state, "lock");
+        V0(lock, "lock");
+        Put(state, "watchdogs", Num(0));
+        V0(lock, "unlock");
+    }
+}
 static Obj Pseudonym(Obj value) {
     if (!Kind(value, "NSString") || Q0(value, "length") > 256)
         return 0;
@@ -385,6 +449,7 @@ static I NextActivity(void) {
     return n;
 }
 static void Emit(const char *event, const char *cls, Obj o, Obj correlation, Obj d) {
+    if (!CaptureEnabled()) return;
     Obj snapshot = O0(d, "mutableCopy");
     Put(snapshot, "class", Text(cls));
     Put(snapshot, "objectId", Id(o));
@@ -450,10 +515,12 @@ static void BubbleUpdate(Obj self, Sel cmd) {
     }
 }
 static void BubbleTap(Obj self, Sel cmd) {
-    Obj correlation = UUID();
-    objc_setAssociatedObject(Root(), ContextKey, correlation, 0x301);
-    Obj d = Values(Get(self, "model"));
-    Emit("commentBubbleTap", "FQCReaderParagraphEndView", self, correlation, d);
+    if (CaptureEnabled()) {
+        Obj correlation = UUID();
+        objc_setAssociatedObject(Root(), ContextKey, correlation, 0x301);
+        Obj d = Values(Get(self, "model"));
+        Emit("commentBubbleTap", "FQCReaderParagraphEndView", self, correlation, d);
+    }
     Imp original = Original(self, "fqx164_bubbleTap");
     if (original)
         ((void (*)(Obj, Sel))original)(self, cmd);
@@ -540,12 +607,17 @@ static void BubbleData(Obj self, Sel cmd, Obj value) {
     }
 }
 static void Open(Obj self, Sel cmd, Obj params) {
-    Obj correlation = Context();
-    objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
-    Emit("commentPanelOpenBegin", "SSReaderParagraphCommentAdapter", self, correlation, Dict());
+    B capture = CaptureEnabled();
+    Obj correlation = 0;
+    if (capture) {
+        correlation = Context();
+        objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
+        Emit("commentPanelOpenBegin", "SSReaderParagraphCommentAdapter", self, correlation, Dict());
+    }
     Imp original = Original(self, "fqx164_open");
     if (original)
         ((void (*)(Obj, Sel, Obj))original)(self, cmd, params);
+    if (!capture || !CaptureEnabled()) return;
     Obj token = Get(self, "paragraphCommentPanelSessionToken");
     objc_setAssociatedObject(token, PanelKey, correlation, 0x301);
     Obj d = Dict();
@@ -553,26 +625,35 @@ static void Open(Obj self, Sel cmd, Obj params) {
     Emit("commentPanelOpenReturned", "SSReaderParagraphCommentAdapter", self, correlation, d);
 }
 static void Dismiss(Obj self, Sel cmd, Obj token) {
-    Obj correlation = objc_getAssociatedObject(token, PanelKey);
-    if (!correlation)
-        correlation = objc_getAssociatedObject(self, ContextKey);
-    Emit("commentPanelDismissBegin", "SSReaderParagraphCommentAdapter", self, correlation, Dict());
+    B capture = CaptureEnabled();
+    Obj correlation = 0;
+    if (capture) {
+        correlation = objc_getAssociatedObject(token, PanelKey);
+        if (!correlation)
+            correlation = objc_getAssociatedObject(self, ContextKey);
+        Emit("commentPanelDismissBegin", "SSReaderParagraphCommentAdapter", self, correlation, Dict());
+    }
     Imp original = Original(self, "fqx164_dismiss");
     if (original)
         ((void (*)(Obj, Sel, Obj))original)(self, cmd, token);
-    Emit("commentPanelDismissReturned", "SSReaderParagraphCommentAdapter", self, correlation,
-         Dict());
+    if (capture && CaptureEnabled())
+        Emit("commentPanelDismissReturned", "SSReaderParagraphCommentAdapter", self, correlation, Dict());
 }
 static void Panel(Obj self, Sel cmd, B animated, const char *alias, const char *event) {
-    Obj correlation = objc_getAssociatedObject(self, ContextKey);
-    if (!correlation) {
-        correlation = Context();
-        objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
+    B capture = CaptureEnabled();
+    Obj correlation = 0;
+    if (capture) {
+        correlation = objc_getAssociatedObject(self, ContextKey);
+        if (!correlation) {
+            correlation = Context();
+            objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
+        }
     }
     Imp original = Original(self, alias);
     if (original)
         ((void (*)(Obj, Sel, B))original)(self, cmd, animated);
-    Emit(event, "FQCParagraphCommentListViewController", self, correlation, Dict());
+    if (capture && CaptureEnabled())
+        Emit(event, "FQCParagraphCommentListViewController", self, correlation, Dict());
 }
 static void Appeared(Obj o, Sel s, B b) {
     Panel(o, s, b, "fqx164_appeared", "commentPanelDidAppear");
@@ -584,40 +665,52 @@ static void Disappeared(Obj o, Sel s, B b) {
     Panel(o, s, b, "fqx164_disappeared", "commentPanelDidDisappear");
 }
 static void Commit(Obj self, Sel cmd, Obj chapter, Obj book, I paragraph, I count) {
-    Obj d = Dict();
-    Put(d, "chapterId", Pseudonym(chapter));
-    Put(d, "bookId", Pseudonym(book));
-    Put(d, "paragraphIndex", Num(paragraph));
-    Put(d, "count", Num(count));
-    Put(d, "source", Text("commentListCompletion"));
-    Emit("commentCountCommitBegin", "SSReaderCommunityDataManager", self, Context(), d);
+    Obj d = CaptureEnabled() ? Dict() : 0;
+    if (d) {
+        Put(d, "chapterId", Pseudonym(chapter));
+        Put(d, "bookId", Pseudonym(book));
+        Put(d, "paragraphIndex", Num(paragraph));
+        Put(d, "count", Num(count));
+        Put(d, "source", Text("commentListCompletion"));
+        Emit("commentCountCommitBegin", "SSReaderCommunityDataManager", self, Context(), d);
+    }
     Imp original = Original(self, "fqx164_commit");
     if (original)
         ((void (*)(Obj, Sel, Obj, Obj, I, I))original)(self, cmd, chapter, book, paragraph, count);
-    Emit("commentCountCommitReturned", "SSReaderCommunityDataManager", self, Context(), d);
+    if (d && CaptureEnabled())
+        Emit("commentCountCommitReturned", "SSReaderCommunityDataManager", self, Context(), d);
 }
 static void Cache(Obj self, Sel cmd, Obj chapter, Obj data) {
-    Obj d = Dict();
-    Put(d, "chapterId", Pseudonym(chapter));
-    Put(d, "dataPresent", Num(data != 0));
-    Put(d, "stage", Text("cacheWriteCall"));
+    Obj d = CaptureEnabled() ? Dict() : 0;
+    if (d) {
+        Put(d, "chapterId", Pseudonym(chapter));
+        Put(d, "dataPresent", Num(data != 0));
+        Put(d, "stage", Text("cacheWriteCall"));
+    }
     Imp original = Original(self, "fqx164_cache");
     if (original)
         ((void (*)(Obj, Sel, Obj, Obj))original)(self, cmd, chapter, data);
-    Put(d, "result", Text("returned"));
-    Emit("commentCacheWrite", "FQCCommunityReaderDataDispatcher", self, Context(), d);
+    if (d && CaptureEnabled()) {
+        Put(d, "result", Text("returned"));
+        Emit("commentCacheWrite", "FQCCommunityReaderDataDispatcher", self, Context(), d);
+    }
 }
 
 static void PageEvent(Obj self, Sel cmd, B animated, const char *alias, const char *cls,
                       const char *event) {
-    Obj correlation = objc_getAssociatedObject(self, ContextKey);
-    if (!correlation) {
-        correlation = Context();
-        objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
+    B capture = CaptureEnabled();
+    Obj correlation = 0;
+    if (capture) {
+        correlation = objc_getAssociatedObject(self, ContextKey);
+        if (!correlation) {
+            correlation = Context();
+            objc_setAssociatedObject(self, ContextKey, correlation, 0x301);
+        }
     }
     Imp original = Original(self, alias);
     if (original)
         ((void (*)(Obj, Sel, B))original)(self, cmd, animated);
+    if (!capture || !CaptureEnabled()) return;
     if (B1(Text(event), "isEqualToString:", Text("pageDidAppear")))
         FQDLoadStage("firstPageDidAppear");
     Emit(event, cls, self, correlation, Dict());
@@ -627,7 +720,8 @@ static void PageEvent(Obj self, Sel cmd, B animated, const char *alias, const ch
         Imp p = Original(o, "fqx164_" #name "Load");                                               \
         if (p)                                                                                     \
             ((void (*)(Obj, Sel))p)(o, s);                                                         \
-        Emit("pageDidLoad", cls, o, Context(), Dict());                                            \
+        if (CaptureEnabled())                                                                      \
+            Emit("pageDidLoad", cls, o, Context(), Dict());                                        \
     }                                                                                              \
     static void name##Appear(Obj o, Sel s, B b) {                                                  \
         PageEvent(o, s, b, "fqx164_" #name "Appear", cls, "pageDidAppear");                        \
@@ -658,6 +752,7 @@ static Obj RequestInit(Obj self, Sel cmd, Obj request, Obj completion) {
     Imp original = Original(self, "fqx164_requestInit");
     Obj result =
         original ? ((Obj (*)(Obj, Sel, Obj, Obj))original)(self, cmd, request, completion) : self;
+    if (!CaptureEnabled()) return result;
     const char *path = RequestPath(request);
     if (result && path) {
         Obj d = Dict();
@@ -679,7 +774,7 @@ static Obj RequestInit(Obj self, Sel cmd, Obj request, Obj completion) {
     return result;
 }
 static void RequestSend(Obj self, Sel cmd) {
-    Obj context = objc_getAssociatedObject(self, RequestKey);
+    Obj context = CaptureEnabled() ? objc_getAssociatedObject(self, RequestKey) : 0;
     if (context) {
         Obj lock = Lock();
         V0(lock, "lock");
@@ -698,7 +793,7 @@ static void RequestSend(Obj self, Sel cmd) {
         ((void (*)(Obj, Sel))original)(self, cmd);
 }
 static void RequestCancel(Obj self, Sel cmd) {
-    Obj context = objc_getAssociatedObject(self, RequestKey);
+    Obj context = CaptureEnabled() ? objc_getAssociatedObject(self, RequestKey) : 0;
     if (context)
         Emit("commentRequestCancel", "BDRpcAsyncOperation", self, At(context, "correlationId"),
              context);
@@ -707,8 +802,13 @@ static void RequestCancel(Obj self, Sel cmd) {
         ((void (*)(Obj, Sel))original)(self, cmd);
 }
 static void Response(Obj self, Sel cmd, Obj result, Obj headers) {
-    Obj context = objc_getAssociatedObject(self, RequestKey);
     Imp original = Original(self, "fqx164_response");
+    if (!CaptureEnabled()) {
+        if (original)
+            ((void (*)(Obj, Sel, Obj, Obj))original)(self, cmd, result, headers);
+        return;
+    }
+    Obj context = objc_getAssociatedObject(self, RequestKey);
     Obj thread = O0(objc_getClass("NSThread"), "currentThread");
     Obj previous = objc_getAssociatedObject(thread, ContextKey);
     O0(previous, "retain");
@@ -752,7 +852,7 @@ static void Response(Obj self, Sel cmd, Obj result, Obj headers) {
              context);
 }
 static void RequestComplete(Obj self, Sel cmd) {
-    Obj context = objc_getAssociatedObject(self, RequestKey);
+    Obj context = CaptureEnabled() ? objc_getAssociatedObject(self, RequestKey) : 0;
     if (context) {
         Obj d = O0(context, "mutableCopy");
         Obj error = Get(self, "error");
@@ -771,6 +871,7 @@ static Obj TransportResponse(Obj self, Sel cmd, Obj request, Obj response) {
     Imp original = Original(self, "fqx164_transport");
     Obj result =
         original ? ((Obj (*)(Obj, Sel, Obj, Obj))original)(self, cmd, request, response) : self;
+    if (!CaptureEnabled()) return result;
     Obj context = objc_getAssociatedObject(request, RequestKey);
     if (context) {
         Obj d = O0(context, "mutableCopy");
@@ -789,6 +890,7 @@ static Obj TransportResponse(Obj self, Sel cmd, Obj request, Obj response) {
 static void ActionTimeout(Obj self, Sel cmd, Obj token) {
     (void)self;
     (void)cmd;
+    if (!CaptureEnabled()) return;
     Obj lock = Lock();
     V0(lock, "lock");
     I ordinal = Q0(At(State(), "activity"), "longLongValue");
@@ -805,12 +907,12 @@ static void ActionTimeout(Obj self, Sel cmd, Obj token) {
     }
 }
 static B SendAction(Obj self, Sel cmd, Sel action, Obj target, Obj sender, Obj event) {
-    Obj context = Context();
     B capture = Enhanced() && Kind(sender, "UIControl");
     Obj page = sender;
     for (int i = 0; capture && page && i < 12 && !Kind(page, "UIViewController"); i++)
         page = Get(page, "nextResponder");
     capture = capture && Kind(page, "UIViewController");
+    Obj context = capture ? Context() : 0;
     Obj d = capture ? Dict() : (Obj)0;
     if (capture) {
         Put(d, "pageId", Id(page));
@@ -822,7 +924,7 @@ static B SendAction(Obj self, Sel cmd, Sel action, Obj target, Obj sender, Obj e
     B result = original ? ((B (*)(Obj, Sel, Sel, Obj, Obj, Obj))original)(self, cmd, action, target,
                                                                           sender, event)
                         : 0;
-    if (capture) {
+    if (capture && CaptureEnabled()) {
         Obj after = O0(d, "mutableCopy");
         Put(after, "handled", Num(result));
         Emit("uiActionReturned", "UIApplication", sender, context, after);
@@ -891,7 +993,7 @@ static Obj Pop(Obj self, Sel cmd, B animated) {
 }
 static void Exception(Obj self, Sel cmd) {
     Obj thread = O0(objc_getClass("NSThread"), "currentThread");
-    if (!objc_getAssociatedObject(thread, ExceptionKey)) {
+    if (CaptureEnabled() && !objc_getAssociatedObject(thread, ExceptionKey)) {
         objc_setAssociatedObject(thread, ExceptionKey, self, 0);
         Obj d = Dict();
         Put(d, "exceptionPresent", Num(1));
@@ -926,6 +1028,19 @@ void FQDSettings(Obj controller) {
         V0(item, "release");
     }
 }
+void FQDAnchorExport(Obj popover, Obj sender, Obj controller) {
+    if (!popover) return;
+    if (Kind(sender, "UIBarButtonItem")) {
+        V1(popover, "setBarButtonItem:", sender);
+        return;
+    }
+    Obj anchor = Kind(sender, "UIView") && Get(sender, "window") ? sender : Get(controller, "view");
+    if (!anchor) return;
+    typedef struct { double x, y, width, height; } Rect;
+    Rect bounds = ((Rect (*)(Obj, Sel))objc_msgSend)(anchor, sel_registerName("bounds"));
+    V1(popover, "setSourceView:", anchor);
+    ((void (*)(Obj, Sel, Rect))objc_msgSend)(popover, sel_registerName("setSourceRect:"), bounds);
+}
 static void Install(const char *cls, const char *selector, const char *encoding, const char *alias,
                     Imp replacement) {
     Obj target = objc_getClass(cls);
@@ -939,6 +1054,7 @@ static void Install(const char *cls, const char *selector, const char *encoding,
     method_setImplementation(method, replacement);
 }
 void FQDInstall(void) {
+    if (!CaptureEnabled()) return;
     FQDLoadStage("diagnosticsInstallBegin");
     if (!State()) {
         Obj state = Dict();
@@ -1033,6 +1149,7 @@ void FQDInstall(void) {
 
 void FQDAdDecision(Obj object, Sel selector, I rule, const char *cls, const char *method, I kind) {
     (void)selector;
+    if (!CaptureEnabled()) return;
     Obj start = Clock();
     Obj lock = Lock();
     V0(lock, "lock");

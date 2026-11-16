@@ -321,6 +321,59 @@ LDLimitsBytesDone:
     ldp x29, x30, [sp], #48
     ret
 
+LDiagnosticsEnabled:
+    .if FQ_VERSION >= 0x14e0d
+    b LFQD_FQDDiagnosticsEnabled
+    .else
+    mov w0, #1
+    ret
+    .endif
+LSetDiagnosticsEnabled:
+    .if FQ_VERSION >= 0x14e0d
+    b LFQD_FQDSetDiagnosticsEnabled
+    .else
+    ret
+    .endif
+LDdiag_legacy_policy:
+    .if FQ_VERSION >= 0x14e0d
+    mov w0, #0
+    .else
+    mov w0, #1
+    .endif
+    ret
+
+LDdiag_enable:
+    .if FQ_VERSION >= 0x14e0d
+    stp x29, x30, [sp, #-16]!
+    mov x29, sp
+    bl LDdiag_init
+    cbz x0, LDdiag_enable_done
+    bl LDstart_timer
+LDdiag_enable_done:
+    ldp x29, x30, [sp], #16
+    .endif
+    ret
+
+LDdiag_disable:
+    .if FQ_VERSION >= 0x14e0d
+    stp x29, x30, [sp, #-32]!
+    mov x29, sp
+    str x19, [sp, #16]
+    adr x0, LDclass_name
+    bl Lpatch + (0xa5b0 - PATCH_BASE)
+    cbz x0, LDdiag_disable_done
+    AGET x0, LDsingleton_key
+    mov x19, x0
+    cbz x19, LDdiag_disable_done
+    AGET x19, LDtimer_key
+    GET x0, LDinvalidate
+    ASET x19, LDtimer_key, xzr, 1
+LDdiag_disable_done:
+    ldr x19, [sp, #16]
+    ldp x29, x30, [sp], #32
+    .endif
+    ret
+
 // Keep the newest suffix that fits the byte cap. A nested pool bounds
 // temporary serialization data across retries. The retained array is owned
 // by the singleton, independent of that temporary pool.
@@ -331,6 +384,10 @@ LDLimitsPersist:
     stp x21, x22, [sp, #32]
     stp x23, x24, [sp, #48]
     mov x19, x0
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LDLimitsPersistDone
+    .endif
     AGET x19, LDLimitsLastCommandKey
     cbz x0, LDLimitsPersistRetry
     GET x0, LDdouble_value
@@ -363,6 +420,10 @@ LDLimitsPersistRetry:
     GET x0, LDwrite_plist
     cbz x0, LDLimitsPersistPlistError
     mov x20, x0
+    .if FQ_VERSION >= 0x14e0d
+    bl LDiagnosticsEnabled
+    cbz w0, LDLimitsPersistNone
+    .endif
     mov x0, x19
     bl LDpath
     mov x1, x0
@@ -394,6 +455,7 @@ LDLimitsPersistReturn:
     mov x0, x24
     bl Lpatch + (0xa574 - PATCH_BASE)
     mov w0, w23
+LDLimitsPersistDone:
     ldp x23, x24, [sp, #48]
     ldp x21, x22, [sp, #32]
     ldp x19, x20, [sp, #16]

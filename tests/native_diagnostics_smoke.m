@@ -11,6 +11,11 @@ extern void FQDAdDecision(void *, void *, long, const char *, const char *, long
 extern void FQDLoadStage(const char *);
 extern void *FQDLoadSummary(void);
 
+// The linked assembly policy is exercised by the diagnostic ARM64 audits.
+signed char FQDLegacyDiagnostics(void) { return 1; }
+void FQDStartDiagnosticStore(void) {}
+void FQDStopDiagnosticStore(void) {}
+
 static NSMutableArray *SmokeEvents;
 static NSMutableDictionary *OriginalCalls;
 static NSUInteger SmokeChecks;

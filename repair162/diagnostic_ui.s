@@ -487,6 +487,10 @@ Lrecord_named: // x0 event CString, x1 completed immutable-by-convention JSON da
     stp x21, x22, [sp, #32]
     mov x19, x0
     mov x20, x1
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LSrecord_done
+    .endif
     bl Lnewdict
     mov x21, x0
     mov x0, x19
@@ -513,6 +517,7 @@ Lrecord_named: // x0 event CString, x1 completed immutable-by-convention JSON da
     bl Ldict_set
     mov x0, x21
     bl LDdiag_enqueue
+LSrecord_done:
     ldp x21, x22, [sp, #32]
     ldp x19, x20, [sp, #16]
     ldp x29, x30, [sp], #48
@@ -551,6 +556,10 @@ Ldiagnostic_snapshot: // x0 bar, x1 event CString; main thread only
     stp x25, x26, [sp, #64]
     mov x19, x0
     mov x20, x1
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LSsnapshot_done
+    .endif
     cbz x19, LSsnapshot_done
     bl Lnewdict
     mov x21, x0
@@ -734,6 +743,10 @@ Ldiagnostic_snapshot_all:
     stp x21, x22, [sp, #32]
     stp x23, x24, [sp, #48]
     mov x19, x0
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LSsnapshot_all_done
+    .endif
     adr x0, LSthread_class
     adr x1, LSmain_thread
     bl Lfactory
@@ -770,10 +783,16 @@ Lsettings_boot:
     stp x29, x30, [sp, #-16]!
     mov x29, sp
     bl Lsettings_original
+    .if FQ_VERSION >= 0x14e0d
+    bl LFQD_FQDInitDiagnosticsPolicy
+    bl LFQD_FQDDiagnosticsEnabled
+    cbz w0, LSsettings_boot_done
+    .endif
     bl LDdiag_init
     adr x0, LSstartup
     mov x1, #0
     bl Lrecord_named
+LSsettings_boot_done:
     ldp x29, x30, [sp], #16
     ret
 Lsettings_original:
@@ -838,6 +857,7 @@ LUIinstall:
     adr x2, LUIpresent
     bl LUIadd_method
     cbz w0, LUIinstall_done
+    .if FQ_VERSION < 0x14e0d
     adr x0, LUexport_title
     bl Lstr
     mov x21, x0
@@ -863,6 +883,7 @@ LUIinstall:
     .if FQ_VERSION >= 0x10604
     mov x0, x19
     bl LFQD_FQDSettings
+    .endif
     .endif
 LUIinstall_done:
     .if FQ_VERSION >= 0x10704
@@ -977,9 +998,15 @@ LUIpresent:
     mov x22, x0
     cbz x22, LUIpresent_release_sender
     GET x22, LUpopover
+    .if FQ_VERSION >= 0x14e0d
+    mov x1, x20
+    mov x2, x19
+    bl LFQD_FQDAnchorExport
+    .else
     mov x2, x20
     adr x1, LUset_anchor
     bl Lmessage
+    .endif
     mov x2, x22
     mov w3, #1
     mov x4, xzr
@@ -1081,7 +1108,9 @@ LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
 LSversion:
-    .if FQ_VERSION == 0x14e0c
+    .if FQ_VERSION == 0x14e0d
+    .asciz "1.78R13"
+    .elseif FQ_VERSION == 0x14e0c
     .asciz "1.78R12"
     .elseif FQ_VERSION == 0x14e0b
     .asciz "1.78R11"
