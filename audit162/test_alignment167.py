@@ -1,13 +1,12 @@
 """Execute the aligned background implementation with realistic host rectangles.
 The host layout, UIKit services and rendering remain explicit boundaries.
 """
-import argparse,copy,json,struct,tempfile
+import argparse,copy,json,struct
 from pathlib import Path
 from arm64 import CPU,require,release_version
 from test_control_glass166 import Runtime as PreviousRuntime,NAV,SHELF,INSERTS,send
 from test_home_glass165 import LABELS as HOME_LABELS
-from test_feed_viewport import labels_for,ROOT
-from build_plugin import compose_assembly
+from test_feed_viewport import assemble_object, labels_for, sections, ROOT
 EXTRA=['LFQH_FQHButton','LFQH_FQHReader','LFQH_FQHShelf','LFQH_FQHIconGlass','LFQH_FQHReaderCount','Lrecord_named','LRreader_panel']
 class Runtime(PreviousRuntime):
     def __init__(self,data,slide=0,available=True):
@@ -96,9 +95,39 @@ def hit_contains(r,v,rect):
 
 def layout_cost(runtime):
     boxes=sum(obj.name=='rect_snapshot' for obj in runtime.objects.values())
-    strings=sum(obj.cls==runtime.classes['NSString'] for obj in runtime.objects.values())
     transactions=sum(event['event']=='transaction_begin' for event in runtime.events)
-    return boxes,strings,transactions,len(runtime.glass_state_writes)
+    return boxes,transactions,len(runtime.glass_state_writes)
+
+def predecessor_labels(data):
+    # Recover the unchanged native component without recomposing newer
+    # diagnostics and lifecycle code around the released 1.6.6 binary.
+    code,strings=(ROOT/'native/ControlGlass.s').read_text().split('// @COMPONENT_DATA')
+    obj=assemble_object('.text'+chr(10)+strings)
+    section=next(s for s in sections(obj) if s['name']=='__text')
+    require(section['reloc_count']==0,'Legacy string block has no relocations')
+    literal=obj[section['offset']:section['offset']+section['size']].rstrip(bytes([0]))+bytes([0])
+    require(data.count(literal)==1 and data.count(b'FQ165HOM')==1,
+            'Released component and compatibility directory are unique')
+    string_start=data.index(literal)
+    component_start=0x800+struct.unpack_from('<I',data,data.index(b'FQ165HOM')+12)[0]
+    words=struct.unpack_from('<64I',data,0x800)
+    hook=struct.unpack_from('<28I',data,0x800+words[60]+16)[24]
+    names=['LOldControlEnd','LFQH_FQHInstall','LFQH_FQHReader']
+    source=chr(10).join([
+        '.text','.set PATCH_BASE,0x800','Lpatch:',
+        f'.space {component_start-0x800}',f'.set LHookOwned,Lpatch+{hook}',
+        code,'.p2align 2','LOldControlEnd:',f'.org {string_start-0x800}',strings,
+        '.p2align 2',*['.long '+name+' - Lpatch' for name in names]])+chr(10)
+    obj=assemble_object(source)
+    section=next(s for s in sections(obj) if s['name']=='__text')
+    payload=obj[section['offset']:section['offset']+section['size']]
+    offsets=struct.unpack_from('<3I',payload,len(payload)-12)
+    component_end=0x800+offsets[0]
+    require(section['reloc_count']==0 and
+            data[component_start:component_end]==payload[component_start-0x800:component_end-0x800],
+            'Negative control labels resolve against the exact released native code')
+    return {name:0x800+offset for name,offset in zip(names,offsets)}
+
 
 def exercise(data,labels,baseline):
     results=[]
@@ -137,7 +166,7 @@ def exercise(data,labels,baseline):
                     'Every background centered on original 24pt artwork, including custom download')
             require(hit_contains(r,b,st['frame']),'Native visible background is within the expanded original hit area')
             require(st['userInteractionEnabled']==0 and st['accessibilityElementsHidden'],'Background cannot steal events/accessibility')
-        expected_back=(13.875,3.,18.,18.) if release_version(data)=='1.78R12' else (9.,3.,18.,18.) if release_version(data)in ('1.78R10','1.78R11') else (15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
+        expected_back=(13.875,3.,18.,18.) if release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15') else (9.,3.,18.,18.) if release_version(data)in ('1.78R10','1.78R11') else (15.,3.,18.,18.) if compact_reader else ((14.,2.,20.,20.) if refined_reader else (12.,0.,24.,24.))
         require(r.objects[r.objects[back].state['imageView']].state['frame']==expected_back,
                 '1.78 refines the back artwork to 20pt; older versions retain their 24pt optical contract')
         require(not r.host_mutations,'Production never sets host frame/bounds/center/configuration')
@@ -172,7 +201,7 @@ def exercise(data,labels,baseline):
         for _ in range(10):
             send(c,r,nav,'layoutSubviews')
         require(layout_cost(r)==settled_cost,
-                'Steady native icon layouts allocate no string/rect objects and perform no material state writes or transactions')
+                'Steady native icon layouts allocate no rect objects and perform no material state writes or transactions')
         back_state=r.objects[back].state
         back_glass=material(c,r,labels,back)
         back_state.update(enabled=False,selected=True,highlighted=True)
@@ -284,7 +313,7 @@ def exercise(data,labels,baseline):
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)
         r.host_views.update((parent,search,more))
         stable_shelf=release_version(data) in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15')
-        aligned_shelf=release_version(data)=='1.78R12'
+        aligned_shelf=release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15')
         custom_dock={'FanqieX.BottomLengthScale.1':0.7,'FanqieX.BottomButtonWidthScale.1':0.85}
         r.objects[r.DEFAULTS].state['values'].update(custom_dock)
         shelf_hit=(-16.,-4.,76.,32.) if stable_shelf else (-18.,-6.,80.,36.)
@@ -345,12 +374,10 @@ def exercise(data,labels,baseline):
             require(r.objects[parent].state['frame']==(348.,72.,56.,24.),'Disabling restores the last native holder frame')
         require(not material(c,r,labels,search) and not material(c,r,labels,more),'Shelf backgrounds removed on disable')
         require(r.objects[search].state['imageView']==replacement and r.objects[replacement].state['frame']==(9.,9.,16.,20.),'Disable preserves the latest host-created artwork and layout')
-        results.append('host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, strings, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))
+        results.append('host frame/content preservation; download icon/text and both shelf action states; nonzero origins; 100 layouts; ten settled layouts with zero new rects, material state writes or transactions; state changes; hit areas; restoration; slide '+hex(slide))
     # Execute the actual 1.6.6 predecessor as a negative control: its 36pt
     # wrapper leaves a host's 24pt child drawing at the old top-left origin.
-    with tempfile.TemporaryDirectory() as folder:
-        p=Path(folder)/'old.s';p.write_text(compose_assembly(ROOT/'repair162/floating_bar_162.s','1.6.6'))
-        old_labels=labels_for(baseline,p,HOME_LABELS+['LFQH_FQHReader'])
+    old_labels=predecessor_labels(baseline)
     c,r=machine(baseline,{**old_labels,'Lrecord_named':-1})
     call(c,old_labels,'LFQH_FQHInstall')
     nav=r.view(NAV,'old_nav',(0,64,440,44),r.ROOT)

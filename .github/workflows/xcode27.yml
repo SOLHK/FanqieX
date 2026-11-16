@@ -64,6 +64,10 @@ jobs:
           PY
       - name: Build actual plugin twice and type-check native APIs
         run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R15
+      - name: Build the ARC novel export companion twice
+        run: python3 scripts/build_book_export.py --output build/xcode27
+      - name: Exercise export formats and local chapter sources on real Foundation
+        run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -77,6 +81,8 @@ jobs:
             build/xcode27/*.preextend
             build/xcode27/*.extension.bin
             build/xcode27/SHA256SUMS.txt
+            build/xcode27/*-compile.log
+            build/xcode27/*-run.log
             native/AlignedGlass.s
             build/native-smoke/*.json
             build/native-smoke/*.log

@@ -14,7 +14,7 @@ from test_home_glass165 import LABELS
 
 def exercise(data, labels, optical=None):
     if optical is None:
-        optical = release_version(data) == '1.78R12'
+        optical = release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15')
     cpu, rt = machine(data, labels)
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHInstall')

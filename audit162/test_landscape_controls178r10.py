@@ -45,7 +45,7 @@ def exercise(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    title_gap = 12 if release_version(data) == '1.78R12' else 8
+    title_gap = 12 if release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15') else 8
 
     info = rt.view(INFO, 'landscape info', (0., 0., 844., 390.))
     top = rt.view('UIView', 'top controls', (16., 4., 760., 44.), info)

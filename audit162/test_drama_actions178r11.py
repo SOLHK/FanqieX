@@ -308,7 +308,7 @@ def main():
               'fullscreen': fullscreen(data, labels), 'right_column': right_column(data, labels),
               'device_tested': False, 'pixel_rendering_tested': False}
     if version in ('1.78R13', '1.78R14', '1.78R15'):
-        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15'), '1.78R15'),
+        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15')),
                       mine_shortcuts=mine_shortcuts(data, labels))
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(json.dumps(report, indent=2))

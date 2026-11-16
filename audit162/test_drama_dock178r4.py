@@ -43,7 +43,7 @@ def controls(rt, owning_config, local_config=None):
     context = rt.obj("FQVShortVideoListContext", "owning native feed", config=owning_config)
     local_config = local_config or owning_config
     return rt.view(CONTROLS, "native controls", (0., 0., 440., 956.), rt.ROOT,
-                   listVCConfig=local_config, listVCContext=context,
+                   listVCConfig=local_config, listVCContext=context, isCleanMode=False,
                    gestureRecognizers=["original seek", "original series tap", "original long press"])
 
 
@@ -224,8 +224,8 @@ def gradient_feather(data, labels):
                 if name == "setLocations:":
                     obj.state["locations"] = value
                     return rt.finish(cpu)
-            if obj and name == "bottomGradientView":
-                return rt.finish(cpu, obj.state.get(name, 0))
+            if obj and name in ("bottomGradientView", "isCleanMode") and name in obj.state:
+                return rt.finish(cpu, obj.state[name])
             if obj and obj.cls == rt.classes["NSArray"] and name == "isEqual:":
                 return rt.finish(cpu, int(rt.object_equal(receiver, value)))
         return original_handle(cpu, pc)
