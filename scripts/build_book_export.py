@@ -12,17 +12,29 @@ import re
 import struct
 import subprocess
 import sys
+from uuid import UUID
 
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_NAME = "@rpath/FanqieXExport.dylib"
+INTEGRATED_RELEASES = {0x14E0F: "1.78R15", 0x14E10: "1.78R16"}
 SOURCE_FILES = ("native/BookExport.m", "native/BookExportFormats.m", "native/BookExportFormats.h",
                 "native/BookExportSource.m", "native/BookExportSource.h")
 FRAMEWORKS = ("Foundation", "UIKit", "CoreGraphics")
 
 
+def integrated_release(core):
+    if len(core) < 0x81C:
+        raise ValueError("Truncated FanqieX core")
+    word, = struct.unpack_from("<I", core, 0x818)
+    release = INTEGRATED_RELEASES.get(word)
+    if not release:
+        raise ValueError("Unsupported FanqieX core release for integrated export")
+    return release
+
+
 def source_manifest():
-    paths = [*SOURCE_FILES, "scripts/build_book_export.py"]
+    paths = [*SOURCE_FILES, "scripts/build_book_export.py", "scripts/merge_book_export.py"]
     return {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in paths}
 
 
@@ -32,7 +44,7 @@ def command(arguments):
     return result.stdout.strip()
 
 
-def validate_binary(path):
+def validate_binary(path, install_name=INSTALL_NAME):
     sys.path.insert(0, str(ROOT / "repair162"))
     from macho_tools import macho_commands, sections, verify_signature
     data = path.read_bytes()
@@ -40,12 +52,17 @@ def validate_binary(path):
         raise ValueError("Export companion must be an ARM64 Mach-O dylib")
     identity = []
     libraries = []
-    for kind, offset, _ in macho_commands(data):
+    uuids = []
+    for kind, offset, size in macho_commands(data):
         if kind in (0xD, 0xC, 0x80000018):
             relative = struct.unpack_from("<I", data, offset + 8)[0]
             name = data[offset + relative:data.index(b"\0", offset + relative)].decode()
             (identity if kind == 0xD else libraries).append(name)
-    if identity != [INSTALL_NAME]:
+        elif kind == 0x1B and size == 24:
+            uuids.append(data[offset + 8:offset + size])
+    if len(uuids) != 1 or not any(uuids[0]):
+        raise ValueError("Missing or invalid LC_UUID required by dyld")
+    if identity != [install_name]:
         raise ValueError("Unexpected export companion install name")
     if any(not name.startswith(("/usr/lib/", "/System/Library/")) for name in libraries):
         raise ValueError("Export companion has a non-system dynamic dependency")
@@ -56,22 +73,32 @@ def validate_binary(path):
     if not signature["page_hashes_valid"]:
         raise ValueError("Export companion signature page hashes failed")
     return {"sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data),
-            "install_name": INSTALL_NAME, "libraries": libraries,
+            "install_name": install_name, "uuid": str(UUID(bytes=uuids[0])), "libraries": libraries,
             "objc_metadata": True, "signature_page_hashes_valid": True}
 
 
-def validated_bundle(folder, expected_commit=None):
-    report = json.loads((folder / "book-export-build-report.json").read_text(encoding="utf-8"))
-    binary = folder / "FanqieXExport.dylib"
+def validated_bundle(folder, expected_commit=None, *, expected_core_sha256=None, expected_version=None):
+    build = folder / "integrated" if expected_core_sha256 else folder
+    if expected_core_sha256 and expected_version not in INTEGRATED_RELEASES.values():
+        raise ValueError("Expected a supported integrated FanqieX release")
+    install = f"@rpath/FanqieX-{expected_version}.dylib" if expected_core_sha256 else INSTALL_NAME
+    report = json.loads((build / "book-export-build-report.json").read_text(encoding="utf-8"))
+    binary = build / install.rsplit("/", 1)[-1]
     if not report.get("passed") or not report.get("two_builds_identical"):
         raise ValueError("Export companion lacks a successful reproducible build")
     if expected_commit and report.get("github_sha") != expected_commit:
         raise ValueError("Export companion belongs to a different source commit")
     if report.get("source_sha256") != source_manifest():
         raise ValueError("Export companion sources differ from the current checkout")
-    validation = validate_binary(binary)
+    validation = validate_binary(binary, install)
     if report.get("binary") != validation:
         raise ValueError("Export companion differs from its build report")
+    if expected_core_sha256:
+        combined = report.get("combined_image", {})
+        if (not combined.get("passed") or combined.get("version") != expected_version
+                or combined.get("core_input_sha256") != expected_core_sha256
+                or combined.get("sha256") != validation["sha256"]):
+            raise ValueError("Combined export image does not contain the verified FanqieX core")
     smoke = json.loads((folder / "book-export-smoke.json").read_text(encoding="utf-8"))
     if not smoke.get("passed") or not smoke.get("real_foundation_executed"):
         raise ValueError("Export companion lacks real Foundation format and source tests")
@@ -90,20 +117,24 @@ def validated_bundle(folder, expected_commit=None):
     return binary, report
 
 
-def build(output, sdk, link_sdk, compiler, linker, sdk_version):
+def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INSTALL_NAME):
     objects = []
     for name in SOURCE_FILES:
         if not name.endswith(".m"):
             continue
         target = output / (Path(name).stem + ".o")
-        command([*compiler, "-target", "arm64-apple-ios15.0", "-isysroot", sdk,
+        command([*compiler, "-target", "arm64-apple-ios15.0.1", "-isysroot", sdk,
                  "-fobjc-arc", "-fblocks", "-fvisibility=hidden",
                  "-Wall", "-Wextra", "-Werror", "-Os", "-c", ROOT / name, "-o", target])
         objects.append(target)
-    binary = output / "FanqieXExport.dylib"
-    arguments = [*linker, "-dylib", "-arch", "arm64", "-platform_version", "ios", "15.0",
-                 sdk_version, "-syslibroot", link_sdk, "-install_name", INSTALL_NAME,
-                 "-no_uuid", "-adhoc_codesign", "-o", binary, *objects]
+    binary = output / install_name.rsplit("/", 1)[-1]
+    arguments = [*linker, "-dylib", "-arch", "arm64", "-platform_version", "ios", "15.0.1",
+                 sdk_version, "-syslibroot", link_sdk, "-install_name", install_name,
+                 "-adhoc_codesign", "-o", binary, *objects]
+    if install_name != INSTALL_NAME:
+        reserve = output / "unwind-reserve.bin"
+        reserve.write_bytes(bytes(0x4000))
+        arguments.extend(("-headerpad", "0x2000", "-sectcreate", "__TEXT", "__fq_unwind", reserve))
     for name in FRAMEWORKS:
         arguments.extend(("-framework", name))
     command([*arguments, "-lobjc", "-lSystem"])
@@ -118,6 +149,7 @@ def main():
                         help="Resolved SDK linker stubs for a Windows SDK checkout")
     parser.add_argument("--clang", type=Path)
     parser.add_argument("--linker", type=Path)
+    parser.add_argument("--core", type=Path, help="Combine this supported FanqieX core into one dylib")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -141,16 +173,33 @@ def main():
             raise ValueError("Unexpected SDK version")
         report["sdk_version"] = sdk_version
         sources = source_manifest()
-        binary = build(output, sdk, args.link_sdk or sdk, compiler, linker, sdk_version)
+        if args.core:
+            core = args.core.read_bytes()
+            version = integrated_release(core)
+            install_name = f"@rpath/FanqieX-{version}.dylib"
+            build_dir = output / "export-link"
+            build_dir.mkdir(exist_ok=True)
+        else:
+            install_name, build_dir = INSTALL_NAME, output
+        binary = build(build_dir, sdk, args.link_sdk or sdk, compiler, linker, sdk_version, install_name)
         rebuilt_dir = output / "export-rebuild"
         rebuilt_dir.mkdir(exist_ok=True)
-        rebuilt = build(rebuilt_dir, sdk, args.link_sdk or sdk, compiler, linker, sdk_version)
+        rebuilt = build(rebuilt_dir, sdk, args.link_sdk or sdk, compiler, linker, sdk_version, install_name)
         if binary.read_bytes() != rebuilt.read_bytes():
             raise ValueError("Two export companion builds produced different bytes")
         if source_manifest() != sources:
             raise ValueError("Export companion sources changed during the build")
-        report.update(binary=validate_binary(binary), source_sha256=sources,
-                      two_builds_identical=True, passed=True)
+        if args.core:
+            from merge_book_export import merge
+            merged, verification = merge(core, binary.read_bytes())
+            rebuilt_image, _ = merge(core, rebuilt.read_bytes())
+            if merged != rebuilt_image:
+                raise ValueError("Two combined builds produced different bytes")
+            binary = output / binary.name
+            binary.write_bytes(merged)
+            report["combined_image"] = verification
+        report.update(binary=validate_binary(binary, install_name),
+                      source_sha256=sources, two_builds_identical=True, passed=True)
         return 0
     except Exception as error:
         report["error"] = str(error)

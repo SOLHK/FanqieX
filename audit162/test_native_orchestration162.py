@@ -244,7 +244,7 @@ def send_interaction_pan(cpu, rt, state, x, y=28, translation=0):
 
 def drag_selection_lifecycle(data):
     rows = []
-    spring_tracking = release_version(data) == '1.78R15'
+    spring_tracking = release_version(data) in ('1.78R15', '1.78R16')
     for slide in (0, 0x180000000):
         cpu, rt, entries = make(data, slide=slide)
         if spring_tracking:
@@ -391,9 +391,9 @@ def current_uikit_owns_tracking(data):
 def run(data):
     cases = []
     version = release_version(data)
-    if version in ('1.78R14', '1.78R15'):
+    if version in ('1.78R14', '1.78R15', '1.78R16'):
         functions = (drag_selection_lifecycle, drag_selection_diagnostics_and_restore)
-        if version == '1.78R15':
+        if version in ('1.78R15', '1.78R16'):
             functions += (current_uikit_owns_tracking,)
     else:
         functions = (first_mount_and_stability, fallback_to_native_during_fade,

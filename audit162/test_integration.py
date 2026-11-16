@@ -78,7 +78,7 @@ def run(data):
     selection_records = [item.get('data', {}) for item in records
                          if item.get('data', {}).get('glassSelectionLens')]
     require(selection_records, 'Actual snapshots include the selection lens')
-    if release_version(data) in ('1.78R14', '1.78R15'):
+    if release_version(data) in ('1.78R14', '1.78R15', '1.78R16'):
         active = [row for row in selection_records if row.get('glassSelectionDragging')]
         idle = [row for row in selection_records if not row.get('glassSelectionDragging')]
         require(active and all(row['glassSelectionLens'].get('effectClass') == 'UIGlassEffect'

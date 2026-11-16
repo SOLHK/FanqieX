@@ -134,7 +134,7 @@ def check_settings(cpu, runtime, labels, options, titles):
     navigation = runtime.obj("UINavigationItem", "plugin settings navigation",
                              rightBarButtonItem=runtime.obj("UIBarButtonItem", "done"))
     state(options)["navigationItem"] = navigation
-    new_layout = release_version(runtime.data) in ("1.78R14", "1.78R15")
+    new_layout = release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16")
     if new_layout:
         for name, base, selector, imp, signature in (
             ("FanqieAdBlockOptionsController", "UIViewController", "viewDidLayoutSubviews",

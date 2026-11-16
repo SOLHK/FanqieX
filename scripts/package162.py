@@ -17,7 +17,7 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15'), default=VERSION)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--export-dir', type=Path)
@@ -39,12 +39,19 @@ def main():
     digest = hashlib.sha256(binary).hexdigest()
     if digest != summary['candidate_sha256']:
         raise SystemExit('Candidate changed after verification')
-    export_binary, export_report = None, None
-    if version == '1.78R15':
+    integrated_report = None
+    if version in ('1.78R15', '1.78R16'):
         if not args.export_dir:
-            raise SystemExit('This release requires the matching novel export companion')
-        export_binary, export_report = validated_bundle(
-            args.export_dir.resolve(), summary.get('git_head_at_start'))
+            raise SystemExit('This release requires the matching integrated Xcode build')
+        integrated_binary, integrated_report = validated_bundle(
+            args.export_dir.resolve(), summary.get('git_head_at_start'), expected_core_sha256=digest,
+            expected_version=version)
+        binary = integrated_binary.read_bytes()
+        package_digest = hashlib.sha256(binary).hexdigest()
+        if package_digest != integrated_report['binary']['sha256']:
+            raise SystemExit('Integrated candidate changed after validation')
+    else:
+        package_digest = digest
     output = (args.output or ROOT/'dist'/version).resolve()
     report_dir = ROOT / 'verification' / version
     for target in (output, report_dir):
@@ -56,10 +63,6 @@ def main():
             raise SystemExit(f'Report belongs to a different candidate: {path.name}')
     output.mkdir(parents=True, exist_ok=True)
     (output / binary_name).write_bytes(binary)
-    binary_names = [binary_name]
-    if export_binary:
-        (output / export_binary.name).write_bytes(export_binary.read_bytes())
-        binary_names.append(export_binary.name)
     readme = f'''FanqieX {version}
 
 使用现有 IPA 注入和重签名流程替换旧插件；同一个宿主只加载一份 FanqieX。
@@ -86,7 +89,7 @@ SHA-256: {digest}
 构建记录：https://github.com/SOLHK/FanqieX/actions
 设备观察点：docs/DEVICE_ACCEPTANCE_162.md
 '''
-    (output / 'README_zh-CN.txt').write_text(readme)
+    (output / 'README_zh-CN.txt').write_text(readme, encoding='utf-8')
     verification = {key: summary[key] for key in
                     ('version', 'passed', 'candidate_sha256', 'candidate_size', 'two_builds_identical',
                      'device_tested', 'source_manifest_sha256', 'source_file_count', 'steps')}
@@ -96,8 +99,11 @@ SHA-256: {digest}
         if key in summary:
             verification[key] = summary[key]
     verification['scope'] = summary['scope']
-    if export_report:
-        verification['export_companion'] = export_report['binary']
+    if integrated_report:
+        verification['verified_core_sha256'] = digest
+        verification['candidate_sha256'] = package_digest
+        verification['candidate_size'] = len(binary)
+        verification['integrated_build'] = integrated_report['combined_image']
         verification['export_real_foundation_tests'] = True
     (output / 'VERIFICATION.json').write_text(
         json.dumps(verification, ensure_ascii=False, indent=2) + '\n')
@@ -124,41 +130,33 @@ SHA-256: {digest}
 SHA-256 {digest}
 大小 {len(binary)} bytes
 '''
-    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15'):
+    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16'):
         readme=(ROOT/'docs'/f'REPAIR_{version}.md').read_text(encoding='utf-8')
-        readme += f'\n交付 SHA-256: {digest}\n大小: {len(binary)} bytes\n'
-    if export_binary:
-        readme = (
-            f'本包包含 {binary_name} 和 FanqieXExport.dylib。'
-            '请将这两份动态库同时注入同一个 IPA，并与宿主一起重新签名。\n'
-            '升级时先移除旧的 FanqieX 核心库和 FanqieXExport.dylib，再替换本包两份库。\n\n'
-            + readme)
-    (output / 'README_zh-CN.txt').write_text(readme)
+        readme += f'\n交付 SHA-256: {package_digest}\n大小: {len(binary)} bytes\n'
+    (output / 'README_zh-CN.txt').write_text(readme, encoding='utf-8')
     zip_name = f'FanqieX-{version}.zip'
     with zipfile.ZipFile(output / zip_name, 'w', compression=zipfile.ZIP_DEFLATED,
                          compresslevel=9) as archive:
-        for name in (*binary_names, 'README_zh-CN.txt', 'VERIFICATION.json'):
+        for name in (binary_name, 'README_zh-CN.txt', 'VERIFICATION.json'):
             info = zipfile.ZipInfo(name, (2026, 11, 8, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, (output / name).read_bytes())
     with zipfile.ZipFile(output / zip_name) as archive:
-        if archive.testzip() is not None or any(
-                archive.read(name) != (output / name).read_bytes() for name in binary_names):
+        if archive.testzip() is not None or archive.read(binary_name) != binary:
             raise SystemExit('Archive does not contain the exact verified plugin bytes')
     zip_digest = hashlib.sha256((output / zip_name).read_bytes()).hexdigest()
-    sums = ''.join(f'{hashlib.sha256((output / name).read_bytes()).hexdigest()}  {name}\n'
-                   for name in binary_names)
-    (output / 'SHA256SUMS.txt').write_text(sums + f'{zip_digest}  {zip_name}\n')
+    (output / 'SHA256SUMS.txt').write_text(
+        f'{package_digest}  {binary_name}\n{zip_digest}  {zip_name}\n')
     report_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.glob('*.json')):
         shutil.copy2(path, report_dir / path.name)
     shutil.copy2(source / 'SHA256SUMS.txt', report_dir / 'SHA256SUMS.txt')
     shutil.copytree(source / 'logs', report_dir / 'logs', dirs_exist_ok=True)
-    if export_binary:
-        for name in ('book-export-build-report.json', 'book-export-smoke.json'):
-            shutil.copy2(args.export_dir / name, report_dir / name)
-    print(json.dumps({'version': version, 'candidate_sha256': digest,
+    if integrated_report:
+        shutil.copy2(args.export_dir / 'integrated' / 'book-export-build-report.json', report_dir)
+        shutil.copy2(args.export_dir / 'book-export-smoke.json', report_dir)
+    print(json.dumps({'version': version, 'candidate_sha256': package_digest,
                       'zip_sha256': zip_digest, 'size_bytes': len(binary),
                       'steps': len(summary['steps']), 'device_tested': False}, indent=2))
 

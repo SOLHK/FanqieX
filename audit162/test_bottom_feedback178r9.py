@@ -20,7 +20,7 @@ from test_native_orchestration162 import repair
 
 def observed_dock(data, labels):
     cases = []
-    drag_selection = release_version(data) in ('1.78R14', '1.78R15')
+    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16')
     for fallback in (False, True):
         for icons, minimum in ((False, 64), (True, 56)):
             cpu, rt, entries = fixture(data, labels, fallback=fallback)

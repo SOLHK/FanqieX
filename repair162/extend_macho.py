@@ -46,10 +46,10 @@ from typing import Iterable
 EXT_BASE = 0x14000
 PAGE = 0x4000
 REVIEWED_CAPACITIES = (PAGE, 2 * PAGE, 3 * PAGE, 4 * PAGE, 8 * PAGE, 9 * PAGE, 10 * PAGE,
-                       11 * PAGE, 12 * PAGE, 13 * PAGE, 14 * PAGE, 15 * PAGE, 16 * PAGE, 17 * PAGE, 18 * PAGE, 19 * PAGE, 20 * PAGE)
+                       11 * PAGE, 12 * PAGE, 13 * PAGE, 14 * PAGE, 15 * PAGE, 16 * PAGE, 17 * PAGE, 18 * PAGE, 19 * PAGE, 20 * PAGE, 21 * PAGE)
 # This utility validates segment layout, not release identity. The production
 # builder and independent release audit allow 16 pages for 1.78R4–R6
-# 17 for 1.78R7–R9, 18 for 1.78R10–R11, 19 for 1.78R12, and 20 for 1.78R13.
+# 17 for 1.78R7–R9, 18 for 1.78R10–R11, 19 for 1.78R12, 20 for 1.78R13–R14, and 21 for 1.78R15–R16.
 HEADER_LIMIT = 0x800
 SEGMENT_NAME = b"__FQPATCH"
 LC_SEGMENT_64 = 0x19
@@ -59,6 +59,7 @@ LC_ID_DYLIB = 0xD
 LC_CODE_SIGNATURE = 0x1D
 LC_FUNCTION_STARTS = 0x26
 LC_DATA_IN_CODE = 0x29
+LC_SOURCE_VERSION = 0x2A
 LC_DYLD_EXPORTS_TRIE = 0x80000033
 LC_DYLD_CHAINED_FIXUPS = 0x80000034
 LINKEDIT_DATA = {
@@ -66,7 +67,7 @@ LINKEDIT_DATA = {
     LC_DYLD_EXPORTS_TRIE, LC_DYLD_CHAINED_FIXUPS,
 }
 ALLOWED_COMMANDS = LINKEDIT_DATA | {
-    LC_SEGMENT_64, LC_SYMTAB, LC_DYSYMTAB, LC_ID_DYLIB,
+    LC_SEGMENT_64, LC_SYMTAB, LC_DYSYMTAB, LC_ID_DYLIB, LC_SOURCE_VERSION,
     0xC,       # LC_LOAD_DYLIB, whose string offset is command-relative.
     0x1B,      # LC_UUID.
     0x2C,      # LC_ENCRYPTION_INFO_64; the supported image is unencrypted.
@@ -95,6 +96,8 @@ def commands(data: bytes) -> list[dict]:
         need(size >= 8 and size % 8 == 0 and cursor + size <= 32 + length,
              "Invalid load-command size")
         need(cmd in ALLOWED_COMMANDS, f"Unsupported load command {cmd:#x}")
+        if cmd == LC_SOURCE_VERSION:
+            need(size == 16, "Invalid LC_SOURCE_VERSION")
         result.append({"cmd": cmd, "offset": cursor, "size": size,
                        "raw": data[cursor:cursor + size]})
         cursor += size

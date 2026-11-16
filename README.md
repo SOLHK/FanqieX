@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R12 测试版
+## FanqieX 1.78R16 测试版
 
-本版对齐书架控件与底栏，修正阅读页返回箭头，并整理横屏短剧的按钮尺寸和间距。短剧清屏时隐藏右下角退出按钮。
+本版修复书架历史入口的分类选择，并提供短剧顶部分类入口的独立开关。
 
-- [本版说明和安装方式](docs/REPAIR_1.78R12.md)
+- [本版说明和安装方式](docs/REPAIR_1.78R16.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、设置页、诊断日志和 Mach-O 构建标识统一为 1.78R12。测试构建指定 Xcode 27.3，最终显示和触控体验需在 iPhone 上复测。
+插件文件名、设置页、诊断日志和 Mach-O 构建标识统一为 1.78R16。测试构建使用匹配的 Xcode 27.3 或 27.2 和 iOS SDK，最终显示和触控体验需在 iPhone 上复测。
 
 ## FanqieX 1.76
 
@@ -85,14 +85,16 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R6 --output build/ci178r6
+python3 scripts/verify162.py --version 1.78R16 --output build/ci178r16
 ```
 
 macOS / Xcode 27.2 构建：
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
-python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R6
+python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R16
+DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
+python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.78R16.dylib --output build/xcode27/integrated
 ```
 
 Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建检查：
@@ -100,7 +102,7 @@ Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建�
 ```powershell
 $env:FQ_ASSEMBLER = "clang"
 $env:FQ_CLANG = "C:\Program Files\LLVM\bin\clang.exe"
-python scripts/verify162.py --version 1.78R6 --output build/ci178r6
+python scripts/verify162.py --version 1.78R16 --output build/ci178r16
 ```
 
 该 Windows 路径不替代 Xcode 27.2 发布构建；它只用于执行同一套 ARM64 指令、结构审计和回归测试。

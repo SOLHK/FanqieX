@@ -28,6 +28,7 @@ class Runtime(ReaderRuntime):
     DID_DISPLAY = 0x330f3300
     PROGRESS_LAYOUT = 0x330f3400
     PROGRESS_PLAYING = 0x330f3500
+    PROGRESS_ACTIVATED = 0x330f3600
 
     def __init__(self, data):
         super().__init__(data)
@@ -39,13 +40,14 @@ class Runtime(ReaderRuntime):
             ("NSLayoutConstraint", "NSObject"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
         self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
         progress = self.classes["FQVShortVideoProgressView"]
         self._add(progress, "layoutProgressView", self.PROGRESS_LAYOUT, "v16@0:8")
         self._add(progress, "updateProgressViewWithPlaying:animate:", self.PROGRESS_PLAYING, "v24@0:8B16B20")
+        self._add(progress, "updateProgressViewWithActivatedState:", self.PROGRESS_ACTIVATED, "v24@0:8Q16")
         self.display_mutator = None
         self.progress_mutator = None
 
@@ -59,7 +61,7 @@ class Runtime(ReaderRuntime):
             if self.display_mutator:
                 self.display_mutator()
             return self.finish(cpu)
-        if pc in (self.PROGRESS_LAYOUT, self.PROGRESS_PLAYING):
+        if pc in (self.PROGRESS_LAYOUT, self.PROGRESS_PLAYING, self.PROGRESS_ACTIVATED):
             if self.progress_mutator:
                 self.progress_mutator(pc, *cpu.x[2:4])
             return self.finish(cpu)
@@ -183,7 +185,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
-    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15"):
+    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16"):
         return
 
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
@@ -224,7 +226,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     for selector, args, track_y in (("layoutProgressView", (), 871.),
                                      ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
         send(cpu, rt, progress, selector, *args)
-        if release_version(data) in ("1.78R14", "1.78R15"):
+        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16"):
             glass = glass_rect(rt, v["content"])
             require(track_y-glass[1]-glass[3] == 8.,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
@@ -232,6 +234,29 @@ def verify_native_constraint(data, labels, reference_attribute):
         glass = glass_rect(rt, v["content"])
         require(track_y-glass[1]-glass[3] == 8. and anchor_state["constant"] == stock-8.+(track_y-873.),
                 "The changed track updates the episode gap without a parent callback: "+selector)
+    if "LFQH_DramaProgressActivated" in labels:
+        other = rt.view("SSShortVideoAlbumSeriesBottomInsertView", "outgoing episode", (0., 760., 440., 40.), root,
+                        albumDetailInfo=rt.obj("NSObject", "outgoing model"))
+        other_content = rt.view("UIView", "retiring episode content", (0., 0., 440., 40.), other)
+        rt.objects[other].state["containerView"] = other_content
+        send(cpu, rt, other, "layoutSubviews")
+
+        def pause_rail(callback, state, ignored):
+            require(callback == rt.PROGRESS_ACTIVATED and state == 3, "Original receives the activated state")
+            rt.objects[track].state.update(frame=(16., 20., 408., 4.), bounds=(0., 0., 408., 4.))
+
+        rt.progress_mutator = pause_rail
+        send(cpu, rt, progress, "updateProgressViewWithActivatedState:", 3)
+        glass = glass_rect(rt, v["content"])
+        require(871.-glass[1]-glass[3] == 8., "Pause keeps the active insert above the thicker rail")
+        rt.objects[v["entry"]].state["hidden"] = True
+        send(cpu, rt, root, "layoutSubviews")
+        require(anchor_state["constant"] == stock-10.,
+                "A temporarily hidden owned insert is not reset by an outgoing episode")
+        rt.objects[v["entry"]].state["hidden"] = False
+        send(cpu, rt, root, "layoutSubviews")
+        require(871.-glass_rect(rt, v["content"])[1]-glass_rect(rt, v["content"])[3] == 8.,
+                "The same row is still separated after its foreground returns")
     rt.reparent(root, 0)
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock, "Detaching the page restores the native constraint")
@@ -260,7 +285,7 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15")
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -320,7 +345,7 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15") else "episode-glass-178R6"
+        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else "episode-glass-178R6"
         require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
@@ -345,8 +370,10 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
             cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
+        if "LFQH_DramaProgressActivated" in labels:
+            cases.append("paused rail, retiring episode and temporarily hidden current insert")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)
@@ -450,7 +477,10 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), list(dict.fromkeys(LABELS+EXTRA)))
+    composed = args.candidate.with_suffix(".composed.s")
+    pause = "LFQH_DramaProgressActivated"
+    direct_pause = [pause] if f"\n{pause}:" in composed.read_text(encoding="utf-8") else []
+    labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + direct_pause)))
     result = verify(data, labels)
     args.report.write_text(json.dumps(result, ensure_ascii=False, indent=2)+"\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))

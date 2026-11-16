@@ -19,6 +19,10 @@ SHELF_SUBHEADER = 'SS525BookShelfSubHeaderView'
 REFRESH_HEADER = 'SSNewRefreshHeader'
 FLAT_STORE = 'SSBookStoreTabViewController'
 SHELF_SCROLL = 'scrollViewDidScroll:'
+SHELF_SELECTION = 'categoryView:didSelectedItemAtIndex:'
+HISTORY_TAB = 'SSBookHistorySubViewController'
+COLLECT_TAB = 'SSVideoCollectViewController'
+HISTORY_PAGER = 'FQRJXCategoryListContainerView'
 DOUBLE_ROW = 'SSBookStoreDoubleRowViewController'
 DOUBLE_ROW_SCROLL = 'storeTabScrollViewDidScroll:'
 DOUBLE_ROW_LAYOUT = 'viewWillLayoutSubviews'
@@ -33,6 +37,7 @@ PROPERTIES = (
     'headerBackgroundView', 'fullGenreFloatingContainerView', 'functionCell',
     'layoutContainerView', 'filterView', 'tabContainer', 'simpleTabView', 'view',
     'containerScrollView', 'refreshHeader', 'viewModel', 'uiConfigParams',
+    'scrollView', 'currentSelectedListViewController', 'currentIndex', 'currentTabIndex', 'selectedIndex', 'tabVCs',
 )
 
 
@@ -40,7 +45,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
     def __init__(self, data):
         super().__init__(data)
         self.dispatch_methods = True
-        for cls in (SHELF, SHELF_LIST, DOUBLE_ROW):
+        for cls in (SHELF, SHELF_LIST, DOUBLE_ROW, HISTORY_TAB, COLLECT_TAB):
             self._class(cls, 'UIViewController')
         for cls in (SHELF_FUNCTION_CELL, SHELF_SUBHEADER):
             self._class(cls, 'UIView')
@@ -49,7 +54,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self._class('SSNestedContainerScrollView', 'UIScrollView')
         self._class('SSBookStoreNestedTabView', 'UIView')
         self._class(FLAT_STORE, 'UIViewController')
-        self._class('FQRJXCategoryListContainerView', 'UIView')
+        self._class(HISTORY_PAGER, 'UIView')
         self._class(REFRESH_HEADER, 'UIView')
         self.bookstore_header_reads = 0
         self.original_update_inset = 0x3304e200
@@ -67,7 +72,22 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.original_refresh_visibility = 0x3304e620
         self.original_flat_store_scroll = 0x3304e630
         self.original_flow_layout = 0x3304e640
+        self.original_shelf_selection = 0x3304e650
+        pager_methods = (
+            ('layoutSubviews', 'v16@0:8'), ('scrollDidStop', 'v16@0:8'),
+            ('didClickSelectedItemAtIndex:', 'v24@0:8q16'),
+            ('cleanValidListWithIndex:', 'v24@0:8q16'),
+            ('initListIfNeededAtIndex:', 'v24@0:8q16'),
+            ('setCurrentIndex:', 'v24@0:8q16'), ('listDidAppear:', 'v24@0:8q16'),
+            ('clampScrollViewToCurrentIndexIfNeeded', 'v16@0:8'),
+        )
+        self.history_pager_methods = {}
+        for i, (selector, encoding) in enumerate(pager_methods):
+            address = 0x3304e660 + 4 * i
+            self._add(self.classes[HISTORY_PAGER], selector, address, encoding)
+            self.history_pager_methods[address] = selector
         for cls, selector, address, encoding in (
+                (SHELF, SHELF_SELECTION, self.original_shelf_selection, 'v32@0:8@16q24'),
                 (SHELF_LIST, FLOW_LAYOUT, self.original_flow_layout, 'v16@0:8'),
                 (SHELF_LIST, SHELF_SCROLL, self.original_shelf_scroll, 'v24@0:8@16'),
                 (FLAT_STORE, 'scrollViewDidScroll:', self.original_flat_store_scroll, 'v24@0:8@16'),
@@ -79,6 +99,31 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             self._add(self.classes[cls], selector, address, encoding)
 
     def handle(self, cpu, pc):
+        if pc == self.original_shelf_selection:
+            owner = self.objects[cpu.x[0]].state
+            owner['currentTabVC'] = owner['nativeCategoryTabs'][cpu.x[3]]
+            owner['currentTabIndex'] = cpu.x[3]
+            self.objects[cpu.x[2]].state['selectedIndex'] = cpu.x[3]
+            self.event('shelf_selection', cpu.x[0])
+            return self.finish(cpu)
+        if pc in self.history_pager_methods:
+            selector = self.history_pager_methods[pc]
+            pager = self.objects[cpu.x[0]].state
+            if selector not in ('layoutSubviews', 'scrollDidStop'):
+                index = cpu.x[2]
+                pages = pager['nativeValidLists']
+                if selector == 'cleanValidListWithIndex:':
+                    del pages[index]
+                elif selector == 'initListIfNeededAtIndex:':
+                    tabs = self.objects[pager['delegate']].state['nativeCategoryTabs']
+                    pages[index] = tabs[index]
+                elif selector in ('didClickSelectedItemAtIndex:', 'setCurrentIndex:'):
+                    pager.update(currentIndex=index, currentSelectedListViewController=pages[index])
+                elif selector == 'clampScrollViewToCurrentIndexIfNeeded':
+                    scroll = self.objects[pager['scrollView']].state
+                    scroll['contentOffset'] = (pager['currentIndex'] * scroll['bounds'][2], 0)
+                self.event('history_pager_repair', cpu.x[0], selector=selector)
+            return self.finish(cpu)
         if pc == self.original_flow_layout:
             tab = self.objects[cpu.x[0]].state
             layout = self.objects[tab['collectionViewLayout']].state
@@ -128,7 +173,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             list_state = self.objects[scroll].state
             # Stock reparents the same layout container after the inline row
             # crosses the leading edge, and takes its inline cleanup on nil.
-            should_pin = cpu.x[2] == scroll and (
+            should_pin = not tab.get('supplementaryOnly') and cpu.x[2] == scroll and (
                 list_state['contentOffset'][1] + list_state['contentInset'][0] > cell['frame'][1])
             parent = holder if should_pin else cell['contentView']
             row = cell['layoutContainerView']
@@ -140,6 +185,10 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         if pc-self.slide == 0xa5d4 and cpu.x[0] in self.objects:
             state = self.objects[cpu.x[0]].state
             name = self.selector_names.get(cpu.x[1])
+            if name == 'visibleSupplementaryViewsOfKind:':
+                require(self.string_value(cpu.x[2]) == 'UICollectionElementKindSectionHeader',
+                        'Only native section headers are queried for the shelf backdrop')
+                return self.finish(cpu, state.get('visibleShelfHeaders', 0))
             if name == 'simpleHeader':
                 self.bookstore_header_reads += 1
             if self.is_kind(cpu.x[0], self.classes['UICollectionViewFlowLayout']):
@@ -153,8 +202,11 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
                     return self.finish(cpu)
             if name in PROPERTIES and name in state:
                 return self.finish(cpu, state[name])
-            if name in ('mj_header', 'animationView', 'isDragging') and name in state:
+            if name in ('mj_header', 'animationView', 'isDragging', 'isTracking', 'isDecelerating') and name in state:
                 return self.finish(cpu, state[name])
+            if name == 'setNeedsLayout' and self.is_kind(cpu.x[0], self.classes[HISTORY_PAGER]):
+                self.event('history_pager_needs_layout', cpu.x[0])
+                return self.finish(cpu)
             if name == 'isRefreshing' and 'refresh_state' in state:
                 return self.finish(cpu, state['refresh_state'] in (3, 4))
             if name == 'colorWithAlphaComponent:' and self.is_kind(cpu.x[0], self.classes['UIColor']):
@@ -319,6 +371,7 @@ def exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config):
         return color_state.get('source', color), color_state.get('alpha', 1)
 
     position(rest)
+    call(c, r, tab, FLOATING_LAYOUT, scroll)
     call(c, r, owner, 'viewLayout')
     require(tint() == (shelf_canvas, 1), 'At rest the toolbar exactly matches the host shelf canvas')
     position(rest + 8)
@@ -350,6 +403,7 @@ def exercise_shelf_canvas(c, r, owner, tab, scroll, blur, config):
             'Only the owned tint changes while the native blur and shelf scroll geometry are retained')
     palette['backgroundColor'] = shelf_canvas
     state.update(contentOffset=offset, bounds=bounds)
+    call(c, r, tab, FLOATING_LAYOUT, scroll)
     call(c, r, tab, SHELF_SCROLL, scroll)
 
 
@@ -502,7 +556,8 @@ def exercise(data, labels, kind):
         cell = r.view(SHELF_FUNCTION_CELL, 'shelf function row', (0, 20, 440, 36), scroll)
         inline_parent = r.view('UIView', 'inline function-cell content', (0, 0, 440, 36), cell)
         row = r.view('UIView', 'already pinned native filter controls', (0,0,440,36), holder)
-        subheader = r.view(SHELF_SUBHEADER, 'shelf subheader', (0, 0, 440, 36), row)
+        subheader = r.view(SHELF_SUBHEADER, 'shelf subheader', (0, 0, 440, 36), row,
+                           backgroundColor=stock_fill, opaque=True)
         filter_button = r.view('UIButton', 'native filter button', (365, 4, 62, 28), subheader,
                                userInteractionEnabled=True, enabled=True)
         r.objects[cell].state.update(contentView=inline_parent, layoutContainerView=row, headerView=subheader)
@@ -530,14 +585,26 @@ def exercise(data, labels, kind):
         require(r.objects[row].state['superview'] == holder and not r.objects[holder].state['hidden'] and
                 r.objects[holder].state['frame'][1] == boundary,
                 'The first owned shelf layout preserves native pinned controls below the top toolbar')
-    top_surfaces = surfaces(r, root)
+    def active_surfaces():
+        return surfaces(r, root) + (surfaces(r, page) if shelf else [])
+
+    top_surfaces = active_surfaces()
     require(len(top_surfaces) == 1, 'Exactly one frame-bounded effect is active with the native scroll edge available')
     blur = top_surfaces[0]
     root_children = r.objects[root].state['subviews']
-    require(root_children.index(viewport)<root_children.index(blur)<root_children.index(header),
-            'Effect samples the cover and keeps foreground controls above it')
+    if shelf:
+        page_children = r.objects[page].state['subviews']
+        require(root_children.index(viewport) < root_children.index(header) and
+                page_children.index(scroll) < page_children.index(blur) < page_children.index(holder),
+                'The single surface samples the scroll under both native toolbars')
+        require(all(r.objects[view].state['backgroundColor'] == r.color('clearColor')
+                    for view in (holder, subheader)),
+                'The separate opaque holder and filter backing clear while pinned')
+    else:
+        require(root_children.index(viewport) < root_children.index(blur) < root_children.index(header),
+                'Effect samples the cover and keeps foreground controls above it')
     blur_state = r.objects[blur].state
-    require(blur_state['frame'] == (0, 0, 440, boundary) and
+    require(blur_state['frame'] == (0, 0, 440, boundary + (36 if shelf else 0)) and
             r.objects[blur_state['effect']].state['style'] == 6 and
             blur_state['alpha'] == 1 and not blur_state['userInteractionEnabled'],
             'The passive ultra-thin effect remains at full opacity within the toolbar bounds')
@@ -576,8 +643,8 @@ def exercise(data, labels, kind):
         exercise_shelf_section_headers(c, r, owner, tab, scroll)
         # The restore cases intentionally disable/re-enable glass, replacing
         # its surface. Subsequent steady-state checks use that new instance.
-        require(len(surfaces(r, root)) == 1, 'Re-enabling shelf glass installs one surface')
-        blur = surfaces(r, root)[0]
+        require(len(active_surfaces()) == 1, 'Re-enabling shelf glass installs one surface')
+        blur = active_surfaces()[0]
         require(r.objects[unrelated_layout].state['sectionHeadersPinToVisibleBounds'] and
                 r.objects[unrelated_layout].state['invalidations'] == 0,
                 'The native top tab strip keeps its unrelated layout policy')
@@ -585,6 +652,10 @@ def exercise(data, labels, kind):
         scroll_state.update(contentOffset=(0, rest), bounds=(0, rest, *scroll_state['bounds'][2:]))
         call(c, r, tab, FLOATING_LAYOUT, scroll)
         resting_filter = drawn_rect(r, filter_button)
+        require(surfaces(r, root) == [blur] and not surfaces(r, page) and
+                r.objects[blur].state['frame'] == (0, 0, 440, boundary) and
+                all(r.objects[view].state['backgroundColor'] == stock_fill for view in (holder, subheader)),
+                'Unpinning restores stock filter fills and brings the same blur back to its title-only frame')
         require(resting_filter[1] > boundary and resting_filter[3] == 28 and
                 r.objects[filter_button].state['enabled'] and r.objects[filter_button].state['userInteractionEnabled'],
                 'The native filter stays visible and interactive inline at rest')
@@ -604,9 +675,45 @@ def exercise(data, labels, kind):
         require(r.objects[row].state['superview'] == holder and not r.objects[holder].state['hidden'] and
                 drawn_rect(r, filter_button)[1] == boundary + 4 and drawn_rect(r, filter_button)[3] == 28,
                 'The same native filter remains visible and clickable below the header on deep scroll')
+
+        # In the host's other path UIKit pins a supplementary filter header
+        # directly in the collection, while the former holder is hidden.
+        header_class = 'SSBookShelfFilterHeaderView'
+        if header_class not in r.classes:
+            r._class(header_class, 'UIView')
+        r._add(r.classes['UICollectionView'], 'visibleSupplementaryViewsOfKind:', r.LAYOUT_IMP, '@24@0:8@16')
+        offset_y = scroll_state['contentOffset'][1]
+        stock_scroll_frame = scroll_state['frame']
+        fixed_frame = (0, offset_y + boundary, 440, 36)
+        supplementary = r.view(header_class, 'host supplementary filter header', fixed_frame, scroll,
+                               backgroundColor=stock_fill, opaque=True, userInteractionEnabled=True)
+        scroll_state['visibleShelfHeaders'] = r.obj('NSArray', 'visible section headers', items=[supplementary])
+        r.objects[tab].state['supplementaryOnly'] = True
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(not active_surfaces() and surfaces(r, scroll) == [blur] and
+                r.objects[supplementary].state['frame'] == fixed_frame and
+                r.objects[supplementary].state['userInteractionEnabled'] and
+                r.objects[supplementary].state['backgroundColor'] == r.color('clearColor') and
+                r.objects[blur].state['frame'] == (0, offset_y, 440, boundary + 36),
+                'The real supplementary path moves the same blur below its filter without changing hit geometry')
+
+        scroll_state['frame'] = (0, boundary - 2, 440, stock_scroll_frame[3])
+        r.objects[supplementary].state['frame'] = (0, offset_y + 2, 440, 36)
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        tint = r.objects[r.objects[blur].state['contentView']].state['backgroundColor']
+        require(surfaces(r, root) == [blur] and not surfaces(r, scroll) and
+                r.objects[supplementary].state['backgroundColor'] == stock_fill and tint == stock_fill,
+                'A clipped native filter uses one canvas color on both rows without disabling native clipping')
+
+        scroll_state['frame'] = stock_scroll_frame
+        scroll_state['visibleShelfHeaders'] = 0
+        r.reparent(supplementary, 0)
+        r.objects[tab].state['supplementaryOnly'] = False
+        call(c, r, tab, FLOATING_LAYOUT, scroll)
+        require(surfaces(r, page) == [blur], 'Leaving the supplementary variant returns to the floating holder')
     for _ in range(3):
         call(c,r,owner,layout)
-    require(surfaces(r,root) == [blur] and scroll_state['contentOffset']==applied_offset,
+    require(active_surfaces() == [blur] and scroll_state['contentOffset']==applied_offset,
             'Settled layout reuses one bounded blur and preserves the scrolled offset')
     geometry = [record for event, record in r.header_records if event == 'topChromeGeometry']
     require(geometry and geometry[-1]['material'] == 'systemUltraThin',
@@ -615,13 +722,13 @@ def exercise(data, labels, kind):
     require(not r.objects[header].state['opaque'] and r.objects[header].state['backgroundColor'] == clear,
             'The stock toolbar fill clears so the backdrop remains visible')
     require(not r.objects[tab_strip].state['opaque'] and r.objects[tab_strip].state['backgroundColor'] == clear and
-            r.objects[artwork].state['alpha']==0.25,
+            r.objects[artwork].state['alpha']==(0 if shelf else 0.25),
             'Opaque tab strip and gradient artwork above the pager stop blocking the backdrop')
     if shelf:
         scroll_state['contentInset']=stock_inset
     r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1']=1
     call(c,r,owner,layout)
-    require(not surfaces(r,root) and r.objects[content_viewport].state['frame']==viewport_frame and
+    require(not active_surfaces() and r.objects[content_viewport].state['frame']==viewport_frame and
             scroll_state['contentInset']==stock_inset and scroll_state['contentOffset']==(0,stock_offset),
             'Disabling glass restores stock geometry and inset')
     require(edge_state['hidden'] == stock_edge_hidden and edge_state['style'] == r.top_edge_stock,
@@ -641,6 +748,85 @@ def exercise(data, labels, kind):
             'Removing the expanded viewport restores native refresh-artwork visibility')
     if nested:
         exercise_nested_scroll_repair(c, r, tab, root, content_viewport, scroll, edge)
+    if shelf:
+        exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scroll, viewport_frame, stock_inset)
+        exercise_history_pager(c, r, owner, tabs, horizontal, viewport)
+
+
+def exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scroll, stock_frame, stock_inset):
+    r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1'] = 0
+    boundary = stock_frame[1]
+    history_page = r.view('UIView', 'history page', (0, 0, 440, stock_frame[3]), horizontal)
+    history_scroll = r.view('UICollectionView', 'history list', (0, 0, 440, stock_frame[3]), history_page,
+                            clipsToBounds=True, contentInset=(0, 0, 32, 0), contentOffset=(0, 0))
+    history_cover = r.view('UIView', 'first history cover', (20, 10, 92, 134), history_scroll)
+    history = r.obj(HISTORY_TAB, 'history tab', view=history_page, viewIfLoaded=history_page)
+    r.objects[owner].state['nativeCategoryTabs'] = (tab, history)
+    call(c, r, owner, 'viewLayout')
+    require(r.objects[viewport].state['frame'][1] == 0 and drawn_rect(r, history_cover)[1] < boundary,
+            'The shelf uses underlap and its shared pager would cover a stock history page')
+    call(c, r, owner, SHELF_SELECTION, tabs, 1)
+    hist_scroll = r.objects[history_scroll].state
+    require(r.objects[owner].state['currentTabVC'] == history and
+            r.objects[viewport].state['frame'] == stock_frame and
+            drawn_rect(r, history_cover) == (20, boundary + 10, 92, 134),
+            'After committed history selection the entire first cover fits below the shelf title')
+    require(hist_scroll['contentInset'] == (0, 0, 32, 0) and hist_scroll['contentOffset'] == (0, 0) and
+            r.objects[scroll].state['contentInset'] == stock_inset,
+            'The history scroll keeps its native rest and only the prior shelf inset is removed')
+    call(c, r, owner, SHELF_SELECTION, tabs, 0)
+    require(r.objects[owner].state['currentTabVC'] == tab and
+            r.objects[viewport].state['frame'][1] == 0 and
+            r.objects[scroll].state['contentInset'][0] == stock_inset[0] + boundary,
+            'Switching back reestablishes one shelf inset and the underlap')
+
+
+def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
+    owner_state = r.objects[owner].state
+    shelf, history = owner_state['nativeCategoryTabs']
+    collect = r.obj(COLLECT_TAB, 'native video collection')
+    pages = (shelf, history, collect)
+    owner_state.update(nativeCategoryTabs=pages, tabVCs=r.obj('NSArray', 'shelf pages', items=pages))
+    history_state = r.objects[history].state
+    history_state['filterSelection'] = 'listening history'
+    pager = r.objects[viewport].state
+    scroll = r.objects[horizontal].state
+    pager.update(delegate=owner, scrollView=horizontal, nativeValidLists=dict(enumerate(pages)),
+                 currentIndex=2, currentSelectedListViewController=collect)
+    scroll.update(contentOffset=(880, 0), isTracking=False, isDragging=False, isDecelerating=True)
+    call(c, r, owner, SHELF_SELECTION, tabs, 1)
+    call(c, r, viewport, 'layoutSubviews')
+    require(pager['currentIndex'] == 2, 'A live swipe may still be on the native collection page')
+    scroll['isDecelerating'] = False
+    call(c, r, viewport, 'scrollDidStop')
+    require(pager['currentIndex'] == 1 and pager['currentSelectedListViewController'] == history and
+            scroll['contentOffset'] == (440, 0),
+            'A settled main History selection reselects the native page over an old Collect index')
+
+    pager['nativeValidLists'][1] = collect
+    pager['currentSelectedListViewController'] = collect
+    call(c, r, viewport, 'layoutSubviews')
+    require(pager['nativeValidLists'][1] == history and pager['currentSelectedListViewController'] == history,
+            'A stale cached Collect controller at the committed History index is rebuilt through the host')
+
+    scroll['contentOffset'] = (880, 0)
+    call(c, r, viewport, 'layoutSubviews')
+    require(scroll['contentOffset'] == (440, 0),
+            'A whole Collect page offset is corrected when the native selected controller is already History')
+    call(c, r, owner, SHELF_SELECTION, tabs, 2)
+    pager.update(currentIndex=2, currentSelectedListViewController=collect)
+    scroll['contentOffset'] = (880, 0)
+    call(c, r, viewport, 'layoutSubviews')
+    require(pager['currentIndex'] == 2 and scroll['contentOffset'] == (880, 0),
+            'An actual Collect selection retains its native empty state')
+    call(c, r, owner, SHELF_SELECTION, tabs, 1)
+    pager.update(currentIndex=1, currentSelectedListViewController=history)
+    scroll['contentOffset'] = (440, 0)
+    before = len([e for e in r.events if e['event'] == 'history_pager_repair'])
+    call(c, r, viewport, 'layoutSubviews')
+    require(len([e for e in r.events if e['event'] == 'history_pager_repair']) == before and
+            history_state['filterSelection'] == 'listening history',
+            'A normally mounted History page retains native state and existing user filters')
 
 
 if __name__ == '__main__':

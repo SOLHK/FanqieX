@@ -21,7 +21,7 @@ def require(test, detail):
 def release_version(data):
     version = struct.unpack_from('<I', data, 0x818)[0]
     require(version in (0x10602, 0x10603, 0x10604, 0x10605, 0x10606, 0x10607,
-                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f),
+                        0x10701, 0x10702, 0x10703, 0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f, 0x14e10),
             'Expected a recognized FanqieX release candidate')
     if version == 0x14e02:
         return '1.78R2'
@@ -31,6 +31,8 @@ def release_version(data):
         return '1.78R4'
     if version == 0x14e05:
         return '1.78R5'
+    if version == 0x14e10:
+        return '1.78R16'
     if version == 0x14e0f:
         return '1.78R15'
     if version == 0x14e0e:
@@ -387,6 +389,21 @@ class CPU:
             if op & (1 << 29):
                 self.arithmetic_flags(lhs, rhs, out, width, subtract)
             self.w(op & 31, out, width=width); return
+        if op & 0x1fe00000 == 0x0b200000:  # ADD / SUB extended register
+            width = 64 if op >> 31 else 32
+            option, shift = (op >> 13) & 7, (op >> 10) & 7
+            require(shift <= 4, 'Valid extended-register shift')
+            bits = min(8 << (option & 3), width)
+            rhs = self.r((op >> 16) & 31, width=bits)
+            if option >= 4 and rhs & (1 << (bits - 1)):
+                rhs -= 1 << bits
+            rhs <<= shift
+            lhs = self.r((op >> 5) & 31, sp=True, width=width)
+            subtract, flags = bool(op & (1 << 30)), bool(op & (1 << 29))
+            out = lhs-rhs if subtract else lhs+rhs
+            if flags:
+                self.arithmetic_flags(lhs, rhs, out, width, subtract)
+            self.w(op & 31, out, sp=not flags, width=width); return
         if op & 0x1f000000 == 0x0a000000:  # logical shifted register (includes MOV)
             width = 64 if op >> 31 else 32
             lhs = self.r((op >> 5) & 31, width=width)
@@ -575,18 +592,20 @@ class CPU:
                 value = sx(value, source_width)
             self.wf(op & 31, math.ldexp(value, -fraction_bits), 64 if op & (1 << 22) else 32); return
         fixed = op & 0x7f3f0000 == 0x1e180000
-        if fixed or op & 0x7f3ffc00 == 0x1e380000:  # FCVTZS scalar FP -> signed general register
+        unsigned = op & 0x7f3ffc00 == 0x1e390000
+        if fixed or unsigned or op & 0x7f3ffc00 == 0x1e380000:  # FCVTZS / FCVTZU scalar
             width = 64 if op >> 31 else 32
             value = self.fp((op >> 5) & 31, 64 if op & (1 << 22) else 32)
             if fixed:
                 fraction_bits = 64 - ((op >> 10) & 63)
                 require(fraction_bits <= width, 'Valid fixed-point fractional width')
                 value = math.ldexp(value, fraction_bits)
-            # Audited bucket operands are finite and in signed range.
+            lower, upper = (0, 1 << width) if unsigned else (-(1 << (width-1)), 1 << (width-1))
+            # Audited bucket operands are finite and in representable range.
             # Exceptional FP conversions require FPSR/FPCR modeling, which this
             # interpreter deliberately does not pretend to implement.
-            require(math.isfinite(value) and -(1 << (width-1)) <= value < (1 << (width-1)),
-                    'FCVTZS operand finite and in audited signed range')
+            require(math.isfinite(value) and lower <= value < upper,
+                    'FP conversion operand finite and in audited integer range')
             self.w(op & 31, math.trunc(value), width=width); return
         if op & 0xff20fc07 == 0x1e202000:  # FCMP / FCMPE register or zero
             width = 64 if op & (1 << 22) else 32

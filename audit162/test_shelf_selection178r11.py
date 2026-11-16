@@ -19,6 +19,8 @@ from test_page_glass174 import Runtime as PageRuntime, make
 CELL="SSBookShelfTabSelectViewTitleCell"
 MODEL="SSBookShelfTabSelectViewTitleCellModel"
 VIEW="SSBookShelfTabSelectView"
+CATEGORY="FQRJXCategoryBaseView"
+WILL_DISPLAY="collectionView:willDisplayCell:forItemAtIndexPath:"
 FILTER="SSBookShelfFilter541Cell"
 DOUBLES=("titleLabelNormalZoomScale","titleLabelCurrentZoomScale","titleLabelSelectedZoomScale",
          "titleLabelVerticalOffset","titleLabelZoomSelectedVerticalOffset")
@@ -37,7 +39,12 @@ class Runtime(PageRuntime):
     PROPERTY=0x330f1000
     def __init__(self,data):
         super().__init__(data)
-        self._class(VIEW,"UIView")
+        self._class(CATEGORY,"UIView")
+        self._class(VIEW,CATEGORY)
+        self.original_will_display=0x330f1800
+        self._add(self.classes[CATEGORY],WILL_DISPLAY,self.original_will_display,"v40@0:8@16@24@32")
+        self.fitted_title_containers=0
+        self.native_display_calls=[]
         self.properties={}
         self.host_entries={}
         self.consumed=[]
@@ -60,6 +67,19 @@ class Runtime(PageRuntime):
         if pc-self.slide==0xa5d4 and self.selector_names.get(c.x[1])=="setTransform:" and obj in self.objects:
             self.objects[obj].state["transform"]=struct.unpack("<6d",bytes(c.read(c.x[2]+i,1) for i in range(48)))
             return self.finish(c)
+        if pc==self.original_will_display:
+            self.native_display_calls.append(tuple(c.x[:5]))
+            return self.finish(c)
+        if pc-self.slide==0xa5d4 and obj in self.objects:
+            state=self.objects[obj].state
+            name=self.selector_names.get(c.x[1])
+            if name=="titleContainerView" and "titleContainerView" in state:
+                return self.finish(c,state["titleContainerView"])
+            if name=="layoutIfNeeded" and state.get("pendingTitles"):
+                self.fitted_title_containers+=1
+                for label in state.pop("pendingTitles"):
+                    self.objects[label].state.update(frame=(0.,0.,34.,34.),bounds=(0.,0.,34.,34.),textAlignment=0)
+                return self.finish(c)
         if pc==self.PROPERTY:
             key,kind,setter=self.properties[self.selector_names[c.x[1]]]
             state=self.objects[obj].state
@@ -133,6 +153,26 @@ def exercise(data,labels):
         r.objects[cell].state[key]=r.label(key,cell,(0,-8,34,34),"圈子",alignment=0)
         r.objects[r.objects[cell].state[key]].state["transform"]=(1.,0.,0.,1.,0.,0.)
     for i,model in enumerate(models): send(c,r,view,"refreshCellModel:index:",model,i)
+    if release_version(data) in ("1.78R15", "1.78R16"):
+        collection=r.view("UICollectionView","actual title collection",(0,0,440,34),view)
+        r.objects[view].state["collectionView"]=collection
+        first=r.view(CELL,"first frame before UIKit layout",(20,0,46,34),collection,cellModel=models[0],layout_passes=0)
+        container=r.view("UIView","native inner title container",(0,0,46,34),first)
+        labels_pending=[r.label(key,container,(0,0,34,34),"书架",alignment=0)
+                        for key in ("titleLabel","maskTitleLabel")]
+        for label in labels_pending:
+            r.objects[label].state["transform"]=(1.,0.,0.,1.,0.,0.)
+        r.objects[container].state["pendingTitles"]=labels_pending
+        r.objects[first].state.update(titleContainerView=container,titleLabel=labels_pending[0],
+                                      maskTitleLabel=labels_pending[1])
+        send(c,r,view,WILL_DISPLAY,collection,first,0)
+        require(len(r.native_display_calls)==1 and r.objects[first].state["layout_passes"]==1 and
+                r.fitted_title_containers==1,"Book shelf willDisplay forwards once and resolves both pending title constraints")
+        require(all(r.objects[label].state["frame"]==(6.,0.,34.,34.) and
+                    r.objects[label].state["textAlignment"]==1 for label in labels_pending),
+                "Both titles use the final 46pt cell center before any selection")
+        require(r.methods[r.get_method(r.classes[CATEGORY],r.sel(WILL_DISPLAY))]["imp"]==r.original_will_display,
+                "The inherited callback is untouched on other category owners")
     snapshots=[]
     for selected_index in (0,1,0,1):
         send(c,r,view,"refreshSelectedCellModel:unselectedCellModel:",models[selected_index],models[1-selected_index])

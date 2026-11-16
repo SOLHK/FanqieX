@@ -37,11 +37,13 @@
 
 @interface FQXTestManager : NSObject
 @property (nonatomic, copy) NSArray *identifiers;
+@property (nonatomic, copy) NSSet *indexed;
 @property (nonatomic, strong) NSMutableDictionary *contents;
 @property (nonatomic, strong) FQXTestCrypto *bookCrypt;
 @property (nonatomic, strong) NSMutableArray *reads;
 - (id)bookWithBookId:(id)identifier;
 - (id)chapterIdsWithBookId:(id)identifier;
+- (id)existingChapterContentIdsWithBookId:(id)identifier;
 - (id)chapterContentWithBookId:(id)identifier chapterId:(id)chapter;
 @end
 @implementation FQXTestManager
@@ -53,6 +55,10 @@
     NSCAssert([identifier isEqual:@"book-1"], @"Read the local directory");
     return self.identifiers;
 }
+- (id)existingChapterContentIdsWithBookId:(id)identifier {
+    NSCAssert([identifier isEqual:@"book-1"], @"Read the selected book's local body index");
+    return self.indexed;
+}
 - (id)chapterContentWithBookId:(id)identifier chapterId:(id)chapter {
     NSCAssert([identifier isEqual:@"book-1"], @"Read the selected local book");
     [self.reads addObject:chapter];
@@ -63,7 +69,9 @@
 int main(void) {
     @autoreleasepool {
         FQXTestManager *manager = [FQXTestManager new];
-        manager.identifiers = @[@"chapter-3", @"chapter-9"];
+        manager.identifiers = @[@"chapter-3", @"reader-cache", @"chapter-9", @"not-downloaded"];
+        manager.indexed = [NSSet setWithArray:@[@"chapter-3", @"reader-cache", @"chapter-9"]];
+        NSArray *downloaded = @[@"chapter-9", @"chapter-3"];
         manager.contents = [NSMutableDictionary dictionary];
         manager.reads = [NSMutableArray array];
         manager.bookCrypt = [FQXTestCrypto new];
@@ -79,9 +87,11 @@ int main(void) {
         encoded.shouldDecompress = YES;
         manager.contents[@"chapter-9"] = encoded;
         NSError *error;
-        FQXLocalBook *book = [[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"备用书名" error:&error];
+        FQXLocalBook *book = [[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"备用书名"
+                                            downloadedChapterIDs:downloaded error:&error];
         NSCAssert(book && !error && [book.metadata[@"author"] isEqual:@"测试作者"], @"Read local book metadata");
-        NSCAssert([book.chapterIdentifiers isEqual:manager.identifiers], @"Preserve catalog order, avoid numeric sorting");
+        NSCAssert(([book.chapterIdentifiers isEqual:@[@"chapter-3", @"chapter-9"]] && book.catalogCount == 4),
+                  @"Download records select chapters in catalog order; incidental cache and unloaded catalog tail stay out");
         NSDictionary *first = [book chapterAtIndex:0 error:&error];
         NSCAssert([first[@"id"] isEqual:@"chapter-3"] && [first[@"paragraphs"] count] == 2, @"Normalize the plaintext local chapter");
         NSDictionary *last = [book chapterAtIndex:1 error:&error];
@@ -90,6 +100,14 @@ int main(void) {
         [manager.contents removeObjectForKey:@"chapter-9"];
         error = nil;
         NSCAssert(![book chapterAtIndex:1 error:&error] && error, @"Missing chapter is a hard failure");
+        manager.indexed = [NSSet setWithArray:@[@"chapter-3", @"reader-cache"]];
+        error = nil;
+        FQXLocalBook *missing = [[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"备用书名"
+                                               downloadedChapterIDs:downloaded error:&error];
+        NSUInteger reads = manager.reads.count;
+        NSCAssert(missing && ![missing chapterAtIndex:1 error:&error] &&
+                  [error.localizedDescription containsString:@"第 3 章"] && manager.reads.count == reads,
+                  @"A missing selected chapter is reported by catalog position and is not replaced by cached text");
         manager.contents[@"chapter-9"] = encoded;
         manager.bookCrypt.fail = YES;
         error = nil;
@@ -98,14 +116,17 @@ int main(void) {
         NSCAssert(![book chapterAtIndex:2 error:&error] && error, @"Out-of-range chapter is rejected");
         manager.identifiers = @[@"chapter-3", @"chapter-3"];
         error = nil;
-        NSCAssert(![[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"书名" error:&error] && error,
+        NSCAssert(![[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"书名"
+                                   downloadedChapterIDs:downloaded error:&error] && error,
                   @"Reject duplicate catalog entries");
         manager.identifiers = @[];
         error = nil;
-        NSCAssert(![[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"书名" error:&error] && error,
+        NSCAssert(![[FQXLocalBook alloc] initWithManager:manager identifier:@"book-1" fallbackTitle:@"书名"
+                                   downloadedChapterIDs:downloaded error:&error] && error,
                   @"Reject empty catalog");
         error = nil;
-        NSCAssert(![[FQXLocalBook alloc] initWithManager:[NSObject new] identifier:@"book-1" fallbackTitle:@"书名" error:&error] && error,
+        NSCAssert(![[FQXLocalBook alloc] initWithManager:[NSObject new] identifier:@"book-1" fallbackTitle:@"书名"
+                                   downloadedChapterIDs:downloaded error:&error] && error,
                   @"Reject unsupported host ABI");
         puts("Book export local source checks passed");
     }

@@ -2,7 +2,7 @@ name: Xcode 27 plugin build
 
 on:
   push:
-    branches: [main, test, 'work/162-*', 'work/163-*', 'work/164-*', 'work/178r11-*', 'work/178r12-*', 'work/178r13-*', 'work/178r14-*', 'work/178r15-*']
+    branches: [main, test, 'work/162-*', 'work/163-*', 'work/164-*', 'work/178r11-*', 'work/178r12-*', 'work/178r13-*', 'work/178r14-*', 'work/178r15-*', 'work/178r16-*']
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.78R15'
+        run: test "$(cat VERSION)" = '1.78R16'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -63,9 +63,9 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R15
-      - name: Build the ARC novel export companion twice
-        run: python3 scripts/build_book_export.py --output build/xcode27
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R16
+      - name: Build FanqieX with integrated novel export
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.78R16.dylib --output build/xcode27/integrated
       - name: Exercise export formats and local chapter sources on real Foundation
         run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Preserve build and evidence
@@ -76,6 +76,8 @@ jobs:
           path: |
             build/xcode27/*.dylib
             build/xcode27/*.json
+            build/xcode27/integrated/*.dylib
+            build/xcode27/integrated/*.json
             build/xcode27/*.zip
             build/xcode27/*.composed.s
             build/xcode27/*.preextend

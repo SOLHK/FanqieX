@@ -97,7 +97,7 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
 - (void)chooseRange {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"导出本地小说"
         message:self.bookTitle preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"整本已下载小说" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"整本小说（需完整下载）" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
         self.requestedCount = 0;
         [self chooseFormat];
     }]];
@@ -117,7 +117,7 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
 
 - (void)enterChapterCount {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"最近 N 章"
-        message:@"按本地目录末尾选择章节。" preferredStyle:UIAlertControllerStyleAlert];
+        message:@"按目录顺序从已下载章节中选择，最多导出输入的章数。" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.keyboardType = UIKeyboardTypeNumberPad;
         field.placeholder = @"章节数";
@@ -159,14 +159,8 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
 }
 
 - (void)exportFormat:(FQXBookExportFormat)format {
-    NSError *error;
-    FQXLocalBook *book = [FQXLocalBook bookWithIdentifier:self.bookIdentifier fallbackTitle:self.bookTitle error:&error];
-    if (!book) {
-        [self showError:error.localizedDescription];
-        return;
-    }
     UIAlertController *progress = [UIAlertController alertControllerWithTitle:@"正在导出"
-        message:@"正在读取本地章节…" preferredStyle:UIAlertControllerStyleAlert];
+        message:@"正在读取本地下载记录和目录…" preferredStyle:UIAlertControllerStyleAlert];
     [progress addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *action) {
         self.cancelled = YES;
     }]];
@@ -176,14 +170,44 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
     self.queue.maxConcurrentOperationCount = 1;
     [self presentAlert:progress completion:^{
         [self.queue addOperationWithBlock:^{
-            [self writeBook:book format:format];
+            [self writeBookWithFormat:format];
         }];
     }];
 }
 
-- (void)writeBook:(FQXLocalBook *)book format:(FQXBookExportFormat)format {
+- (void)completeExportWithFile:(NSURL *)file folder:(NSURL *)folder error:(NSString *)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        void (^finished)(void) = ^{
+            if (self.cancelled || !file) {
+                if (folder) [NSFileManager.defaultManager removeItemAtURL:folder error:NULL];
+                if (self.cancelled) [self releaseSession];
+                else [self showError:message ?: @"写入导出文件失败。"];
+                return;
+            }
+            [self shareFile:file folder:folder];
+        };
+        if (self.progress.presentingViewController)
+            [self.progress dismissViewControllerAnimated:YES completion:finished];
+        else finished();
+    });
+}
+
+- (void)writeBookWithFormat:(FQXBookExportFormat)format {
     @autoreleasepool {
         NSError *error;
+        FQXLocalBook *book = [FQXLocalBook bookWithIdentifier:self.bookIdentifier fallbackTitle:self.bookTitle error:&error];
+        if (!book || self.cancelled) {
+            [self completeExportWithFile:nil folder:nil error:error.localizedDescription];
+            return;
+        }
+        NSUInteger total = book.chapterIdentifiers.count;
+        if (!self.requestedCount && total != book.catalogCount) {
+            NSString *message = [NSString stringWithFormat:
+                @"整本小说尚未完整下载（%lu / %lu 章）。请选择最新一章或最近 N 章，或下载完成后重试。",
+                (unsigned long)total, (unsigned long)book.catalogCount];
+            [self completeExportWithFile:nil folder:nil error:message];
+            return;
+        }
         NSURL *folder = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
             URLByAppendingPathComponent:[@"FanqieX-Export-" stringByAppendingString:NSUUID.UUID.UUIDString] isDirectory:YES];
         BOOL created = [NSFileManager.defaultManager createDirectoryAtURL:folder
@@ -198,7 +222,6 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
         NSURL *destination = [folder URLByAppendingPathComponent:[name stringByAppendingPathExtension:extensions[format]]];
         FQXBookExportWriter *writer = created ? [[FQXBookExportWriter alloc] initWithBook:book.metadata
             format:format destination:destination error:&error] : nil;
-        NSUInteger total = book.chapterIdentifiers.count;
         NSUInteger count = self.requestedCount ? MIN(self.requestedCount, total) : total;
         NSUInteger first = total - count;
         BOOL complete = writer != nil;
@@ -214,24 +237,9 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
             }
         }
         if (complete && !self.cancelled) complete = [writer finish:&error];
-        if (!complete || self.cancelled) {
-            [writer cancel];
-            if (created) [NSFileManager.defaultManager removeItemAtURL:folder error:NULL];
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            void (^finished)(void) = ^{
-                if (self.cancelled) {
-                    if (created) [NSFileManager.defaultManager removeItemAtURL:folder error:NULL];
-                    [self releaseSession];
-                    return;
-                }
-                if (!complete) { [self showError:error.localizedDescription ?: @"写入导出文件失败。"]; return; }
-                [self shareFile:destination folder:folder];
-            };
-            if (self.progress.presentingViewController)
-                [self.progress dismissViewControllerAnimated:YES completion:finished];
-            else finished();
-        });
+        if (!complete || self.cancelled) [writer cancel];
+        [self completeExportWithFile:complete ? destination : nil folder:created ? folder : nil
+                              error:error.localizedDescription];
     }
 }
 
@@ -256,11 +264,79 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
 }
 @end
 
+static void FQXBeginExport(UIViewController *owner, UIView *sender, NSDictionary *book) {
+    if (!book || !owner.view.window || owner.presentedViewController) return;
+    UIApplication *application = UIApplication.sharedApplication;
+    if (objc_getAssociatedObject(application, FQXExportSessionKey)) return;
+    FQXExportSession *session = [FQXExportSession new];
+    session.bookIdentifier = book[@"id"];
+    session.bookTitle = book[@"title"];
+    session.owner = owner;
+    session.sender = sender;
+    objc_setAssociatedObject(application, FQXExportSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [session chooseRange];
+}
+
+@interface FQXDownloadedBooksController : UITableViewController
+@property (nonatomic, copy) NSArray<NSDictionary *> *books;
+@end
+
+@implementation FQXDownloadedBooksController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"导出书籍";
+    if (self.navigationController.viewControllers.firstObject == self) {
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+            initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(close)];
+    }
+    [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"FanqieX.DownloadedBook"];
+}
+
+- (void)close {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    NSError *error = nil;
+    self.books = [FQXLocalBook downloadedBooksWithError:&error] ?: @[];
+    if (self.books.count) {
+        self.tableView.backgroundView = nil;
+    } else {
+        UILabel *message = [UILabel new];
+        message.text = error.localizedDescription ?: @"暂无可导出的小说。请先在番茄小说下载章节。";
+        message.textAlignment = NSTextAlignmentCenter;
+        message.textColor = UIColor.secondaryLabelColor;
+        message.numberOfLines = 0;
+        self.tableView.backgroundView = message;
+    }
+    [self.tableView reloadData];
+}
+
+- (NSInteger)tableView:(__unused UITableView *)tableView numberOfRowsInSection:(__unused NSInteger)section {
+    return self.books.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FanqieX.DownloadedBook" forIndexPath:indexPath];
+    NSDictionary *book = self.books[indexPath.row];
+    UIListContentConfiguration *configuration = [cell defaultContentConfiguration];
+    configuration.text = book[@"title"];
+    configuration.secondaryText = [NSString stringWithFormat:@"已下载 %@ 章", book[@"downloadedCount"]];
+    cell.contentConfiguration = configuration;
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    FQXBeginExport(self, [tableView cellForRowAtIndexPath:indexPath], self.books[indexPath.row]);
+}
+@end
+
 @interface FQXExportAccessory : NSObject
 @property (nonatomic, weak) UIView *cell;
 @property (nonatomic, strong) UIButton *button;
-@property (nonatomic, weak) UILabel *statusLabel;
-@property (nonatomic) BOOL statusWasHidden;
 - (void)update;
 @end
 
@@ -268,62 +344,47 @@ static void FQXAnchor(UIAlertController *alert, UIViewController *owner, UIView 
 - (void)update {
     UIView *cell = self.cell;
     id model = FQXGet(cell, @"model");
-    BOOL eligible = FQXGetter(model, @"status", "Q") && FQXGetter(model, @"bookType", "i") &&
-        FQXGetter(cell, @"editMode", "B") &&
-        ((NSUInteger (*)(id, SEL))objc_msgSend)(model, NSSelectorFromString(@"status")) == 3 &&
-        ((int (*)(id, SEL))objc_msgSend)(model, NSSelectorFromString(@"bookType")) == 0 &&
-        !((BOOL (*)(id, SEL))objc_msgSend)(cell, NSSelectorFromString(@"editMode"));
-    NSString *bookID = FQXGet(model, @"bookId");
-    eligible = eligible && [bookID isKindOfClass:NSString.class] && bookID.length;
-    UILabel *status = FQXGet(cell, @"statusLabel");
+    BOOL editing = !FQXGetter(cell, @"editMode", "B") ||
+        ((BOOL (*)(id, SEL))objc_msgSend)(cell, NSSelectorFromString(@"editMode"));
+    Class downloadedTab = NSClassFromString(@"SSDownloadedTabViewController");
+    BOOL eligible = !editing && downloadedTab && [FQXOwner(cell) isKindOfClass:downloadedTab] &&
+        FQXDownloadedBookRecord(model);
+    UIView *manage = FQXGet(cell, @"manageBtn");
     UIView *content = FQXGet(cell, @"contentView");
-    if (self.statusLabel && (self.statusLabel != status || !eligible)) {
-        self.statusLabel.hidden = self.statusWasHidden;
-        self.statusLabel = nil;
-    }
-    if (!eligible || ![status isKindOfClass:UILabel.class] ||
-        ![content isKindOfClass:UIView.class] || ![status isDescendantOfView:content] ||
-        status.bounds.size.width <= 0 || status.bounds.size.height <= 0) {
+    CGRect bounds = content.bounds;
+    if (!eligible || ![content isKindOfClass:UIView.class] || bounds.size.width < 120 || bounds.size.height < 40) {
         self.button.hidden = YES;
         return;
     }
-    if (self.statusLabel != status) {
-        self.statusLabel = status;
-        self.statusWasHidden = status.hidden;
-    }
     if (!self.button) {
-        self.button = [UIButton buttonWithType:UIButtonTypeSystem];
-        [self.button setTitle:@"导出" forState:UIControlStateNormal];
-        self.button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        UIButtonConfiguration *configuration = [UIButtonConfiguration tintedButtonConfiguration];
+        configuration.title = @"导出";
+        configuration.buttonSize = UIButtonConfigurationSizeSmall;
+        configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        self.button = [UIButton buttonWithConfiguration:configuration primaryAction:nil];
         [self.button addTarget:self action:@selector(begin:) forControlEvents:UIControlEventTouchUpInside];
         self.button.accessibilityIdentifier = @"FanqieX.ExportDownloadedBook";
-        [content addSubview:self.button];
     }
-    CGRect frame = [status convertRect:status.bounds toView:content];
-    CGFloat width = MAX(44, frame.size.width);
-    CGFloat right = MIN(CGRectGetMaxX(frame), CGRectGetMaxX(content.bounds) - 8);
-    CGFloat y = MAX(CGRectGetMinY(content.bounds), CGRectGetMidY(frame) - 22);
-    y = MIN(y, MAX(0, CGRectGetMaxY(content.bounds) - 44));
-    self.button.frame = CGRectMake(MAX(0, right - width), y, width, 44);
+    if (self.button.superview != content) [content addSubview:self.button];
+    CGRect manageFrame = [manage isKindOfClass:UIView.class] && [manage isDescendantOfView:content] ?
+        [manage convertRect:manage.bounds toView:content] : CGRectZero;
+    CGFloat width = 56;
+    CGFloat bottom = CGRectGetMaxY(bounds) - 5;
+    CGFloat right = CGRectIsEmpty(manageFrame) ? CGRectGetMaxX(bounds) - 16 : CGRectGetMaxX(manageFrame);
+    CGFloat top = MAX(bottom - 32, CGRectGetMaxY(manageFrame) + 3);
+    if (bottom - top < 28) {
+        top = MAX(CGRectGetMinY(bounds), CGRectGetMidY(manageFrame) - 16);
+        bottom = MIN(CGRectGetMaxY(bounds), top + 32);
+        right = CGRectGetMinX(manageFrame) - 8;
+    }
+    CGRect frame = CGRectMake(MAX(CGRectGetMinX(bounds), right - width), top, width, bottom - top);
+    if (!CGRectEqualToRect(self.button.frame, frame)) self.button.frame = frame;
     self.button.hidden = NO;
-    status.hidden = YES;
 }
 
 - (void)begin:(UIButton *)sender {
-    UIViewController *owner = FQXOwner(self.cell);
-    if (!owner.view.window || owner.presentedViewController) return;
-    if (objc_getAssociatedObject(UIApplication.sharedApplication, FQXExportSessionKey)) return;
     [self update];
-    if (self.button.hidden) return;
-    id model = FQXGet(self.cell, @"model");
-    FQXExportSession *session = [FQXExportSession new];
-    session.bookIdentifier = FQXGet(model, @"bookId");
-    NSString *name = FQXGet(model, @"bookName");
-    session.bookTitle = [name isKindOfClass:NSString.class] && name.length ? name : @"小说";
-    session.owner = owner;
-    session.sender = sender;
-    objc_setAssociatedObject(UIApplication.sharedApplication, FQXExportSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [session chooseRange];
+    if (!self.button.hidden) FQXBeginExport(FQXOwner(self.cell), sender, FQXDownloadedBookRecord(FQXGet(self.cell, @"model")));
 }
 @end
 
@@ -351,8 +412,20 @@ static void FQXExportCellEditing(id cell, SEL selector, BOOL editing) {
 }
 
 @interface FQXBookExportPlugin : NSObject
++ (void)openFromSettingsController:(UIViewController *)owner;
 @end
 @implementation FQXBookExportPlugin
++ (void)openFromSettingsController:(UIViewController *)owner {
+    if (!owner.view.window || owner.presentedViewController) return;
+    [owner.view endEditing:YES];
+    FQXDownloadedBooksController *books = [[FQXDownloadedBooksController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    if (owner.navigationController)
+        [owner.navigationController pushViewController:books animated:YES];
+    else
+        [owner presentViewController:[[UINavigationController alloc] initWithRootViewController:books]
+                            animated:YES completion:nil];
+}
+
 + (void)load {
     dispatch_async(dispatch_get_main_queue(), ^{
         Class cell = NSClassFromString(@"SSBookDownloadItemCell");

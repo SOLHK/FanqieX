@@ -397,6 +397,7 @@ static void TopChromeTintKey(void) {}
 static void TopChromeColorKey(void) {}
 static void TopChromeOpaqueKey(void) {}
 static void TopChromeArtworkAlphaKey(void) {}
+static void TopChromeArtworkAppliedKey(void) {}
 static void TopChromeGeometryKey(void) {}
 static void BookstoreViewportKey(void) {}
 static void BookstoreUnexpandedFrameKey(void) {}
@@ -409,7 +410,16 @@ static void TopChromeInsetKey(void) {}
 static void TopChromeOwnerKey(void) {}
 static void TopChromeEdgeHiddenKey(void) {}
 static void TopChromeFill(Obj view,B enabled);
-static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
+static void MountTopChrome(Obj root,Obj surface,Obj anchor,Rect material) {
+    Obj parent=Get(anchor,"superview");
+    if (parent!=root) material=Convert(root,material,parent);
+    if (!SameRect(Frame(surface),material)) SetFrame(surface,material);
+    if (Get(surface,"superview")!=parent || objc_getAssociatedObject(surface,TopChromeAnchorKey)!=anchor) {
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:belowSubview:"),surface,anchor);
+        objc_setAssociatedObject(surface,TopChromeAnchorKey,anchor,1);
+    }
+}
+static B TopChrome(Obj root,Obj foreground,Obj anchor,Rect material,B enabled) {
     Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
     if (!enabled || !root || Get(foreground,"superview")!=root || !VisibleRect(material)) {
         V0(surface,"removeFromSuperview");
@@ -433,16 +443,12 @@ static B TopChrome(Obj root,Obj foreground,Rect material,B enabled) {
         objc_setAssociatedObject(root,TopChromeSurfaceKey,surface,1);
         V0(surface,"release");
     }
-    if (!SameRect(Frame(surface),material)) SetFrame(surface,material);
-    if (Get(surface,"superview")!=root || objc_getAssociatedObject(surface,TopChromeAnchorKey)!=foreground) {
-        ((void(*)(Obj,Sel,Obj,Obj))Message)(root,sel_registerName("insertSubview:belowSubview:"),surface,foreground);
-        objc_setAssociatedObject(surface,TopChromeAnchorKey,foreground,1);
-    }
+    MountTopChrome(root,surface,anchor,material);
     return 1;
 }
-static B TopChromePage(Obj root,Obj foreground,Obj scroll,Rect material,B enabled) {
+static B TopChromePage(Obj root,Obj foreground,Obj anchor,Obj scroll,Rect material,B enabled) {
     Obj old=objc_getAssociatedObject(root,TopChromeOwnerKey);
-    B installed=TopChrome(root,foreground,material,enabled && Kind(scroll,"UIScrollView"));
+    B installed=TopChrome(root,foreground,anchor,material,enabled && Kind(scroll,"UIScrollView"));
     Obj owner=installed ? foreground : (Obj)0;
     if (old!=owner) {
         TopChromeFill(old,0);
@@ -486,7 +492,7 @@ static B TopChromeContains(Obj viewport,Obj scroll) {
         if (view==viewport) return 1;
     return 0;
 }
-static void TopChromeArtwork(Obj artwork,Obj viewport,B enabled) {
+static void TopChromeArtwork(Obj artwork,Obj viewport,B enabled,double limit) {
     if (!Kind(artwork,"UIView")) return;
     Obj parent=Get(artwork,"superview");
     if (enabled && parent && Get(viewport,"superview")==parent) {
@@ -498,13 +504,19 @@ static void TopChromeArtwork(Obj artwork,Obj viewport,B enabled) {
     } else enabled=0;
     double alpha=((double(*)(Obj,Sel))Message)(artwork,sel_registerName("alpha"));
     Obj stock=objc_getAssociatedObject(artwork,TopChromeArtworkAlphaKey);
-    if (enabled && alpha>0.25) {
-        objc_setAssociatedObject(artwork,TopChromeArtworkAlphaKey,Number(alpha),1);
-        ((void(*)(Obj,Sel,double))Message)(artwork,sel_registerName("setAlpha:"),0.25);
-    } else if (!enabled && stock) {
-        if (alpha==0.25) ((void(*)(Obj,Sel,double))Message)(artwork,sel_registerName("setAlpha:"),Double(stock));
+    Obj applied=objc_getAssociatedObject(artwork,TopChromeArtworkAppliedKey);
+    B owned=applied && alpha==Double(applied);
+    double original=owned ? Double(stock) : alpha;
+    double wanted=enabled ? __builtin_fmin(original,limit) : original;
+    if (wanted!=original) {
+        if (!owned) objc_setAssociatedObject(artwork,TopChromeArtworkAlphaKey,Number(original),1);
+        if (!applied || wanted!=Double(applied))
+            objc_setAssociatedObject(artwork,TopChromeArtworkAppliedKey,Number(wanted),1);
+    } else if (applied) {
         objc_setAssociatedObject(artwork,TopChromeArtworkAlphaKey,0,1);
+        objc_setAssociatedObject(artwork,TopChromeArtworkAppliedKey,0,1);
     }
+    if (alpha!=wanted) ((void(*)(Obj,Sel,double))Message)(artwork,sel_registerName("setAlpha:"),wanted);
 }
 static void TopChromeInsets(Obj scroll,double overlap) {
     if (!scroll) return;
@@ -651,13 +663,13 @@ static void BookstoreTopChrome(Obj controller) {
     double bottom=__builtin_fmax(frame.y+frame.height,tabFrame.y+tabFrame.height);
     if (Get(pager,"superview")==root) bottom=__builtin_fmax(bottom,stock.y);
     B enabled=root && Enabled() && Belongs(pager,root) && scroll && !Flag(header,"isHidden");
-    B installed=TopChromePage(root,header,scroll,(Rect){bounds.x,bounds.y,bounds.width,bottom-bounds.y},enabled);
+    B installed=TopChromePage(root,header,header,scroll,(Rect){bounds.x,bounds.y,bounds.width,bottom-bounds.y},enabled);
     TopChromeFill(header,installed);
     TopChromeFill(Get(controller,"tabContainer"),installed);
     TopChromeFill(Get(controller,"signBgView"),installed);
     TopChromeFill(tabs,installed);
     TopChromeFill(Get(tabs,"collectionView"),installed);
-    TopChromeArtwork(Get(controller,"backgroundView"),pager,installed);
+    TopChromeArtwork(Get(controller,"backgroundView"),pager,installed,0.25);
     Obj previous=objc_getAssociatedObject(controller,BookstoreViewportKey);
     Obj owned=installed ? viewport : (Obj)0;
     if (previous!=owned) {
@@ -734,6 +746,13 @@ static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
         Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
 }
+static void ShelfChromeCanvasRowKey(void) {}
+static Obj BookshelfCanvas(Obj tab) {
+    Obj colors=Lookup("UIColor"),canvas=Get(Get(Get(tab,"viewModel"),"uiConfigParams"),"backgroundColor");
+    if (!canvas && Responds(colors,"fq_reader_saas_ColorWithName:"))
+        canvas=O1(colors,"fq_reader_saas_ColorWithName:",Text("SS_COLOR_BG_FF"));
+    return canvas ? canvas : O0(colors,"systemBackgroundColor");
+}
 static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Obj owner=Get(tab,"delegate");
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
@@ -747,38 +766,116 @@ static void BookshelfRestingTint(Obj tab,Obj scroll) {
     double distance=__builtin_fabs(offset.y+inset.x);
     double blend=distance<16 && !Flag(Get(scroll,"mj_header"),"isRefreshing") ? 1-distance/16 : 0;
     Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
-    if (blend>0) {
-        Obj colors=Lookup("UIColor"),canvas=Get(Get(Get(tab,"viewModel"),"uiConfigParams"),"backgroundColor");
-        if (!canvas && Responds(colors,"fq_reader_saas_ColorWithName:"))
-            canvas=O1(colors,"fq_reader_saas_ColorWithName:",Text("SS_COLOR_BG_FF"));
-        if (!canvas) canvas=O0(colors,"systemBackgroundColor");
+    Obj canvasRow=objc_getAssociatedObject(root,ShelfChromeCanvasRowKey);
+    if (canvasRow) {
+        // A clipped collection cannot host both rows' blur. Match the color
+        // of its visible, opaque filter backing while that row is pinned.
+        Obj canvas=Get(canvasRow,"backgroundColor");
+        tint=canvas && !SameColor(canvas,O0(Lookup("UIColor"),"clearColor")) ? canvas : BookshelfCanvas(tab);
+    } else if (blend>0) {
+        Obj canvas=BookshelfCanvas(tab);
         tint=blend==1 ? canvas : ((Obj(*)(Obj,Sel,double))Message)(canvas,
             sel_registerName("colorWithAlphaComponent:"),0.0625+0.9375*blend);
     }
     if (!SameColor(Get(content,"backgroundColor"),tint)) V1(content,"setBackgroundColor:",tint);
 }
+static void ShelfChromeHolderKey(void) {}
+static void ShelfChromeFilterKey(void) {}
+static Rect BookshelfChromeFrame(Obj root,Obj header,Obj viewport) {
+    Rect frame=Frame(header),bounds=Bounds(root);
+    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
+    return (Rect){bounds.x,bounds.y,bounds.width,__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y};
+}
+static Obj At(Obj array,U index);
+static B BookshelfFilterAtEdge(Obj row,Obj root,Rect title) {
+    if (Flag(row,"isHidden")) return 0;
+    Rect bounds=Convert(row,Bounds(row),root);
+    double edge=title.y+title.height;
+    return VisibleRect(bounds) && bounds.x<=title.x+1 &&
+        bounds.x+bounds.width>=title.x+title.width-1 &&
+        bounds.y<=edge+1 && bounds.y+bounds.height>edge+1;
+}
+static Obj BookshelfChromeRow(Obj root,Obj tab,Obj scroll,Rect title) {
+    Obj holder=Get(tab,"fullGenreFloatingContainerView"),parent=Get(holder,"superview");
+    if (parent && parent==Get(tab,"viewIfLoaded") && Belongs(parent,root) &&
+        BookshelfFilterAtEdge(holder,root,title) &&
+        Belongs(Get(Get(tab,"functionCell"),"layoutContainerView"),holder)) return holder;
+    // UIKit section-header pinning also shows the filter directly in the collection.
+    if (!Responds(scroll,"visibleSupplementaryViewsOfKind:")) return 0;
+    Obj headers=O1(scroll,"visibleSupplementaryViewsOfKind:",Text("UICollectionElementKindSectionHeader"));
+    U count=((U(*)(Obj,Sel))Message)(headers,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj row=At(headers,i);
+        if (Kind(row,"SSBookShelfFilterHeaderView") && Belongs(row,scroll) &&
+            BookshelfFilterAtEdge(row,root,title)) return row;
+    }
+    return 0;
+}
+static Obj BookshelfChromeAnchor(Obj root,Obj header,Obj row,Rect *material) {
+    if (!row) return header;
+    Obj parent=Get(row,"superview");
+    Rect bounds=Convert(row,Bounds(row),root);
+    double bottom=bounds.y+bounds.height;
+    // Keep the shared effect above the collection and below the native filter.
+    // If any page container still clips the title region, retain the root mount.
+    for (Obj view=parent;view && view!=root;view=Get(view,"superview")) {
+        if (!Flag(view,"clipsToBounds")) continue;
+        Rect clip=Convert(view,Bounds(view),root);
+        if (clip.y>material->y || clip.y+clip.height<bottom ||
+            clip.x>material->x || clip.x+clip.width<material->x+material->width) return header;
+    }
+    material->height=bottom-material->y;
+    return row;
+}
+static void BookshelfChromeFills(Obj root,Obj tab,Obj holder) {
+    Obj filter=holder && !Kind(holder,"SSBookShelfFilterHeaderView") ? Get(Get(tab,"functionCell"),"headerView") : (Obj)0;
+    if (filter && !Belongs(filter,holder)) filter=0;
+    Obj oldHolder=objc_getAssociatedObject(root,ShelfChromeHolderKey);
+    Obj oldFilter=objc_getAssociatedObject(root,ShelfChromeFilterKey);
+    if (oldHolder!=holder) {
+        TopChromeFill(oldHolder,0);
+        objc_setAssociatedObject(root,ShelfChromeHolderKey,holder,1);
+    }
+    if (oldFilter!=filter) {
+        TopChromeFill(oldFilter,0);
+        objc_setAssociatedObject(root,ShelfChromeFilterKey,filter,1);
+    }
+    TopChromeFill(holder,1);
+    TopChromeFill(filter,1);
+}
+static void BookshelfUpdateChrome(Obj controller,Obj root,Obj header,Obj viewport,Obj tab,Obj scroll,Rect material,B installed) {
+    Obj row=installed ? BookshelfChromeRow(root,tab,scroll,material) : (Obj)0;
+    Obj anchor=BookshelfChromeAnchor(root,header,row,&material);
+    if (installed)
+        MountTopChrome(root,objc_getAssociatedObject(root,TopChromeSurfaceKey),anchor,material);
+    BookshelfChromeFills(root,tab,anchor!=header ? anchor : (Obj)0);
+    Obj canvasRow=row && anchor==header ? row : (Obj)0;
+    if (objc_getAssociatedObject(root,ShelfChromeCanvasRowKey)!=canvasRow)
+        objc_setAssociatedObject(root,ShelfChromeCanvasRowKey,canvasRow,1);
+    TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed,row ? 0 : 0.25);
+    if (installed) BookshelfRestingTint(tab,scroll);
+}
 static void BookshelfTopChrome(Obj controller) {
     Obj root=Get(controller,"view"),header=Get(controller,"headerView");
     Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
     Obj scroll=Get(tab,"collectionView");
-    Rect frame=Frame(header),bounds=Bounds(root);
-    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
-    double height=__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y;
+    Rect base=BookshelfChromeFrame(root,header,viewport),material=base;
     B enabled=Enabled() && Kind(tab,"SSBookShelfSubViewController") &&
         Get(viewport,"superview")==root && TopChromeContains(viewport,scroll);
-    B installed=TopChromePage(root,header,scroll,(Rect){bounds.x,bounds.y,bounds.width,height},enabled);
+    Obj row=enabled ? BookshelfChromeRow(root,tab,scroll,material) : (Obj)0;
+    Obj anchor=BookshelfChromeAnchor(root,header,row,&material);
+    B installed=TopChromePage(root,header,anchor,scroll,material,enabled);
     Obj tabs=Get(controller,"tabSelectView");
     TopChromeFill(header,installed);
     TopChromeFill(tabs,installed);
     TopChromeFill(Get(tabs,"collectionView"),installed);
     TopChromeFill(Get(controller,"headerBackgroundView"),installed);
-    TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed);
     B owned=objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0;
-    TopChromeUnderlap(viewport,scroll,bounds.y,installed);
+    TopChromeUnderlap(viewport,scroll,base.y,installed);
     if (owned!=(objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0) &&
         Responds(tab,"fqx186_originalShelfFloating:"))
         V1(tab,"updateFullGenreFloatingViewWithScrollView:",scroll);
-    if (installed) BookshelfRestingTint(tab,scroll);
+    BookshelfUpdateChrome(controller,root,header,viewport,tab,scroll,base,installed);
     TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
 void FQHShelf(Obj self);
@@ -790,6 +887,64 @@ static void BookshelfTopLayout(Obj self,Sel cmd) {
 static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
     BookshelfTopChrome(self);
+}
+static void BookshelfTabCommitted(Obj self,Sel cmd,Obj category,I index) {
+    ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController",
+        "fqx_originalShelfCommitted:index:"))(self,cmd,category,index);
+    // The shared pager still carries the previous tab's geometry until the
+    // host updates currentTabVC in this common selection callback.
+    BookshelfTopChrome(self);
+    if (Kind(Get(self,"currentTabVC"),"SSBookHistorySubViewController") && Enabled())
+        V0(Get(self,"containerView"),"setNeedsLayout");
+}
+static void BookshelfSyncHistoryPager(Obj viewport) {
+    Obj owner=Get(viewport,"delegate");
+    if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"containerView")!=viewport ||
+        !Kind(Get(owner,"currentTabVC"),"SSBookHistorySubViewController") || !Enabled()) return;
+    Obj tabs=Get(owner,"tabSelectView"),scroll=Get(viewport,"scrollView");
+    if (!tabs || !Get(viewport,"window") || !scroll || Flag(scroll,"isTracking") ||
+        Flag(scroll,"isDragging") || Flag(scroll,"isDecelerating")) return;
+
+    I index=((I(*)(Obj,Sel))Message)(owner,sel_registerName("currentTabIndex"));
+    I title=((I(*)(Obj,Sel))Message)(tabs,sel_registerName("selectedIndex"));
+    if (index<0 || index!=title) return;
+    I current=((I(*)(Obj,Sel))Message)(viewport,sel_registerName("currentIndex"));
+    Obj active=Get(viewport,"currentSelectedListViewController");
+    if (Kind(active,"SSVideoCollectViewController")) {
+        if (current!=index) {
+            Q1(viewport,"didClickSelectedItemAtIndex:",index);
+        } else {
+            // The selected slot still contains the old Collect page after a
+            // tab rebuild. Ask the host to recreate that one list from tabVCs.
+            Q1(viewport,"cleanValidListWithIndex:",index);
+            Q1(viewport,"initListIfNeededAtIndex:",index);
+            Q1(viewport,"setCurrentIndex:",index);
+            Q1(viewport,"listDidAppear:",index);
+        }
+        V0(viewport,"clampScrollViewToCurrentIndexIfNeeded");
+    } else if (current==index && Kind(active,"SSBookHistorySubViewController")) {
+        // A size change can leave the scroll view on Collect even when its
+        // logical owner already changed to History. Only correct a full page.
+        double width=Bounds(scroll).width;
+        Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+        if (width<=0 || offset.x<0) return;
+        double nearestPage=offset.x/width+0.5;
+        Obj controllers=Get(owner,"tabVCs");
+        U count=((U(*)(Obj,Sel))Message)(controllers,sel_registerName("count"));
+        if (nearestPage>=count) return;
+        U page=(U)nearestPage;
+        if (page!=(U)index && __builtin_fabs(offset.x-page*width)<=1 &&
+            Kind(At(controllers,page),"SSVideoCollectViewController"))
+            V0(viewport,"clampScrollViewToCurrentIndexIfNeeded");
+    }
+}
+static void BookshelfHistoryPagerLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQRJXCategoryListContainerView","fqx_originalHistoryPagerLayout"))(self,cmd);
+    BookshelfSyncHistoryPager(self);
+}
+static void BookshelfHistoryPagerStopped(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQRJXCategoryListContainerView","fqx_originalHistoryPagerStopped"))(self,cmd);
+    BookshelfSyncHistoryPager(self);
 }
 static void RestoreBookshelfTopInset(Obj self) {
     Obj scroll=Get(self,"collectionView");
@@ -806,13 +961,18 @@ static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
         !objc_getAssociatedObject(scroll,TopChromeInsetKey)) return;
     Obj owner=Get(self,"delegate"),root=Get(owner,"view");
     Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
+    if (!surface || Get(owner,"currentTabVC")!=self) return;
+    Obj header=Get(owner,"headerView"),viewport=Get(owner,"containerView");
+    Rect material=BookshelfChromeFrame(root,header,viewport);
     Obj holder=Get(self,"fullGenreFloatingContainerView"),parent=Get(holder,"superview");
-    if (!surface || !parent || Flag(holder,"isHidden") || !Belongs(parent,root)) return;
-    // The viewport now extends behind the header. Keep the host's pinned
-    // controls below that header instead of resetting them to the offscreen cell.
-    Rect chrome=Convert(surface,Bounds(surface),parent),frame=Frame(holder);
-    double top=chrome.y+chrome.height;
-    if (frame.y!=top) { frame.y=top; SetFrame(holder,frame); }
+    if (parent && !Flag(holder,"isHidden") && Belongs(parent,root)) {
+        // Use the title row's fixed edge, even when the shared effect extends
+        // under the pinned filter. Do not feed the extended height into pinning.
+        Rect chrome=Convert(root,material,parent),frame=Frame(holder);
+        double top=chrome.y+chrome.height;
+        if (frame.y!=top) { frame.y=top; SetFrame(holder,frame); }
+    }
+    BookshelfUpdateChrome(owner,root,header,viewport,self,scroll,material,1);
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }
@@ -1920,37 +2080,34 @@ static void UpdateCatalogTap(Obj view,B needed) {
     V0(gesture,"release");
     V0(observer,"release");
 }
-enum { ReaderToolWidth=60, ReaderToolHeight=44 };
-static double ReaderDivertWidth(Obj view,Obj toolbar,Rect bounds) {
-    if (!InstanceABI(view,"titleLabel","@16@0:8")) return ReaderToolWidth;
-    Obj label=O0(view,"titleLabel");
-    if (!Kind(label,"UILabel") || O0(label,"superview")!=view) return ReaderToolWidth;
-    Rect caption=Frame(label);
-    if (!VisibleRect(caption)) return ReaderToolWidth;
-    double center=bounds.x+bounds.width*0.5;
-    double left=center-caption.x,right=caption.x+caption.width-center;
-    // The capsule narrows at the caption baseline. Leave room for both
-    // the rounded ends and the visible padding beyond the native label.
-    double half=(left>right ? left : right)+18;
-    if (half<=ReaderToolWidth*0.5) return ReaderToolWidth;
+enum { ReaderToolWidth=76, ReaderToolHeight=44, ReaderToolGap=8 };
 
-    Rect slot=Frame(view),row=Bounds(toolbar);
-    center=slot.x+slot.width*0.5;
-    left=center-row.x-8;
-    right=row.x+row.width-center-8;
-    if (left<half) half=left;
-    if (right<half) half=right;
-    Obj items=Get(toolbar,"itemViews");
-    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
-    for (U i=0;i<count && half>ReaderToolWidth*0.5;++i) {
-        Obj item=At(items,i);
-        if (item==view || O0(item,"superview")!=toolbar || Flag(item,"isHidden")) continue;
-        Rect neighbor=Frame(item);
-        double occupied=__builtin_fmax(neighbor.width,ReaderToolWidth)*0.5;
-        double room=__builtin_fabs(center-(neighbor.x+neighbor.width*0.5))-occupied-8;
-        if (room<half) half=room;
+static B ReaderToolbarTool(Obj view) {
+    return Kind(view,"SSReaderBottomToolDivertView") ||
+        (Kind(view,"FQReaderSaaSBottomToolItemView") && ReaderBottomItem(view));
+}
+
+static double ReaderToolbarWidth(Obj toolbar,Obj children,U count) {
+    Rect bounds=Bounds(toolbar);
+    double width=ReaderToolWidth;
+    for (U i=0;i<count;++i) {
+        Obj view=At(children,i);
+        if (!ReaderToolbarTool(view) || Flag(view,"isHidden")) continue;
+        Rect slot=Frame(view);
+        if (!VisibleRect(slot)) continue;
+        double center=slot.x+slot.width*0.5;
+        double edge=__builtin_fmin(center-bounds.x,bounds.x+bounds.width-center);
+        width=__builtin_fmin(width,2*(edge-ReaderToolGap));
+        for (U j=i+1;j<count;++j) {
+            Obj neighbor=At(children,j);
+            if (!ReaderToolbarTool(neighbor) || Flag(neighbor,"isHidden")) continue;
+            Rect other=Frame(neighbor);
+            if (!VisibleRect(other)) continue;
+            double spacing=__builtin_fabs(center-(other.x+other.width*0.5));
+            width=__builtin_fmin(width,spacing-ReaderToolGap);
+        }
     }
-    return __builtin_fmax(half*2,ReaderToolWidth);
+    return width;
 }
 static void ReaderOpticalChildrenKey(void) {}
 static void OpticalFrameStockKey(void) {}
@@ -2017,10 +2174,11 @@ static void ReaderBottomOptics(Obj owner,B enabled) {
     for (U i=0;i<currentCount && same;++i) if (At(previous,i)!=At(current,i)) same=0;
     if (!same || (!enabled && previous)) objc_setAssociatedObject(owner,ReaderOpticalChildrenKey,current,1);
 }
-static void ReaderBottomGlass(Obj view,Obj toolbar) {
+static void ReaderBottomGlass(Obj view,double width) {
     Rect bounds=Bounds(view);
-    if (!VisibleRect(bounds)) { ReaderBottomOptics(view,0); PageRestore(view); RestoreHit(view); return; }
-    double width=toolbar ? ReaderDivertWidth(view,toolbar,bounds) : ReaderToolWidth;
+    if (width<44 || !VisibleRect(bounds) || Flag(view,"isHidden")) {
+        ReaderBottomOptics(view,0); PageRestore(view); RestoreHit(view); return;
+    }
     Rect glass={bounds.x+(bounds.width-width)*0.5,bounds.y+(bounds.height-ReaderToolHeight)*0.5,width,ReaderToolHeight};
     ApplySurface(view,glass,0);
     Obj surface=FQHSurface(view);
@@ -2041,24 +2199,28 @@ B FQHReaderOwnsControl(Obj view) {
     }
     return 0;
 }
+static void ReaderToolbarGlass(Obj toolbar) {
+    Obj children=O0(toolbar,"subviews");
+    U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
+    Rect area=Bounds(toolbar);
+    double width=ReaderToolbarWidth(toolbar,children,count);
+    B styled=0;
+    for (U i=0;i<count;++i) {
+        Obj view=At(children,i);
+        if (ReaderToolbarTool(view)) ReaderBottomGlass(view,width);
+        else if (Kind(view,"FQReaderSaaSBottomToolItemView")) ReaderBottomGlass(view,0);
+        else continue;
+        Obj surface=FQHSurface(view);
+        if (Kind(view,"FQReaderSaaSBottomToolItemView"))
+            UpdateCatalogTap(view,surface && ReaderBottomType(view)==1);
+        if (surface) { IncludeMaterial(surface,toolbar,&area); styled=1; }
+    }
+    if (styled) EnsureHit(toolbar,area); else RestoreHit(toolbar);
+}
 static void PageBottomLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBottomToolView","fqx175_originalBottom"))(self,cmd);
     ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
-    Obj items=Get(self,"itemViews");
-    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
-    Rect area=Bounds(self);
-    Obj catalog=0;
-    for (U i=0;i<count;++i) {
-        Obj view=At(items,i);
-        if (!Kind(view,"FQReaderSaaSBottomToolItemView") || !Belongs(view,self)) continue;
-        int type=ReaderBottomType(view);
-        if (type>=1 && type<=3) ReaderBottomGlass(view,0);
-        else { ReaderBottomOptics(view,0); PageRestore(view); RestoreHit(view); }
-        Obj surface=type==1 ? FQHSurface(view) : (Obj)0;
-        UpdateCatalogTap(view,surface!=0);
-        if (surface) { IncludeMaterial(surface,self,&area); catalog=view; }
-    }
-    if (catalog) EnsureHit(self,area); else RestoreHit(self);
+    ReaderToolbarGlass(self);
 }
 static void ReaderProgressStockKey(void) {}
 static void ReaderProgressColorKey(void) {}
@@ -2113,10 +2275,8 @@ static void PageProgressTheme(Obj self,Sel cmd,Obj config) {
 static void PageDivertLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBottomToolDivertView","fqx175_originalDivert"))(self,cmd);
     Obj toolbar=O0(self,"superview");
-    if (!Kind(toolbar,"FQReaderSaaSBottomToolView")) toolbar=0;
-    if (toolbar || HasAncestor(self,"FQReaderSaaSBottomToolView"))
-        ReaderBottomGlass(self,toolbar);
-    else { ReaderBottomOptics(self,0); PageRestore(self); RestoreHit(self); }
+    if (Kind(toolbar,"FQReaderSaaSBottomToolView")) ReaderToolbarGlass(toolbar);
+    else ReaderBottomGlass(self,HasAncestor(self,"FQReaderSaaSBottomToolView") ? ReaderToolWidth : 0);
 }
 static void PageGiftLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderGiftView","fqx174_originalGift"))(self,cmd);
@@ -2467,11 +2627,14 @@ static void RestoreDramaWatch(Obj owner,Obj content) {
     objc_setAssociatedObject(owner,DramaWatchContentKey,0,1);
 }
 
+static B DramaWatchIsEpisode(Obj model) {
+    Obj type=Get(Get(model,"bottomBar"),"bottomBarType");
+    return Equal(type,"short_play") || Equal(type,"unreal_short_play") || Equal(type,"album");
+}
+
 static void DramaWatchGlass(Obj owner,Obj model) {
     Obj previous=objc_getAssociatedObject(owner,DramaWatchContentKey);
-    Obj type=Get(Get(model,"bottomBar"),"bottomBarType");
-    if ((!Equal(type,"short_play") && !Equal(type,"unreal_short_play") && !Equal(type,"album")) ||
-        !Enabled() || !FQHGlassAvailable()) {
+    if (!DramaWatchIsEpisode(model) || !Enabled() || !FQHGlassAvailable()) {
         RestoreDramaWatch(owner,previous);
         return;
     }
@@ -2850,19 +3013,224 @@ static void DramaVisibilitySet(Obj view,B visible) {
     }
 }
 
-static void DramaVisibilityApplyHeader(Obj header) {
-    if (!Kind(header,"SSVideoSeriesFeedHeaderView")) return;
+static B DramaVisibilityOwnsHeader(Obj header) {
     Obj delegate=Get(header,"delegate");
-    if (!Kind(delegate,"SSVideoSeriesFeedViewController") || Get(delegate,"headerView")!=header) return;
-    DramaVisibilityTrack(header);
-    Obj categories=Get(header,"tabContainer");
-    if (Belongs(categories,header))
-        DramaVisibilitySet(categories,DefaultEnabled(Text("FanqieX.DramaCategories.1")));
+    return Kind(delegate,"SSVideoSeriesFeedViewController") && Get(delegate,"headerView")==header;
+}
+
+static void DramaSearchBackgroundSetHidden(Obj self,Sel cmd,B hidden) {
+    (void)hidden;
+    Method setter=class_getInstanceMethod(Lookup("UIView"),cmd);
+    ((void(*)(Obj,Sel,B))method_getImplementation(setter))(self,cmd,1);
+}
+
+static Obj DramaSearchBackgroundClass(void) {
+    Obj cls=Lookup("FQXDramaSearchBackground");
+    if (cls) return cls;
+    Obj parent=Lookup("UIView");
+    if (!ClassABI(parent,"setHidden:","v20@0:8B16")) return 0;
+    cls=AllocateClass(parent,"FQXDramaSearchBackground",0);
+    if (!cls) return 0;
+    class_addMethod(cls,sel_registerName("setHidden:"),(Imp)DramaSearchBackgroundSetHidden,"v20@0:8B16");
+    RegisterClass(cls);
+    return cls;
+}
+
+static void DramaSearchSetBackground(Obj self,Sel cmd,Obj background) {
+    // setupNewSearchBar assigns [UIView new] before configuring, attaching or moving it.
+    // Only the known search backing needs to resist later native setHidden:NO writes.
+    Obj replacement=0;
+    if (background && object_getClass(background)==Lookup("UIView") && !Get(background,"superview"))
+        replacement=O0(DramaSearchBackgroundClass(),"new");
+    if (replacement) VB(replacement,"setHidden:",1);
+    ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedHeaderSearchView","fqx_originalDramaSetSearchBackground:"))
+        (self,cmd,replacement ? replacement : background);
+    if (replacement) V0(replacement,"release");
+}
+
+static void DramaVisibilityApplySearch(Obj header,B visible) {
     Obj search=Get(header,"searchViewContainer");
     if (!Kind(search,"SSVideoSeriesFeedHeaderSearchView")) return;
     Obj slot=Get(search,"searchButtonSlotView");
     if (Belongs(Get(search,"searchButtonView"),slot))
-        DramaVisibilitySet(slot,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+        DramaVisibilitySet(slot,visible);
+    // The full search field may move from its container to the feed's search row.
+    DramaVisibilitySet(Get(search,"searchBgView"),0);
+}
+
+enum { DramaCategoryTagBase=1000 };
+static void DramaCategorySourceKey(void) {}
+static void DramaCategoryPublishingKey(void) {}
+
+static Obj DramaCategoryDefaults(void) {
+    return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+}
+static Obj DramaCategoryListKey(void) { return Text("FanqieX.DramaCategoryTitles.1"); }
+static Obj DramaCategoryPreference(I type) {
+    Obj stem=O1(Text("FanqieX.DramaCategory."),"stringByAppendingString:",Get(Number(type),"stringValue"));
+    return O1(stem,"stringByAppendingString:",Text(".1"));
+}
+static I DramaCategoryType(Obj model) {
+    if (!Kind(model,"SSBookStoreTabModel") || !InstanceABI(model,"tabType","i16@0:8")) return -1;
+    return ((int(*)(Obj,Sel))Message)(model,sel_registerName("tabType"));
+}
+static U DramaCategoryCount(Obj list) {
+    return Kind(list,"NSArray") ? ((U(*)(Obj,Sel))Message)(list,sel_registerName("count")) : 0;
+}
+static B DramaCategoryVisible(Obj model) {
+    I type=DramaCategoryType(model);
+    return type<0 || DefaultEnabled(DramaCategoryPreference(type));
+}
+static B DramaCategoryMaster(void) {
+    return DefaultEnabled(Text("FanqieX.DramaCategories.1"));
+}
+static B DramaCategoryButtonsVisible(Obj owner) {
+    if (!DramaCategoryMaster()) return 0;
+    Obj models=objc_getAssociatedObject(owner,DramaCategorySourceKey);
+    U count=DramaCategoryCount(models);
+    for (U i=0;i<count;++i) if (DramaCategoryVisible(At(models,i))) return 1;
+    return count==0;
+}
+static Obj DramaCategoryFilter(Obj models,I *index) {
+    U count=DramaCategoryCount(models);
+    if (!DramaCategoryMaster() || !count || count>24) return models;
+    U visible=0;
+    for (U i=0;i<count;++i) visible+=DramaCategoryVisible(At(models,i));
+    // With every button off, leave the native feed and its current selection live.
+    if (!visible || visible==count) return models;
+    Obj filtered=O0(Lookup("NSMutableArray"),"array");
+    I selected=0;
+    for (U i=0,j=0;i<count;++i) {
+        Obj model=At(models,i);
+        if (!DramaCategoryVisible(model)) continue;
+        if ((I)i==*index) selected=(I)j;
+        V1(filtered,"addObject:",model);
+        ++j;
+    }
+    *index=selected;
+    return filtered;
+}
+static void DramaCategoryRemember(Obj owner,Obj models) {
+    U count=DramaCategoryCount(models);
+    if (!count || count>24 || objc_getAssociatedObject(owner,DramaCategoryPublishingKey)) return;
+    Obj source=O0(models,"copy");
+    objc_setAssociatedObject(owner,DramaCategorySourceKey,source,1);
+    V0(source,"release");
+    Obj rows=O0(Lookup("NSMutableArray"),"array");
+    Obj seen=O0(Lookup("NSMutableSet"),"set");
+    for (U i=0;i<count;++i) {
+        Obj model=At(models,i),title=Get(model,"title");
+        I type=DramaCategoryType(model);
+        if (type<0 || !Kind(title,"NSString") || !((U(*)(Obj,Sel))Message)(title,sel_registerName("length"))) continue;
+        Obj value=Number(type);
+        if (((B(*)(Obj,Sel,Obj))Message)(seen,sel_registerName("containsObject:"),value)) continue;
+        V1(seen,"addObject:",value);
+        Obj entry=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(entry,"type",value); Put(entry,"title",title);
+        V1(rows,"addObject:",entry);
+    }
+    Obj defaults=DramaCategoryDefaults(),key=DramaCategoryListKey(),previous=O1(defaults,"objectForKey:",key);
+    U rowCount=DramaCategoryCount(rows);
+    if (rowCount && (rowCount>1 || !DramaCategoryCount(previous)) &&
+        !((B(*)(Obj,Sel,Obj))Message)(rows,sel_registerName("isEqual:"),previous))
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(defaults,sel_registerName("setObject:forKey:"),rows,key);
+}
+
+static void DramaVisibilityApplyHeader(Obj header) {
+    if (!Kind(header,"SSVideoSeriesFeedHeaderView") || !DramaVisibilityOwnsHeader(header)) return;
+    DramaVisibilityTrack(header);
+    Obj categories=Get(header,"tabContainer");
+    if (Belongs(categories,header))
+        DramaVisibilitySet(categories,DramaCategoryButtonsVisible(Get(header,"delegate")));
+    DramaVisibilityApplySearch(header,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+}
+
+static B DramaCategorySameOrder(Obj left,Obj right) {
+    U count=DramaCategoryCount(left);
+    if (count!=DramaCategoryCount(right)) return 0;
+    for (U i=0;i<count;++i) {
+        Obj a=At(left,i),b=At(right,i);
+        if (a!=b && (DramaCategoryType(a)<0 || DramaCategoryType(a)!=DramaCategoryType(b))) return 0;
+    }
+    return 1;
+}
+static B DramaCategoryStartPublish(Obj owner) {
+    if (objc_getAssociatedObject(owner,DramaCategoryPublishingKey)) return 0;
+    objc_setAssociatedObject(owner,DramaCategoryPublishingKey,owner,0);
+    return 1;
+}
+static void DramaCategoryFinishPublish(Obj owner,B started) {
+    if (started) objc_setAssociatedObject(owner,DramaCategoryPublishingKey,0,0);
+}
+static void DramaCategorySetup(Obj self,Sel cmd,Obj models,I index,B report,I reason) {
+    DramaCategoryRemember(self,models);
+    Obj visible=DramaCategoryFilter(models,&index);
+    B started=DramaCategoryStartPublish(self);
+    ((void(*)(Obj,Sel,Obj,I,B,I))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaCategorySetup:index:report:reason:"))(self,cmd,visible,index,report,reason);
+    DramaCategoryFinishPublish(self,started);
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+static void DramaCategoryCallRefresh(Obj owner,Sel cmd,Obj models,I index,I reason) {
+    B started=DramaCategoryStartPublish(owner);
+    ((void(*)(Obj,Sel,Obj,I,I))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaCategoryRefresh:index:reason:"))(owner,cmd,models,index,reason);
+    DramaCategoryFinishPublish(owner,started);
+}
+static void DramaCategoryRefreshModels(Obj self,Sel cmd,Obj models,I index,I reason) {
+    DramaCategoryRemember(self,models);
+    Obj visible=DramaCategoryFilter(models,&index);
+    DramaCategoryCallRefresh(self,cmd,visible,index,reason);
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+static void DramaCategoryRefreshSelected(Obj self,Sel cmd,Obj models,I index) {
+    DramaCategoryRemember(self,models);
+    Obj visible=DramaCategoryFilter(models,&index);
+    if (visible!=models && !DramaCategorySameOrder(visible,Get(self,"tabModels")) &&
+        InstanceABI(self,"fqx_originalDramaCategoryRefresh:index:reason:","v40@0:8@16q24q32")) {
+        DramaCategoryCallRefresh(self,
+            sel_registerName("refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:"),visible,index,10);
+    } else {
+        B started=DramaCategoryStartPublish(self);
+        ((void(*)(Obj,Sel,Obj,I))Original("SSVideoSeriesFeedViewController",
+            "fqx_originalDramaCategoryRefreshSelected:index:"))(self,cmd,visible,index);
+        DramaCategoryFinishPublish(self,started);
+    }
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+static void DramaCategoryRefreshPreference(Obj owner) {
+    Obj source=objc_getAssociatedObject(owner,DramaCategorySourceKey);
+    U count=DramaCategoryCount(source);
+    if (!count || !InstanceABI(owner,"fqx_originalDramaCategoryRefresh:index:reason:","v40@0:8@16q24q32")) return;
+    Obj current=Get(owner,"currentTabModel");
+    I currentType=DramaCategoryType(current),index=0;
+    for (U i=0;i<count;++i) {
+        Obj model=At(source,i);
+        if (model!=current && (currentType<0 || DramaCategoryType(model)!=currentType)) continue;
+        index=(I)i;
+        break;
+    }
+    Obj visible=DramaCategoryFilter(source,&index);
+    if (!DramaCategorySameOrder(visible,Get(owner,"tabModels"))) {
+        DramaCategoryCallRefresh(owner,
+            sel_registerName("refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:"),visible,index,10);
+    }
+}
+
+static void DramaVisibilityKeepSearchHidden(Obj header) {
+    if (DramaVisibilityOwnsHeader(header))
+        DramaVisibilityApplySearch(header,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+}
+
+static double DramaVisibilitySearchBarLayout(Obj self,Sel cmd) {
+    double alpha=((double(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchBarLayout"))(self,cmd);
+    DramaVisibilityKeepSearchHidden(self);
+    return alpha;
+}
+
+static void DramaVisibilitySearchBarAlpha(Obj self,Sel cmd,double alpha) {
+    ((void(*)(Obj,Sel,double))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchBarAlpha:"))(self,cmd,alpha);
+    DramaVisibilityKeepSearchHidden(self);
 }
 
 static void DramaVisibilityHeaderSetup178R15(Obj self,Sel cmd) {
@@ -3117,12 +3485,15 @@ static Obj DramaVisibilityNovel(Obj self,Sel cmd) {
     return filtered;
 }
 
-static void DramaVisibilityRefresh(void) {
+static void DramaVisibilityRefresh(B categories) {
     Obj owners=Get(DramaVisibilityOwners(),"allObjects");
     U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
     for (U i=0;i<count;++i) {
         Obj owner=At(owners,i);
-        if (Kind(owner,"SSVideoSeriesFeedHeaderView")) DramaVisibilityApplyHeader(owner);
+        if (Kind(owner,"SSVideoSeriesFeedHeaderView")) {
+            if (categories) DramaCategoryRefreshPreference(Get(owner,"delegate"));
+            DramaVisibilityApplyHeader(owner);
+        }
         else if (DramaVisibilityIsMainFeed(owner)) {
             if (Kind(owner,"SSShortVideoAboveLeftContainerViewManager")) V0(owner,"updateLayoutForContainerView");
             else V0(owner,"updateSubViews");
@@ -3132,12 +3503,31 @@ static void DramaVisibilityRefresh(void) {
 
 static void DramaVisibilityInstall(void) {
     const char *header="SSVideoSeriesFeedHeaderView";
+    const char *feed="SSVideoSeriesFeedViewController";
+    if (Signature(feed,"setupDataWithTabModels:serverSelectedIndex:reportFirstScreenDataFinish:reason:","v44@0:8@16q24B32q36") &&
+        Signature(feed,"refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:","v40@0:8@16q24q32") &&
+        Signature(feed,"refreshSelectedTabModelWithTabModels:serverSelectedIndex:","v32@0:8@16q24")) {
+        Hook(feed,"setupDataWithTabModels:serverSelectedIndex:reportFirstScreenDataFinish:reason:",
+             "fqx_originalDramaCategorySetup:index:report:reason:","v44@0:8@16q24B32q36",(Imp)DramaCategorySetup);
+        Hook(feed,"refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:",
+             "fqx_originalDramaCategoryRefresh:index:reason:","v40@0:8@16q24q32",(Imp)DramaCategoryRefreshModels);
+        Hook(feed,"refreshSelectedTabModelWithTabModels:serverSelectedIndex:",
+             "fqx_originalDramaCategoryRefreshSelected:index:","v32@0:8@16q24",(Imp)DramaCategoryRefreshSelected);
+    }
+    if (Signature("SSVideoSeriesFeedHeaderSearchView","setupNewSearchBar","v16@0:8") &&
+        Signature("SSVideoSeriesFeedHeaderSearchView","searchBgView","@16@0:8"))
+        Hook("SSVideoSeriesFeedHeaderSearchView","setSearchBgView:","fqx_originalDramaSetSearchBackground:",
+             "v24@0:8@16",(Imp)DramaSearchSetBackground);
     Hook(header,"setupSubViews","fqx178r15_originalHeaderSetup","v16@0:8",(Imp)DramaVisibilityHeaderSetup178R15);
     Hook("SSVideoSeriesFeedSearchIconCoordinator","prepareColdStartSearchButtonIfNeeded","fqx178r15_originalPrepareColdStartSearch",
          "v16@0:8",(Imp)DramaVisibilityColdStartSearch178R15);
     Hook(header,"didMoveToWindow","fqx178r7_originalHeaderAttached","v16@0:8",(Imp)DramaVisibilityHeaderAttached);
     Hook(header,"updateTabViewWithContentSize:","fqx178r7_originalHeaderTabs:",
          "v32@0:8{CGSize=dd}16",(Imp)DramaVisibilityHeaderTabs);
+    Hook(header,"applySearchBarVisibilityForCurrentLayout","fqx_originalDramaSearchBarLayout",
+         "d16@0:8",(Imp)DramaVisibilitySearchBarLayout);
+    Hook(header,"updateFindDramaSearchAlphaV731:","fqx_originalDramaSearchBarAlpha:",
+         "v24@0:8d16",(Imp)DramaVisibilitySearchBarAlpha);
     Hook("SSVideoSeriesFeedViewController","relayoutHeaderView","fqx178r7_originalDramaHeaderLayout",
          "v16@0:8",(Imp)DramaVisibilityHeaderLayout);
     const char *manager="SSShortVideoBelowLeftContainerViewManager";
@@ -3176,12 +3566,25 @@ static B DramaProgressName178R2(Obj view) {
     return ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("progress")) ||
            ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("slider"));
 }
+static Obj DramaEpisodeContent(Obj entry) {
+    if (Kind(entry,"SSShortVideoAlbumSeriesBottomInsertView"))
+        return Get(entry,"albumDetailInfo") ? Get(entry,"containerView") : (Obj)0;
+    if (!Kind(entry,"SSShortVideoBottomDistributionView")) return 0;
+    Obj owned=objc_getAssociatedObject(entry,DramaWatchContentKey);
+    return owned ? owned : DramaWatchIsEpisode(Get(entry,"lastRenderModel")) ?
+        Get(entry,"defaultContentView") : (Obj)0;
+}
 static Obj DramaEpisodeMaterial(Obj entry) {
-    Obj content=Kind(entry,"SSShortVideoAlbumSeriesBottomInsertView") ? Get(entry,"containerView") :
-        objc_getAssociatedObject(entry,DramaWatchContentKey);
+    if (Kind(entry,"SSShortVideoOutterMultiGenreFeedAboveProgressView")) {
+        Obj background=Get(entry,"backgroundView");
+        return Get(background,"superview")==entry && DramaSpacingVisible178R2(background) ? background : (Obj)0;
+    }
+    Obj content=DramaEpisodeContent(entry);
+    if (Get(content,"superview")!=entry || !DramaSpacingVisible178R2(content)) return 0;
     Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
-    return Get(content,"superview")==entry && Get(glass,"superview")==content &&
-        DramaSpacingVisible178R2(content) && DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
+    if (Get(glass,"superview")==content) return DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
+    // After a native insert swap the visible pill can precede glass installation.
+    return content;
 }
 static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
     Rect result=Convert(view,Bounds(view),root);
@@ -3194,19 +3597,19 @@ static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
         result.y+=UnboxRect(stock).y-UnboxRect(applied).y;
     return result;
 }
-static void DramaSpacingScan178R2(Obj view,Obj root,int depth,int *budget,B progressBranch,
+static void DramaSpacingScan178R2(Obj view,Obj root,Obj insert,int depth,int *budget,B progressBranch,
                                  Obj *entry,U *entries,Obj *progress,Rect *track) {
     if (!depth || *budget<=0 || !DramaSpacingVisible178R2(view)) return;
     --*budget;
     Rect bounds=Bounds(root),r=DramaSpacingMeasure178R2(view,root);
     if (!VisibleRect(r) || r.y>=bounds.y+bounds.height || r.y+r.height<=bounds.y) return;
-    if ((Kind(view,"SSShortVideoBottomDistributionView") &&
-         objc_getAssociatedObject(view,DramaWatchContentKey)) ||
+    if (DramaEpisodeContent(view) ||
         (Kind(view,"SSShortVideoAlbumSeriesBottomInsertView") && Get(view,"albumDetailInfo"))) {
-        if (r.width>=bounds.width*0.5 && r.height>=24 && r.height<=100 && r.y>bounds.y+bounds.height*0.5) {
+        if ((!insert || Belongs(view,insert)) && r.width>=bounds.width*0.5 && r.height>=24 &&
+            r.height<=100 && r.y>bounds.y+bounds.height*0.5) {
             *entry=view; ++*entries;
         }
-        return; // A decorated episode row is never a progress candidate.
+        return;
     }
     if (Kind(view,"FQVShortVideoProgressView")) {
         // The host mounts the custom background alongside the standard one.
@@ -3235,7 +3638,7 @@ static void DramaSpacingScan178R2(Obj view,Obj root,int depth,int *budget,B prog
     Obj children=Get(view,"subviews");
     U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
     for (U i=0;i<count && *budget>0;++i)
-        DramaSpacingScan178R2(At(children,i),root,depth-1,budget,progressBranch,entry,entries,progress,track);
+        DramaSpacingScan178R2(At(children,i),root,insert,depth-1,budget,progressBranch,entry,entries,progress,track);
 }
 static void DramaSpacingRestore178R2(Obj root) {
     Obj target=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
@@ -3259,7 +3662,7 @@ static B DramaSpacingContained178R2(Obj target,Rect wanted,Obj root) {
     return 0;
 }
 
-static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root) {
+static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root,B outer) {
     if (!Belongs(insert,root) || !Belongs(seek,root)) return 0;
     // The outer feed anchors the insert to the control bottom. Series players
     // can replace the base constraint with one anchored to the seek center.
@@ -3272,7 +3675,8 @@ static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root) {
             if (Get(constraint,"firstItem")!=insert || !Flag(constraint,"isActive")) continue;
             Obj reference=Get(constraint,"secondItem");
             I attribute=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("secondAttribute"));
-            if (!((reference==root && attribute==4) || (reference==seek && attribute==10))) continue;
+            if (outer ? (reference!=seek || attribute!=4) :
+                !((reference==root && attribute==4) || (reference==seek && attribute==10))) continue;
             if (((I(*)(Obj,Sel))Message)(constraint,sel_registerName("firstAttribute"))!=4 ||
                 ((I(*)(Obj,Sel))Message)(constraint,sel_registerName("relation"))!=0 ||
                 ((double(*)(Obj,Sel))Message)(constraint,sel_registerName("multiplier"))!=1) continue;
@@ -3300,11 +3704,15 @@ static void DramaSpacingRestoreAnchor(Obj root,Obj keep) {
     objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,0,1);
 }
 void FQHDramaSpacing178R2(Obj root) {
-    if (!Kind(root,"FQVShortVideoVPlayerControlView") || objc_getAssociatedObject(root,DramaSpacingBusy178R2Key)) return;
+    B outer=Kind(root,"SSShortVideoOutterMultiGenreFeedControlView");
+    if ((!outer && !Kind(root,"FQVShortVideoVPlayerControlView")) ||
+        objc_getAssociatedObject(root,DramaSpacingBusy178R2Key)) return;
     objc_setAssociatedObject(root,DramaSpacingBusy178R2Key,root,0);
-    DramaPureCleanUpdate178R13(root,1);
-    DramaDockFeatherBottomGradient178R6(root);
-    Obj window=Get(root,"window"),entry=0,progress=0,target=0,seekOwner=0,glass=0,anchor=0;
+    if (!outer) {
+        DramaPureCleanUpdate178R13(root,1);
+        DramaDockFeatherBottomGradient178R6(root);
+    }
+    Obj window=Get(root,"window"),entry=0,progress=0,target=0,seekOwner=0,glass=0,anchor=0,insert=0;
     Rect b=Bounds(root),screen=window ? Bounds(window) : (Rect){0},track={0},row={0};
     double shift=0;
     const char *status="inactive";
@@ -3318,9 +3726,33 @@ void FQHDramaSpacing178R2(Obj root) {
             __builtin_fabs(placed.x-screen.x)<2 && __builtin_fabs(placed.width-b.width)<0.5 &&
             __builtin_fabs(placed.height-b.height)<0.5;
     }
-    if (eligible) {
+    if (eligible && outer) {
+        entry=Get(root,"aboveProgressView");
+        progress=Get(root,"progressView");
+        status="outerControlsUnresolved";
+        const char *progressClass="SSShortVideoOutterMultiGenreProgressView";
+        if (Get(entry,"superview")==root && DramaSpacingVisible178R2(entry) &&
+            Get(progress,"superview")==root && Kind(progress,progressClass) &&
+            DramaSpacingVisible178R2(progress) &&
+            Signature(progressClass,"progressBgWidth","d16@0:8") &&
+            Signature(progressClass,"progressBarHeight","d16@0:8") &&
+            Signature(progressClass,"progressBarYWithHeight:","d24@0:8d16")) {
+            double width=((double(*)(Obj,Sel))Message)(progress,sel_registerName("progressBgWidth"));
+            double height=((double(*)(Obj,Sel))Message)(progress,sel_registerName("progressBarHeight"));
+            double y=((double(*)(Obj,Sel,double))Message)(progress,sel_registerName("progressBarYWithHeight:"),height);
+            track=Convert(progress,(Rect){16,y,width,height},root);
+            if (VisibleRect(track) && width>=b.width*0.5 && height<=8) {
+                glass=DramaEpisodeMaterial(entry);
+                seekOwner=progress;
+                anchor=DramaSpacingAnchor(entry,seekOwner,root,1);
+                if (glass && anchor) target=entry;
+            }
+        }
+    } else if (eligible) {
         U entries=0; int budget=128;
-        DramaSpacingScan178R2(root,root,8,&budget,0,&entry,&entries,&progress,&track);
+        insert=Get(root,"insertAboveProgressView");
+        if (!Belongs(insert,root)) insert=0;
+        DramaSpacingScan178R2(root,root,insert,8,&budget,0,&entry,&entries,&progress,&track);
         // A broad progress container is not evidence of the visible track's
         // position. If the thin track is hidden or absent, keep the host layout.
         B visibleTrack=progress && track.height<=8;
@@ -3347,14 +3779,21 @@ void FQHDramaSpacing178R2(Obj root) {
                 if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
                     r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) seekOwner=seek;
             }
-            Obj insert=Get(root,"insertAboveProgressView");
-            if (insert && (insert==entry || Belongs(entry,insert))) {
-                anchor=DramaSpacingAnchor(insert,seekOwner,root);
+            if (insert && Belongs(entry,insert)) {
+                anchor=DramaSpacingAnchor(insert,seekOwner,root,0);
                 if (anchor) target=insert;
             }
         }
     }
     Obj previousAnchor=objc_getAssociatedObject(root,DramaSpacingAnchor178R6Key);
+    if (eligible && !outer && !target && insert && previousAnchor &&
+        Get(previousAnchor,"firstItem")==insert && Flag(previousAnchor,"isActive") &&
+        DramaAnchorConstant(previousAnchor)==Double(objc_getAssociatedObject(previousAnchor,DramaSpacingApplied178R2Key))) {
+        // A pause or foreground crossfade can briefly hide the painted child.
+        // Keep the correction on the current native insert until it is replaced.
+        anchor=previousAnchor;
+        status="retainedEpisodeConstraint";
+    }
     DramaSpacingRestoreAnchor(root,anchor);
     Obj previous=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
     if (previous && (previous!=target || anchor)) DramaSpacingRestore178R2(root);
@@ -3373,7 +3812,7 @@ void FQHDramaSpacing178R2(Obj root) {
             double referenceY=b.y+b.height;
             if (Get(anchor,"secondItem")==seekOwner) {
                 Rect seek=Convert(seekOwner,Bounds(seekOwner),root);
-                referenceY=seek.y+seek.height*0.5;
+                referenceY=seek.y+seek.height*(outer ? 1 : 0.5);
             }
             // Calculate the host baseline even before UIKit applies a new
             // constraint constant to the frames in this pass.
@@ -3420,7 +3859,7 @@ void FQHDramaSpacing178R2(Obj root) {
     if (FQDDiagnosticsEnabled() && (eligible || previous || previousAnchor)) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
-        Put(record,"revision",Text("episode-glass-178R8"));
+        Put(record,"revision",Text(outer ? "outer-episode-glass" : "episode-glass-178R8"));
         Put(record,"spacingReference",Text("episodeGlassToTrack")); Put(record,"gap",Number(8));
         if (glass) {
             Rect actualGlass=Convert(glass,Bounds(glass),root);
@@ -3430,7 +3869,8 @@ void FQHDramaSpacing178R2(Obj root) {
         if (anchor) Put(record,"usesEpisodeConstraint",BoolBox(1));
         if (entry) Put(record,"episodeWindowRect",RectArray(Convert(entry,Bounds(entry),window)));
         if (progress) {
-            Put(record,"progressWindowRect",RectArray(Convert(progress,Bounds(progress),window)));
+            Put(record,"progressWindowRect",RectArray(outer ? Convert(root,track,window) :
+                Convert(progress,Bounds(progress),window)));
             Put(record,"progressClass",Get(object_getClass(progress),"description"));
         }
         if (seekOwner) {
@@ -3475,7 +3915,48 @@ static void DramaProgressPlaying(Obj self,Sel cmd,B playing,B animate) {
     ((void(*)(Obj,Sel,B,B))Original("FQVShortVideoProgressView","fqx178r8_originalProgressPlaying:animate:"))(self,cmd,playing,animate);
     DramaSpacingForView(self);
 }
+static void DramaProgressActivated(Obj self,Sel cmd,U state) {
+    ((void(*)(Obj,Sel,U))Original("FQVShortVideoProgressView","fqx_originalDramaProgressActivated:"))(self,cmd,state);
+    DramaSpacingForView(self);
+}
+static void DramaProgressState(Obj self,Sel cmd,U state,B showDot) {
+    ((void(*)(Obj,Sel,U,B))Original("FQVShortVideoProgressView","fqx_originalDramaProgressState:showDot:"))(
+        self,cmd,state,showDot);
+    DramaSpacingForView(self);
+}
+static void DramaEpisodeInsert(Obj self,Sel cmd,Obj insert) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoVPlayerControlView","fqx_originalDramaEpisodeInsert:"))(self,cmd,insert);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaOuterEpisodeInsert(Obj self,Sel cmd,Obj insert) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoVPlayerOutterMultiSeriesControlView","fqx_originalOuterDramaEpisodeInsert:"))(self,cmd,insert);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaSeriesEpisodeInsert(Obj self,Sel cmd,Obj insert) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoVPlayerSeriesControlView","fqx_originalSeriesDramaEpisodeInsert:"))(self,cmd,insert);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaOuterControlsLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoOutterMultiGenreFeedControlView","fqx_originalOuterControlsLayout"))(self,cmd);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaOuterAboveProgressLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoOutterMultiGenreFeedControlView","fqx_originalOuterAboveProgressLayout"))(self,cmd);
+    FQHDramaSpacing178R2(self);
+}
+static void DramaOuterProgressLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoOutterMultiGenreProgressView","fqx_originalOuterProgressLayout"))(self,cmd);
+    Obj root=Get(self,"superview");
+    if (Kind(root,"SSShortVideoOutterMultiGenreFeedControlView") && Get(root,"progressView")==self)
+        FQHDramaSpacing178R2(root);
+}
 static void DramaSpacingInstall178R2(void) {
+    const char *outer="SSShortVideoOutterMultiGenreFeedControlView";
+    Hook(outer,"layoutSubviews","fqx_originalOuterControlsLayout","v16@0:8",(Imp)DramaOuterControlsLayout);
+    Hook(outer,"updateAboveProgressLayout","fqx_originalOuterAboveProgressLayout","v16@0:8",
+         (Imp)DramaOuterAboveProgressLayout);
+    Hook("SSShortVideoOutterMultiGenreProgressView","layoutSubviews","fqx_originalOuterProgressLayout","v16@0:8",
+         (Imp)DramaOuterProgressLayout);
     Obj owner=Lookup("FQVShortVideoVPlayerControlView");
     Sel layout=sel_registerName("layoutSubviews"),alias=sel_registerName("fqx178R2_originalControlsLayout");
     Method base=class_getInstanceMethod(owner,layout);
@@ -3497,6 +3978,16 @@ static void DramaSpacingInstall178R2(void) {
          "v16@0:8",(Imp)DramaProgressLayout);
     Hook("FQVShortVideoProgressView","updateProgressViewWithPlaying:animate:","fqx178r8_originalProgressPlaying:animate:",
          "v24@0:8B16B20",(Imp)DramaProgressPlaying);
+    Hook("FQVShortVideoProgressView","updateProgressViewWithActivatedState:",
+         "fqx_originalDramaProgressActivated:","v24@0:8Q16",(Imp)DramaProgressActivated);
+    Hook("FQVShortVideoProgressView","updateProgressViewWithStateChange:showDot:",
+         "fqx_originalDramaProgressState:showDot:","v28@0:8Q16B24",(Imp)DramaProgressState);
+    Hook("FQVShortVideoVPlayerControlView","setInsertAboveProgressView:","fqx_originalDramaEpisodeInsert:",
+         "v24@0:8@16",(Imp)DramaEpisodeInsert);
+    Hook("FQVShortVideoVPlayerOutterMultiSeriesControlView","setInsertAboveProgressView:","fqx_originalOuterDramaEpisodeInsert:",
+         "v24@0:8@16",(Imp)DramaOuterEpisodeInsert);
+    Hook("FQVShortVideoVPlayerSeriesControlView","setInsertAboveProgressView:","fqx_originalSeriesDramaEpisodeInsert:",
+         "v24@0:8@16",(Imp)DramaSeriesEpisodeInsert);
 }
 
 static void CaptionGeometryStockKey(void) {}
@@ -3643,6 +4134,10 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     ApplySurface(view,material,0);
     Obj surface=FQHSurface(view);
     if (surface && objc_getAssociatedObject(model,ShelfTabModelStockKey)) {
+        // UIKit commits the constraints rebuilt by the host on the inner title
+        // container. Resolve them before positioning both visible label layers.
+        Obj container=Get(view,"titleContainerView");
+        if (Get(container,"superview")==view) V0(container,"layoutIfNeeded");
         // The host's non-zoom font branch leaves a previous transform intact.
         ShelfResetLabelZoom(Get(view,"titleLabel"));
         ShelfResetLabelZoom(Get(view,"maskTitleLabel"));
@@ -3657,6 +4152,24 @@ static void PageShelfTabLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfTabSelectViewTitleCell","fqx174_originalShelfCategory"))(self,cmd);
     Obj model=Get(self,"cellModel");
     ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
+}
+static void PageShelfTabWillDisplay(Obj self,Sel cmd,Obj collection,Obj cell,Obj index) {
+    const char *name="SSBookShelfTabSelectView";
+    ((void(*)(Obj,Sel,Obj,Obj,Obj))Original(name,"fqx_originalShelfWillDisplay:cell:index:"))(self,cmd,collection,cell,index);
+    if (!Enabled() || !FQHGlassAvailable() || Get(self,"collectionView")!=collection ||
+        !Kind(cell,"SSBookShelfTabSelectViewTitleCell")) return;
+    V0(cell,"layoutIfNeeded");
+    Obj model=Get(cell,"cellModel");
+    ShelfTabStyle(cell,model,BoolProp(model,"isSelected"));
+}
+static void InstallShelfTabWillDisplay(void) {
+    Obj cls=Lookup("SSBookShelfTabSelectView");
+    const char *selector="collectionView:willDisplayCell:forItemAtIndexPath:",*type="v40@0:8@16@24@32";
+    Sel entry=sel_registerName(selector),alias=sel_registerName("fqx_originalShelfWillDisplay:cell:index:");
+    if (!ClassABI(cls,selector,type) || class_getInstanceMethod(cls,alias)) return;
+    Method original=class_getInstanceMethod(cls,entry);
+    if (class_addMethod(cls,alias,method_getImplementation(original),type))
+        class_addMethod(cls,entry,(Imp)PageShelfTabWillDisplay,type);
 }
 static void PageShelfTabReload(Obj self,Sel cmd,Obj model) {
     ShelfPrepareTabModel(model);
@@ -4009,7 +4522,7 @@ static void ProfileCollectionLayout(Obj self,Sel cmd) {
     Rect material=Bounds(root), barFrame=Frame(bar);
     material.height=barFrame.y+barFrame.height-material.y;
     B enabled=Enabled() && Get(list,"superview")==root && !Flag(bar,"isHidden");
-    B installed=TopChromePage(root,bar,list,material,enabled);
+    B installed=TopChromePage(root,bar,bar,list,material,enabled);
     TopChromeFill(bar,installed);
     TopChromeUnderlap(list,list,material.y,installed);
     if (installed) ProfileRestingTint(self,list);
@@ -5740,6 +6253,7 @@ void FQHPageInstall(void) {
     Hook("SSReaderChapterEndBaseButton","layoutSubviews","fqx177_originalChapterButton","v16@0:8",(Imp)PageChapterButtonLayout);
     Hook("SSReaderChapterEndRewardButton","updateWithThemeConfigChange:","fqx177_originalChapterRewardTheme:","v24@0:8@16",(Imp)PageChapterRewardTheme);
     Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfTabLayout);
+    InstallShelfTabWillDisplay();
     Hook("SSBookShelfTabSelectViewTitleCell","reloadData:","fqx175_originalShelfTabReload:","v24@0:8@16",(Imp)PageShelfTabReload);
     Hook("SSBookShelfTabSelectViewTitleCell","updateLabelWithModel:","fqx178r11_originalShelfLabel:","v24@0:8@16",(Imp)PageShelfTabUpdate);
     Hook("SSBookShelfTabSelectViewTitleCell","updateLayoutWithModel:","fqx178r11_originalShelfModelLayout:","v24@0:8@16",(Imp)PageShelfTabUpdate);
@@ -5812,6 +6326,19 @@ void FQHInstall(void) {
     Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
+    Hook("SSBookShelf525ViewController","categoryView:didSelectedItemAtIndex:",
+         "fqx_originalShelfCommitted:index:","v32@0:8@16q24",(Imp)BookshelfTabCommitted);
+    if (Signature("FQRJXCategoryListContainerView","didClickSelectedItemAtIndex:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","cleanValidListWithIndex:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","initListIfNeededAtIndex:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","setCurrentIndex:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","listDidAppear:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","clampScrollViewToCurrentIndexIfNeeded","v16@0:8")) {
+        Hook("FQRJXCategoryListContainerView","layoutSubviews","fqx_originalHistoryPagerLayout",
+             "v16@0:8",(Imp)BookshelfHistoryPagerLayout);
+        Hook("FQRJXCategoryListContainerView","scrollDidStop","fqx_originalHistoryPagerStopped",
+             "v16@0:8",(Imp)BookshelfHistoryPagerStopped);
+    }
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
     Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
     Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
@@ -5863,6 +6390,8 @@ static Obj BottomDefaults178(void) {
     return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
 }
 static Obj BottomPreference178(I tag) {
+    if (tag>=DramaCategoryTagBase && tag-DramaCategoryTagBase<=2147483647)
+        return DramaCategoryPreference(tag-DramaCategoryTagBase);
     switch (tag) {
         case 1: return Text("FanqieX.BottomIconsOnly.1");
         case 2: return Text("FanqieX.BottomDramaCompact.1");
@@ -5892,7 +6421,7 @@ static Obj BottomPreference178(I tag) {
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
-    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : (tag>=21 && tag<=29) || tag==36;
+    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : (tag>=21 && tag<=29) || tag==36 || tag>=DramaCategoryTagBase;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
@@ -5982,6 +6511,51 @@ static Obj DramaPureCleanDock178R13(Obj view) {
     }
     return 0;
 }
+static Obj BottomDramaCapsuleForView(Obj view) {
+    if (!Enabled()) return 0;
+    Obj bar=DramaPureCleanDock178R13(view);
+    Obj proxy=BottomWeakValue178(bar,BottomProxyBox178Key);
+    if (!bar || Get(proxy,"superview")!=bar || !BottomVisible178(proxy,Get(view,"window")) ||
+        Get(Get(bar,"delegate"),"presentedViewController")) return 0;
+    return proxy;
+}
+static B BottomContainsCapsulePoint(Obj capsule,Point point) {
+    Rect bounds=Bounds(capsule);
+    return point.x>=bounds.x && point.x<bounds.x+bounds.width &&
+        point.y>=bounds.y && point.y<bounds.y+bounds.height;
+}
+static B BottomDramaSeekShouldBegin(Obj self,Sel cmd,Obj gesture) {
+    const char *owner="FQVShortVideoVPlayerControlView";
+    if (gesture && Get(self,"progressPanGesture")==gesture &&
+        DramaIsMainFeedConfig(DramaDockControlConfig(self))) {
+        Obj proxy=BottomDramaCapsuleForView(self);
+        if (proxy) {
+            // The inner player has no progress touch-filter delegate.
+            Point point=((Point(*)(Obj,Sel,Obj))Message)(gesture,sel_registerName("locationInView:"),proxy);
+            Point movement=((Point(*)(Obj,Sel,Obj))Message)(gesture,sel_registerName("translationInView:"),proxy);
+            if (BottomContainsCapsulePoint(proxy,(Point){point.x-movement.x,point.y-movement.y})) return 0;
+        }
+    }
+    return ((B(*)(Obj,Sel,Obj))Original(owner,"fqx178r15_originalDramaSeekShouldBegin:"))(self,cmd,gesture);
+}
+static B BottomOuterDramaSeekTouch(Obj self,Sel cmd,Obj gesture,Obj touch) {
+    const char *owner="SSShortVideoOutterMultiGenreFeedControlView";
+    if (gesture && Get(self,"progressPanGesture")==gesture) {
+        Obj proxy=BottomDramaCapsuleForView(self);
+        if (proxy && BottomContainsCapsulePoint(proxy,
+            ((Point(*)(Obj,Sel,Obj))Message)(touch,sel_registerName("locationInView:"),proxy))) return 0;
+    }
+    return ((B(*)(Obj,Sel,Obj,Obj))Original(owner,"fqx_originalOuterDramaSeekTouch::"))(self,cmd,gesture,touch);
+}
+static Obj BottomOuterDramaHit(Obj self,Sel cmd,Point point,Obj event) {
+    const char *owner="SSShortVideoOutterMultiGenreFeedControlView";
+    Obj proxy=BottomDramaCapsuleForView(self);
+    if (proxy) {
+        Rect position=Convert(self,(Rect){point.x,point.y,0,0},proxy);
+        if (BottomContainsCapsulePoint(proxy,(Point){position.x,position.y})) return 0;
+    }
+    return ((Obj(*)(Obj,Sel,Point,Obj))Original(owner,"fqx_originalOuterDramaHit::"))(self,cmd,point,event);
+}
 static B BottomCompactActive178R7(Obj bar) {
     return BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
 }
@@ -6041,6 +6615,17 @@ static void BottomDramaDragSettled178R13(Obj self,Sel cmd) {
     V0(start,"release");
 }
 static void BottomCompactInstall178R7(void) {
+    const char *player="FQVShortVideoVPlayerControlView";
+    if (Signature(player,"progressPanGesture","@16@0:8"))
+        Hook(player,"gestureRecognizerShouldBegin:","fqx178r15_originalDramaSeekShouldBegin:",
+             "B24@0:8@16",(Imp)BottomDramaSeekShouldBegin);
+    const char *outer="SSShortVideoOutterMultiGenreFeedControlView";
+    if (Signature(outer,"progressPanGesture","@16@0:8")) {
+        Hook(outer,"gestureRecognizer:shouldReceiveTouch:","fqx_originalOuterDramaSeekTouch::",
+             "B32@0:8@16@24",(Imp)BottomOuterDramaSeekTouch);
+        Hook(outer,"hitTest:withEvent:","fqx_originalOuterDramaHit::",
+             "@40@0:8{CGPoint=dd}16@32",(Imp)BottomOuterDramaHit);
+    }
     const char *owner="FQVShortVideoListVCScrollComponent";
     if (!Signature(owner,"collectionView","@16@0:8") ||
         !Signature(owner,"currentIndexPathForFullScreenCell","@16@0:8") ||
@@ -6728,7 +7313,7 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
         if (tag>=21) {
             if (changed) {
-                if (tag<=25) DramaVisibilityRefresh();
+                if (tag<=25 || tag>=DramaCategoryTagBase) DramaVisibilityRefresh(tag==21 || tag>=DramaCategoryTagBase);
                 else if (tag<=29) FeatureVisibilityRefresh178R9();
                 else if (tag==30 || tag==33) DramaPureCleanRefresh178R13();
                 else if (tag==34) FQHRefreshMineQuickAppearance178R13();
@@ -7097,6 +7682,12 @@ static void SettingsExport178R13(Obj router,Sel cmd,Obj sender) {
     if (Responds(owner,"fqab_156_exportDiagnostics:")) V1(owner,"fqab_156_exportDiagnostics:",sender);
 }
 
+static void SettingsOpenBookExport(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
+    V1(Lookup("FQXBookExportPlugin"),"openFromSettingsController:",owner);
+}
+
 static void SettingsLocalReward178R13(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
@@ -7159,6 +7750,7 @@ static void SettingsInstall178R13(Obj controller) {
         class_addMethod(cls,sel_registerName("searchBar:textDidChange:"),(Imp)SettingsSearchChanged178R13,"v32@0:8@16@24");
         class_addMethod(cls,sel_registerName("fqx178_diagnostics:"),(Imp)SettingsDiagnosticToggle178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_export:"),(Imp)SettingsExport178R13,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openBookExport:"),(Imp)SettingsOpenBookExport,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_testListenReward:"),(Imp)SettingsLocalReward178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_jump:"),(Imp)SettingsJump178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx176_toggle:"),(Imp)ToggleChanged,"v24@0:8@16");
@@ -7208,12 +7800,31 @@ static void SettingsInstall178R13(Obj controller) {
     SettingsToggle178R13(group,controller,router,31,0,"暂停时显示界面",0);
     SettingsToggle178R13(group,controller,router,32,0,"默认最高画质",0);
     SettingsToggle178R13(group,controller,router,FullscreenFillOption,1,0,0);
-    SettingsToggle178R13(group,controller,router,21,0,"显示短剧顶部分类",0);
+    Obj categoryRows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
+    U categoryCount=DramaCategoryCount(categoryRows);
+    SettingsToggle178R13(group,controller,router,21,0,"显示短剧顶部分类",
+        categoryCount ? 0 : "进入短剧加载分类后，可单独设置每个分类。");
+    for (U i=0;i<categoryCount && i<24;++i) {
+        Obj row=At(categoryRows,i);
+        if (!Kind(row,"NSDictionary")) continue;
+        Obj type=O1(row,"objectForKey:",Text("type")),title=O1(row,"objectForKey:",Text("title"));
+        if (!Kind(type,"NSNumber") || !Kind(title,"NSString")) continue;
+        I code=((I(*)(Obj,Sel))Message)(type,sel_registerName("integerValue"));
+        if (code<0 || code>2147483647) continue;
+        Obj label=O1(Text("短剧分类："),"stringByAppendingString:",title);
+        const char *name=((const char *(*)(Obj,Sel))Message)(label,sel_registerName("UTF8String"));
+        if (name) SettingsToggle178R13(group,controller,router,DramaCategoryTagBase+code,0,name,0);
+    }
     SettingsToggle178R13(group,controller,router,22,0,"显示短剧搜索按钮",0);
     SettingsToggle178R13(group,controller,router,23,0,"显示作者声明",0);
     SettingsToggle178R13(group,controller,router,24,0,"显示阅读原著",0);
     SettingsToggle178R13(group,controller,router,25,0,"显示小说兴趣推荐",0);
     group=SettingsGroup178R13(header,"阅读与书架");
+    if (Lookup("FQXBookExportPlugin")) {
+        Obj export=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
+            "导出书籍  ›","导出书籍","fqx_openBookExport:");
+        V1(export,"setAccessibilityIdentifier:",Text("导出书籍 小说导出 下载 本地章节 TXT Markdown HTML EPUB JSON"));
+    }
     SettingsToggle178R13(group,controller,router,ReaderBottomBackgroundOption,1,0,0);
     SettingsToggle178R13(group,controller,router,ReaderThemeIsolationOption,1,0,0);
     SettingsToggle178R13(group,controller,router,ShelfDurationOption,1,0,0);
