@@ -31,9 +31,12 @@ class Runtime(ReaderRuntime):
             ("FQVShortVideoVPlayerControlView", "UIView"),
             ("FQVShortVideoVPlayerSeriesControlView", "FQVShortVideoVPlayerControlView"),
             ("ObservedHostVideoProgressView", "UIView"),
+            ("FQVShortVideoProgressView", "UIView"),
+            ("NSLayoutConstraint", "NSObject"),
         ):
             self._class(name, parent)
-        self._add(self.classes["FQVShortVideoVPlayerControlView"], "layoutSubviews",
+        owner = "UIView" if release_version(data) == "1.78R6" else "FQVShortVideoVPlayerControlView"
+        self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
 
     def responds(self, receiver, name):
@@ -44,6 +47,20 @@ class Runtime(ReaderRuntime):
     def handle(self, cpu, pc):
         if pc-self.slide == 0xa5d4:
             receiver, selector, other = cpu.x[:3]
+            name = self.selector_names.get(selector)
+            if receiver in self.objects and name in ("constraints", "insertAboveProgressView", "progressBarBackgroundView",
+                                                     "customizedProgressBarBackgroundView"):
+                return self.finish(cpu, self.objects[receiver].state.get(name, 0))
+            if receiver in self.objects and self.objects[receiver].cls == self.classes["NSLayoutConstraint"]:
+                state = self.objects[receiver].state
+                if name in ("constant", "multiplier"):
+                    return self.finish(cpu, fp=(state[name],))
+                if name == "setConstant:":
+                    state["constant"] = cpu.fp(0)
+                    self.event("constraintConstant", receiver, value=state["constant"])
+                    return self.finish(cpu, 0)
+                if name in ("firstItem", "secondItem", "isActive", "firstAttribute", "secondAttribute", "relation"):
+                    return self.finish(cpu, state[name])
             if receiver in self.objects and self.selector_names.get(selector) == "isEqual:" and not self.is_kind(receiver, self.classes["UIColor"]):
                 # NSDictionary/NSArray use recursive Foundation value equality.
                 return self.finish(cpu, int(self.object_equal(receiver, other)))
@@ -94,6 +111,60 @@ def global_rect(runtime, view):
     return x, y, *state["bounds"][2:]
 
 
+def glass_rect(runtime, content):
+    glass = next(child for child in runtime.objects[content].state["subviews"]
+                 if runtime.objects[child].cls == runtime.classes["UIButton"])
+    return global_rect(runtime, glass)
+
+
+def verify_native_constraint(data, labels, reference_attribute):
+    cpu, rt, v = fixture(data, labels)
+    root, insert, progress, track = (v[key] for key in ("root", "info", "progress", "track"))
+    root_state = rt.objects[root].state
+    root_state.update(frame=(0., 0., 440., 876.), bounds=(0., 0., 440., 876.), insertAboveProgressView=insert)
+    rt.objects[progress].cls = rt.classes["FQVShortVideoProgressView"]
+    progress_state = rt.objects[progress].state
+    progress_state.update(frame=(0., 851., 440., 30.), bounds=(0., 0., 440., 30.), progressBarBackgroundView=track)
+    rt.objects[track].state["frame"] = (16., 22., 408., 2.)
+    other_line = rt.view("UIView", "thin unrelated subview", (0., 24., 440., 1.), progress)
+    reference = root if reference_attribute == 4 else progress
+    stock = 0. if reference_attribute == 4 else 10.
+    anchor = rt.obj("NSLayoutConstraint", "host insert bottom anchor", firstItem=insert, secondItem=reference,
+                    firstAttribute=4, secondAttribute=reference_attribute, relation=0, multiplier=1.,
+                    constant=stock, isActive=1)
+    root_state["constraints"] = rt.obj("NSArray", "installed constraints", items=[anchor])
+    anchor_state = rt.objects[anchor].state
+    insert_state = rt.objects[insert].state
+
+    def native_layout(runtime, view):
+        if view == root:
+            x, _, width, height = insert_state["frame"]
+            reference_y = 876. if reference_attribute == 4 else 866.
+            insert_state["frame"] = (x, reference_y+anchor_state["constant"]-height, width, height)
+
+    rt.layout_mutator = native_layout
+    for _ in range(5):
+        send(cpu, rt, root, "layoutSubviews")
+    glass = glass_rect(rt, v["content"])
+    require(anchor_state["constant"] == stock-8. and 873.-glass[1]-glass[3] == 8.,
+            "The installed constraint retains the exact glass gap after UIKit recalculates the row")
+    record = [r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]
+    require(record["usesEpisodeConstraint"] and record["episodeGlassWindowRect"] == list(glass) and
+            record["progressWindowRect"] == [16., 873., 408., 2.] and record["trackGap"] == 8.,
+            "The exact host playback background wins over an unrelated thinner sibling")
+    require(not rt.objects[other_line].state["hidden"] and progress_state["gestureRecognizers"] == ["host seek pan"],
+            "Spacing leaves native playback visuals and gestures alone")
+    require(rt.methods[rt.get_method(rt.classes["UIView"], rt.sel("layoutSubviews"))]["imp"] == rt.LAYOUT_IMP,
+            "The inherited layout override is installed on controls only")
+    anchor_state["constant"] = stock+2.
+    for _ in range(2):
+        send(cpu, rt, root, "layoutSubviews")
+    require(anchor_state["constant"] == stock-8., "A host rewrite still resolves to the desired visual gap")
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, root, "layoutSubviews")
+    require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
+
+
 def logged_geometry(data, labels):
     """Use only the observed geometry; do not infer an unreported host tree."""
     cpu, rt, v = fixture(data, labels)
@@ -117,8 +188,9 @@ def logged_geometry(data, labels):
 
 def verify(data, labels):
     cases = []
-    visible_track_spacing = release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
-    expected_shift = 7. if visible_track_spacing else 26.
+    glass_spacing = release_version(data) == "1.78R6"
+    visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
+    expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
         for kind in ("distribution", "album"):
             cpu, rt, views = fixture(data, labels, width, height, kind)
@@ -126,7 +198,8 @@ def verify(data, labels):
             root, info, entry, progress, track = (views[k] for k in ("root", "info", "entry", "progress", "track"))
             row_rect = global_rect(rt, entry)
             spacing_reference = global_rect(rt, track if visible_track_spacing else progress)
-            require(spacing_reference[1] - row_rect[1] - row_rect[3] == 8.,
+            painted_rect = glass_rect(rt, views["content"]) if glass_spacing else row_rect
+            require(spacing_reference[1] - painted_rect[1] - painted_rect[3] == 8.,
                     "Episode entry has the intended gap to its version's spacing reference")
             require(states["info"]["frame"] == (0., height-284-expected_shift, width, 200.),
                     "The complete information group moves once, preserving title-to-entry spacing")
@@ -167,14 +240,19 @@ def verify(data, labels):
     for _ in range(5):
         send(cpu, rt, v["root"], "layoutSubviews")
         send(cpu, rt, v["entry"], "layoutSubviews")
-        require(global_rect(rt, v["entry"]) == (0., 821. if visible_track_spacing else 799., 440., 44.),
+        require(global_rect(rt, v["entry"]) == (0., 821. + (3. if glass_spacing else 0.) if visible_track_spacing else 799., 440., 44.),
                 "The observed 440pt screen gets only the necessary lift, without cumulative movement")
     record = [r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]
-    require(record["shiftY"] == (11. if visible_track_spacing else 33.) and
+    require(record["shiftY"] == (8. if glass_spacing else 11. if visible_track_spacing else 33.) and
             record["progressWindowRect"] == [16., 873., 408., 2.] and
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
-    if visible_track_spacing:
+    if glass_spacing:
+        require(record["revision"] == "episode-glass-178R6" and
+                record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
+                record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
+                "Diagnostics report the visible material edge and track gap")
+    elif visible_track_spacing:
         require(record["revision"] == "visible-track-178R3" and
                 record["spacingReference"] == "visibleTrack" and record["trackGap"] == 8. and
                 "seekRegionHeight" not in record,
@@ -187,8 +265,13 @@ def verify(data, labels):
     send(cpu, rt, v["root"], "layoutSubviews")
     require(global_rect(rt, v["entry"]) == (0., 832., 440., 44.),
             "Disabling restores the original episode entry from the log")
-    cases.append("submitted R2 geometry: minimal 11pt lift to 8pt visible gap" if visible_track_spacing else
+    cases.append("submitted geometry: 8pt from glass to track" if glass_spacing else
+                 "submitted R2 geometry: minimal 11pt lift to 8pt visible gap" if visible_track_spacing else
                  "submitted R2 geometry: reproduces 33pt lift and 30pt visible gap")
+    if glass_spacing:
+        for attribute in (4, 10):
+            verify_native_constraint(data, labels, attribute)
+        cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)
@@ -219,7 +302,7 @@ def verify(data, labels):
     rt.objects[v["progress"]].state.update(frame=(16., 842., 408., 64.), bounds=(0., 0., 408., 64.))
     rt.objects[v["track"]].state["frame"] = (0., 31., 408., 2.)
     send(cpu, rt, v["root"], "layoutSubviews")
-    row = global_rect(rt, v["entry"])
+    row = glass_rect(rt, v["content"]) if glass_spacing else global_rect(rt, v["entry"])
     reference_top = 873. if visible_track_spacing else 842.
     require(reference_top-row[1]-row[3] == 8. and
             rt.objects[v["progress"]].state["frame"] == (16., 842., 408., 64.) and
@@ -269,7 +352,7 @@ def verify(data, labels):
     rt.objects[v["progress"]].state["frame"] = (16., 730., 408., 40.)
     for _ in range(4):
         send(cpu, rt, v["root"], "layoutSubviews")
-        require(rt.objects[v["info"]].state["frame"] == (0., 241. if visible_track_spacing else 222., 440., 500.),
+        require(rt.objects[v["info"]].state["frame"] == (0., 244. if glass_spacing else 241. if visible_track_spacing else 222., 440., 500.),
                 "Stock projection prevents oscillation when the applied group crosses the discovery threshold")
     cases.append("threshold crossing: stable stock-based discovery on repeated layouts")
 

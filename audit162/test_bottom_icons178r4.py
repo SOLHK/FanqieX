@@ -143,7 +143,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5"), "This regression targets the R4 symbol sizes")
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6"), "This regression targets the R4 symbol sizes")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), ENTRY_LABELS)
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "sizes": default_and_saved_sizes(data, labels),

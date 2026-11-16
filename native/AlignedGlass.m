@@ -2393,17 +2393,15 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
     DramaSpacingForEntry178R2(self);
 }
 
-// Keep a small visual gap above the rendered playback track. In 1.78R2 the
-// invisible seek container added 22pt of unnecessary lift on the observed host,
-// pushing the episode pill into the disclosure above it. Its hit region must
-// remain native, but must not be treated as visible paint when placing the pill.
-// Retain the R2 hook/association identities for continuity; diagnostics identify
-// the R3 positioning rule explicitly. The player and seek gestures are untouched.
+// Measure the glass and the playback track in the same coordinate space.
+// The clear seek padding is not part of the visual gap.
 static void DramaSpacingBusy178R2Key(void) {}
 static void DramaSpacingTarget178R2Key(void) {}
 static void DramaSpacingStock178R2Key(void) {}
 static void DramaSpacingApplied178R2Key(void) {}
 static void DramaSpacingLog178R2Key(void) {}
+static void DramaSpacingAnchor178R6Key(void) {}
+static void DramaDockFeatherBottomGradient178R6(Obj root);
 
 static B DramaSpacingVisible178R2(Obj view) {
     return Kind(view,"UIView") && !Flag(view,"isHidden") &&
@@ -2416,6 +2414,13 @@ static B DramaProgressName178R2(Obj view) {
     name=O0(name,"lowercaseString");
     return ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("progress")) ||
            ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("slider"));
+}
+static Obj DramaEpisodeMaterial(Obj entry) {
+    Obj content=Kind(entry,"SSShortVideoAlbumSeriesBottomInsertView") ? Get(entry,"containerView") :
+        objc_getAssociatedObject(entry,DramaWatchContentKey);
+    Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
+    return Get(content,"superview")==entry && Get(glass,"superview")==content &&
+        DramaSpacingVisible178R2(content) && DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
 }
 static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
     Rect result=Convert(view,Bounds(view),root);
@@ -2441,6 +2446,22 @@ static void DramaSpacingScan178R2(Obj view,Obj root,int depth,int *budget,B prog
             *entry=view; ++*entries;
         }
         return; // A decorated episode row is never a progress candidate.
+    }
+    if (Kind(view,"FQVShortVideoProgressView")) {
+        // The host mounts the custom background alongside the standard one.
+        // Fills, dots and other thin subviews are not the track boundary.
+        for (U i=0;i<2;++i) {
+            Obj candidate=Get(view,i ? "progressBarBackgroundView" : "customizedProgressBarBackgroundView");
+            if (Get(candidate,"superview")!=view || !DramaSpacingVisible178R2(candidate)) continue;
+            Rect frame=Convert(candidate,Bounds(candidate),root);
+            if (VisibleRect(frame) && frame.width>=bounds.width*0.5 && frame.height<=8 &&
+                frame.y>bounds.y+bounds.height*0.6 && frame.y<bounds.y+bounds.height) {
+                *progress=candidate;
+                *track=frame;
+                break;
+            }
+        }
+        return;
     }
     progressBranch=progressBranch || DramaProgressName178R2(view);
     // A public slider or a thin full-width child of the host's progress view.
@@ -2476,10 +2497,52 @@ static B DramaSpacingContained178R2(Obj target,Rect wanted,Obj root) {
     }
     return 0;
 }
+
+static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root) {
+    if (!Belongs(insert,root) || !Belongs(seek,root)) return 0;
+    // The outer feed anchors the insert to the control bottom. Series players
+    // can replace the base constraint with one anchored to the seek center.
+    Obj match=0;
+    for (Obj parent=Get(insert,"superview");parent;parent=Get(parent,"superview")) {
+        Obj constraints=Get(parent,"constraints");
+        U count=((U(*)(Obj,Sel))Message)(constraints,sel_registerName("count"));
+        for (U i=0;i<count;++i) {
+            Obj constraint=At(constraints,i);
+            if (Get(constraint,"firstItem")!=insert || !Flag(constraint,"isActive")) continue;
+            Obj reference=Get(constraint,"secondItem");
+            I attribute=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("secondAttribute"));
+            if (!((reference==root && attribute==4) || (reference==seek && attribute==10))) continue;
+            if (((I(*)(Obj,Sel))Message)(constraint,sel_registerName("firstAttribute"))!=4 ||
+                ((I(*)(Obj,Sel))Message)(constraint,sel_registerName("relation"))!=0 ||
+                ((double(*)(Obj,Sel))Message)(constraint,sel_registerName("multiplier"))!=1) continue;
+            if (match) return 0;
+            match=constraint;
+        }
+        if (parent==root) break;
+    }
+    return match;
+}
+
+static double DramaAnchorConstant(Obj anchor) {
+    return ((double(*)(Obj,Sel))Message)(anchor,sel_registerName("constant"));
+}
+
+static void DramaSpacingRestoreAnchor(Obj root,Obj keep) {
+    Obj previous=objc_getAssociatedObject(root,DramaSpacingAnchor178R6Key);
+    if (!previous || previous==keep) return;
+    Obj stock=objc_getAssociatedObject(previous,DramaSpacingStock178R2Key);
+    Obj applied=objc_getAssociatedObject(previous,DramaSpacingApplied178R2Key);
+    if (DramaAnchorConstant(previous)==Double(applied))
+        ((void(*)(Obj,Sel,double))Message)(previous,sel_registerName("setConstant:"),Double(stock));
+    objc_setAssociatedObject(previous,DramaSpacingStock178R2Key,0,1);
+    objc_setAssociatedObject(previous,DramaSpacingApplied178R2Key,0,1);
+    objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,0,1);
+}
 void FQHDramaSpacing178R2(Obj root) {
     if (!Kind(root,"FQVShortVideoVPlayerControlView") || objc_getAssociatedObject(root,DramaSpacingBusy178R2Key)) return;
     objc_setAssociatedObject(root,DramaSpacingBusy178R2Key,root,0);
-    Obj window=Get(root,"window"),entry=0,progress=0,target=0,seekOwner=0;
+    DramaDockFeatherBottomGradient178R6(root);
+    Obj window=Get(root,"window"),entry=0,progress=0,target=0,seekOwner=0,glass=0,anchor=0;
     Rect b=Bounds(root),screen=window ? Bounds(window) : (Rect){0},track={0},row={0};
     double shift=0;
     const char *status="inactive";
@@ -2500,6 +2563,10 @@ void FQHDramaSpacing178R2(Obj root) {
         status=budget<=0 ? "scanLimit" : entries!=1 ? "noUniqueEpisodeEntry" : !progress ? "progressNotResolved" :
             !visibleTrack ? "progressTrackUnresolved" : "measured";
         if (entries==1 && visibleTrack && budget>0) {
+            glass=DramaEpisodeMaterial(entry);
+            if (!glass) status="episodeGlassUnresolved";
+        }
+        if (glass) {
             row=DramaSpacingMeasure178R2(entry,root);
             target=entry;
             // Move the compact information block as a unit when it owns the
@@ -2511,35 +2578,60 @@ void FQHDramaSpacing178R2(Obj root) {
                     p.y<b.y+b.height*0.3 || p.y+p.height>row.y+row.height+16) break;
                 target=parent;
             }
+            for (Obj seek=Get(progress,"superview");seek && seek!=root;seek=Get(seek,"superview")) {
+                Rect r=Convert(seek,Bounds(seek),root);
+                if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
+                    r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) seekOwner=seek;
+            }
+            Obj insert=Get(root,"insertAboveProgressView");
+            if (insert && (insert==entry || Belongs(entry,insert))) {
+                anchor=DramaSpacingAnchor(insert,seekOwner,root);
+                if (anchor) target=insert;
+            }
         }
     }
+    Obj previousAnchor=objc_getAssociatedObject(root,DramaSpacingAnchor178R6Key);
+    DramaSpacingRestoreAnchor(root,anchor);
     Obj previous=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
-    if (previous && previous!=target) DramaSpacingRestore178R2(root);
+    if (previous && (previous!=target || anchor)) DramaSpacingRestore178R2(root);
     if (target) {
         Rect current=Frame(target),targetBounds=Bounds(target);
         Obj applied=objc_getAssociatedObject(target,DramaSpacingApplied178R2Key);
         Obj saved=objc_getAssociatedObject(target,DramaSpacingStock178R2Key);
         Rect stock=applied && saved && SameRect(current,UnboxRect(applied)) ? UnboxRect(saved) : current;
         Rect targetInRoot=Convert(target,targetBounds,root);
-        row=Convert(entry,Bounds(entry),root);
-        row.y+=stock.y-current.y;
-        // Keep the host seek owner for diagnostics only. Its invisible touch
-        // padding does not add visual clearance; no seek frame, gesture,
-        // target/action or sibling ordering is changed.
-        for (Obj seek=progress;seek && seek!=root;seek=Get(seek,"superview")) {
-            Rect r=Convert(seek,Bounds(seek),root);
-            if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
-                r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) {
-                seekOwner=seek;
+        double constant=0,stockConstant=0;
+        if (anchor) {
+            constant=DramaAnchorConstant(anchor);
+            Obj anchorStock=objc_getAssociatedObject(anchor,DramaSpacingStock178R2Key);
+            Obj anchorApplied=objc_getAssociatedObject(anchor,DramaSpacingApplied178R2Key);
+            stockConstant=anchorApplied && constant==Double(anchorApplied) ? Double(anchorStock) : constant;
+            double referenceY=b.y+b.height;
+            if (Get(anchor,"secondItem")==seekOwner) {
+                Rect seek=Convert(seekOwner,Bounds(seekOwner),root);
+                referenceY=seek.y+seek.height*0.5;
             }
+            // Calculate the host baseline even before UIKit applies a new
+            // constraint constant to the frames in this pass.
+            stock.y+=referenceY+stockConstant-(targetInRoot.y+targetInRoot.height);
         }
-        shift=__builtin_fmax(0,row.y+row.height+8-track.y);
+        Rect material=Convert(glass,Bounds(glass),root);
+        shift=__builtin_fmax(0,material.y+material.height+(stock.y-current.y)+8-track.y);
         B safe=VisibleRect(stock) && __builtin_fabs(targetInRoot.width-targetBounds.width)<0.5 &&
             __builtin_fabs(targetInRoot.height-targetBounds.height)<0.5 && shift<=80 &&
             targetInRoot.y+(stock.y-current.y)-shift>=b.y+8;
         Rect wanted=stock; wanted.y-=shift;
         safe=safe && DramaSpacingContained178R2(target,wanted,root);
-        if (safe && shift>0) {
+        if (safe && shift>0 && anchor) {
+            double wantedConstant=stockConstant-shift;
+            if (constant!=wantedConstant) {
+                objc_setAssociatedObject(anchor,DramaSpacingStock178R2Key,Number(stockConstant),1);
+                objc_setAssociatedObject(anchor,DramaSpacingApplied178R2Key,Number(wantedConstant),1);
+                objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,anchor,1);
+                ((void(*)(Obj,Sel,double))Message)(anchor,sel_registerName("setConstant:"),wantedConstant);
+            }
+            status="separated";
+        } else if (safe && shift>0) {
             if (!saved || !SameRect(stock,UnboxRect(saved)))
                 objc_setAssociatedObject(target,DramaSpacingStock178R2Key,RectBox(stock),1);
             if (!applied || !SameRect(wanted,UnboxRect(applied)))
@@ -2552,20 +2644,23 @@ void FQHDramaSpacing178R2(Obj root) {
             if (!SameRect(current,wanted)) SetFrame(target,wanted);
             status="separated";
         } else {
+            DramaSpacingRestoreAnchor(root,0);
             DramaSpacingRestore178R2(root);
             status=safe ? "alreadySeparated" : "unsupportedGeometry";
             shift=0;
         }
     }
-    if (eligible || previous) {
+    if (eligible || previous || previousAnchor) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
-        Put(record,"revision",Text("visible-track-178R3"));
-        Put(record,"spacingReference",Text("visibleTrack")); Put(record,"gap",Number(8));
-        if (entry && progress && track.height<=8) {
-            Rect actualRow=Convert(entry,Bounds(entry),root);
-            Put(record,"trackGap",Number(track.y-actualRow.y-actualRow.height));
+        Put(record,"revision",Text("episode-glass-178R6"));
+        Put(record,"spacingReference",Text("episodeGlassToTrack")); Put(record,"gap",Number(8));
+        if (glass) {
+            Rect actualGlass=Convert(glass,Bounds(glass),root);
+            Put(record,"trackGap",Number(track.y-actualGlass.y-actualGlass.height));
+            Put(record,"episodeGlassWindowRect",RectArray(Convert(glass,Bounds(glass),window)));
         }
+        if (anchor) Put(record,"usesEpisodeConstraint",BoolBox(1));
         if (entry) Put(record,"episodeWindowRect",RectArray(Convert(entry,Bounds(entry),window)));
         if (progress) {
             Put(record,"progressWindowRect",RectArray(Convert(progress,Bounds(progress),window)));
@@ -2598,10 +2693,19 @@ static void DramaSeriesControlsLayout178R2(Obj self,Sel cmd) {
     FQHDramaSpacing178R2(self);
 }
 static void DramaSpacingInstall178R2(void) {
-    Method base=class_getInstanceMethod(Lookup("FQVShortVideoVPlayerControlView"),sel_registerName("layoutSubviews"));
+    Obj owner=Lookup("FQVShortVideoVPlayerControlView");
+    Sel layout=sel_registerName("layoutSubviews"),alias=sel_registerName("fqx178R2_originalControlsLayout");
+    Method base=class_getInstanceMethod(owner,layout);
     Method series=class_getInstanceMethod(Lookup("FQVShortVideoVPlayerSeriesControlView"),sel_registerName("layoutSubviews"));
     B ownsSeries=series && series!=base;
-    Hook("FQVShortVideoVPlayerControlView","layoutSubviews","fqx178R2_originalControlsLayout","v16@0:8",(Imp)DramaControlsLayout178R2);
+    if (ClassABI(owner,"layoutSubviews","v16@0:8") && !class_getInstanceMethod(owner,alias)) {
+        if (FQDResolveOwned(owner,layout,0,"v16@0:8"))
+            Hook("FQVShortVideoVPlayerControlView","layoutSubviews","fqx178R2_originalControlsLayout","v16@0:8",(Imp)DramaControlsLayout178R2);
+        // On 7.4.3.33 the control inherits UIView's layout implementation.
+        // Install an override on this class, keeping UIView's method intact.
+        else if (class_addMethod(owner,alias,method_getImplementation(base),"v16@0:8"))
+            class_addMethod(owner,layout,(Imp)DramaControlsLayout178R2,"v16@0:8");
+    }
     if (ownsSeries)
         Hook("FQVShortVideoVPlayerSeriesControlView","layoutSubviews","fqx178R2_originalSeriesControlsLayout","v16@0:8",(Imp)DramaSeriesControlsLayout178R2);
 }
@@ -3676,6 +3780,7 @@ static void InstallTabRecovery(Obj owner) {
 static void DramaDockLogKey(void) {}
 static void DramaDockViewport178R4Key(void) {}
 static void DramaDockControlApplied178R4Key(void) {}
+static void DramaDockGradient178R6Key(void) {}
 
 // The root drama feed reserves a dock-height strip in portraitVideoSize. A
 // transparent tab bar cannot reveal a video which stops above that strip.
@@ -3698,6 +3803,70 @@ static B DramaDockCanvas178R4(Obj config,Size stock,Size *canvas) {
     // A zero width is the host's automatic-container-width sentinel.
     canvas->height=height;
     return 1;
+}
+
+static Obj DramaDockControlConfig(Obj root) {
+    Obj context=InstanceABI(root,"listVCContext","@16@0:8") ? O0(root,"listVCContext") : (Obj)0;
+    Obj config=InstanceABI(context,"config","@16@0:8") ? O0(context,"config") : (Obj)0;
+    return config ? config : Get(root,"listVCConfig");
+}
+
+static void DramaDockSetGradientStops(Obj layer,Obj colors,Obj locations) {
+    Obj transaction=Lookup("CATransaction");
+    V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
+    if (colors) V1(layer,"setColors:",colors);
+    if (locations) V1(layer,"setLocations:",locations);
+    V0(transaction,"commit");
+}
+
+static B DramaDockStopsMatch(Obj current,Obj applied) {
+    return current==applied || ((B(*)(Obj,Sel,Obj))Message)(current,sel_registerName("isEqual:"),applied);
+}
+
+static void DramaDockFeatherBottomGradient178R6(Obj root) {
+    Obj config=DramaDockControlConfig(root), view=0, layer=0;
+    if (Kind(config,"FQVShortVideoListConfig") &&
+        InstanceABI(config,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8")) {
+        Size stock=((Size(*)(Obj,Sel))Original("FQVShortVideoListConfig","fqx178r4_originalPortraitSize"))(
+            config,sel_registerName("portraitVideoSize"));
+        Size canvas;
+        Rect bounds=Bounds(root), screen=Bounds(O0(Lookup("UIScreen"),"mainScreen"));
+        if (screen.height>screen.width && DramaDockCanvas178R4(config,stock,&canvas) &&
+            __builtin_fabs(bounds.height-stock.height)<1 && __builtin_fabs(bounds.width-screen.width)<1) {
+            view=Get(root,"bottomGradientView");
+            if (Kind(view,"FQVShortVideoGradientLayerView") && Get(view,"superview")==root)
+                layer=Get(view,"gradientLayer");
+            if (!Kind(layer,"CAGradientLayer")) layer=0;
+        }
+    }
+    Obj previous=objc_getAssociatedObject(root,DramaDockGradient178R6Key);
+    if (previous) {
+        Obj previousLayer=At(previous,0);
+        B ownedColors=DramaDockStopsMatch(O0(previousLayer,"colors"),At(previous,3));
+        B ownedLocations=DramaDockStopsMatch(O0(previousLayer,"locations"),At(previous,4));
+        if (layer==previousLayer && ownedColors && ownedLocations) return;
+        if (ownedColors || ownedLocations)
+            DramaDockSetGradientStops(previousLayer,ownedColors ? At(previous,1) : (Obj)0,
+                                     ownedLocations ? At(previous,2) : (Obj)0);
+        objc_setAssociatedObject(root,DramaDockGradient178R6Key,0,1);
+    }
+    if (!layer) return;
+
+    Obj colors=O0(layer,"colors"), locations=O0(layer,"locations");
+    Rect bounds=Bounds(view);
+    const double fade=10;
+    // Host 7.4.3.33 ends a 280pt black gradient at the controls' bottom edge.
+    // Blend its last 10pt back into the underlying full-height video canvas.
+    if (TabCount(colors)!=2 || TabCount(locations)!=2 || Double(At(locations,0))!=0 ||
+        Double(At(locations,1))!=1 || bounds.height<=fade) return;
+    Obj array=Lookup("NSArray");
+    Obj (*makeArray)(Obj,Sel,Obj *,U)=(Obj(*)(Obj,Sel,Obj *,U))Message;
+    Sel make=sel_registerName("arrayWithObjects:count:");
+    Obj fadedColors=makeArray(array,make,(Obj[]){At(colors,0),At(colors,1),At(colors,0)},3);
+    Obj fadedLocations=makeArray(array,make,(Obj[]){At(locations,0),Number(1-fade/bounds.height),At(locations,1)},3);
+    Obj state=makeArray(array,make,(Obj[]){layer,colors,locations,fadedColors,fadedLocations},5);
+    objc_setAssociatedObject(root,DramaDockGradient178R6Key,state,1);
+    DramaDockSetGradientStops(layer,fadedColors,fadedLocations);
 }
 
 static Size DramaDockPortraitSize178R4(Obj self,Sel cmd) {
@@ -3726,9 +3895,7 @@ static void DramaDockControlFrame178R4(Obj self,Sel cmd,Rect requested) {
     // native-height frame as an old full-height request: after disabling or
     // reuse the host can legitimately request exactly our previous result.
     Rect target=requested;
-    Obj context=InstanceABI(self,"listVCContext","@16@0:8") ? O0(self,"listVCContext") : (Obj)0;
-    Obj config=InstanceABI(context,"config","@16@0:8") ? O0(context,"config") : (Obj)0;
-    if (!config) config=Get(self,"listVCConfig");
+    Obj config=DramaDockControlConfig(self);
     if (Kind(config,"FQVShortVideoListConfig") &&
         InstanceABI(config,"fqx178r4_originalPortraitSize","{CGSize=dd}16@0:8") &&
         __builtin_isfinite(requested.width) && __builtin_isfinite(requested.height) &&

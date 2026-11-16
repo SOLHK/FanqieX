@@ -2,26 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R5 测试版
+## FanqieX 1.78R6 测试版
 
-继续 `test` 分支的 1.78R4 测试，修复自定义底栏尺寸后点击、滑动不稳定的问题。
+本版调整短剧和漫剧播放页底部，去掉进度条下方的分隔线，并拉开进度条与「查看全集」「观看完整漫剧」入口的间距。
 
-- 在原有按钮和胶囊坐标入口计算最终自定义尺寸，消除宿主布局中默认尺寸与自定义尺寸的来回覆盖。
-- 尺寸滑块、自动收缩和恢复默认使用正常布局调度，不在手势回调内强制同步刷新；相同取整数值不重复刷新。
-- 采纳宿主的新窗口尺寸并正确恢复默认；保留 R4 的透明底栏外背景、28 pt 默认图标和 R3 的 8 pt 全集入口间距。
-
-本轮插件文件名、设置页、诊断日志与 Mach-O 构建标识统一使用 **1.78R5**。实际点击、拖动及玻璃合成仍需 iPhone 验收。
-
-设置入口：**FanqieX 设置 → 底栏外观与尺寸**。纯图标和自动收缩默认关闭；可调胶囊长度、高度、按钮宽度及图标大小，支持恢复默认。
-
-- [本版说明、范围与安装方式](docs/REPAIR_1.78R5.md)
+- [本版说明和安装方式](docs/REPAIR_1.78R6.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
-- 测试产物由对应提交的 Actions 提供，本分支不会自动发布 Release。
 
-完整验证执行候选 ARM64 指令并检查 Mach-O、签名页、展开表和实际构建来源。最终 iPhone 渲染与注入效果需在设备上确认。
-
-1.78R5 以 `test` 分支的 1.78R4 提交 `29f8b59` 为基线；测试修复继续递增 R 序号，仅正式发布时更新 `main`。历史测试记录保留在 [TESTING.md](TESTING.md)。
+插件文件名、设置页、诊断日志和 Mach-O 构建标识统一为 1.78R6。最终间距和触控体验需在 iPhone 上复测。
 
 ## FanqieX 1.76
 
@@ -96,14 +85,14 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R5 --output build/ci178r5
+python3 scripts/verify162.py --version 1.78R6 --output build/ci178r6
 ```
 
 macOS / Xcode 27.2 构建：
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer \
-python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R5
+python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R6
 ```
 
 Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建检查：
@@ -111,7 +100,7 @@ Windows 工作站可用本地 LLVM Clang 做非 Apple 工具链的等价构建�
 ```powershell
 $env:FQ_ASSEMBLER = "clang"
 $env:FQ_CLANG = "C:\Program Files\LLVM\bin\clang.exe"
-python scripts/verify162.py --version 1.78R5 --output build/ci178r5
+python scripts/verify162.py --version 1.78R6 --output build/ci178r6
 ```
 
 该 Windows 路径不替代 Xcode 27.2 发布构建；它只用于执行同一套 ARM64 指令、结构审计和回归测试。

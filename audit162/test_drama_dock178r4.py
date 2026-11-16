@@ -208,13 +208,81 @@ def bounded_color(data, labels):
     return {"matched_native_or_resolved": 4, "unrelated_native_paint_preserved": len(cases)-4}
 
 
+def gradient_feather(data, labels):
+    cpu, rt = make_drama_dock_runtime(data, labels)
+    rt._class("FQVShortVideoGradientLayerView", "UIView")
+    original_handle = rt.handle
+
+    def handle(cpu, pc):
+        if pc - rt.slide == 0xa5d4:
+            receiver, selector, value = cpu.x[:3]
+            obj = rt.objects.get(receiver)
+            name = rt.selector_names[selector]
+            if obj and obj.cls == rt.classes["CAGradientLayer"]:
+                if name == "locations":
+                    return rt.finish(cpu, obj.state["locations"])
+                if name == "setLocations:":
+                    obj.state["locations"] = value
+                    return rt.finish(cpu)
+            if obj and name == "bottomGradientView":
+                return rt.finish(cpu, obj.state.get(name, 0))
+            if obj and obj.cls == rt.classes["NSArray"] and name == "isEqual:":
+                return rt.finish(cpu, int(rt.object_equal(receiver, value)))
+        return original_handle(cpu, pc)
+
+    rt.handle = handle
+    owning = config(rt)
+    overlay = controls(rt, owning)
+    top = rt.color("transparent mask stop")
+    bottom = rt.color("opaque mask stop")
+    colors = rt.obj("NSArray", "stock gradient colors", items=[top, bottom])
+    locations = rt.obj("NSArray", "stock gradient locations", items=[
+        rt.obj("NSNumber", "top", value=0.), rt.obj("NSNumber", "bottom", value=1.)])
+    layer = rt.obj("CAGradientLayer", "native bottom gradient", colors=colors, locations=locations)
+    frame = (0., 596., 440., 280.)
+    gradient = rt.view("FQVShortVideoGradientLayerView", "native caption shading", frame, overlay,
+                       gradientLayer=layer)
+    rt.objects[overlay].state["bottomGradientView"] = gradient
+    state = rt.objects[layer].state
+    send(cpu, rt, overlay, "setFrame:", fp=(0., 0., 440., 956.))
+    send(cpu, rt, overlay, "layoutSubviews")
+    applied = dict(state)
+    require(rt.objects[applied["colors"]].state["items"] == [top, bottom, top],
+            "The full-width bottom gradient fades to the transparent stop")
+    require([rt.objects[item].state["value"] for item in
+             rt.objects[applied["locations"]].state["items"]] == [0., 1 - 10 / 280, 1.],
+            "The last ten points feather into the video canvas")
+    require(rt.objects[gradient].state["frame"] == frame,
+            "Feathering leaves the native gradient frame in place")
+    send(cpu, rt, overlay, "setFrame:", fp=(0., 0., 440., 876.))
+    send(cpu, rt, overlay, "layoutSubviews")
+    require(state == applied, "An already-native frame request keeps the existing fade")
+
+    new_bottom = rt.color("updated native shade")
+    new_colors = rt.obj("NSArray", "host contrast update", items=[top, new_bottom])
+    state["colors"] = new_colors
+    send(cpu, rt, overlay, "layoutSubviews")
+    require(rt.objects[state["colors"]].state["items"] == [top, new_bottom, top],
+            "Use the newer host gradient palette when it changes")
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, overlay, "layoutSubviews")
+    require(state["colors"] == new_colors and state["locations"] == locations,
+            "Disabling glass restores the most recent host gradient stops")
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
+    rt.objects[owning].state["feedType"] = 5
+    send(cpu, rt, overlay, "layoutSubviews")
+    require(state["colors"] == new_colors and state["locations"] == locations,
+            "The detail feed retains its native gradient")
+    return {"fade_points": 10, "reused_native_frame": True, "host_palette_retained": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5"), "This regression must execute the actual R4-or-later candidate")
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6"), "This regression must execute the actual R4-or-later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
               "observed_geometry": observed_geometry(data, labels),
@@ -224,6 +292,8 @@ def main():
               "incompatible_abi": incompatible_abi(data, labels),
               "device_tested": False, "pixel_rendering_tested": False,
               "boundary": "Candidate ARM64 with explicit native ABI/geometry and UIKit/Foundation fixtures"}
+    if release_version(data) == "1.78R6":
+        report["gradient_feather"] = gradient_feather(data, labels)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(report, ensure_ascii=False, indent=2))
