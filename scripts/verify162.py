@@ -350,7 +350,7 @@ def main():
                 run(check, ['audit162/test_' + check + '.py', candidate,
                     '--report', output / (check + '.json')])
         if args.version == '1.78R11':
-            for check in ('drama_actions178r11', 'drama_quality178r11', 'drama_clean178r11'):
+            for check in ('shelf_selection178r11', 'drama_actions178r11', 'drama_quality178r11', 'drama_clean178r11'):
                 run(check, ['audit162/test_' + check + '.py', candidate,
                     '--report', output / (check + '.json')])
         if args.version in ('1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'):

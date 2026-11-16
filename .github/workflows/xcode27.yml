@@ -32,13 +32,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          unset DEVELOPER_DIR
           for app in /Applications/Xcode_27.3_beta.app /Applications/Xcode_27.3.0.app /Applications/Xcode_27.3.app; do
             if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then
               export DEVELOPER_DIR="$app/Contents/Developer"
               break
             fi
           done
-          test -n "${DEVELOPER_DIR:-}"
+          if [ -z "${DEVELOPER_DIR:-}" ]; then
+            printf 'Runner image %s has these Xcode installations:\n' "${ImageVersion:-unknown}" >&2
+            find /Applications -maxdepth 1 -name 'Xcode*.app' -print >&2
+            printf '::error::This runner does not have Xcode 27.3. Retry after the image rollout.\n'
+            exit 1
+          fi
           printf 'DEVELOPER_DIR=%s\n' "$DEVELOPER_DIR" >> "$GITHUB_ENV"
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version

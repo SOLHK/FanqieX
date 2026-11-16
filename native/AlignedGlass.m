@@ -3329,6 +3329,16 @@ static void ShelfPrepareTabModel(Obj model) {
     Obj font=Get(model,"titleFont");
     if (font && Get(model,"titleSelectedFont")!=font) V1(model,"setTitleSelectedFont:",font);
 }
+static void ShelfResetLabelZoom(Obj label) {
+    if (!Kind(label,"UILabel")) return;
+    typedef struct { double a,b,c,d,tx,ty; } Transform;
+    volatile Transform transform=((Transform(*)(Obj,Sel))Message)(label,sel_registerName("transform"));
+    if (transform.a!=1 || transform.b!=0 || transform.c!=0 || transform.d!=1 || transform.tx!=0 || transform.ty!=0) {
+        transform.a=1; transform.b=0; transform.c=0;
+        transform.d=1; transform.tx=0; transform.ty=0;
+        ((void(*)(Obj,Sel,Transform))Message)(label,sel_registerName("setTransform:"),transform);
+    }
+}
 static void ShelfTabStyle(Obj view,Obj model,B selected) {
     (void)selected;
     Rect bounds=Bounds(view), material=bounds;
@@ -3343,6 +3353,11 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     material.y+=(bounds.height-material.height)*0.5;
     ApplySurface(view,material,0);
     Obj surface=FQHSurface(view);
+    if (surface && objc_getAssociatedObject(model,ShelfTabModelStockKey)) {
+        // The host's non-zoom font branch leaves a previous transform intact.
+        ShelfResetLabelZoom(Get(view,"titleLabel"));
+        ShelfResetLabelZoom(Get(view,"maskTitleLabel"));
+    }
     Rect caption={material.x+4,material.y,material.width-8,material.height};
     // Their native mask layers track the original label bounds during swipes.
     CenterCaption(Get(view,"titleLabel"),view,caption,surface!=0,0);
