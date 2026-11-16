@@ -130,5 +130,19 @@ class XcodeR4ArtifactTests(XcodeArtifactTests):
                 validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
 
 
+class XcodeR5ArtifactTests(XcodeArtifactTests):
+    VERSION = '1.78R5'
+
+    def test_previous_candidate_metadata_cannot_be_renamed_to_r5(self):
+        with tempfile.TemporaryDirectory() as folder:
+            candidate, validation, report = self.fixture(folder)
+            validation['version'] = '1.78R4'
+            report['plugin_version'] = '1.78R4'
+            candidate.with_suffix('.validation.json').write_text(json.dumps(validation))
+            (candidate.parent / 'xcode-build-report.json').write_text(json.dumps(report))
+            with self.assertRaises(RuntimeError):
+                validated_xcode_bundle(candidate, self.VERSION, 'a' * 40)
+
+
 if __name__ == '__main__':
     unittest.main()

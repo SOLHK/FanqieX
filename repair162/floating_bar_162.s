@@ -310,6 +310,10 @@ Lbutton_frame:
     mov x29, sp
     stp x19, x20, [sp, #16]
     mov x19, x0
+.if FQ_VERSION >= 0x14e05
+    bl LFQH_FQHBottomButtonFrame178R5
+    mov x0, x19
+.endif
     bl Lpatch + (0x711c - PATCH_BASE)
     mov x0, x19
     bl Lbutton_round

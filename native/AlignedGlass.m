@@ -14,6 +14,8 @@ typedef struct { double x, y; } Point;
 void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons);
 void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native);
 Rect FQHBottomNativeRect178(Obj proxy,Rect bounds);
+Rect FQHBottomProxyFrame178R5(Obj proxy,Rect stock);
+Rect FQHBottomButtonFrame178R5(Obj button,Rect stock);
 void FQHBottomReset178(Obj bar,Obj proxy);
 static void BottomOptionsEntry178(Obj controller,Obj container);
 static void RefreshFullscreenFill(void);
@@ -4365,6 +4367,7 @@ static void BottomBaseFrame178Key(void) {}
 static void BottomAppliedFrame178Key(void) {}
 static void BottomButtonStock178Key(void) {}
 static void BottomButtonApplied178Key(void) {}
+static void BottomButtonProxy178R5Key(void) {}
 static void BottomBarBox178Key(void) {}
 static void BottomProxyBox178Key(void) {}
 static void BottomButtons178Key(void) {}
@@ -4559,7 +4562,6 @@ void FQHBottomPan178(Obj observer,Sel cmd,Obj pan) {
     }
     if (before!=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue")) {
         V0(bar,"setNeedsLayout");
-        V0(bar,"layoutIfNeeded");
     }
 }
 static Obj BottomPanClass178(void) {
@@ -4634,6 +4636,84 @@ static B BottomOwnsButton178(Obj button,Obj proxy,Obj bar) {
     Obj parent=Get(button,"superview");
     return parent==proxy || parent==Get(proxy,"contentView") ||
         (parent && Get(parent,"superview")==bar);
+}
+static B BottomCustom178R5(Obj bar) {
+    return BottomValue178(11)!=100 || BottomValue178(12)!=100 || BottomValue178(13)!=100 ||
+        BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
+}
+// The legacy layout calculates stock button frames before the capsule frame.
+// Convert at those existing write boundaries, so UIKit never observes a stock
+// size followed by a custom size during a single layout/tracking transaction.
+static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
+    Rect available=Bounds(bar);
+    if (!BottomRect178(base) || !BottomRect178(available) || !count || count>8 ||
+        !BottomCustom178R5(bar)) return base;
+    B icons=BottomFlag178(1);
+    B compact=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
+    double maximum=__builtin_fmin(base.width,available.width-8);
+    double high=__builtin_fmin(70,available.height);
+    if (maximum<=0 || high<44) return base;
+    double minimum=count*(icons ? 44 : 52)+8;
+    double width=BottomClamp178(base.width*BottomValue178(11)*0.01*(compact ? 0.78 : 1),
+        __builtin_fmin(minimum,maximum),maximum);
+    double height=BottomClamp178(base.height*BottomValue178(12)*0.01*(compact ? 0.86 : 1),
+        __builtin_fmin(48,high),high);
+    double scale=((double(*)(Obj,Sel))Message)(Get(Get(bar,"window"),"screen"),sel_registerName("scale"));
+    if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
+    return (Rect){BottomPixel178(available.x+(available.width-width)*0.5,scale),
+        BottomPixel178(BottomClamp178(base.y+base.height-height,available.y,
+            available.y+available.height-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
+}
+static void BottomRememberRect178R5(Obj view,const void *key,Rect rect) {
+    Obj saved=objc_getAssociatedObject(view,key);
+    if (!saved || !SameRect(UnboxRect(saved),rect))
+        objc_setAssociatedObject(view,key,RectBox(rect),1);
+}
+static B BottomReverse178R5(Obj buttons,U count) {
+    Obj first=At(buttons,0),last=At(buttons,count-1);
+    Obj savedFirst=objc_getAssociatedObject(first,BottomButtonStock178Key);
+    Obj savedLast=objc_getAssociatedObject(last,BottomButtonStock178Key);
+    Rect a=savedFirst ? UnboxRect(savedFirst) : Frame(first);
+    Rect b=savedLast ? UnboxRect(savedLast) : Frame(last);
+    return count>1 && a.x+a.width*0.5>b.x+b.width*0.5;
+}
+Rect FQHBottomProxyFrame178R5(Obj proxy,Rect stock) {
+    Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
+    U count=TabCount(objc_getAssociatedObject(proxy,BottomButtons178Key));
+    if (!Enabled() || !Kind(bar,"SSTabBar") || Get(proxy,"superview")!=bar ||
+        !BottomRect178(stock) || !count || count>8) return stock;
+    Rect target=BottomTarget178R5(bar,stock,count);
+    // Incoming host geometry is authoritative, including a rotated/new dock.
+    // Never recover this baseline from the already customized current frame.
+    BottomRememberRect178R5(proxy,BottomBaseFrame178Key,stock);
+    BottomRememberRect178R5(proxy,BottomAppliedFrame178Key,target);
+    return target;
+}
+Rect FQHBottomButtonFrame178R5(Obj button,Rect stock) {
+    Obj proxy=BottomWeakValue178(button,BottomButtonProxy178R5Key);
+    Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
+    Obj buttons=objc_getAssociatedObject(proxy,BottomButtons178Key);
+    U count=TabCount(buttons),index=count;
+    if (!Enabled() || !Kind(bar,"SSTabBar") || Get(proxy,"superview")!=bar ||
+        !BottomOwnsButton178(button,proxy,bar) || !BottomRect178(stock) || !count || count>8)
+        return stock;
+    for (U i=0;i<count;++i) if (At(buttons,i)==button) { index=i; break; }
+    if (index==count) return stock;
+    BottomRememberRect178R5(button,BottomButtonStock178Key,stock);
+    Rect target=stock;
+    Obj saved=objc_getAssociatedObject(proxy,BottomBaseFrame178Key);
+    if (saved && BottomCustom178R5(bar)) {
+        Rect capsule=BottomTarget178R5(bar,UnboxRect(saved),count),bounds=Bounds(proxy);
+        if (BottomRect178(capsule)) {
+            bounds.width=capsule.width; bounds.height=capsule.height;
+            Rect track=BottomTrack178(bounds,count,BottomFlag178(1));
+            double slot=track.width/count;
+            U visualIndex=BottomReverse178R5(buttons,count) ? count-1-index : index;
+            target=(Rect){track.x+slot*visualIndex,track.y,slot,track.height};
+        }
+    }
+    BottomRememberRect178R5(button,BottomButtonApplied178Key,target);
+    return target;
 }
 static void BottomRestoreHidden178(Obj view) {
     Obj saved=objc_getAssociatedObject(view,BottomHidden178Key);
@@ -4830,7 +4910,10 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
         Obj previous=At(previousButtons,i);
         B retained=0;
         for (U j=0;j<count;++j) if (At(buttons,j)==previous) retained=1;
-        if (!retained) BottomRestoreSymbol178(previous);
+        if (!retained) {
+            BottomRestoreSymbol178(previous);
+            objc_setAssociatedObject(previous,BottomButtonProxy178R5Key,0,1);
+        }
     }
     // LNtitle needs genuine button strings only if UITabBarItem.title is
     // unavailable. Restore for that synchronous sync, then Finish suppresses
@@ -4840,6 +4923,8 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     U itemCount=TabCount(items);
     for (U i=0;i<count;++i) {
         Obj button=At(buttons,i);
+        if (BottomOwnsButton178(button,proxy,bar))
+            BottomSetWeak178(button,BottomButtonProxy178R5Key,proxy);
         Obj title=itemCount==count ? Get(At(items,i),"title") : (Obj)0;
         if ((!Kind(title,"NSString") || !((U(*)(Obj,Sel))Message)(title,sel_registerName("length"))) &&
             BottomOwnsButton178(button,proxy,bar)) BottomRestoreTitles178R2(button);
@@ -4849,8 +4934,7 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     objc_setAssociatedObject(proxy,BottomButtons178Key,buttons,1);
     V1(BottomBars178(),"addObject:",bar);
     BottomAttachPan178(bar);
-    B icons=BottomFlag178(1),compact=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
-    double length=BottomValue178(11),height=BottomValue178(12),buttonWidth=BottomValue178(13);
+    B icons=BottomFlag178(1);
     Obj saved=objc_getAssociatedObject(proxy,BottomBaseFrame178Key);
     Obj applied=objc_getAssociatedObject(proxy,BottomAppliedFrame178Key);
     Rect current=Frame(proxy),base=saved ? UnboxRect(saved) : current;
@@ -4858,30 +4942,16 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
         base=current;
         objc_setAssociatedObject(proxy,BottomBaseFrame178Key,RectBox(base),1);
     }
-    B custom=length!=100 || height!=100 || buttonWidth!=100 || compact;
-    if (!custom) {
+    if (!BottomCustom178R5(bar)) {
         BottomRestoreFrame178(proxy,BottomBaseFrame178Key,BottomAppliedFrame178Key);
         Obj content=Get(proxy,"contentView");
         if (content && !SameRect(Frame(content),Bounds(proxy))) SetFrame(content,Bounds(proxy));
         for (U i=0;i<count;++i) BottomRestoreFrame178(At(buttons,i),BottomButtonStock178Key,BottomButtonApplied178Key);
         return;
     }
-    Rect available=Bounds(bar);
-    double maximum=__builtin_fmin(base.width,available.width-8);
-    double minimum=count*(icons ? 44 : 52)+8;
-    double width=BottomClamp178(base.width*length*0.01*(compact ? 0.78 : 1),
-        __builtin_fmin(minimum,maximum),maximum);
-    double high=__builtin_fmin(70,available.height);
-    double wantedHeight=BottomClamp178(base.height*height*0.01*(compact ? 0.86 : 1),
-        __builtin_fmin(48,high),high);
-    if (maximum<=0 || high<44) return;
-    double scale=((double(*)(Obj,Sel))Message)(Get(Get(bar,"window"),"screen"),sel_registerName("scale"));
-    if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
-    Rect target={BottomPixel178(available.x+(available.width-width)*0.5,scale),
-        BottomPixel178(BottomClamp178(base.y+base.height-wantedHeight,available.y,
-            available.y+available.height-wantedHeight),scale),BottomPixel178(width,scale),BottomPixel178(wantedHeight,scale)};
+    Rect target=BottomTarget178R5(bar,base,count);
     if (!SameRect(current,target)) SetFrame(proxy,target);
-    objc_setAssociatedObject(proxy,BottomAppliedFrame178Key,RectBox(target),1);
+    BottomRememberRect178R5(proxy,BottomAppliedFrame178Key,target);
     Obj content=Get(proxy,"contentView");
     Rect bounds=Bounds(proxy);
     // Public contentView, never a UIKit internal backdrop subview. Update it
@@ -4889,8 +4959,15 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     if (content && !SameRect(Frame(content),bounds)) SetFrame(content,bounds);
     Rect track=BottomTrack178(bounds,count,icons);
     double slot=track.width/count;
-    Rect first=Frame(At(buttons,0)),last=Frame(At(buttons,count-1));
-    B reversed=count>1 && first.x+first.width*0.5>last.x+last.width*0.5;
+    // Capture all unadapted host writes before choosing direction. Adapters
+    // run button-by-button, so partially updated presentation frames cannot
+    // reliably indicate a new RTL order until the full host pass completes.
+    for (U i=0;i<count;++i) {
+        Obj button=At(buttons,i),previous=objc_getAssociatedObject(button,BottomButtonApplied178Key);
+        if (BottomOwnsButton178(button,proxy,bar) && (!previous || !SameRect(Frame(button),UnboxRect(previous))))
+            BottomRememberRect178R5(button,BottomButtonStock178Key,Frame(button));
+    }
+    B reversed=BottomReverse178R5(buttons,count);
     for (U i=0;i<count;++i) {
         Obj button=At(buttons,i);
         if (!BottomOwnsButton178(button,proxy,bar)) continue;
@@ -4945,6 +5022,7 @@ void FQHBottomReset178(Obj bar,Obj proxy) {
         Obj button=At(buttons,i);
         BottomRestoreSymbol178(button);
         BottomRestoreFrame178(button,BottomButtonStock178Key,BottomButtonApplied178Key);
+        objc_setAssociatedObject(button,BottomButtonProxy178R5Key,0,1);
     }
     BottomRestoreFrame178(proxy,BottomBaseFrame178Key,BottomAppliedFrame178Key);
     Obj content=Get(proxy,"contentView");
@@ -4961,7 +5039,6 @@ static void BottomRefresh178(void) {
         Obj bar=At(bars,i);
         if (!BottomFlag178(2)) BottomDetachPan178(bar);
         V0(bar,"setNeedsLayout");
-        if (Get(bar,"window")) V0(bar,"layoutIfNeeded");
     }
 }
 static Obj BottomValueText178(I tag) {
@@ -4973,22 +5050,33 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
     I tag=((I(*)(Obj,Sel))Message)(sender,sel_registerName("tag"));
     Obj key=BottomPreference178(tag);
     if (!key) return;
-    if (tag==1 || tag==2) SetDefault(key,BoolProp(sender,"isOn"));
+    B changed;
+    if (tag==1 || tag==2) {
+        B value=BoolProp(sender,"isOn");
+        changed=BottomFlag178(tag)!=value;
+        if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
+    }
     else {
         float raw=((float(*)(Obj,Sel))Message)(sender,sel_registerName("value"));
         if (!__builtin_isfinite(raw)) return;
         double value=(double)(I)(raw+0.5);
-        ((void(*)(Obj,Sel,double,Obj))Message)(BottomDefaults178(),
-            sel_registerName("setDouble:forKey:"),value,key);
         // Persist the clamped canonical value even if an external defaults
         // editor or a future UIKit slider sends a value outside its range.
-        value=BottomValue178(tag);
-        ((void(*)(Obj,Sel,double,Obj))Message)(BottomDefaults178(),
+        value=BottomClamp178(value,tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16,
+            tag==12 ? 125 : tag==14 ? 32 : 100);
+        changed=BottomValue178(tag)!=value;
+        Obj stored=O1(BottomDefaults178(),"objectForKey:",key);
+        // Preserve an explicit choice even if it equals today's fallback, and
+        // replace noncanonical defaults without scheduling redundant layouts.
+        if (!Responds(stored,"doubleValue") || !__builtin_isfinite(Double(stored)) || Double(stored)!=value)
+            ((void(*)(Obj,Sel,double,Obj))Message)(BottomDefaults178(),
             sel_registerName("setDouble:forKey:"),value,key);
         Obj label=objc_getAssociatedObject(sender,BottomOptionValue178Key);
         V1(label,"setText:",BottomValueText178(tag));
     }
-    BottomRefresh178();
+    // Coalesce on the run loop; never force layout from an active slider or
+    // scroll recognizer callback, and ignore duplicate rounded slider values.
+    if (changed) BottomRefresh178();
 }
 void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;

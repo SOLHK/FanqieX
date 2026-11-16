@@ -1763,7 +1763,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5") else (23, 3, 24, 24)
             x, _, label_width, label_height = caption_frame
             adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
@@ -1949,10 +1949,10 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
-    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4") else 512.0
+    expected_header_height = 572.0 if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5") else 512.0
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
-    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4"):
+    if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5"):
         entries = [item for item in runtime.objects[header].state["subviews"]
                    if runtime.is_kind(item, runtime.classes["UIButton"]) and
                    runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "底栏外观与尺寸"]
@@ -2730,7 +2730,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) == "1.78R4"
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"

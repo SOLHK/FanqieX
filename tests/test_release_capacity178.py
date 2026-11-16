@@ -17,7 +17,7 @@ class ReleaseCapacityTests(unittest.TestCase):
     def test_production_directory_preserves_each_release_limit(self):
         header = bytearray((ROOT / 'dist/1.75/FanqieX-1.75.dylib').read_bytes()[0x800:0x900])
         extension = struct.unpack_from('<I', header, 60 * 4)[0]
-        for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000), (0x14e02, 0x3c000), (0x14e03, 0x3c000), (0x14e04, 0x40000)):
+        for version, allowed in ((0x14c00, 0x34000), (0x14e00, 0x3c000), (0x14e02, 0x3c000), (0x14e03, 0x3c000), (0x14e04, 0x40000), (0x14e05, 0x40000)):
             struct.pack_into('<I', header, 6 * 4, version)
             self.assertEqual(build_plugin.extension_limit(version), allowed)
             for capacity in (0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, allowed + 4):
@@ -29,13 +29,14 @@ class ReleaseCapacityTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             build_plugin.directory(header, version)
 
-    def test_independent_layout_reserves_sixteen_pages_for_r4(self):
+    def test_independent_layout_reserves_sixteen_pages_for_r4_and_r5(self):
         source = (ROOT / 'baseline/FanqieAdBlock-1.5.6.dylib').read_bytes()
         old = Image((ROOT / 'baseline/FanqieAdBlock-1.5.8.dylib').read_bytes())
         payload = bytes.fromhex('c0035fd6')
         for capacity in (0x34000, 0x38000, 0x3c000, 0x40000):
             image = Image(extend(source, payload, capacity=capacity))
-            self.assertEqual(check_layout(old, image, '1.78R4')['extension_capacity'], capacity)
+            for version in ('1.78R4', '1.78R5'):
+                self.assertEqual(check_layout(old, image, version)['extension_capacity'], capacity)
             for version in ('1.78', '1.78R2', '1.78R3'):
                 with self.subTest(version=version, capacity=hex(capacity)):
                     if capacity <= 0x3c000:

@@ -35,6 +35,10 @@ LMproxy_frame:
     stp d0, d1, [sp, #32]
     stp d2, d3, [sp, #48]
     mov x19, x0
+.if FQ_VERSION >= 0x14e05
+    bl LFQH_FQHBottomProxyFrame178R5
+    mov x0, x19
+.endif
     bl Lpatch + (0x711c - PATCH_BASE)
     cbz x19, LMframe_done
     ldp d0, d1, [sp, #32]
