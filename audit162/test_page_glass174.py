@@ -867,10 +867,11 @@ def static_checks():
 
 
 def exercise(data, labels):
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10")
+    stable_shelf = release_version(data)=="1.78R11"
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1054,9 +1055,10 @@ def exercise(data, labels):
         send(cpu, runtime, tab, "layoutSubviews")
         material = surface_for(tab)
         state = runtime.objects[material].state
-        tab_width=min(width+16,50)
-        require(state["frame"] == ((width-tab_width)*0.5,-1.,tab_width,36.),
-                "shelf title glass grows to 36pt tall with safe native inter-item spacing")
+        tab_width=min(width+12,46) if stable_shelf else min(width+16,50)
+        tab_y,tab_height=(2.,30.) if stable_shelf else (-1.,36.)
+        require(state["frame"] == ((width-tab_width)*0.5,tab_y,tab_width,tab_height),
+                "shelf title glass respects the release's row height and inter-item spacing")
         require(tint_for(material) == (runtime.color("shelfNeutralTint") if index == 0 and not uniform_glass else 0),
                 "Shelf material follows the release palette while native selection text remains intact")
         fitted_fonts = shelf_fonts(tab)
@@ -1095,7 +1097,8 @@ def exercise(data, labels):
             "the inline filter action does not acquire an earlier legacy capsule")
     send(cpu, runtime, header, "layoutSubviews")
     filter_glass = surface_for(filter_button)
-    require(filter_glass and runtime.objects[filter_glass].state["frame"] == (1., -3., 56., 36.) and
+    filter_material=(1.,1.,56.,28.) if stable_shelf else (1.,-3.,56.,36.)
+    require(filter_glass and runtime.objects[filter_glass].state["frame"] == filter_material and
             not runtime.objects[filter_glass].state["userInteractionEnabled"] and
             runtime.objects[filter_button].state["control_targets"] == filter_action and
             runtime.objects[filter_button].state["frame"] == (324., 2., 58., 30.),
@@ -1130,9 +1133,9 @@ def exercise(data, labels):
         send(cpu, runtime, cell, "layoutSubviews")
         material = surface_for(cell)
         state = runtime.objects[material].state
-        require(state["frame"] == (1.,-3.,56.,36.) and not state["userInteractionEnabled"],
-                "bookshelf filters regain horizontal padding and a 36pt glass height")
-        require(runtime.objects[label].state["frame"]==(9.,-3.,40.,36.) and
+        require(state["frame"] == filter_material and not state["userInteractionEnabled"],
+                "bookshelf filter material stays within its actual 30pt row in R11")
+        require(runtime.objects[label].state["frame"]==(9.,filter_material[1],40.,filter_material[3]) and
                 runtime.objects[label].state["textAlignment"]==1,
                 "an initially offset filter label is centered with 8pt side padding")
         font=runtime.objects[runtime.objects[label].state["font"]].state
@@ -1848,7 +1851,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1860,7 +1863,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) == "1.78R10":
+            if release_version(data) in ("1.78R10", "1.78R11"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1892,7 +1895,7 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data)=="1.78R10":
+            if release_version(data)in ("1.78R10", "1.78R11"):
                 require(runtime.objects[runtime.objects[surface].state["cornerConfiguration"]].state["max_radius"]==18 and
                         runtime.objects[label].state["textAlignment"]==1,
                         "limited corner curvature and an 8pt inset keep four-character captions away from the rim")
@@ -2055,8 +2058,8 @@ def exercise(data, labels):
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
     version = release_version(data)
-    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10")
-    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10"))
+    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
+    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"))
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
     if has_bottom_settings:
@@ -2066,7 +2069,7 @@ def exercise(data, labels):
         require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
                 len(runtime.objects[entries[0]].state["control_targets"]) == 1,
                 "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
-    if version in ("1.78R8", "1.78R9", "1.78R10"):
+    if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"):
         channels = [item for item in runtime.objects[header].state["subviews"]
                     if runtime.is_kind(item, runtime.classes["UIButton"]) and
                     runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
@@ -2225,7 +2228,8 @@ def exercise(data, labels):
             runtime.objects[size_layout].state["invalidations"] == 0,
             "duration on keeps Edit's right edge with 12pt horizontal and 7pt vertical title padding")
     edit_glass = surface_for(edit)
-    require(runtime.objects[edit_glass].state["frame"] == (-1., -2., 56., 36.),
+    edit_material=(1.,1.,52.,30.) if stable_shelf else (-1.,-2.,56.,36.)
+    require(runtime.objects[edit_glass].state["frame"] == edit_material,
             "Edit gets a larger caption-centered glass without shrinking its native touch frame")
     require(runtime.objects[runtime.objects[edit_title].state["font"]].state=={"pointSize":16.,"weight":"semibold"},
             "Edit text grows from 14 to 16pt without changing its native weight")
@@ -2247,7 +2251,7 @@ def exercise(data, labels):
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
     require(edit_glass and surface_for(edit) == edit_glass and
-            runtime.objects[edit_glass].state["frame"] == (-1., -2., 56., 36.) and
+            runtime.objects[edit_glass].state["frame"] == edit_material and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
     edit_frame = edit_state["frame"]
@@ -2258,7 +2262,7 @@ def exercise(data, labels):
     edit_state["edit_title_size"] = (46., 24.)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["frame"] == (-132., -7., 70., 38.) and
-            runtime.objects[edit_glass].state["frame"] == (0., 0., 70., 38.) and
+            runtime.objects[edit_glass].state["frame"] == ((1.,3.,68.,32.) if stable_shelf else (0.,0.,70.,38.)) and
             edit_state["control_targets"] == edit_targets,
             "the existing Edit action and upper glass fit a longer or larger title")
     edit_state["edit_title_size"] = (30., 18.)
@@ -2687,9 +2691,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2715,7 +2719,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) == "1.78R11" else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2860,7 +2864,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3015,7 +3019,7 @@ def main():
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

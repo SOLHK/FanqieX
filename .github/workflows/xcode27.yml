@@ -1,8 +1,8 @@
-name: Xcode 27.2 plugin build
+name: Xcode 27.3 plugin build
 
 on:
   push:
-    branches: [main, test, 'work/162-*', 'work/163-*', 'work/164-*']
+    branches: [main, test, 'work/162-*', 'work/163-*', 'work/164-*', 'work/178r11-*']
   workflow_dispatch:
 
 permissions:
@@ -21,19 +21,25 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.78R10'
+        run: test "$(cat VERSION)" = '1.78R11'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/xcode27
           git archive --format=zip --output=build/xcode27/source-checkout.zip HEAD
-      - name: Select Xcode 27.2
+      - name: Select Xcode 27.3
         shell: bash
         run: |
           set -euo pipefail
-          test -d /Applications/Xcode_27.2.app/Contents/Developer
-          sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+          for app in /Applications/Xcode_27.3_beta.app /Applications/Xcode_27.3.0.app /Applications/Xcode_27.3.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then
+              export DEVELOPER_DIR="$app/Contents/Developer"
+              break
+            fi
+          done
+          test -n "${DEVELOPER_DIR:-}"
+          printf 'DEVELOPER_DIR=%s\n' "$DEVELOPER_DIR" >> "$GITHUB_ENV"
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
       - name: Exercise the diagnostic module with real Foundation and libobjc
@@ -51,7 +57,7 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R10
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R11
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

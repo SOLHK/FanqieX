@@ -315,7 +315,7 @@ void FQHApply(Obj view) {
     if (!Kind(view,"UIView")) return;
     Rect material=((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds"));
     if (FQHIsDuration(view)) {
-        double height=__builtin_fmax(material.height,36);
+        double height=__builtin_fmin(material.height,32);
         material.y+=(material.height-height)*0.5;
         material.height=height;
     }
@@ -1141,7 +1141,7 @@ static void Icon(Obj view,IconRole role) {
                 ReaderBackImageInsets(view,base,adjusted);
             }
         } else {
-            double scale=__builtin_fmin(1,24/__builtin_fmax(base.width,base.height));
+            double scale=__builtin_fmin(1,20/__builtin_fmax(base.width,base.height));
             adjusted.width=base.width*scale; adjusted.height=base.height*scale;
             adjusted.x=bounds.x+(bounds.width-adjusted.width)*0.5-(role==IconShelfSearch ? 12 : 0);
             adjusted.y=bounds.y+(bounds.height-adjusted.height)*0.5;
@@ -1150,7 +1150,7 @@ static void Icon(Obj view,IconRole role) {
         if (!applied || !SameRect(previous,adjusted)) objc_setAssociatedObject(glyph,GlyphAppliedKey,RectBox(adjusted),1);
         if (newGlyph) objc_setAssociatedObject(view,GlyphViewKey,glyph,1);
     }
-    double diameter=shelf ? 36 : (readerIcon ? 34 : 36);
+    double diameter=shelf ? 32 : (readerIcon ? 34 : 36);
     double centerX=bounds.x+bounds.width*0.5+(back ? 6 : 0)-(role==IconShelfSearch ? 12 : 0);
     Rect material={centerX-diameter*0.5,bounds.y+bounds.height*0.5-diameter*0.5,diameter,diameter};
     B readerText=(role==IconReaderDownload || role==IconReaderShelf) && Kind(view,"UILabel");
@@ -2293,6 +2293,22 @@ static Obj PlaceDramaGlass(Obj owner,Obj parent,Obj foreground,Rect frame) {
     return glass;
 }
 
+static void DramaActionOwners178R11Key(void) {}
+static Obj DramaActionOwners178R11(void) {
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    Obj owners=objc_getAssociatedObject(defaults,DramaActionOwners178R11Key);
+    if (!owners) {
+        owners=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(defaults,DramaActionOwners178R11Key,owners,1);
+    }
+    return owners;
+}
+static double DramaActionDiameter178R11(void) {
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    Obj stored=O1(defaults,"objectForKey:",Text("FanqieX.DramaActionDiameter.1"));
+    double value=Responds(stored,"doubleValue") ? Double(stored) : 50;
+    return !__builtin_isfinite(value) ? 50 : __builtin_fmax(36,__builtin_fmin(54,value));
+}
 B FQHDramaGlyph(Obj owner,const char *selector) {
     Sel glyphSelector=sel_registerName(selector);
     if (!((glyphSelector==sel_registerName("starIcon") && Kind(owner,"SSShortVideoRightInteractionCollectView")) ||
@@ -2301,20 +2317,33 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
           (glyphSelector==sel_registerName("likeIcon") && Kind(owner,"SSShortVideoRightInteractionLikeView")) ||
           (glyphSelector==sel_registerName("shareIcon") && Kind(owner,"SSShortVideoRightInteractionShareView")))) return 0;
     if (!FQHGlassAvailable() || !FQHButtonAvailable()) return 0;
-    if (!Enabled()) { RemoveDramaGlass(owner); return 1; }
-
     Obj glyph=Get(owner,selector);
+    if (!Enabled()) { RemoveDramaGlass(owner); return 1; }
     Obj parent=Kind(glyph,"UIImageView") ? O0(glyph,"superview") : (Obj)0;
     if (!parent) { RemoveDramaGlass(owner); return 1; }
     Rect frame=Frame(glyph);
     if (!VisibleRect(frame)) { RemoveDramaGlass(owner); return 1; }
-    double diameter=(frame.width>frame.height ? frame.width : frame.height)+4;
+    double diameter=DramaActionDiameter178R11();
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
     if (!glass) return 0;
+    // The host derives clickableBoundsInWindow from the native image view.
+    // Keep that view and its image/animation intact; resize only this backing.
+    V1(DramaActionOwners178R11(),"addObject:",owner);
     B hidden=Flag(glyph,"isHidden");
     if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
     return 1;
+}
+void FQHRefreshDramaActions178R11(void) {
+    Obj owners=Get(DramaActionOwners178R11(),"allObjects");
+    U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj owner=At(owners,i);
+        const char *selector=Kind(owner,"SSShortVideoRightInteractionCollectView") ? "starIcon" :
+            Kind(owner,"SSShortVideoRightInteractionLikeView") ? "likeIcon" :
+            Kind(owner,"SSShortVideoRightInteractionShareView") ? "shareIcon" : "commentIcon";
+        FQHDramaGlyph(owner,selector);
+    }
 }
 
 static void DramaCommentLayout(Obj self,Sel cmd) {
@@ -2482,10 +2511,13 @@ static void DramaDanmakuRefreshIcon(Obj self,Sel cmd) {
     if (objc_getAssociatedObject(toggle,DramaGlassKey)) DramaDanmakuGlyph(self,Enabled() && !Flag(self,"combinedStyle"));
 }
 
-static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalFullscreenButtonLayout"))(self,cmd);
+static void DramaFullscreenButtonApply178R11(Obj self) {
     Obj button=Get(self,"fullscreenBtn");
     DramaSmallGlass(button,Kind(button,"UIButton") && Belongs(button,self));
+}
+static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalFullscreenButtonLayout"))(self,cmd);
+    DramaFullscreenButtonApply178R11(self);
 }
 
 // Decorate the inspected landscape controls in their existing tap containers.
@@ -2716,6 +2748,59 @@ static B DramaVisibilityIsMainFeed(Obj manager) {
     Obj config=Get(Get(manager,"vcContext"),"config");
     return Kind(config,"FQVShortVideoListConfig") && InstanceABI(config,"feedType","q16@0:8") &&
         ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4;
+}
+
+static B DramaPlaybackPreference178R11(const char *key) {
+    return Flag(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",Text(key)),"boolValue");
+}
+static void DramaCleanModel178R11Key(void) {}
+static void DramaCleanPaused178R11Key(void) {}
+static void DramaCleanPlayback178R11(Obj view,I state) {
+    // FQV calls this for preloaded cells too. Only the active portrait
+    // player on the short-drama tab may change the shared feed chrome.
+    if ((state!=1 && state!=2) || !Get(view,"window")) return;
+    Obj context=Get(view,"listVCContext"),config=Get(context,"config");
+    Obj model=Get(view,"videoDataModel"),player=Get(view,"vPlayer");
+    if (!model || !player || model!=Get(context,"currentPlayModel") || Flag(player,"isFullScreen") ||
+        !Kind(config,"FQVShortVideoListConfig") || !InstanceABI(config,"feedType","q16@0:8") ||
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))!=4) return;
+    Obj control=Get(context,"controlContext"),status=Get(context,"stateContext");
+    if (!Kind(control,"FQVShortVideoListVCControlComponent") || !Responds(status,"isCleanMode")) return;
+    Obj prior=objc_getAssociatedObject(view,DramaCleanModel178R11Key);
+    B clean=Flag(status,"isCleanMode");
+    if (state==2) {
+        if (clean && DramaPlaybackPreference178R11("FanqieX.DramaRevealOnPause.1") &&
+            InstanceABI(control,"exitCleanMode","v16@0:8")) {
+            objc_setAssociatedObject(view,DramaCleanPaused178R11Key,model,1);
+            V0(control,"exitCleanMode");
+        }
+        return;
+    }
+    B restoring=objc_getAssociatedObject(view,DramaCleanPaused178R11Key)==model;
+    objc_setAssociatedObject(view,DramaCleanPaused178R11Key,0,1);
+    B enabled=DramaPlaybackPreference178R11("FanqieX.DramaDefaultClean.1");
+    if (prior!=model)
+        objc_setAssociatedObject(view,DramaCleanModel178R11Key,enabled ? model : (Obj)0,1);
+    if (!clean && ((enabled && prior!=model) ||
+        (restoring && (prior!=model || enabled) && DramaPlaybackPreference178R11("FanqieX.DramaRevealOnPause.1"))) &&
+        InstanceABI(control,"enterCleanMode","v16@0:8"))
+        V0(control,"enterCleanMode");
+}
+static void DramaCleanState178R11(Obj self,Sel cmd,I state) {
+    ((void(*)(Obj,Sel,I))Original("FQVShortVideoVPlayerControlView","fqx178r11_originalPlaybackState:"))(self,cmd,state);
+    DramaCleanPlayback178R11(self,state);
+}
+static void DramaCleanDidPlay178R11(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r11_originalControlDidPlay"))(self,cmd);
+    Obj player=Get(self,"vPlayer");
+    if (InstanceABI(player,"playbackState","q16@0:8") &&
+        ((I(*)(Obj,Sel))Message)(player,sel_registerName("playbackState"))==1)
+        DramaCleanPlayback178R11(self,1);
+}
+static void DramaCleanInstall178R11(void) {
+    const char *cls="FQVShortVideoVPlayerControlView";
+    Hook(cls,"playerPlaybackStateDidChanged:","fqx178r11_originalPlaybackState:","v24@0:8q16",(Imp)DramaCleanState178R11);
+    Hook(cls,"controlViewDidPlay","fqx178r11_originalControlDidPlay","v16@0:8",(Imp)DramaCleanDidPlay178R11);
 }
 
 static B DramaVisibilityAuthor(Obj self,Sel cmd) {
@@ -3081,14 +3166,17 @@ static void DramaSpacingForView(Obj view) {
 static void DramaControlsLayout178R2(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178R2_originalControlsLayout"))(self,cmd);
     FQHDramaSpacing178R2(self);
+    DramaFullscreenButtonApply178R11(self);
 }
 static void DramaSeriesControlsLayout178R2(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerSeriesControlView","fqx178R2_originalSeriesControlsLayout"))(self,cmd);
     FQHDramaSpacing178R2(self);
+    DramaFullscreenButtonApply178R11(self);
 }
 static void DramaControlsDidDisplay(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalControlsDidDisplay"))(self,cmd);
     FQHDramaSpacing178R2(self);
+    DramaFullscreenButtonApply178R11(self);
 }
 static void DramaProgressLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoProgressView","fqx178r8_originalProgressLayout"))(self,cmd);
@@ -3182,6 +3270,65 @@ static void CenterCaption(Obj label,Obj owner,Rect content,B styled,B fit) {
     if (center.x!=wanted.x || center.y!=wanted.y)
         ((void(*)(Obj,Sel,Point))Message)(label,sel_registerName("setCenter:"),(Point){wanted.x,wanted.y});
 }
+static void ShelfTabModelStockKey(void) {}
+static double ShelfModelDouble(Obj model,const char *selector) {
+    return ((double(*)(Obj,Sel))Message)(model,sel_registerName(selector));
+}
+static void ShelfSetModelDouble(Obj model,const char *getter,const char *setter,double value) {
+    if (ShelfModelDouble(model,getter)!=value)
+        ((void(*)(Obj,Sel,double))Message)(model,sel_registerName(setter),value);
+}
+static void ShelfRestoreTabModel(Obj model) {
+    Obj stock=objc_getAssociatedObject(model,ShelfTabModelStockKey);
+    if (!stock) return;
+    VB(model,"setTitleLabelZoomEnabled:",Flag(O1(stock,"objectForKey:",Text("zoom")),"boolValue"));
+    VB(model,"setSelectedAnimationEnabled:",Flag(O1(stock,"objectForKey:",Text("animation")),"boolValue"));
+    VB(model,"setTitleLabelStrokeWidthEnabled:",Flag(O1(stock,"objectForKey:",Text("stroke")),"boolValue"));
+    ShelfSetModelDouble(model,"titleLabelNormalZoomScale","setTitleLabelNormalZoomScale:",Double(O1(stock,"objectForKey:",Text("normal"))));
+    ShelfSetModelDouble(model,"titleLabelSelectedZoomScale","setTitleLabelSelectedZoomScale:",Double(O1(stock,"objectForKey:",Text("selected"))));
+    ShelfSetModelDouble(model,"titleLabelCurrentZoomScale","setTitleLabelCurrentZoomScale:",
+        Double(O1(stock,"objectForKey:",Text(Flag(model,"isSelected") ? "selected" : "normal"))));
+    ShelfSetModelDouble(model,"titleLabelVerticalOffset","setTitleLabelVerticalOffset:",Double(O1(stock,"objectForKey:",Text("vertical"))));
+    ShelfSetModelDouble(model,"titleLabelZoomSelectedVerticalOffset","setTitleLabelZoomSelectedVerticalOffset:",Double(O1(stock,"objectForKey:",Text("selectedVertical"))));
+    Q1(model,"setTitleLabelAnchorPointStyle:",(I)Double(O1(stock,"objectForKey:",Text("anchor"))));
+    V1(model,"setTitleSelectedFont:",O1(stock,"objectForKey:",Text("font")));
+    objc_setAssociatedObject(model,ShelfTabModelStockKey,0,1);
+}
+static void ShelfPrepareTabModel(Obj model) {
+    if (!Kind(model,"SSBookShelfTabSelectViewTitleCellModel") ||
+        !InstanceABI(model,"setTitleLabelAnchorPointStyle:","v24@0:8Q16")) return;
+    if (!Enabled() || !FQHGlassAvailable()) { ShelfRestoreTabModel(model); return; }
+    Obj stock=objc_getAssociatedObject(model,ShelfTabModelStockKey);
+    if (!stock) {
+        stock=O0(Lookup("NSMutableDictionary"),"dictionary");
+        Put(stock,"zoom",BoolBox(Flag(model,"isTitleLabelZoomEnabled")));
+        Put(stock,"animation",BoolBox(Flag(model,"isSelectedAnimationEnabled")));
+        Put(stock,"stroke",BoolBox(Flag(model,"isTitleLabelStrokeWidthEnabled")));
+        Put(stock,"normal",Number(ShelfModelDouble(model,"titleLabelNormalZoomScale")));
+        Put(stock,"selected",Number(ShelfModelDouble(model,"titleLabelSelectedZoomScale")));
+        Put(stock,"vertical",Number(ShelfModelDouble(model,"titleLabelVerticalOffset")));
+        Put(stock,"selectedVertical",Number(ShelfModelDouble(model,"titleLabelZoomSelectedVerticalOffset")));
+        Put(stock,"anchor",Number(((U(*)(Obj,Sel))Message)(model,sel_registerName("titleLabelAnchorPointStyle"))));
+        Obj font=Get(model,"titleSelectedFont");
+        if (font) Put(stock,"font",font);
+        objc_setAssociatedObject(model,ShelfTabModelStockKey,stock,1);
+    }
+    // Verified in the host's updateLabelWithModel:/updateLayoutWithModel:.
+    // Disable at the model boundary before it builds zoom blocks or constraints.
+    VB(model,"setTitleLabelZoomEnabled:",0);
+    VB(model,"setSelectedAnimationEnabled:",0);
+    VB(model,"setTitleLabelStrokeWidthEnabled:",0);
+    ShelfSetModelDouble(model,"titleLabelNormalZoomScale","setTitleLabelNormalZoomScale:",1);
+    ShelfSetModelDouble(model,"titleLabelCurrentZoomScale","setTitleLabelCurrentZoomScale:",1);
+    ShelfSetModelDouble(model,"titleLabelSelectedZoomScale","setTitleLabelSelectedZoomScale:",1);
+    ShelfSetModelDouble(model,"titleLabelVerticalOffset","setTitleLabelVerticalOffset:",0);
+    ShelfSetModelDouble(model,"titleLabelZoomSelectedVerticalOffset","setTitleLabelZoomSelectedVerticalOffset:",0);
+    // Anchor styles 1/2 divide by selectedScale-normalScale. Center mode avoids
+    // that zero denominator and gives both labels the same native constraints.
+    Q1(model,"setTitleLabelAnchorPointStyle:",0);
+    Obj font=Get(model,"titleFont");
+    if (font && Get(model,"titleSelectedFont")!=font) V1(model,"setTitleSelectedFont:",font);
+}
 static void ShelfTabStyle(Obj view,Obj model,B selected) {
     (void)selected;
     Rect bounds=Bounds(view), material=bounds;
@@ -3189,9 +3336,9 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     // on padding so a capsule cannot run into the next tab during a swipe.
     double spacing=InstanceABI(model,"cellSpacing","d16@0:8") ?
         ((double(*)(Obj,Sel))Message)(model,sel_registerName("cellSpacing")) : 0;
-    double room=bounds.width+(spacing>2 ? spacing-2 : 0);
-    material.width=__builtin_fmin(room,50);
-    material.height=__builtin_fmax(bounds.height,36);
+    double room=bounds.width+(spacing>6 ? spacing-6 : 0);
+    material.width=__builtin_fmin(room,46);
+    material.height=__builtin_fmin(bounds.height-2,30);
     material.x+=(bounds.width-material.width)*0.5;
     material.y+=(bounds.height-material.height)*0.5;
     ApplySurface(view,material,0);
@@ -3202,13 +3349,35 @@ static void ShelfTabStyle(Obj view,Obj model,B selected) {
     CenterCaption(Get(view,"maskTitleLabel"),view,caption,surface!=0,0);
 }
 static void PageShelfTabLayout(Obj self,Sel cmd) {
+    ShelfPrepareTabModel(Get(self,"cellModel"));
     ((void(*)(Obj,Sel))Original("SSBookShelfTabSelectViewTitleCell","fqx174_originalShelfCategory"))(self,cmd);
     Obj model=Get(self,"cellModel");
     ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
 }
 static void PageShelfTabReload(Obj self,Sel cmd,Obj model) {
+    ShelfPrepareTabModel(model);
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfTabSelectViewTitleCell","fqx175_originalShelfTabReload:"))(self,cmd,model);
     ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
+}
+static void PageShelfTabUpdate(Obj self,Sel cmd,Obj model) {
+    const char *alias=cmd==sel_registerName("updateLabelWithModel:") ?
+        "fqx178r11_originalShelfLabel:" : "fqx178r11_originalShelfModelLayout:";
+    ShelfPrepareTabModel(model);
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfTabSelectViewTitleCell",alias))(self,cmd,model);
+    ShelfTabStyle(self,model,BoolProp(model,"isSelected"));
+}
+static void PageShelfRefreshModel(Obj self,Sel cmd,Obj model,I index) {
+    ShelfRestoreTabModel(model);
+    ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelfTabSelectView","fqx178r11_originalShelfModel:index:"))(self,cmd,model,index);
+    ShelfPrepareTabModel(model);
+}
+static void PageShelfSelectedModels(Obj self,Sel cmd,Obj selected,Obj unselected) {
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfTabSelectView","fqx178r11_originalShelfSelected:unselected:"))(self,cmd,selected,unselected);
+    ShelfPrepareTabModel(selected); ShelfPrepareTabModel(unselected);
+}
+static void PageShelfScrollingModels(Obj self,Sel cmd,Obj left,Obj right,double ratio) {
+    ((void(*)(Obj,Sel,Obj,Obj,double))Original("SSBookShelfTabSelectView","fqx178r11_originalShelfLeft:right:ratio:"))(self,cmd,left,right,ratio);
+    ShelfPrepareTabModel(left); ShelfPrepareTabModel(right);
 }
 static void ShelfFilterStyle(Obj view) {
     if (!HasAncestor(view,"SSBookShelfFilterMixRowCollectionView") ||
@@ -3219,7 +3388,7 @@ static void ShelfFilterStyle(Obj view) {
         return;
     }
     Rect material=Bounds(view);
-    double width=material.width-2,height=__builtin_fmax(material.height,36);
+    double width=material.width-2,height=__builtin_fmin(material.height-2,30);
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(view,material,0);
@@ -3234,6 +3403,11 @@ static void ShelfFilterStyle(Obj view) {
 static void PageShelfFilterLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterLayout"))(self,cmd);
     ShelfFilterStyle(self);
+}
+static Obj PageShelfFilterFont(Obj self,Sel cmd,B selected) {
+    if (Enabled() && FQHGlassAvailable() && HasAncestor(self,"SSBookShelfFilterMixRowCollectionView") &&
+        HasAncestor(self,"SSBookShelfFilterHeaderView")) selected=0;
+    return ((Obj(*)(Obj,Sel,B))Original("SSBookShelfFilter541Cell","fqx178r11_originalFilterFont:"))(self,cmd,selected);
 }
 static void PageShelfFilterAppearance(Obj self,Sel cmd,B selected) {
     ((void(*)(Obj,Sel,B))Original("SSBookShelfFilter541Cell","fqx175_originalShelfFilterAppearance:"))(self,cmd,selected);
@@ -3251,8 +3425,8 @@ static void ShelfActionGlass(Obj button,B filter) {
         PageRestore(button); return;
     }
     Rect material=Bounds(button);
-    double height=__builtin_fmax(material.height,36);
-    double width=filter ? material.width-2 : __builtin_fmax(material.width,56);
+    double height=__builtin_fmin(material.height-2,32);
+    double width=material.width-2;
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(button,material,0);
@@ -4834,6 +5008,85 @@ void FQHInstallOptionsToggles(Obj controller) {
 }
 
 static void FullscreenScaleBaselineKey(void) {}
+// Pick the highest available source only at the native short-video preparation
+// boundary. Requests, authorization, playback and explicit user choices remain
+// owned by the host; the preference is intentionally off when unset.
+static void DramaQualityManualVideo178R11Key(void) {}
+static B DramaQualityMainFeed178R11(Obj component) {
+    Obj config=Get(Get(component,"listVCContext"),"config");
+    return Kind(config,"FQVShortVideoListConfig") && InstanceABI(config,"feedType","q16@0:8") &&
+        ((I(*)(Obj,Sel))Message)(config,sel_registerName("feedType"))==4;
+}
+static Obj DramaQualityVideoID178R11(Obj model) {
+    Obj identifier=Get(Get(Get(model,"shortVideoModel"),"videoData"),"vid");
+    return Kind(identifier,"NSString") && ((U(*)(Obj,Sel))Message)(identifier,sel_registerName("length")) ? identifier : (Obj)0;
+}
+static Obj DramaHighestAvailable178R11(Obj videoModel) {
+    Obj resolutions=Get(videoModel,"supportedResolutionTypes");
+    if (!Kind(resolutions,"NSArray")) return 0;
+    U count=((U(*)(Obj,Sel))Message)(resolutions,sel_registerName("count"));
+    Obj best=0;
+    double bestPixels=0;
+    I bestBitrate=0;
+    for (U i=0;i<count;++i) {
+        Obj resolution=At(resolutions,i);
+        if (!Kind(resolution,"NSNumber")) continue;
+        U type=((U(*)(Obj,Sel))Message)(resolution,sel_registerName("unsignedIntegerValue"));
+        Obj variant=((Obj(*)(Obj,Sel,U))Message)(videoModel,sel_registerName("videoInfoForType:"),type);
+        if (!Kind(variant,"TTVideoEngineURLInfo")) continue;
+        Obj width=Get(variant,"vWidth"),height=Get(variant,"vHeight");
+        if (!Kind(width,"NSNumber") || !Kind(height,"NSNumber")) continue;
+        double w=Double(width),h=Double(height),pixels=w*h;
+        if (!__builtin_isfinite(pixels) || w<=0 || h<=0) continue;
+        I bitrate=((I(*)(Obj,Sel))Message)(variant,sel_registerName("bitrate"));
+        if (!best || pixels>bestPixels || (pixels==bestPixels && bitrate>bestBitrate)) {
+            best=resolution; bestPixels=pixels; bestBitrate=bitrate;
+        }
+    }
+    return best;
+}
+static Obj DramaQualityResolutionItem178R11(Obj self,Sel cmd,Obj model) {
+    Obj item=((Obj(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCPlayerComponent",
+        "fqx178r11_originalResolutionItem:"))(self,cmd,model);
+    Obj enabled=O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",
+        Text("FanqieX.DramaHighestQuality.1"));
+    if (!BoolProp(enabled,"boolValue") || !DramaQualityMainFeed178R11(self) || !Kind(model,"FQVShortVideoDataModel") ||
+        !Kind(item,"FQVPlayerEngineDataResolutionItem")) return item;
+    Obj shortVideo=Get(model,"shortVideoModel"),identifier=DramaQualityVideoID178R11(model);
+    if (!identifier || BoolProp(shortVideo,"isVideoLocked") || BoolProp(shortVideo,"videoModelDisabled") ||
+        BoolProp(model,"useDownloadedEngineData")) return item;
+    Obj manual=objc_getAssociatedObject(model,DramaQualityManualVideo178R11Key);
+    if ((manual && ((B(*)(Obj,Sel,Obj))Message)(manual,sel_registerName("isEqual:"),identifier)) ||
+        O1(self,"historyResolutionWithModel:",model) || O1(self,"feedResolutionWithVideoId:",identifier)) return item;
+    Obj current=Get(Get(model,"videoInfo"),"videoModel");
+    // Do not choose from a previous/preloaded model while the current response
+    // is still unavailable. The engine's own response is the available set.
+    if (!Kind(current,"TTVideoEngineModel") || Get(item,"videoModel")!=current) return item;
+    Obj best=DramaHighestAvailable178R11(current);
+    if (best) V1(item,"setForceResolutionTypeNumber:",best);
+    return item;
+}
+static void DramaQualityManualSelection178R11(Obj self,Sel cmd,Obj player,Obj resolution,Obj model,Obj finish) {
+    if (DramaQualityMainFeed178R11(self) && Kind(model,"FQVShortVideoDataModel")) {
+        Obj identifier=DramaQualityVideoID178R11(model);
+        if (identifier) objc_setAssociatedObject(model,DramaQualityManualVideo178R11Key,identifier,1);
+    }
+    ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj))Original("FQVShortVideoListVCPlayerComponent",
+        "fqx178r11_originalUpdateResolution:resolution:model:finish:"))(self,cmd,player,resolution,model,finish);
+}
+static void DramaQualityInstall178R11(void) {
+    const char *owner="FQVShortVideoListVCPlayerComponent";
+    if (!Signature(owner,"historyResolutionWithModel:","@24@0:8@16") ||
+        !Signature(owner,"feedResolutionWithVideoId:","@24@0:8@16") ||
+        !Signature("TTVideoEngineModel","videoInfoForType:","@24@0:8Q16") ||
+        !Signature("TTVideoEngineURLInfo","bitrate","q16@0:8") ||
+        !Signature("FQVPlayerEngineDataResolutionItem","setForceResolutionTypeNumber:","v24@0:8@16")) return;
+    Hook(owner,"resolutionItemWithModel:","fqx178r11_originalResolutionItem:",
+        "@24@0:8@16",(Imp)DramaQualityResolutionItem178R11);
+    Hook(owner,"updatePlayer:resolution:model:finish:","fqx178r11_originalUpdateResolution:resolution:model:finish:",
+        "v48@0:8@16@24@32@?40",(Imp)DramaQualityManualSelection178R11);
+}
+
 static void FullscreenPlayersKey(void) {}
 static void FullscreenLogStateKey(void) {}
 static void FullscreenLogBoundsKey(void) {}
@@ -5078,6 +5331,8 @@ static void ShelfCompactInstall(void) {
 
 static void BottomCompactInstall178R7(void);
 void FQHPageInstall(void) {
+    DramaCleanInstall178R11();
+    DramaQualityInstall178R11();
     ReaderGlassStyleInstall();
     ReaderThemeIsolationInstall();
     DramaSpacingInstall178R2();
@@ -5112,6 +5367,12 @@ void FQHPageInstall(void) {
     Hook("SSReaderChapterEndRewardButton","updateWithThemeConfigChange:","fqx177_originalChapterRewardTheme:","v24@0:8@16",(Imp)PageChapterRewardTheme);
     Hook("SSBookShelfTabSelectViewTitleCell","layoutSubviews","fqx174_originalShelfCategory","v16@0:8",(Imp)PageShelfTabLayout);
     Hook("SSBookShelfTabSelectViewTitleCell","reloadData:","fqx175_originalShelfTabReload:","v24@0:8@16",(Imp)PageShelfTabReload);
+    Hook("SSBookShelfTabSelectViewTitleCell","updateLabelWithModel:","fqx178r11_originalShelfLabel:","v24@0:8@16",(Imp)PageShelfTabUpdate);
+    Hook("SSBookShelfTabSelectViewTitleCell","updateLayoutWithModel:","fqx178r11_originalShelfModelLayout:","v24@0:8@16",(Imp)PageShelfTabUpdate);
+    Hook("SSBookShelfTabSelectView","refreshCellModel:index:","fqx178r11_originalShelfModel:index:","v32@0:8@16q24",(Imp)PageShelfRefreshModel);
+    Hook("SSBookShelfTabSelectView","refreshSelectedCellModel:unselectedCellModel:","fqx178r11_originalShelfSelected:unselected:","v32@0:8@16@24",(Imp)PageShelfSelectedModels);
+    Hook("SSBookShelfTabSelectView","refreshLeftCellModel:rightCellModel:ratio:","fqx178r11_originalShelfLeft:right:ratio:","v40@0:8@16@24d32",(Imp)PageShelfScrollingModels);
+    Hook("SSBookShelfFilter541Cell","fontForSelectState:","fqx178r11_originalFilterFont:","@20@0:8B16",(Imp)PageShelfFilterFont);
     Hook("SSBookShelfFilter541Cell","layoutSubviews","fqx175_originalShelfFilterLayout","v16@0:8",(Imp)PageShelfFilterLayout);
     Hook("SSBookShelfFilter541Cell","updateAppearance:","fqx175_originalShelfFilterAppearance:","v20@0:8B16",(Imp)PageShelfFilterAppearance);
     Hook("SSBookShelfFilter541Cell","updateCellBgColor:","fqx175_originalShelfFilterBackground:","v24@0:8@16",(Imp)PageShelfFilterBackground);
@@ -5235,24 +5496,28 @@ static Obj BottomPreference178(I tag) {
         case 27: return Text("FanqieX.ReaderEarnMore.1");
         case 28: return Text("FanqieX.SidebarGames.1");
         case 29: return Text("FanqieX.ShelfMotionComic.1");
+        case 15: return Text("FanqieX.DramaActionDiameter.1");
+        case 30: return Text("FanqieX.DramaDefaultClean.1");
+        case 31: return Text("FanqieX.DramaRevealOnPause.1");
+        case 32: return Text("FanqieX.DramaHighestQuality.1");
     }
     return 0;
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
-    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : tag>=21;
+    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : tag>=21 && tag<=29;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
 }
 static double BottomValue178(I tag) {
-    double fallback=tag==14 ? 28 : 100;
+    double fallback=tag==15 ? 50 : tag==14 ? 28 : 100;
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
     if (!Responds(value,"doubleValue")) return fallback;
     double number=Double(value);
     if (!__builtin_isfinite(number)) return fallback;
-    double low=tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16;
-    double high=tag==12 ? 125 : tag==14 ? 32 : 100;
+    double low=tag==15 ? 36 : tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16;
+    double high=tag==15 ? 54 : tag==12 ? 125 : tag==14 ? 32 : 100;
     return BottomClamp178(number,low,high);
 }
 static Obj BottomWeak178(Obj object) {
@@ -5949,7 +6214,7 @@ static void BottomRefresh178(void) {
 }
 static Obj BottomValueText178(I tag) {
     Obj value=Get(Number(BottomValue178(tag)),"stringValue");
-    return O1(value,"stringByAppendingString:",Text(tag==14 ? " pt" : "%"));
+    return O1(value,"stringByAppendingString:",Text(tag==14 || tag==15 ? " pt" : "%"));
 }
 void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
     (void)self; (void)cmd;
@@ -5964,7 +6229,7 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         if (tag>=21) {
             if (changed) {
                 if (tag<=25) DramaVisibilityRefresh();
-                else FeatureVisibilityRefresh178R9();
+                else if (tag<=29) FeatureVisibilityRefresh178R9();
             }
             return;
         }
@@ -5975,8 +6240,8 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         double value=(double)(I)(raw+0.5);
         // Persist the clamped canonical value even if an external defaults
         // editor or a future UIKit slider sends a value outside its range.
-        value=BottomClamp178(value,tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16,
-            tag==12 ? 125 : tag==14 ? 32 : 100);
+        value=BottomClamp178(value,tag==15 ? 36 : tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16,
+            tag==15 ? 54 : tag==12 ? 125 : tag==14 ? 32 : 100);
         changed=BottomValue178(tag)!=value;
         Obj stored=O1(BottomDefaults178(),"objectForKey:",key);
         // Preserve an explicit choice even if it equals today's fallback, and
@@ -5986,6 +6251,10 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
             sel_registerName("setDouble:forKey:"),value,key);
         Obj label=objc_getAssociatedObject(sender,BottomOptionValue178Key);
         V1(label,"setText:",BottomValueText178(tag));
+        if (tag==15) {
+            if (changed) FQHRefreshDramaActions178R11();
+            return;
+        }
     }
     // Coalesce on the run loop; never force layout from an active slider or
     // scroll recognizer callback, and ignore duplicate rounded slider values.
@@ -6003,7 +6272,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
     for (U i=0;i<count;++i) {
         Obj control=At(controls,i);
         I tag=((I(*)(Obj,Sel))Message)(control,sel_registerName("tag"));
-        if (tag>=21) continue;
+        if (tag>=21 || tag==15) continue;
         if (tag<10) ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
         else {
             ((void(*)(Obj,Sel,float,B))Message)(control,sel_registerName("setValue:animated:"),(float)BottomValue178(tag),1);
@@ -6062,7 +6331,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
-static const double BottomSettingsHeight178R7=1350;
+static const double BottomSettingsHeight178R7=1704;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -6108,11 +6377,15 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     BottomSettingsSwitch178(self,content,934,23,"显示作者声明",0);
     BottomSettingsSwitch178(self,content,982,24,"显示阅读原著",0);
     BottomSettingsSwitch178(self,content,1030,25,"显示小说兴趣推荐",0);
-    BottomSettingsLabel178(content,(Rect){20,1092,frame.width-40,28},"其他页面",19,0);
-    BottomSettingsSwitch178(self,content,1138,26,"我的显示继续追剧／追漫",0);
-    BottomSettingsSwitch178(self,content,1186,27,"阅读页显示去赚更多",0);
-    BottomSettingsSwitch178(self,content,1234,28,"侧栏显示常玩游戏",0);
-    BottomSettingsSwitch178(self,content,1282,29,"书架显示漫剧分组",0);
+    BottomSettingsSlider178(self,content,1086,15,"右侧按钮大小",36,54);
+    BottomSettingsSwitch178(self,content,1172,30,"默认清屏播放","播放新视频时自动清屏，可用原清屏按钮退出。");
+    BottomSettingsSwitch178(self,content,1258,31,"暂停时显示界面","清屏中暂停会显示控件，继续播放时恢复清屏。");
+    BottomSettingsSwitch178(self,content,1344,32,"默认最高画质","新视频使用当前可用的最高画质，保留手动选择。");
+    BottomSettingsLabel178(content,(Rect){20,1438,frame.width-40,28},"其他页面",19,0);
+    BottomSettingsSwitch178(self,content,1484,26,"我的显示继续追剧／追漫",0);
+    BottomSettingsSwitch178(self,content,1532,27,"阅读页显示去赚更多",0);
+    BottomSettingsSwitch178(self,content,1580,28,"侧栏显示常玩游戏",0);
+    BottomSettingsSwitch178(self,content,1628,29,"书架显示漫剧分组",0);
     V0(content,"release");
     V0(scroll,"release");
 }

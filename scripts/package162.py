@@ -8,6 +8,7 @@ import shutil
 import zipfile
 
 from verify162 import source_manifest
+from build_xcode27 import apple_toolchain_version
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = '1.6.2'
@@ -15,7 +16,7 @@ VERSION = '1.6.2'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'), default=VERSION)
+    parser.add_argument('--version', choices=('1.6.2','1.6.3','1.6.4','1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'), default=VERSION)
     parser.add_argument('--verification-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
@@ -60,7 +61,7 @@ def main():
 和最近一小时导出。插件文件名、内部安装标识和设置页统一为 FanqieX。
 
 本包二进制已通过可复现构建、结构与签名检查及明确范围的 ARM64 离线回归。
-构建器要求云端发布校验使用 Xcode 27.2 / iOS 27.2 SDK。
+构建器要求云端发布校验使用 Xcode {apple_toolchain_version(version)} / iOS {apple_toolchain_version(version)} SDK。
 对应提交的真实云端构建结果见 GitHub Actions，不能从本地报告推断它已经通过。
 尚未在用户 iPhone 上验证最终合成、动态折射及 IPA 注入。
 宿主链接的 SDK、系统设置与兼容模式仍可能影响系统控件表现。
@@ -107,7 +108,7 @@ SHA-256: {digest}
 SHA-256 {digest}
 大小 {len(binary)} bytes
 '''
-    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'):
+    if version in ('1.6.5','1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'):
         readme=(ROOT/'docs'/f'REPAIR_{version}.md').read_text(encoding='utf-8')
         readme += f'\n交付 SHA-256: {digest}\n大小: {len(binary)} bytes\n'
     (output / 'README_zh-CN.txt').write_text(readme)

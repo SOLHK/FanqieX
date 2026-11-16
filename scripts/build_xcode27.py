@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the actual ARM64 repair with Xcode 27.2 and validate public UIKit APIs.
+"""Build the actual ARM64 repair with the release's Xcode and validate public UIKit APIs.
 
 This assembles the shipped plugin repair, not just a sample application. The
 original pinned host-dependent image is preserved by the existing Mach-O
@@ -20,6 +20,16 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def apple_toolchain_version(release):
+    return '27.3' if release == '1.78R11' else '27.2'
+
+
+def matches_apple_toolchain(xcode, sdk, release):
+    version = apple_toolchain_version(release)
+    return xcode.splitlines()[:1] in ([f'Xcode {version}'], [f'Xcode {version} beta']) and \
+        sdk.split('.')[:2] == version.split('.')
 
 
 def command(*arguments):
@@ -53,18 +63,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repair-dir', choices=('repair159', 'repair160', 'repair161', 'repair162'),
                         default='repair162')
-    parser.add_argument('--version', choices=('1.6.2', '1.6.3', '1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'),
+    parser.add_argument('--version', choices=('1.6.2', '1.6.3', '1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'),
                         help='Choose a release profile for repair162')
     parser.add_argument('--output', type=Path, default=ROOT / 'build' / 'xcode27')
     parser.add_argument('--expect-candidate', type=Path)
     args = parser.parse_args()
+    sdk_target = f'arm64-apple-ios{apple_toolchain_version(args.version)}'
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'passed': False, 'device_tested': False,
               'native_host_app_tested': False, 'platform': platform.platform(),
               'repair_dir': args.repair_dir,
               'assembly_target': 'arm64-apple-ios15.0.1',
-              'sdk_typecheck_target': 'arm64-apple-ios27.2',
+              'sdk_typecheck_target': sdk_target,
               'github_sha': os.environ.get('GITHUB_SHA'),
               'github_run_id': os.environ.get('GITHUB_RUN_ID'),
               'scope': 'Xcode assembly of the actual plugin and SDK type checking'}
@@ -76,26 +87,24 @@ def main():
         report['sdk_version'] = command('xcrun', '--sdk', 'iphoneos', '--show-sdk-version')
         report['sdk_build'] = command('xcrun', '--sdk', 'iphoneos', '--show-sdk-build-version')
         report['clang'] = command('xcrun', '--sdk', 'iphoneos', 'clang', '--version')
-        if report['xcode'].splitlines()[0] != 'Xcode 27.2':
-            raise RuntimeError('This release requires Xcode 27.2 exactly')
-        if report['sdk_version'].split('.')[:2] != ['27', '2']:
-            raise RuntimeError('This release requires the iOS 27.2 SDK')
+        if not matches_apple_toolchain(report['xcode'], report['sdk_version'], args.version):
+            raise RuntimeError(f'This release requires Xcode and iOS SDK {apple_toolchain_version(args.version)}')
         sdk = command('xcrun', '--sdk', 'iphoneos', '--show-sdk-path')
         subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
-                        'arm64-apple-ios27.2', '-isysroot', sdk, '-fobjc-arc',
+                        sdk_target, '-isysroot', sdk, '-fobjc-arc',
                         '-fmodules', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                         str(ROOT / 'native' / 'PublicGlassAPI.m')], check=True)
         report['public_glass_api_typecheck'] = True
-        if args.version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'):
+        if args.version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'):
             subprocess.run(['xcrun', '--sdk', 'iphoneos', 'clang', '-target',
-                            'arm64-apple-ios27.2', '-isysroot', sdk, '-fno-objc-arc',
+                            sdk_target, '-isysroot', sdk, '-fno-objc-arc',
                             '-fno-objc-exceptions', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                             str(ROOT / 'native' / 'FanqieXDiagnostics.m')], check=True)
             report['diagnostic_source_typecheck'] = True
-        if args.version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10'):
+        if args.version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11'):
             subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios18.0',
                             '-isysroot',sdk,'-fno-objc-arc','-Wall','-Wextra','-Werror','-fsyntax-only',
-                            str(ROOT/'native'/('AlignedGlass.m' if args.version in ('1.7.1','1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10') else 'AlignedGlass167.m' if args.version=='1.6.7' else 'ControlGlass.m' if args.version=='1.6.6' else 'HomeGlass.m'))],check=True)
+                            str(ROOT/'native'/('AlignedGlass.m' if args.version in ('1.7.1','1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11') else 'AlignedGlass167.m' if args.version=='1.6.7' else 'ControlGlass.m' if args.version=='1.6.6' else 'HomeGlass.m'))],check=True)
             report['home_glass_source_typecheck'] = True
         sys.path.insert(0, str(ROOT / args.repair_dir))
         builder = importlib.import_module('build_plugin')
