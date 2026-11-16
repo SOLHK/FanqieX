@@ -51,11 +51,27 @@ def export_retained(runtime, cpu, symbols, directory, slide, settings, export_bu
 
 
 def exercise(data, symbols, slide):
+    default_on = release_version(data) == '1.78R14'
+    initial = MasterRuntime(data, slide, diagnostics_enabled=False)
+    initial_cpu = machine(data, initial, slide)
+    initial_prefs = initial.objects[initial.DEFAULTS].state['values']
+    initial_prefs['FanqieX.EnhancedDiagnostics.1'] = True
+    initial_cpu.run(symbols['LFQD_FQDInitDiagnosticsPolicy'])
+    require(PREFERENCE not in initial_prefs and
+            bool(initial_cpu.run(symbols['LFQD_FQDDiagnosticsEnabled'])['result']) == default_on,
+            'Missing preference uses the release default without persisting a choice')
+    initial_action = initial.hosts_for('UIApplication', ACTION)
+    initial_cpu.run(symbols['LFQD_FQDInstall'])
+    active_imp = initial.methods[initial.get_method(initial.classes['UIApplication'],
+                                                    initial.sel(ACTION))]['imp']
+    require((active_imp != initial_action) == default_on,
+            'Default-on startup enables the enhanced action hook')
+
     runtime = MasterRuntime(data, slide, diagnostics_enabled=False)
     cpu = machine(data, runtime, slide)
     directory = entries(data)
     prefs = runtime.objects[runtime.DEFAULTS].state['values']
-    prefs['FanqieX.EnhancedDiagnostics.1'] = True
+    prefs[PREFERENCE] = False
     app = runtime.obj('UIApplication', 'app')
     page = runtime.obj('UIViewController', 'page')
     control = runtime.view('UIControl', 'test control', (5, 10, 44, 52), runtime.ROOT)
@@ -63,19 +79,19 @@ def exercise(data, symbols, slide):
     original_action = runtime.hosts_for('UIApplication', ACTION)
     action = runtime.sel('hostAction:')
     cpu.run(symbols['LFQD_FQDInitDiagnosticsPolicy'])
-    require(PREFERENCE not in prefs and not cpu.run(symbols['LFQD_FQDDiagnosticsEnabled'])['result'],
-            'Legacy enhanced preference does not opt in to R13 diagnostics')
+    require(prefs[PREFERENCE] is False and not cpu.run(symbols['LFQD_FQDDiagnosticsEnabled'])['result'],
+            'The saved opt-out overrides the release default')
     cpu.run(symbols['LFQD_FQDInstall'])
     require(runtime.methods[runtime.get_method(runtime.classes['UIApplication'],
                             runtime.sel(ACTION))]['imp'] == original_action,
-            'Default-off startup installs no native action diagnostics hook')
+            'Opted-out startup installs no native action diagnostics hook')
     require(send(cpu, runtime, app, ACTION, action, page, control, 0)['result'] == 1,
             'Host action works while diagnostics are off')
     stage(cpu, runtime, symbols, data, 'entry')
     cpu.run(directory['diagnostic_observe'], runtime.BAR)
     cpu.run(directory['diagnostic_tick'])
     require(not runtime.main_jobs and not runtime.queued_operations and not path(runtime).exists(),
-            'Default-off startup, viewport observation and periodic callback capture nothing')
+            'Opted-out startup, viewport observation and periodic callback capture nothing')
 
     cpu.run(symbols['LFQD_FQDSetDiagnosticsEnabled'], 1)
     runtime.flush_main(cpu)
@@ -112,6 +128,7 @@ def exercise(data, symbols, slide):
                          'time': runtime.now, 'privateText': 'arbitrary input'})
     stage_bytes = path(runtime).read_bytes()
     fresh = MasterRuntime(data, slide, disk_root=runtime.disk_root, diagnostics_enabled=False)
+    fresh.objects[fresh.DEFAULTS].state['values'][PREFERENCE] = prefs[PREFERENCE]
     fresh_cpu = machine(data, fresh, slide)
     settings = fresh.obj('UIViewController', 'settings', view=fresh.ROOT)
     export_button = fresh.view('UIButton', 'export button', (10, 20, 110, 40), fresh.ROOT)
@@ -130,7 +147,7 @@ def exercise(data, symbols, slide):
     runtime.flush_main(cpu)
     require(sum(event['event'] == 'scheduled_timer' for event in runtime.events) == 2,
             'Re-enabling starts one fresh timer without duplicating hooks')
-    return {'slide': hex(slide), 'default_off': True, 'enhanced_on_opt_in': True,
+    return {'slide': hex(slide), 'default_on': default_on, 'enhanced_on_opt_in': True,
             'stopped_and_retained': True, 'explicit_export_preserved': True, 'popover_anchor': True}
 
 
@@ -140,7 +157,7 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) == '1.78R13', 'Exercise 1.78R13 linked policy')
+    require(release_version(data) in ('1.78R13', '1.78R14'), 'Exercise the linked master diagnostics policy')
     symbols = labels_for(data, args.candidate.with_suffix('.composed.s'), SYMBOLS)
     cases = [exercise(data, symbols, slide) for slide in (0, 0x180000000)]
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),

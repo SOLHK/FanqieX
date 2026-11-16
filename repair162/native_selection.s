@@ -363,6 +363,10 @@ LNappearance_states:
     add x22, x22, #1
     cmp x22, #8
     b.lo LNappearance_states
+.if FQ_VERSION >= 0x14e0e
+    mov x0, x19
+    bl LFQH_FQHBottomClearNativeTrack178R14
+.endif
     mov w0, #1
     b LNappearance_done
 LNappearance_no:
@@ -397,7 +401,11 @@ LNlayout: // native, proxy -> BOOL
     bl LFQH_FQHBottomNativeRect178
 .endif
     mov x0, x19
+.if FQ_VERSION >= 0x14e0e
+    bl LFQH_FQHBottomSetNativeFrame178R14
+.else
     bl Lpatch + (0x711c - PATCH_BASE)
+.endif
     mov w0, #1
     b LNlayout_done
 LNlayout_no:

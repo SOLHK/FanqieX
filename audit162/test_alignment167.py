@@ -102,18 +102,18 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
-    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13')
+    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14')
     nav_diameter=34. if compact_reader else 36.
     nav_padding=(nav_diameter-24.)*0.5
-    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13')
+    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14')
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
@@ -283,7 +283,7 @@ def exercise(data,labels,baseline):
         search=icon(r,parent,'shelf_search',(0,0,24,24));more=icon(r,parent,'shelf_more',(32,0,24,24))
         vc=r.obj(SHELF,'shelf',searchButton=search,moreButton=more,searchAndMoreView=parent)
         r.host_views.update((parent,search,more))
-        stable_shelf=release_version(data) in ('1.78R11', '1.78R12', '1.78R13')
+        stable_shelf=release_version(data) in ('1.78R11', '1.78R12', '1.78R13', '1.78R14')
         aligned_shelf=release_version(data)=='1.78R12'
         custom_dock={'FanqieX.BottomLengthScale.1':0.7,'FanqieX.BottomButtonWidthScale.1':0.85}
         r.objects[r.DEFAULTS].state['values'].update(custom_dock)

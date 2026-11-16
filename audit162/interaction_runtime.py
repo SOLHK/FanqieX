@@ -20,6 +20,7 @@ def read_entries(data):
     versions = {0x10508:b'FQ158EXT', 0x10600:b'FQ160EXT', 0x10601:b'FQ161EXT',
                 0x10602:b'FQ162EXT', 0x10603:b'FQ162EXT', 0x10604:b'FQ162EXT', 0x10605:b'FQ162EXT', 0x10606:b'FQ162EXT', 0x10701:b'FQ162EXT', 0x10702:b'FQ162EXT', 0x10703:b'FQ162EXT', 0x10704:b'FQ162EXT', 0x14a00: b'FQ162EXT', 0x14b00: b'FQ162EXT', 0x14c00: b'FQ162EXT', 0x14e00: b'FQ162EXT', 0x14e02: b'FQ162EXT', 0x14e03: b'FQ162EXT', 0x14e04: b'FQ162EXT', 0x14e05: b'FQ162EXT', 0x14e06: b'FQ162EXT', 0x14e07: b'FQ162EXT', 0x14e08: b'FQ162EXT', 0x14e09: b'FQ162EXT', 0x14e0a: b'FQ162EXT', 0x14e0b: b'FQ162EXT', 0x14e0c: b'FQ162EXT'}
     versions[0x14e0d] = b'FQ162EXT'
+    versions[0x14e0e] = b'FQ162EXT'
     require(words[6] in versions, 'Interaction audit requires a known version')
     extension = 0x800 + words[60]
     require(data[extension:extension+8] == versions[words[6]], 'Known extension directory')

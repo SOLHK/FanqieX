@@ -47,6 +47,7 @@ class Runtime(Base):
             (VIEW, 'isCleanMode', self.HOST_CLEAN_VIEW, 'B16@0:8'),
             (VIEW, MODE, self.HOST_CLEAN_MODE, 'B28@0:8B16Q20'),
             (VIEW, ENDED, self.HOST_END_DISPLAY, 'v16@0:8'),
+            ('FQVPlayer', 'playbackState', self.HOST_CLEAN_VIEW, 'q16@0:8'),
             (CONTROL, 'enterCleanMode', self.HOST_CLEAN, 'v16@0:8'),
             (CONTROL, 'exitCleanMode', self.HOST_CLEAN, 'v16@0:8'),
         ):
@@ -101,7 +102,7 @@ def exercise(data, labels):
     controller = rt.obj(CONTROL, 'native feed controller', status=status)
     context = rt.obj(CONTEXT, 'active context', config=config, currentPlayModel=model,
                      controlContext=controller, stateContext=status)
-    player = rt.obj('NSObject', 'portrait player', isFullScreen=False)
+    player = rt.obj('FQVPlayer', 'portrait player', isFullScreen=False, playbackState=1)
     view = rt.view(VIEW, 'main portrait player view', (0., 0., 440., 900.), screen,
                    window=screen, listVCContext=context, vPlayer=player,
                    videoDataModel=model, hostPlaybackCallbacks=0, isCleanMode=False)
@@ -147,7 +148,7 @@ def exercise(data, labels):
     require(len(rt.clean_calls) == 4 and view_state['hostPlaybackCallbacks'] == 13,
             'Pause switch off leaves the clean state and all original callbacks intact')
     results = {'real_play_pause_callbacks': True, 'defaults_and_manual_exit': True, 'scoped_to_active_portrait_feed': True}
-    if release_version(data) in ('1.78R12', '1.78R13'):
+    if release_version(data) in ('1.78R12', '1.78R13', '1.78R14'):
         container = rt.view('UIView', 'native exit circle', (370., 765., 36., 36.), view, hidden=False)
         icon = rt.view('UIImageView', 'native exit gesture target', (6., 6., 24., 24.), container, hidden=False)
         view_state.update({EXIT_ICON: icon, RIGHT_CONTROLS: container, 'listVCConfig': config,
@@ -163,7 +164,7 @@ def exercise(data, labels):
         send(cpu, rt, view, EXIT_ICON)
         require(not rt.objects[icon].state['hidden'], 'An unrelated feed keeps its native exit')
         results['portrait_clean_exit_hidden'] = True
-    if release_version(data) == '1.78R13':
+    if release_version(data) in ('1.78R13', '1.78R14'):
         rt.objects[config].state['feedType'] = 4
         view_state.update(userInteractionEnabled=True)
         rail = rt.view('UIView', 'native seek rail', (0., 835., 440., 26.), view, window=screen)
@@ -185,6 +186,28 @@ def exercise(data, labels):
         require(prefs.get(PURE) is True and all(rt.objects[child].state['hidden'] for child in chrome) and
                 rt.objects[mini].state['superview'] == dock and view_state['userInteractionEnabled'] and not view_state['hidden'],
                 'Enabling pure clean during native clean hides the exact chrome while preserving its hierarchy and canvas input')
+        if release_version(data) == '1.78R14':
+            prefs[REVEAL] = True
+            rt.objects[status].state['isCleanMode'] = False
+            rt.objects[player].state['playbackState'] = 2
+            pause_actions = len(rt.clean_calls)
+            callback(2)
+            require(rt.clean_calls[pause_actions:] == ['exitCleanMode'] and view_state['isCleanMode'] and
+                    all(not rt.objects[child].state['hidden'] for child in chrome),
+                    'Actual pause reveals dock and rail before the asynchronous local clean callback settles')
+            send(cpu, rt, view, MODE, 1, 1)
+            require(all(not rt.objects[child].state['hidden'] for child in chrome),
+                    'A host clean callback while paused cannot hide the revealed controls again')
+            rt.objects[player].state['playbackState'] = 1
+            callback(1)
+            require(all(rt.objects[child].state['hidden'] for child in chrome),
+                    'Resuming with clean still active restores the pure presentation')
+            prefs[REVEAL] = False
+            rt.objects[player].state['playbackState'] = 2
+            callback(2)
+            require(all(rt.objects[child].state['hidden'] for child in chrome),
+                    'Paused controls remain hidden when reveal on pause is disabled')
+            results['pure_clean_pause_restore'] = True
         send(cpu, rt, view, MODE, 0, 1)
         require(all(not rt.objects[child].state['hidden'] for child in chrome), 'The native exit restores owned controls')
         rt.objects[buttons].state['hidden'] = True

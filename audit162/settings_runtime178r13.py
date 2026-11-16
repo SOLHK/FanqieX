@@ -1,5 +1,5 @@
 """Exercise the R13 settings UI and local reward action in the ARM64 fixture."""
-from arm64 import require
+from arm64 import release_version, require
 from test_control_glass166 import send
 from test_controls171 import call
 
@@ -7,6 +7,24 @@ EXTRA_SETTINGS_LABELS = ["LFQD_FQDInitDiagnosticsPolicy", "LFQD_DiagnosticsEnabl
 
 
 class SettingsBoundary178R13:
+    SETTINGS_LAYOUT = 0x330c3700
+    SCREENSHOT_SHARE = 0x330c3710
+
+    def size_settings_view(self, view, frame):
+        state = self.objects[view].state
+        delta = frame[2] - state["frame"][2]
+        state["frame"] = frame
+        state["bounds"] = (0., 0., frame[2], frame[3])
+        if delta:
+            for child in state.get("subviews", ()):
+                child_state = self.objects[child].state
+                mask = child_state.get("settings_mask", 0)
+                x, y, w, h = child_state["frame"]
+                if mask == 1:
+                    child_state["frame"] = (x + delta, y, w, h)
+                elif mask == 2:
+                    self.size_settings_view(child, (x, y, w + delta, h))
+
     def responds(self, receiver, name):
         if getattr(self, "settings_boundary", False):
             obj = self.objects[receiver]
@@ -14,11 +32,17 @@ class SettingsBoundary178R13:
                 return True
             if name == "lowercaseString" and obj.cls == self.classes.get("NSString"):
                 return True
-            if name in ("accessibilityIdentifier", "navigationItem") and name in obj.state:
+            if name in ("accessibilityIdentifier", "navigationItem", "tableFooterView") and name in obj.state:
                 return True
         return super().responds(receiver, name)
 
     def handle(self, cpu, pc):
+        if pc == self.SETTINGS_LAYOUT:
+            self.settings_layout_calls += 1
+            return self.finish(cpu)
+        if pc == self.SCREENSHOT_SHARE:
+            self.screenshot_share_calls.append(cpu.x[2])
+            return self.finish(cpu)
         if pc - self.slide != 0xa5d4 or not getattr(self, "settings_boundary", False):
             return super().handle(cpu, pc)
         receiver, selector, value = cpu.x[:3]
@@ -40,6 +64,14 @@ class SettingsBoundary178R13:
                 return self.finish(cpu, self.view(cls, "settings view"))
         if receiver in self.objects:
             state = self.objects[receiver].state
+            if name == "setAutoresizingMask:":
+                state["settings_mask"] = value
+                return self.finish(cpu)
+            if name == "setFrame:" and "frame" in state:
+                self.size_settings_view(receiver, tuple(cpu.fp(i) for i in range(4)))
+                return self.finish(cpu)
+            if name == "sizeThatFits:" and self.is_kind(receiver, classes["UISwitch"]):
+                return self.finish(cpu, fp=(61., 28.))
             if name in ("componentsSeparatedByCharactersInSet:", "lowercaseString", "containsString:", "characterAtIndex:"):
                 text = self.string_value(receiver)
                 if name == "componentsSeparatedByCharactersInSet:":
@@ -57,7 +89,7 @@ class SettingsBoundary178R13:
                 key = "isOn" if name == "setOn:" else name[3].lower() + name[4:-1]
                 state[key] = value
                 return self.finish(cpu)
-            if name in ("navigationItem", "rightBarButtonItem", "accessibilityIdentifier"):
+            if name in ("navigationItem", "rightBarButtonItem", "accessibilityIdentifier", "tableFooterView"):
                 return self.finish(cpu, state.get(name, 0))
             if name == "setSearchBarStyle:":
                 return self.finish(cpu)
@@ -97,6 +129,20 @@ def check_settings(cpu, runtime, labels, options, titles):
     navigation = runtime.obj("UINavigationItem", "plugin settings navigation",
                              rightBarButtonItem=runtime.obj("UIBarButtonItem", "done"))
     state(options)["navigationItem"] = navigation
+    new_layout = release_version(runtime.data) == "1.78R14"
+    if new_layout:
+        for name, base, selector, imp, signature in (
+            ("FanqieAdBlockOptionsController", "UIViewController", "viewDidLayoutSubviews",
+             runtime.SETTINGS_LAYOUT, "v16@0:8"),
+            ("SSReadingShareScreenshotPendantView", "UIView", "showWithShareAction:",
+             runtime.SCREENSHOT_SHARE, "v24@0:8@?16"),
+        ):
+            runtime._class(name, base)
+            runtime._add(runtime.classes[name], selector, imp, signature)
+        options = runtime.obj("FanqieAdBlockOptionsController", "settings controller", **state(options))
+        runtime.settings_layout_calls = 0
+        runtime.screenshot_share_calls = []
+        call(cpu, labels, "LFQH_FQHPageInstall")
     runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieX.DiagnosticsEnabled", None)
     table = state(options)["tableView"]
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
@@ -122,7 +168,36 @@ def check_settings(cpu, runtime, labels, options, titles):
     diagnostic_switch = next(v for v in descendants(footer)
                              if runtime.string_value(state(v).get("accessibilityLabel", 0)) == "开启诊断"
                              and runtime.is_kind(v, runtime.classes["UISwitch"]))
-    require(not state(diagnostic_switch)["isOn"], "Fresh installs must opt in to diagnostics")
+    require(bool(state(diagnostic_switch)["isOn"]) == new_layout, "The UI reflects the release diagnostics default")
+    if new_layout:
+        for width in (320., 428.):
+            runtime.size_settings_view(table, (0., 0., width, 806.))
+            send(cpu, runtime, options, "viewDidLayoutSubviews")
+            require(state(header)["frame"][2] == state(footer)["frame"][2] == width,
+                    "Header and footer use settled table width")
+            for panel in (header, footer):
+                for switch in descendants(panel):
+                    if not runtime.is_kind(switch, runtime.classes["UISwitch"]):
+                        continue
+                    parent = state(switch)["superview"]
+                    x, _, w, _ = state(switch)["frame"]
+                    require(x + w == state(parent)["bounds"][2] - 20.,
+                            "Every switch fits inside its card with the same 20 pt right margin")
+            search_frame = state(search)["frame"]
+            require(search_frame[0] == 16. and search_frame[2] == width - 32.,
+                    "Search field has symmetric insets")
+        require(runtime.settings_layout_calls == 2, "The options layout forwards to the original")
+        screenshot_switch = by_title["截图后一键分享"]
+        pendant = runtime.view("SSReadingShareScreenshotPendantView", "reading screenshot share")
+        action_object = runtime.obj("NSObject", "host share callback")
+        require(state(screenshot_switch)["isOn"], "Reader screenshot share preserves the host default")
+        for enabled in (True, False, True):
+            target, action, _ = state(screenshot_switch)["control_targets"][0]
+            state(screenshot_switch)["isOn"] = enabled
+            send(cpu, runtime, target, runtime.selector_names[action], screenshot_switch)
+            send(cpu, runtime, pendant, "showWithShareAction:", action_object)
+        require(runtime.screenshot_share_calls == [action_object, action_object],
+                "The switch suppresses only the reader screenshot share presentation and can restore it")
     target, action, _ = state(reward)["control_targets"][0]
     send(cpu, runtime, target, runtime.selector_names[action], reward)
     require("请先打开" in runtime.string_value(state(state(options)["presentedViewController"])["message"]),

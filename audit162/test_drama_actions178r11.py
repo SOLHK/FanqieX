@@ -111,7 +111,7 @@ def right_column(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    scales_ink = release_version(data) == '1.78R13'
+    scales_ink = release_version(data) in ('1.78R13', '1.78R14')
     rows = []
     for index, (cls, selector) in enumerate(ROLES):
         owner = rt.view(cls, selector, (372., 500. + 76 * index, 60., 66.), rt.ROOT,
@@ -201,7 +201,7 @@ def right_column(data, labels):
             'host_relayout_and_disable_restore': True, 'proportional_ink_and_selected_asset': scales_ink}
 
 
-def audio_indicator(data, labels):
+def audio_indicator(data, labels, nested_blur):
     cpu, rt = make(data, Runtime)
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
@@ -209,7 +209,8 @@ def audio_indicator(data, labels):
     content = rt.view('UIView', 'clipped audio content', (0., 0., 138., 50.), owner, clipsToBounds=True)
     background = rt.view('UIView', 'cover-colored fill', (0., 0., 138., 50.), content,
                          backgroundColor=rt.color('blue gray'))
-    blur = rt.view('UIVisualEffectView', 'stock blur', (0., 0., 138., 50.), content)
+    blur = rt.view('UIVisualEffectView', 'stock blur', (0., 0., 138., 50.),
+                   background if nested_blur else content)
     cover = rt.view('UIImageView', 'animated book cover', (4., 4., 42., 42.), content)
     play = rt.view('UIButton', 'native play/pause', (56., 4., 38., 42.), content,
                    originalAction='playBtnClick', userInteractionEnabled=True)
@@ -219,16 +220,19 @@ def audio_indicator(data, labels):
 
     send(cpu, rt, owner, 'layoutSubviews')
     glass = call(cpu, labels, 'LFQH_FQHSurface', content)['result']
+    require(glass != 0, 'The mounted host audio hierarchy must receive a material')
     state = rt.objects[glass].state
     require(rt.objects[state['cornerConfiguration']].name == 'capsule' and
             state['frame'] == (0., 0., 138., 50.) and state['overrideUserInterfaceStyle'] == 2 and
             not state['userInteractionEnabled'] and rt.objects[content].state['clipsToBounds'],
             'The audio capsule uses one dark native material and keeps the owner clipping and hit path')
-    require(rt.objects[content].state['subviews'] == [glass, background, blur, cover, play, close] and
-            all(rt.objects[paint].state['hidden'] for paint in (background, blur)) and
+    native_layers = [glass, background] + ([] if nested_blur else [blur]) + [cover, play, close]
+    require(rt.objects[content].state['subviews'] == native_layers and
+            rt.objects[background].state['hidden'] and rt.objects[blur].state['hidden'] == (not nested_blur) and
+            (not nested_blur or rt.objects[background].state['subviews'] == [blur]) and
             [rt.objects[button].state['originalAction'] for button in (play, close)] ==
             ['playBtnClick', 'closeBtnClick'],
-            'Only the two known original paint views hide; native controls and cover stay in place')
+            'The native colored backing and its blur cease drawing while the original controls stay in place')
     repaint = rt.color('new cover color')
     rt.objects[background].state['backgroundColor'] = repaint
     send(cpu, rt, owner, 'layoutSubviews')
@@ -239,7 +243,8 @@ def audio_indicator(data, labels):
             all(not rt.objects[paint].state['hidden'] for paint in (background, blur)) and
             rt.objects[background].state['backgroundColor'] == repaint,
             'Detaching restores both paints using the latest native cover color')
-    return {'native_capsule': True, 'original_controls_and_cover': True, 'detach_restores_repaint': True}
+    return {'native_capsule': True, 'original_controls_and_cover': True, 'detach_restores_repaint': True,
+            'native_blur_is_nested_inside_background': nested_blur}
 
 
 def mine_shortcuts(data, labels):
@@ -294,16 +299,17 @@ def main():
     data = args.candidate.read_bytes()
     entries = EXTRA + ['LFQH_FQHDramaGlyph']
     version = release_version(data)
-    if version in ('1.78R11', '1.78R12', '1.78R13'):
+    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14'):
         entries.append('LFQH_FQHRefreshDramaActions178R11')
-    if version == '1.78R13':
+    if version in ('1.78R13', '1.78R14'):
         entries.append('LFQH_FQHBottomOptionChanged178')
     labels = labels_for(data, args.candidate.with_suffix('.composed.s'), entries)
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'fullscreen': fullscreen(data, labels), 'right_column': right_column(data, labels),
               'device_tested': False, 'pixel_rendering_tested': False}
-    if version == '1.78R13':
-        report.update(audio_indicator=audio_indicator(data, labels), mine_shortcuts=mine_shortcuts(data, labels))
+    if version in ('1.78R13', '1.78R14'):
+        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version == '1.78R14'),
+                      mine_shortcuts=mine_shortcuts(data, labels))
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(json.dumps(report, indent=2))
 

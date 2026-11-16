@@ -138,7 +138,8 @@ static Obj Elapsed(Obj start) {
 static B ReadDiagnosticsPolicy(Obj owner) {
     Obj defaultsClass = objc_getClass("NSUserDefaults");
     Obj defaults = O0(defaultsClass, "standardUserDefaults");
-    B enabled = B1(defaults, "boolForKey:", Text("FanqieX.DiagnosticsEnabled"));
+    Obj key = Text("FanqieX.DiagnosticsEnabled");
+    B enabled = !O1(defaults, "objectForKey:", key) || B1(defaults, "boolForKey:", key);
     objc_setAssociatedObject(owner, DiagnosticsEnabledKey, enabled ? owner : defaultsClass, 0);
     return enabled;
 }

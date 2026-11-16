@@ -4,6 +4,7 @@ Foundation objects, runtime dispatch and scheduling are modeled. JSON/plist and
 file bytes are real Python encodings/files. This is not iOS/Foundation execution.
 """
 from pathlib import Path
+import base64
 import copy
 import json
 import math
@@ -343,6 +344,9 @@ class Runtime(ViewRuntime):
                 result = self.obj(cls,'weak_tracked_bars',items=[])
             elif cls == 'NSData' and name == 'dataWithBytes:length:':
                 result = self.box(cpu.read(a[2],a[3]).to_bytes(a[3],'little'))
+            elif cls == 'UIImage' and name == 'imageWithData:':
+                if a[2]:
+                    result = self.obj('UIImage', 'decoded image', data=self.native(a[2]))
             elif cls == 'UIGlassEffect' and name == 'effectWithStyle:':
                 require(self.glass_factory_available,'Missing glass factory must be guarded')
                 result = 0 if self.glass_factory_nil else self.obj(cls,'fresh_glass',style=a[2],tintColor=0,interactive=False)
@@ -378,6 +382,10 @@ class Runtime(ViewRuntime):
             if self.is_kind(receiver,self.UIView) and self.thread != 'main' and name not in ('retain','release','autorelease','class','isKindOfClass:'):
                 raise AssertionError('UIKit view touched on worker: '+name)
             if name == 'init':
+                result = receiver
+            elif cls == 'NSData' and name == 'initWithBase64EncodedString:options:':
+                require(a[3] == 0, 'Track image uses the strict base64 initializer')
+                st['value'] = base64.b64decode(self.string_value(a[2]), validate=True)
                 result = receiver
             elif name in ('copy','mutableCopy'):
                 target = ('NSMutableDictionary' if 'Dictionary' in cls else 'NSMutableArray') if name == 'mutableCopy' else cls
@@ -592,6 +600,10 @@ class Runtime(ViewRuntime):
                 st['activityItems'] = a[2]; result = receiver
             elif name == 'popoverPresentationController':
                 result = st.setdefault('popover',self.obj('UIPopoverPresentationController','popover'))
+            elif cls == 'UISegmentedControl' and name == 'setBackgroundImage:forState:barMetrics:':
+                st.setdefault('background_images', {})[a[3], a[4]] = a[2]
+            elif cls == 'UISegmentedControl' and name == 'setDividerImage:forLeftSegmentState:rightSegmentState:barMetrics:':
+                st.setdefault('divider_images', {})[a[3], a[4], a[5]] = a[2]
             elif name == 'setBarButtonItem:':
                 st['anchor'] = a[2]
             elif cls == 'UIPopoverPresentationController' and name == 'setSourceView:':

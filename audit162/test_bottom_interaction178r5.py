@@ -13,6 +13,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import struct
+import zlib
 
 from arm64 import release_version, require
 from test_bottom_appearance178 import (
@@ -30,6 +32,8 @@ FRAME_LABELS = ["Lbutton_frame", "LMproxy_frame"]
 class Runtime(AppearanceRuntime):
     def __init__(self, *args, **kwargs):
         self.frame_changes = []
+        self.frame_writes = []
+        self.round_trip_frames = False
         self.synchronous_layouts = []
         self.requested_layouts = []
         super().__init__(*args, **kwargs)
@@ -38,7 +42,17 @@ class Runtime(AppearanceRuntime):
         if pc - self.slide == 0xa5d4 and cpu.x[0] in self.objects:
             receiver = cpu.x[0]
             selector = self.selector_names.get(cpu.x[1])
+            if self.round_trip_frames and selector == "frame" and receiver in (
+                self.PROXY, self.PROXY_CONTENT, *self.buttons, self.control()
+            ):
+                # UIView derives this origin from center and bounds even
+                # when its visual frame was unchanged since the last setter.
+                x, y, width, height = self.objects[receiver].state["frame"]
+                return self.finish(cpu, fp=((x + width / 2) - width / 2,
+                                            (y + height / 2) - height / 2,
+                                            width, height))
             if selector == "setFrame:":
+                self.frame_writes.append(receiver)
                 before = self.objects[receiver].state["frame"]
                 after = tuple(cpu.fp(index) for index in range(4))
                 if before != after:
@@ -279,16 +293,66 @@ def layout_direction_change(data, labels):
     return cases
 
 
+def fractional_frame_round_trip(data, labels):
+    cpu, runtime, entries = fixture(data, labels, selected=2)
+    runtime.round_trip_frames = True
+    runtime.defaults(**{ICONS: True, LENGTH: 80, HEIGHT: 90, BUTTON_WIDTH: 80})
+    stock = runtime.objects[runtime.PROXY].state["frame"]
+    repair(cpu, runtime, entries)
+    control = runtime.control()
+    require(control, "Resized four-tab capsule keeps its native tracking control")
+    frame = runtime.objects[runtime.PROXY].state["frame"]
+    require(frame == (60., 17 / 3, 320., 151 / 3),
+            "The device's 3x fractional-height setup applies the requested width once")
+    require((frame[1] + frame[3] / 2) - frame[3] / 2 != frame[1],
+            "Fixture genuinely exercises UIView fractional frame roundoff")
+    runtime.objects[control].state.update(tracking=True, selectedSegmentIndex=0)
+    start = len(runtime.frame_writes)
+    for _ in range(3):
+        repair(cpu, runtime, entries)
+    require(runtime.objects[runtime.PROXY].state["frame"] == frame and
+            not any(view in (runtime.PROXY, runtime.PROXY_CONTENT, control, *runtime.buttons)
+                    for view in runtime.frame_writes[start:]),
+            "Presentation roundoff neither shrinks the capsule twice nor touches an active selector frame")
+    require(runtime.control() == control and runtime.objects[control].state["selectedSegmentIndex"] == 0,
+            "Repeated no-op layouts preserve UIKit's preview under the finger")
+    runtime.objects[control].state["tracking"] = False
+    check_input(runtime, cpu, False, 3)
+
+    state = runtime.objects[control].state
+    background = state.get("background_images", {})
+    require((0, 0) in background, "The native normal track has explicit artwork replacing UIKit's default fill")
+    art = runtime.objects[background[0, 0]].state["data"]
+    require(art.startswith(b"\x89PNG\r\n\x1a\n") and
+            struct.unpack_from(">IIBB", art, 16) == (1, 1, 8, 6),
+            "The linked image is one real RGBA pixel")
+    length, label = struct.unpack_from(">I4s", art, 33)
+    require(label == b"IDAT" and zlib.decompress(art[41:41 + length]) == b"\0" * 5,
+            "The UIKit track receives no paint")
+    require(state.get("divider_images") ==
+            {(left, right, 0): background[0, 0] for left in (0, 4) for right in (0, 4)} and
+            state["selectedSegmentTintColor"],
+            "All normal/selected divider pairs stay transparent while selected tint remains configured")
+
+    call(cpu, labels, "FQHBottomReset178", runtime.BAR, runtime.PROXY)
+    require(runtime.objects[runtime.PROXY].state["frame"] == stock,
+            "Reset restores the true stock capsule after fractional-size layout")
+    return {"proxy_width": frame[2], "no_geometry_writes_during_tracking": True,
+            "stock_restored": True, "transparent_normal_track_and_dividers": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13"),
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14"),
             "This regression targets the R4 custom geometry fault and its R5 repair")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), [*bottom_labels(data), *FRAME_LABELS])
+    fractional_frames = fractional_frame_round_trip(data, labels) if release_version(data) == "1.78R14" else None
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),
+              "fractional_frame_and_track": fractional_frames,
               "stable_custom_layout": stable_custom_layout(data, labels),
               "settings": settings_yield_before_layout(data, labels),
               "viewport_and_restore": viewport_and_restore(data, labels),

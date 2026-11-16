@@ -296,7 +296,7 @@ def comment_detail_budget(data, labels, slide):
     mutations = ('setIdeaCount:', 'setBubbleData:', 'updateIdeaLabelCount')
 
     send(cpu, rt, bubble, 'setModel:', model)
-    if release_version(data) == '1.78R13':
+    if release_version(data) in ('1.78R13', '1.78R14'):
         for value in range(1, 13):
             send(cpu, rt, model, mutations[0], value)
             send(cpu, rt, model, mutations[1], payload)
