@@ -372,29 +372,29 @@ def exercise_shelf_section_headers(c, r, owner, tab, scroll):
             flow['sectionHeadersPinToVisibleBounds']) else 76
         r.objects[header].state['frame'] = (0, top, 440, 36)
 
-    require(not flow['sectionHeadersPinToVisibleBounds'] and flow['invalidations'] == 1,
-            'The mounted shelf also disables the separate UIKit supplementary-header pinning')
+    require(flow['sectionHeadersPinToVisibleBounds'] and flow['invalidations'] == 0,
+            'Glass preserves the native supplementary-header pinning policy')
     initial_layout = r.obj('UICollectionViewFlowLayout', 'layout before collection creation',
                            sectionHeadersPinToVisibleBounds=False, invalidations=0)
     initial_tab = r.obj(SHELF_LIST, 'not yet mounted shelf', collectionViewLayout=initial_layout)
     call(c, r, initial_tab, FLOW_LAYOUT)
     require(r.objects[initial_layout].state['host_configurations'] == 1 and
-            not r.objects[initial_layout].state['sectionHeadersPinToVisibleBounds'],
-            'Initial host layout configuration is handled before its collection view exists')
+            r.objects[initial_layout].state['sectionHeadersPinToVisibleBounds'],
+            'The native initial layout configuration remains authoritative')
     rest = -state['contentInset'][0]
     for delta in (0, 24, 140, 260):
         position(rest + delta)
         call(c, r, tab, SHELF_SCROLL, scroll)
-        require(r.objects[header].state['frame'] == (0, 76, 440, 36),
-                'The supplementary filter stays at its content origin throughout the book section')
-    require(drawn_rect(r, header)[3] == 0 and drawn_rect(r, book)[3] > 0,
-            'The filter has scrolled out while books in its own section are still visible')
+        require(r.objects[header].state['frame'][1] == max(76, delta),
+                'The supplementary filter follows UIKit pinning within the book section')
+    require(drawn_rect(r, header)[3] == 36 and drawn_rect(r, book)[3] > 0,
+            'The filter remains visible while books in its own section are still visible')
     for _ in range(3):
         call(c, r, owner, 'viewLayout')
-    require(flow['invalidations'] == 1, 'Settled layouts do not repeatedly invalidate the shelf')
+    require(flow['invalidations'] == 0, 'Glass never invalidates native section layout policy')
     call(c, r, tab, FLOW_LAYOUT)
-    require(flow['host_configurations'] == 1 and not flow['sectionHeadersPinToVisibleBounds'] and
-            flow['invalidations'] == 2, 'A host reconfiguration cannot reinstate section-header pinning')
+    require(flow['host_configurations'] == 1 and flow['sectionHeadersPinToVisibleBounds'] and
+            flow['invalidations'] == 0, 'Host reconfiguration keeps section-header pinning')
 
     replacement = r.obj('UICollectionViewFlowLayout', 'replacement shelf flow layout',
                         sectionHeadersPinToVisibleBounds=True, invalidations=0)
@@ -402,12 +402,12 @@ def exercise_shelf_section_headers(c, r, owner, tab, scroll):
     state['collectionViewLayout'] = replacement
     call(c, r, owner, 'viewLayout')
     require(flow['sectionHeadersPinToVisibleBounds'] and
-            not r.objects[replacement].state['sectionHeadersPinToVisibleBounds'],
-            'Replacing a layout restores the old one and updates only the current shelf layout')
+            r.objects[replacement].state['sectionHeadersPinToVisibleBounds'],
+            'Replacing a layout leaves both host pinning configurations intact')
     preferences['FanqieAdBlock.GlassDisabled.1'] = 1
     call(c, r, owner, 'viewLayout')
     require(r.objects[replacement].state['sectionHeadersPinToVisibleBounds'],
-            'Disabling glass restores native supplementary-header pinning')
+            'Disabling glass leaves native supplementary-header pinning intact')
 
     # An originally unpinned layout must stay unpinned after enable/disable.
     r.objects[replacement].state['sectionHeadersPinToVisibleBounds'] = False
@@ -527,8 +527,9 @@ def exercise(data, labels, kind):
     else:
         call(c,r,owner,layout)
     if shelf:
-        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
-                not surfaces(r, holder), 'The first owned shelf layout returns any pinned controls to their inline cell')
+        require(r.objects[row].state['superview'] == holder and not r.objects[holder].state['hidden'] and
+                r.objects[holder].state['frame'][1] == boundary,
+                'The first owned shelf layout preserves native pinned controls below the top toolbar')
     top_surfaces = surfaces(r, root)
     require(len(top_surfaces) == 1, 'Exactly one frame-bounded effect is active with the native scroll edge available')
     blur = top_surfaces[0]
@@ -600,9 +601,9 @@ def exercise(data, labels, kind):
         require(scroll_state['contentOffset']==applied_offset and scroll_state['contentInset']==applied_inset,
                 'Host mid-scroll inset rewrites do not move the visible cover')
         call(c, r, tab, FLOATING_LAYOUT, scroll)
-        require(r.objects[row].state['superview'] == inline_parent and r.objects[holder].state['hidden'] and
-                not surfaces(r, holder) and drawn_rect(r, filter_button)[3] == 0,
-                'The filter leaves the viewport on deep scroll without showing a fixed material')
+        require(r.objects[row].state['superview'] == holder and not r.objects[holder].state['hidden'] and
+                drawn_rect(r, filter_button)[1] == boundary + 4 and drawn_rect(r, filter_button)[3] == 28,
+                'The same native filter remains visible and clickable below the header on deep scroll')
     for _ in range(3):
         call(c,r,owner,layout)
     require(surfaces(r,root) == [blur] and scroll_state['contentOffset']==applied_offset,

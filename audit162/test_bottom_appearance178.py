@@ -41,7 +41,7 @@ DRAG_METHODS = (
 
 
 def bottom_labels(data):
-    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8") else LEGACY_PAN]
+    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8", "1.78R9") else LEGACY_PAN]
 
 
 class Runtime(AppearanceRuntime):
@@ -60,13 +60,18 @@ class Runtime(AppearanceRuntime):
             ("UIScreen", "NSObject"),
             ("UICollectionView", "UIScrollView"),
             ("FQFeedListCollectionView", "UICollectionView"), ("FQFeedListView", "UIView"),
+            ("FQVCollectionView", "UICollectionView"), ("FQVShortVideoListVCScrollComponent", "NSObject"),
             ("NSIndexPath", "NSObject"), ("CABasicAnimation", "NSObject"),
             ("UISwitch", "UIControl"), ("UISlider", "UIControl"),
         ):
             if cls not in self.classes:
                 self._class(cls, parent)
-        for selector, encoding, imp in DRAG_METHODS:
-            self._add(self.classes["FQFeedListView"], selector, imp, encoding)
+        self.feed_class = "FQVCollectionView" if release_version(self.data) == "1.78R9" else "FQFeedListCollectionView"
+        self.feed_owner_class = "FQVShortVideoListVCScrollComponent" if release_version(self.data) == "1.78R9" else "FQFeedListView"
+        for owner in ("FQFeedListView", "FQVShortVideoListVCScrollComponent"):
+            self._add(self.classes[owner], "collectionView", self.LAYOUT_IMP, "@16@0:8")
+            for selector, encoding, imp in DRAG_METHODS:
+                self._add(self.classes[owner], selector, imp, encoding)
         self.screen = self.obj("UIScreen", "3x display", scale=3.0)
         self.objects[self.WINDOW].state["screen"] = self.screen
         self.page_view = self.view("UIView", "selected page root", (0, 0, 440, 882), self.ROOT)
@@ -123,13 +128,16 @@ class Runtime(AppearanceRuntime):
         )
 
     def add_feed(self):
-        feed = self.view("FQFeedListCollectionView", "active drama feed", (0, 0, 440, 882), self.page_view,
+        feed = self.view(self.feed_class, "active drama feed", (0, 0, 440, 882), self.page_view,
                          contentSize=(440., 4000.), contentOffset=(0., 882.),
                          contentInset=(0., 0., 0., 0.), clipsToBounds=True,
                          dragging=False, tracking=False, decelerating=False)
-        owner = self.view("FQFeedListView", "host feed delegate", (0, 0, 440, 882), self.page_view,
-                          collectionView=feed)
-        self.reparent(feed, owner)
+        if self.feed_owner_class == "FQFeedListView":
+            owner = self.view(self.feed_owner_class, "host feed delegate", (0, 0, 440, 882), self.page_view,
+                              collectionView=feed)
+            self.reparent(feed, owner)
+        else:
+            owner = self.obj(self.feed_owner_class, "host video scroll component", collectionView=feed)
         self.objects[feed].state.update(listOwner=owner, pageIndex=1)
         host_target = self.obj("NSObject", "host scroll target")
         pan = self.obj("UIPanGestureRecognizer", "host scroll pan", view=feed, state=0,
@@ -242,7 +250,7 @@ class Runtime(AppearanceRuntime):
         if receiver in self.objects:
             state = self.objects[receiver].state
             cls = self.class_names[self.objects[receiver].cls]
-            if name == "indexPathForItemAtPoint:" and cls == "FQFeedListCollectionView":
+            if name == "indexPathForItemAtPoint:" and cls in ("FQFeedListCollectionView", "FQVCollectionView"):
                 bounds = state["bounds"]
                 require((cpu.fp(0), cpu.fp(1)) == (bounds[0] + bounds[2] / 2, bounds[1] + bounds[3] / 2),
                         "The active video is determined at the center of the current viewport")
@@ -590,7 +598,7 @@ def icon_lifecycle(data, labels):
             check_input(runtime, cpu, fallback, len(titles)-1)
             runtime.defaults(**{ICONS: False})
             repair(cpu, runtime, entries)
-            if version == "1.78R8":
+            if version in ("1.78R8", "1.78R9"):
                 require(runtime.objects[runtime.PROXY].state["effect"] == effect,
                         "Toggling the icon-only preference reuses the existing Regular glass")
             require(all(not overlays(runtime, b) for b in runtime.buttons),

@@ -82,6 +82,7 @@ HOOKS = [
     ("SSBookStoreNestedTabView", "setProduceEntranceView:"),
     ("SSBookStoreCommunityPublishEntranceComponent", "setPublishButton:"),
     ("SSMyUser621ViewController", "publishButton"),
+    ("SSMyUser621ViewController", "scrollViewDidScroll:"),
     ("SSMyUser621BaseViewController", "updateCollectionLayout"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
     ("SSMyUserCollectionViewOrderFunCell", "layoutSubviews"),
@@ -322,6 +323,7 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 ("SSMineEcomEntranceData", "entranceType", "i16@0:8"),
                 ("SSMyUserCell2Model", "businessStyle", "q16@0:8"),
                 ("SSMyUser621ViewController", "reloadData:", "v24@0:8@16"),
+                ("SSMyUser621ViewController", "scrollViewDidScroll:", "v24@0:8@16"),
                 ("SSMyUser621BaseViewController", "updateCollectionLayout", "v16@0:8"),
                 ("SSTabBarController", "titleStrWithType:", "@20@0:8i16"),
                 ("SSTabBarController", "setTypeArray:", "v24@0:8@16"),
@@ -790,6 +792,9 @@ class Runtime(TopChromeRuntime, GlassRuntime):
                 if "pigment" in color:
                     return self.finish(cpu, self.obj("UIColor", "adjusted reader fill",
                                                      pigment=color["pigment"], opacity=cpu.fp(0)))
+                if self.is_kind(receiver, self.classes["UIColor"]):
+                    return self.finish(cpu, self.obj("UIColor", "adaptive page canvas tint",
+                                                     base_color=receiver, opacity=cpu.fp(0)))
             if receiver in self.objects and name in ("cellModel", "cellSpacing", "isSelect", "isSelected"):
                 state = self.objects[receiver].state
                 if name in state:
@@ -842,10 +847,10 @@ def static_checks():
 
 
 def exercise(data, labels):
-    uniform_glass = release_version(data) == "1.78R8"
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9")
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1095,8 +1100,8 @@ def exercise(data, labels):
         send(cpu, runtime, cell, "layoutSubviews")
         material = surface_for(cell)
         state = runtime.objects[material].state
-        require(state["frame"] == (1.0, 1.0, 56.0, 28.0) and not state["userInteractionEnabled"],
-                "bookshelf filter receives a separate passive inset glass capsule")
+        require(state["frame"] == (8.0, 1.0, 42.0, 28.0) and not state["userInteractionEnabled"],
+                "bookshelf two-character filters match the 42 by 28 top title capsules")
         require(runtime.objects[cell].state["subviews"] == [material, label] and
                 runtime.string_value(runtime.objects[label].state["text"]) == title,
                 "filter glass stays behind the host label and leaves it untouched")
@@ -1631,6 +1636,8 @@ def exercise(data, labels):
                                   backgroundColor=original_bar_color, opaque=True, userInteractionEnabled=True)
     profile_controller = runtime.obj("SSMyUser621ViewController", "Mine controller", view=profile_root,
                                      myUserBar=profile_chrome, collectionView=profile_feed)
+    profile_canvas = runtime.color("observed Mine 0.964706 canvas")
+    runtime.objects[profile_root].state["backgroundColor"] = profile_canvas
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
     siblings = runtime.objects[profile_root].state["subviews"]
     require(len(siblings) == 3 and siblings[0] == profile_feed and siblings[2] == profile_chrome,
@@ -1641,10 +1648,8 @@ def exercise(data, labels):
             runtime.objects[blur_state["effect"]].state["style"] == 6,
             "Mine bar uses frame-bounded adaptive ultra-thin blur")
     blur_content = runtime.objects[blur_state["contentView"]].state
-    tint = runtime.objects.get(blur_content["backgroundColor"])
-    require(blur_state["alpha"] == 1 and tint and tint.state.get("base_color") == runtime.color("systemBackgroundColor") and
-            tint.state.get("opacity") == 0.0625,
-            "Mine toolbar uses the shared light adaptive tint without lowering blur opacity")
+    require(blur_state["alpha"] == 1 and blur_content["backgroundColor"] == profile_canvas,
+            "Resting Mine toolbar matches the actual page canvas across the toolbar edge")
     require(feed_state["frame"] == (0, 0, 440, 956) and feed_state["contentOffset"] == (0, -106) and
             feed_state["contentInset"] == (106, 0, 57, 0) and feed_state["clipsToBounds"] and
             runtime.objects[nested_feed].state["frame"] == nested_frame and
@@ -1657,6 +1662,13 @@ def exercise(data, labels):
     send(cpu, runtime, profile_controller, "updateCollectionLayout")
     require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, -106),
             "Repeated profile layout reuses blur and never reapplies the scroll delta")
+    send(cpu, runtime, profile_feed, "setContentOffset:", fp=(0, -94))
+    send(cpu, runtime, profile_controller, "scrollViewDidScroll:", profile_feed)
+    tint = runtime.objects[blur_content["backgroundColor"]].state
+    require(tint.get("base_color") == profile_canvas and tint.get("opacity") == 0.53125,
+            "The first 24pt of profile scrolling smoothly fades the canvas match")
+    send(cpu, runtime, profile_feed, "setContentOffset:", fp=(0, -106))
+    send(cpu, runtime, profile_controller, "scrollViewDidScroll:", profile_feed)
     native_edge = runtime.enable_native_top_edge(profile_feed, hidden=False)
     bar_state = runtime.objects[profile_chrome].state
     edge_state = runtime.objects[native_edge].state
@@ -1670,6 +1682,9 @@ def exercise(data, labels):
     require(siblings == [profile_feed, profile_blur, profile_chrome] and feed_state["contentOffset"] == (0, 124) and
             blur_state["frame"] == (0, 0, 440, 106) and edge_state["hidden"],
             "Scrolled Mine content remains under the same bounded material without shifting the offset")
+    tint = runtime.objects[blur_content["backgroundColor"]].state
+    require(tint.get("base_color") == runtime.color("systemBackgroundColor") and tint.get("opacity") == 0.0625,
+            "Scrolled Mine restores the original live blur tint")
     sidebar = runtime.obj("NSObject", "Mine sidebar adapter", isSidebarOpen=1, isSidebarTransitioning=0)
     runtime.objects[profile_controller].state["sidebarAdapter"] = sidebar
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
@@ -1791,13 +1806,18 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
                     adjusted_glyph = (26, 5, 18, 18)
             x, _, label_width, label_height = caption_frame
             adjusted_caption = (x, material_frame[3] - label_height - 10, label_width, label_height)
+            if release_version(data) == "1.78R9":
+                material_frame = (3, 0, width-6, min(height,52))
+                glyph_size = 19 if compact else 20
+                adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
+                adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
             label = runtime.label("original caption", content, caption_frame, title)
             cell_state = runtime.objects[cell].state
@@ -1821,7 +1841,7 @@ def exercise(data, labels):
                     runtime.objects[content].state["backgroundColor"] == shortcut_background and
                     not runtime.objects[surface].state["userInteractionEnabled"] and
                     cell_state["userInteractionEnabled"] and cell_state["frame"] == cell_frame,
-                    "one capsule leaves 10pt below the full native caption while the original hit area stays intact")
+                    "same-row shortcuts share capsule height and balanced icon/text spacing with intact native hit areas")
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
@@ -1983,8 +2003,8 @@ def exercise(data, labels):
     call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
     header = runtime.objects[table].state["tableHeaderView"]
     version = release_version(data)
-    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8")
-    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version == "1.78R8")
+    has_bottom_settings = version in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9")
+    expected_header_height = 512.0 + 60.0 * has_bottom_settings + 60.0 * (version in ("1.78R8", "1.78R9"))
     require(runtime.objects[header].state["frame"] == (0.0, 0.0, 320.0, expected_header_height),
             "an unsized table starts with a consistent header and control width")
     if has_bottom_settings:
@@ -1994,7 +2014,7 @@ def exercise(data, labels):
         require(len(entries) == 1 and runtime.objects[entries[0]].state["frame"] == (16., 516., 288., 48.) and
                 len(runtime.objects[entries[0]].state["control_targets"]) == 1,
                 "1.78 appends one 48pt bottom-appearance settings entry below all existing switches")
-    if version == "1.78R8":
+    if version in ("1.78R8", "1.78R9"):
         channels = [item for item in runtime.objects[header].state["subviews"]
                     if runtime.is_kind(item, runtime.classes["UIButton"]) and
                     runtime.string_value(runtime.objects[item].state.get("accessibilityLabel", 0)) == "Telegram 频道"]
@@ -2150,8 +2170,8 @@ def exercise(data, labels):
             runtime.objects[size_layout].state["invalidations"] == 0,
             "duration on keeps Edit's right edge with 12pt horizontal and 7pt vertical title padding")
     edit_glass = surface_for(edit)
-    require(runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 30.),
-            "the native 18pt title receives a full-height capsule in the duration row")
+    require(runtime.objects[edit_glass].state["frame"] == (6., 2., 42., 28.),
+            "Edit matches the other short-title capsules without shrinking its native touch frame")
     for _ in range(3):
         send(cpu, runtime, shelf_header, "layoutEditButton")
         send(cpu, runtime, shelf_header, "layoutSubviews")
@@ -2170,7 +2190,7 @@ def exercise(data, labels):
             runtime.objects[holder].state["hitInsets"][1] <= -132.,
             "the original edit sits between measured category and search with its entire hit rectangle")
     require(edit_glass and surface_for(edit) == edit_glass and
-            runtime.objects[edit_glass].state["frame"] == (0., 1., 54., 30.) and
+            runtime.objects[edit_glass].state["frame"] == (6., 2., 42., 28.) and
             not runtime.objects[edit_glass].state["userInteractionEnabled"] and edit_state["control_targets"] == edit_targets,
             "the moved edit uses the matching capsule without intercepting or replacing the tap")
     edit_frame = edit_state["frame"]
@@ -2181,7 +2201,7 @@ def exercise(data, labels):
     edit_state["edit_title_size"] = (46., 24.)
     send(cpu, runtime, shelf_header, "layoutSubviews")
     require(edit_state["frame"] == (-132., -7., 70., 38.) and
-            runtime.objects[edit_glass].state["frame"] == (0., 1., 70., 36.) and
+            runtime.objects[edit_glass].state["frame"] == (6., 5., 58., 28.) and
             edit_state["control_targets"] == edit_targets,
             "the existing Edit action and upper glass fit a longer or larger title")
     edit_state["edit_title_size"] = (30., 18.)
@@ -2610,9 +2630,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) == "1.78R8" else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) == "1.78R8":
+        if release_version(data) in ("1.78R8", "1.78R9"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2783,7 +2803,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -2938,7 +2958,7 @@ def main():
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), LABELS + EXTRA)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) == "1.78R8" else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

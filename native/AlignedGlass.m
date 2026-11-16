@@ -312,8 +312,14 @@ static void ApplySurface(Obj view,Rect material,B preserveOwner) {
     objc_setAssociatedObject(view,BusyKey,0,0);
 }
 void FQHApply(Obj view) {
-    if (Kind(view,"UIView"))
-        ApplySurface(view,((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds")),0);
+    if (!Kind(view,"UIView")) return;
+    Rect material=((Rect(*)(Obj,Sel))Message)(view,sel_registerName("bounds"));
+    if (FQHIsDuration(view)) {
+        double height=__builtin_fmin(material.height,28);
+        material.y+=(material.height-height)*0.5;
+        material.height=height;
+    }
+    ApplySurface(view,material,0);
 }
 void FQHHeader(Obj view) {
     if (!Kind(view,"UIView")) return;
@@ -724,31 +730,6 @@ static double TopChromeOverlap(Obj scroll) {
     return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
         Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
 }
-static void ShelfPinnedLayoutKey(void) {}
-static void BookshelfSectionPinning(Obj tab) {
-    if (!Kind(tab,"SSBookShelfSubViewController")) return;
-    // Use the same layout getter as configFlowLayout, including before the
-    // collection view is created. The filter is this list's section header.
-    Obj layout=Get(tab,"collectionViewLayout");
-    Obj saved=objc_getAssociatedObject(tab,ShelfPinnedLayoutKey);
-    B enabled=Enabled() && FQHGlassAvailable() && Kind(layout,"UICollectionViewFlowLayout");
-    if (saved && (!enabled || saved!=layout)) {
-        if (!Flag(saved,"sectionHeadersPinToVisibleBounds")) {
-            VB(saved,"setSectionHeadersPinToVisibleBounds:",1);
-            V0(saved,"invalidateLayout");
-        }
-        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,0,1);
-    }
-    if (enabled && Flag(layout,"sectionHeadersPinToVisibleBounds")) {
-        objc_setAssociatedObject(tab,ShelfPinnedLayoutKey,layout,1);
-        VB(layout,"setSectionHeadersPinToVisibleBounds:",0);
-        V0(layout,"invalidateLayout");
-    }
-}
-static void BookshelfFlowLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx186_originalShelfFlowLayout"))(self,cmd);
-    BookshelfSectionPinning(self);
-}
 static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Obj owner=Get(tab,"delegate");
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
@@ -776,7 +757,6 @@ static void BookshelfTopChrome(Obj controller) {
     Obj root=Get(controller,"view"),header=Get(controller,"headerView");
     Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
     Obj scroll=Get(tab,"collectionView");
-    BookshelfSectionPinning(tab);
     Rect frame=Frame(header),bounds=Bounds(root);
     Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
     double height=__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y;
@@ -815,10 +795,18 @@ static void BookshelfUpdateInsets(Obj self,Sel cmd) {
     RestoreBookshelfTopInset(self);
 }
 static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
-    // The host treats an absent scroll view as a reset to its inline row.
-    if (scroll && objc_getAssociatedObject(scroll,TopChromeInsetKey) &&
-        scroll==Get(self,"collectionView") && Enabled()) scroll=0;
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx186_originalShelfFloating:"))(self,cmd,scroll);
+    if (!scroll || scroll!=Get(self,"collectionView") || !Enabled() ||
+        !objc_getAssociatedObject(scroll,TopChromeInsetKey)) return;
+    Obj owner=Get(self,"delegate"),root=Get(owner,"view");
+    Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
+    Obj holder=Get(self,"fullGenreFloatingContainerView"),parent=Get(holder,"superview");
+    if (!surface || !parent || Flag(holder,"isHidden") || !Belongs(parent,root)) return;
+    // The viewport now extends behind the header. Keep the host's pinned
+    // controls below that header instead of resetting them to the offscreen cell.
+    Rect chrome=Convert(surface,Bounds(surface),parent),frame=Frame(holder);
+    double top=chrome.y+chrome.height;
+    if (frame.y!=top) { frame.y=top; SetFrame(holder,frame); }
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }
@@ -1557,7 +1545,6 @@ static void ShelfScroll(Obj self,Sel cmd,Obj scroll) {
 }
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
-    BookshelfSectionPinning(self);
     FQHShelf(self);
     RestoreBookshelfTopInset(self);
     Obj scroll=Get(self,"collectionView");
@@ -2465,6 +2452,119 @@ static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
     DramaSmallGlass(button,Kind(button,"UIButton") && Belongs(button,self));
 }
 
+// Decorate the inspected landscape controls in their existing tap containers.
+// The material never handles gestures, playback or accessibility actions.
+static void LandscapeControlGlass178R9(Obj view,Obj owner,double maximum) {
+    if (!Kind(view,"UIView") || !Belongs(view,owner)) return;
+    Rect bounds=Bounds(view);
+    if (!Enabled() || !FQHGlassAvailable() || !VisibleRect(bounds)) {
+        RemoveDramaGlass(view); DramaClearBackground(view,0); return;
+    }
+    B image=Kind(view,"UIImageView");
+    Obj parent=image ? Get(view,"superview") : view;
+    Rect material=image ? Frame(view) : bounds;
+    double height=maximum ? __builtin_fmin(material.height,maximum) : material.height;
+    double width=maximum ? __builtin_fmin(material.width,maximum) : material.width;
+    // Back and danmaku image views carry a glyph rather than a full button.
+    if (image) width=height=36;
+    material=(Rect){material.x+(material.width-width)*0.5,material.y+(material.height-height)*0.5,width,height};
+    Obj glass=PlaceDramaGlass(view,parent,image ? view : (Obj)0,material);
+    if (!glass) return;
+    DramaClearBackground(view,1);
+    if (image) {
+        VB(glass,"setHidden:",Flag(view,"isHidden"));
+        ((void(*)(Obj,Sel,double))Message)(glass,sel_registerName("setAlpha:"),
+            ((double(*)(Obj,Sel))Message)(view,sel_registerName("alpha")));
+    }
+}
+static void LandscapeInfoGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout"))(self,cmd);
+    LandscapeControlGlass178R9(Get(self,"navBackImageView"),self,44);
+    LandscapeControlGlass178R9(Get(self,"playBtn"),self,56);
+    LandscapeControlGlass178R9(Get(self,"nextBtn"),self,44);
+    LandscapeControlGlass178R9(Get(self,"moreBtn"),self,44);
+    LandscapeControlGlass178R9(Get(self,"muteView"),self,44);
+}
+static void LandscapePlayerGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoPlayerLandscapeBaseControlView","fqx178r9_originalLandscapePlayerLayout"))(self,cmd);
+    LandscapeControlGlass178R9(Get(self,"screenLockBtn"),self,44);
+    LandscapeControlGlass178R9(Get(self,"landingMuteView"),self,44);
+}
+static void LandscapeNavApply178R9(Obj self) {
+    Obj items=Get(self,"itemList");
+    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj item=At(items,i),view=Get(item,"view");
+        if (Kind(item,"FQVShortVideoLandscapeNavBarItem") && Bounds(view).width<=90)
+            LandscapeControlGlass178R9(view,self,44);
+    }
+}
+static void LandscapeNavGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavLayout"))(self,cmd);
+    LandscapeNavApply178R9(self);
+}
+static void LandscapeNavLaidOut178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavSubviews"))(self,cmd);
+    LandscapeNavApply178R9(self);
+}
+static void LandscapeBottomGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout"))(self,cmd);
+    LandscapeControlGlass178R9(Get(self,"seriesBtn"),self,0);
+    LandscapeControlGlass178R9(Get(self,"playRateBtn"),self,0);
+    LandscapeControlGlass178R9(Get(self,"resolutionBtn"),self,0);
+}
+static void LandscapeSocialApply178R9(Obj self) {
+    LandscapeControlGlass178R9(Get(self,"likeBtnView"),self,0);
+    LandscapeControlGlass178R9(Get(self,"commentBtnView"),self,0);
+    LandscapeControlGlass178R9(Get(self,"starBtnView"),self,0);
+    LandscapeControlGlass178R9(Get(self,"danmakuBtnView"),self,36);
+    Obj input=Get(self,"danmakuInputView"),background=Get(self,"danmakuInputBGView");
+    LandscapeControlGlass178R9(input,self,0);
+    if (Belongs(background,input)) DramaClearBackground(background,Enabled() && FQHGlassAvailable());
+    LandscapeControlGlass178R9(Get(self,"danmakuPublishBtn"),self,0);
+}
+static void LandscapeSocialGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeSocialLayout"))(self,cmd);
+    LandscapeSocialApply178R9(self);
+}
+static void LandscapeSocialRefresh178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeSocialRefresh"))(self,cmd);
+    LandscapeSocialApply178R9(self);
+}
+static void LandscapeDanmakuChanged178R9(Obj self,Sel cmd,B enabled) {
+    ((void(*)(Obj,Sel,B))Original("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeDanmakuChanged:"))(self,cmd,enabled);
+    LandscapeSocialApply178R9(self);
+}
+static void LandscapeEntryGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoLandscapeAutoInflowTipView","fqx178r9_originalLandscapeEntryLayout"))(self,cmd);
+    DramaSmallGlass(self,1);
+}
+static void LandscapeAdjustGlass178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVLandscapeAdjustButtonBase","fqx178r9_originalLandscapeAdjustLayout"))(self,cmd);
+    DramaSmallGlass(self,1);
+}
+static void LandscapeLayoutHook178R9(const char *name,const char *alias,Imp imp) {
+    Obj cls=Lookup(name);
+    Sel layout=sel_registerName("layoutSubviews"),saved=sel_registerName(alias);
+    if (!ClassABI(cls,"layoutSubviews","v16@0:8") || class_getInstanceMethod(cls,saved)) return;
+    Method method=class_getInstanceMethod(cls,layout);
+    if (FQDResolveOwned(cls,layout,0,"v16@0:8")) Hook(name,"layoutSubviews",alias,"v16@0:8",imp);
+    else if (class_addMethod(cls,saved,method_getImplementation(method),"v16@0:8"))
+        class_addMethod(cls,layout,imp,"v16@0:8");
+}
+static void LandscapeGlassInstall178R9(void) {
+    LandscapeLayoutHook178R9("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout",(Imp)LandscapeInfoGlass178R9);
+    LandscapeLayoutHook178R9("FQVShortVideoPlayerLandscapeBaseControlView","fqx178r9_originalLandscapePlayerLayout",(Imp)LandscapePlayerGlass178R9);
+    LandscapeLayoutHook178R9("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout",(Imp)LandscapeBottomGlass178R9);
+    LandscapeLayoutHook178R9("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeSocialLayout",(Imp)LandscapeSocialGlass178R9);
+    LandscapeLayoutHook178R9("SSShortVideoLandscapeAutoInflowTipView","fqx178r9_originalLandscapeEntryLayout",(Imp)LandscapeEntryGlass178R9);
+    LandscapeLayoutHook178R9("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavSubviews",(Imp)LandscapeNavLaidOut178R9);
+    Hook("FQVLandscapeAdjustButtonBase","layoutSubviews","fqx178r9_originalLandscapeAdjustLayout","v16@0:8",(Imp)LandscapeAdjustGlass178R9);
+    Hook("FQVShortVideoLandscapeNavBar","refreshLayout","fqx178r9_originalLandscapeNavLayout","v16@0:8",(Imp)LandscapeNavGlass178R9);
+    Hook("SSShortVideoLandscapeBizInteractionView","refreshUI","fqx178r9_originalLandscapeSocialRefresh","v16@0:8",(Imp)LandscapeSocialRefresh178R9);
+    Hook("SSShortVideoLandscapeBizInteractionView","danmakuSwitchDidChange:","fqx178r9_originalLandscapeDanmakuChanged:","v20@0:8B16",(Imp)LandscapeDanmakuChanged178R9);
+}
+
 static B DefaultEnabled(Obj key);
 static void DramaVisibilityOwnersKey(void) {}
 static void DramaVisibilityHiddenKey(void) {}
@@ -2551,11 +2651,19 @@ static Obj DramaVisibilityNovel(Obj self,Sel cmd) {
         "fqx178r8_originalOrderedAboveLeftViews"))(self,cmd);
     if (!DramaVisibilityIsMainFeed(self)) return views;
     Obj reason=Get(self,"rcmdReasonViewManager");
-    if (!Kind(reason,"SSShortVideoRcmdReasonViewManager") || !BoolProp(reason,"isRelateNovelReason")) return views;
+    if (!Kind(reason,"SSShortVideoRcmdReasonViewManager")) return views;
+    B originalNovel=BoolProp(reason,"isRelateNovelReason");
+    Obj reasonModel=Get(reason,"rcmdReasonModel");
+    B interest=Equal(Get(reasonModel,"content"),"根据小说兴趣推荐") ||
+        Equal(Get(reasonModel,"recommendReason"),"根据小说兴趣推荐") ||
+        Equal(Get(reasonModel,"reasonText"),"根据小说兴趣推荐");
+    if (!originalNovel && !interest) return views;
     Obj novel=Get(reason,"decorationView");
     if (!Kind(novel,"SSShortVideoRcmdReasonView")) return views;
     DramaVisibilityTrack(self);
-    if (DefaultEnabled(Text("FanqieX.DramaOriginalNovel.1"))) return views;
+    B visible=(!originalNovel || DefaultEnabled(Text("FanqieX.DramaOriginalNovel.1"))) &&
+        (!interest || DefaultEnabled(Text("FanqieX.DramaRecommendationReason.1")));
+    if (visible) return views;
     U index=((U(*)(Obj,Sel,Obj))Message)(views,sel_registerName("indexOfObjectIdenticalTo:"),novel);
     if (index>=((U(*)(Obj,Sel))Message)(views,sel_registerName("count"))) return views;
     Obj filtered=O0(O0(views,"mutableCopy"),"autorelease");
@@ -2989,8 +3097,9 @@ static void ShelfFilterStyle(Obj view) {
         return;
     }
     Rect material=Bounds(view);
-    material.x+=1; material.width-=2;
-    material.y+=1; material.height-=2;
+    double width=__builtin_fmin(material.width-2,42),height=__builtin_fmin(material.height-2,28);
+    material.x+=(material.width-width)*0.5; material.width=width;
+    material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(view,material,0);
 }
 static void PageShelfFilterLayout(Obj self,Sel cmd) {
@@ -3009,12 +3118,10 @@ static void ShelfActionGlass(Obj button,B filter) {
     if (!Kind(button,"UIButton")) return;
     if (Flag(button,"isHidden")) { PageRestore(button); return; }
     Rect material=Bounds(button);
-    material.y+=1;
-    material.height-=2;
-    if (filter) {
-        material.x+=1;
-        material.width-=2;
-    }
+    double height=__builtin_fmin(material.height-2,28);
+    double width=filter ? material.width-2 : __builtin_fmin(material.width,__builtin_fmax(42,material.width-12));
+    material.x+=(material.width-width)*0.5; material.width=width;
+    material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(button,material,0);
 }
 static void ShelfFilterHiddenKey(void) {}
@@ -3245,6 +3352,27 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
     ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
 }
+static void ProfileRestingTint(Obj controller,Obj scroll) {
+    Obj root=Get(controller,"view"),surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
+    Obj content=Get(surface,"contentView");
+    if (!content || !scroll) return;
+    Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+    Rect inset=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
+    double distance=__builtin_fabs(offset.y+inset.x);
+    double blend=distance<24 ? 1-distance/24 : 0;
+    Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
+    if (blend>0) {
+        Obj canvas=Get(root,"backgroundColor"),colors=Lookup("UIColor");
+        if (!canvas || SameColor(canvas,O0(colors,"clearColor"))) canvas=O0(colors,"systemBackgroundColor");
+        tint=blend==1 ? canvas : ((Obj(*)(Obj,Sel,double))Message)(canvas,
+            sel_registerName("colorWithAlphaComponent:"),0.0625+0.9375*blend);
+    }
+    if (!SameColor(Get(content,"backgroundColor"),tint)) V1(content,"setBackgroundColor:",tint);
+}
+static void ProfileScroll(Obj self,Sel cmd,Obj scroll) {
+    ((void(*)(Obj,Sel,Obj))Original("SSMyUser621ViewController","fqx178r9_originalProfileScroll:"))(self,cmd,scroll);
+    if (scroll==Get(self,"collectionView")) ProfileRestingTint(self,scroll);
+}
 static void ProfileCollectionLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUser621BaseViewController","fqx186_originalProfileCollectionLayout"))(self,cmd);
     if (!Kind(self,"SSMyUser621ViewController")) return;
@@ -3258,6 +3386,7 @@ static void ProfileCollectionLayout(Obj self,Sel cmd) {
     B installed=TopChromePage(root,bar,list,material,enabled);
     TopChromeFill(bar,installed);
     TopChromeUnderlap(list,list,material.y,installed);
+    if (installed) ProfileRestingTint(self,list);
     TopChromeDiagnostics(self,"profile",root,list,list,installed);
 }
 static void ProfileCaptionKey(void) {}
@@ -3308,16 +3437,15 @@ static void ProfileEntryGlass(Obj self,B order) {
     if (oldCaption!=caption) RestoreProfileEntryFrame(content,ProfileCaptionKey);
     Rect b=Bounds(content),labelFrame=Frame(caption),iconFrame=Frame(glyph);
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
-    double height=__builtin_fmin(b.height,__builtin_fmax(44,label.y+label.height-b.y+5));
-    double textY=__builtin_fmin(label.y,b.y+height-label.height-10);
-    double glyphHeight=__builtin_fmin(__builtin_fmin(18,label.y-b.y-10),textY-b.y-6);
+    double height=__builtin_fmin(b.height,52);
+    double textY=b.y+height-label.height-6;
+    double glyphHeight=__builtin_fmin(20,textY-b.y-8);
     if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
         return;
     }
-    // Move the whole caption inward, retaining its native text, visibility and
-    // full frame. Only oversized plain fonts are reduced; attributed runs stay.
-    // Leave room for the full title at the curved end of the compact 47pt cell.
+    // Every item in the same shortcut row uses the same capsule height,
+    // independent of the host caption's baseline or current title.
     ApplySurface(content,(Rect){b.x+3,b.y,b.width-6,height},1);
     if (!FQHSurface(content)) {
         RestoreProfileEntry(content);
@@ -3326,7 +3454,7 @@ static void ProfileEntryGlass(Obj self,B order) {
     TrackAppearanceLabel(content,caption,12);
     // Never enlarge the host's original bitmap canvas just to fill the pill.
     double scale=__builtin_fmin(1,glyphHeight/__builtin_fmax(icon.width,icon.height));
-    double top=__builtin_fmin(b.y+5,textY-glyphHeight-3);
+    double top=b.y+6;
     Rect adjusted={b.x+(b.width-icon.width*scale)*0.5,top+(glyphHeight-icon.height*scale)*0.5,
                    icon.width*scale,icon.height*scale};
     if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
@@ -3434,6 +3562,142 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     }
     if (removedGame) RecordMineGameRemoval("SSMyUser621ViewController","filterStandaloneGameRows");
     return filtered ? filtered : rows;
+}
+
+// 1.78R9 presentation-only switches. Keep native data/model arrays untouched.
+static void FeatureVisibilityOwners178R9Key(void) {}
+static void ReaderEarnInsertObjects178R9Key(void) {}
+static void ShelfMotionComicSource178R9Key(void) {}
+static Obj FeatureVisibilityOwners178R9(void) {
+    Obj cls=Lookup("NSUserDefaults");
+    Obj owners=objc_getAssociatedObject(cls,FeatureVisibilityOwners178R9Key);
+    if (!owners) {
+        owners=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(cls,FeatureVisibilityOwners178R9Key,owners,1);
+    }
+    return owners;
+}
+static void FeatureVisibilityTrack178R9(Obj owner) {
+    V1(FeatureVisibilityOwners178R9(),"addObject:",owner);
+}
+static B MineContinueVisible178R9(Obj self,Sel cmd) {
+    B visible=((B(*)(Obj,Sel))Original("SSMyUserExposedHistoryCellModel",
+        "fqx178R9_originalShouldShowHistory"))(self,cmd);
+    return visible && DefaultEnabled(Text("FanqieX.MineContinueDrama.1"));
+}
+static void MineContinueLayout178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUser627HistoryExposeView","fqx178R9_originalHistoryLayout"))(self,cmd);
+    FeatureVisibilityTrack178R9(self);
+    DramaVisibilitySet(self,DefaultEnabled(Text("FanqieX.MineContinueDrama.1")));
+}
+static Obj ReaderEarnFiltered178R9(Obj objects) {
+    if (DefaultEnabled(Text("FanqieX.ReaderEarnMore.1")) || !Kind(objects,"NSArray")) return objects;
+    Obj filtered=0;
+    U count=((U(*)(Obj,Sel))Message)(objects,sel_registerName("count"));
+    for (U i=count;i>0;--i) {
+        if (!Kind(At(objects,i-1),"SSReaderTopViewCoinBtnInsertObject")) continue;
+        if (!filtered) filtered=O0(O0(objects,"mutableCopy"),"autorelease");
+        Q1(filtered,"removeObjectAtIndex:",i-1);
+    }
+    return filtered ? filtered : objects;
+}
+static void ReaderEarnConfigure178R9(Obj self,Sel cmd,Obj objects) {
+    // Capture the unfiltered host input so turning the switch back on can
+    // restore this page without deleting or rebuilding the reading reward.
+    objc_setAssociatedObject(self,ReaderEarnInsertObjects178R9Key,objects,1);
+    FeatureVisibilityTrack178R9(self);
+    ((void(*)(Obj,Sel,Obj))Original("FQReaderTopView","fqx178R9_originalInsertObjects:"))
+        (self,cmd,ReaderEarnFiltered178R9(objects));
+}
+static void SidebarGamesLayout178R9(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUser621SideBarGameContainerCell","fqx178R9_originalGamesLayout"))(self,cmd);
+    FeatureVisibilityTrack178R9(self);
+    DramaVisibilitySet(self,DefaultEnabled(Text("FanqieX.SidebarGames.1")));
+}
+static double SidebarGamesHeight178R9(Obj self,Sel cmd,Obj models,double width) {
+    (void)cmd;
+    if (!DefaultEnabled(Text("FanqieX.SidebarGames.1"))) return 0;
+    return ((double(*)(Obj,Sel,Obj,double))Message)(self,
+        sel_registerName("fqx178R9_originalGamesHeight:containerWidth:"),models,width);
+}
+static void SidebarGamesReload178R9(Obj self,Sel cmd) {
+    FeatureVisibilityTrack178R9(self);
+    ((void(*)(Obj,Sel))Original("SSMyUser621SideBarViewController","fqx178R9_originalSidebarReload"))(self,cmd);
+}
+static Obj ShelfMotionComicFiltered178R9(Obj items) {
+    if (DefaultEnabled(Text("FanqieX.ShelfMotionComic.1")) || !Kind(items,"NSArray")) return items;
+    Obj filtered=0;
+    U count=((U(*)(Obj,Sel))Message)(items,sel_registerName("count"));
+    for (U i=count;i>0;--i) {
+        Obj item=At(items,i-1),group=Get(item,"groupModel");
+        if (!Kind(item,"SSBookShelfCellModel") || !Kind(group,"SSBookGroupModel") ||
+            !BoolProp(group,"isFakeMotionComicGroup")) continue;
+        if (!filtered) filtered=O0(O0(items,"mutableCopy"),"autorelease");
+        Q1(filtered,"removeObjectAtIndex:",i-1);
+    }
+    return filtered ? filtered : items;
+}
+static void ShelfMotionComicModels178R9(Obj self,Sel cmd,Obj models) {
+    // The host builds section items and tap targets from this display array,
+    // while its grid/double-column sizing also reads the same backing ivar.
+    // Filter at the setter so all four paths retain identical row indexes.
+    // cacheCellModels, group contents and persisted collections stay native.
+    objc_setAssociatedObject(self,ShelfMotionComicSource178R9Key,models,1);
+    FeatureVisibilityTrack178R9(self);
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfViewModel","fqx178R9_originalShowCellModels:"))
+        (self,cmd,ShelfMotionComicFiltered178R9(models));
+}
+static void FeatureVisibilityRefresh178R9(void) {
+    Obj owners=O0(FeatureVisibilityOwners178R9(),"allObjects");
+    U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
+    for (U i=0;i<count;++i) {
+        Obj owner=At(owners,i);
+        if (Kind(owner,"SSMyUser627HistoryExposeView")) {
+            DramaVisibilitySet(owner,DefaultEnabled(Text("FanqieX.MineContinueDrama.1")));
+            V0(Get(owner,"superview"),"setNeedsLayout");
+        } else if (Kind(owner,"FQReaderTopView")) {
+            Obj objects=objc_getAssociatedObject(owner,ReaderEarnInsertObjects178R9Key);
+            ((void(*)(Obj,Sel,Obj))Original("FQReaderTopView","fqx178R9_originalInsertObjects:"))
+                (owner,sel_registerName("configInsertObjs:"),ReaderEarnFiltered178R9(objects));
+            V0(owner,"setNeedsLayout");
+        } else if (Kind(owner,"SSMyUser621SideBarGameContainerCell")) {
+            DramaVisibilitySet(owner,DefaultEnabled(Text("FanqieX.SidebarGames.1")));
+        } else if (Kind(owner,"SSMyUser621SideBarViewController")) {
+            V0(Get(Get(owner,"collectionView"),"collectionViewLayout"),"invalidateLayout");
+            V0(Get(owner,"collectionView"),"reloadData");
+        } else if (Kind(owner,"SSBookShelfViewModel")) {
+            Obj models=objc_getAssociatedObject(owner,ShelfMotionComicSource178R9Key);
+            ((void(*)(Obj,Sel,Obj))Original("SSBookShelfViewModel","fqx178R9_originalShowCellModels:"))
+                (owner,sel_registerName("setShowCellModels:"),ShelfMotionComicFiltered178R9(models));
+            Obj controller=Get(owner,"delegate");
+            if (Kind(controller,"SSBookShelfSubViewController") &&
+                InstanceABI(controller,"reloadData:","v24@0:8@16"))
+                V1(controller,"reloadData:",Text("FanqieXMotionComicVisibility"));
+        }
+    }
+    RefreshMineBenefits();
+}
+static void FeatureVisibilityInstall178R9(void) {
+    Hook("SSMyUserExposedHistoryCellModel","shouldShowHistory","fqx178R9_originalShouldShowHistory",
+        "B16@0:8",(Imp)MineContinueVisible178R9);
+    Hook("SSMyUser627HistoryExposeView","layoutSubviews","fqx178R9_originalHistoryLayout",
+        "v16@0:8",(Imp)MineContinueLayout178R9);
+    Hook("FQReaderTopView","configInsertObjs:","fqx178R9_originalInsertObjects:",
+        "v24@0:8@16",(Imp)ReaderEarnConfigure178R9);
+    Hook("SSMyUser621SideBarGameContainerCell","layoutSubviews","fqx178R9_originalGamesLayout",
+        "v16@0:8",(Imp)SidebarGamesLayout178R9);
+    Hook("SSMyUser621SideBarViewController","reloadData","fqx178R9_originalSidebarReload",
+        "v16@0:8",(Imp)SidebarGamesReload178R9);
+    Hook("SSBookShelfViewModel","setShowCellModels:","fqx178R9_originalShowCellModels:",
+        "v24@0:8@16",(Imp)ShelfMotionComicModels178R9);
+    Obj cls=Lookup("SSMyUser621SideBarGameContainerCell"),meta=object_getClass(cls);
+    Sel alias=sel_registerName("fqx178R9_originalGamesHeight:containerWidth:");
+    if (meta && !class_getInstanceMethod(meta,alias)) {
+        const char *type="d32@0:8@16d24";
+        Method method=FQDResolveOwned(cls,sel_registerName("heightForModels:containerWidth:"),1,type);
+        if (method && class_addMethod(meta,alias,method_getImplementation(method),type))
+            method_setImplementation(method,(Imp)SidebarGamesHeight178R9);
+    }
 }
 
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
@@ -4658,6 +4922,8 @@ void FQHPageInstall(void) {
     ReaderThemeIsolationInstall();
     DramaSpacingInstall178R2();
     DramaVisibilityInstall();
+    LandscapeGlassInstall178R9();
+    FeatureVisibilityInstall178R9();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
@@ -4703,6 +4969,7 @@ void FQHPageInstall(void) {
     Hook("SSBookStoreCommunityPublishEntranceComponent","setPublishButton:","fqx188_originalStoreComponentPublish:","v24@0:8@16",(Imp)BookstoreComponentPublishButton);
     Hook("SSMyUser621ViewController","publishButton","fqx188_originalMinePublishButton","@16@0:8",(Imp)ProfilePublishButton);
     Hook("SSMyUser621BaseViewController","updateCollectionLayout","fqx186_originalProfileCollectionLayout","v16@0:8",(Imp)ProfileCollectionLayout);
+    Hook("SSMyUser621ViewController","scrollViewDidScroll:","fqx178r9_originalProfileScroll:","v24@0:8@16",(Imp)ProfileScroll);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
     Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
@@ -4743,7 +5010,6 @@ void FQHInstall(void) {
     Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
     Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
-    Hook("SSBookShelfSubViewController","configFlowLayout","fqx186_originalShelfFlowLayout","v16@0:8",(Imp)BookshelfFlowLayout);
     Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
     Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);
@@ -4804,6 +5070,11 @@ static Obj BottomPreference178(I tag) {
         case 22: return PagePreference(DramaSearchOption);
         case 23: return PagePreference(DramaAuthorDeclarationOption);
         case 24: return PagePreference(DramaOriginalNovelOption);
+        case 25: return Text("FanqieX.DramaRecommendationReason.1");
+        case 26: return Text("FanqieX.MineContinueDrama.1");
+        case 27: return Text("FanqieX.ReaderEarnMore.1");
+        case 28: return Text("FanqieX.SidebarGames.1");
+        case 29: return Text("FanqieX.ShelfMotionComic.1");
     }
     return 0;
 }
@@ -4904,7 +5175,7 @@ static Obj BottomDramaPage178R7(Obj bar) {
 }
 static Obj BottomDramaScrollBar178R7(Obj list,Obj scroll) {
     Obj window=Get(scroll,"window");
-    if (!Kind(scroll,"FQFeedListCollectionView") || Get(list,"collectionView")!=scroll ||
+    if (!Kind(scroll,"FQVCollectionView") || Get(list,"collectionView")!=scroll ||
         !BottomVisible178(scroll,window)) return 0;
     Rect placed=Convert(scroll,Bounds(scroll),window),screen=Bounds(window);
     if (!BottomRect178(placed) || placed.height<=placed.width ||
@@ -4926,7 +5197,7 @@ static Obj BottomDramaVisibleIndex178R7(Obj scroll) {
     return ((Obj(*)(Obj,Sel,Point))Message)(scroll,sel_registerName("indexPathForItemAtPoint:"),center);
 }
 static void BottomDramaDragBegan178R7(Obj self,Sel cmd,Obj scroll) {
-    ((void(*)(Obj,Sel,Obj))Original("FQFeedListView","fqx178R7_originalDragBegan:"))(self,cmd,scroll);
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCScrollComponent","fqx178R7_originalDragBegan:"))(self,cmd,scroll);
     Obj bar=BottomDramaScrollBar178R7(self,scroll);
     // Capture the active video at the start of the actual host drag.
     Obj start=bar && !BottomCompactActive178R7(bar) ? BottomDramaVisibleIndex178R7(scroll) : (Obj)0;
@@ -4943,20 +5214,24 @@ static void BottomDramaDragSettled178R7(Obj list,Obj scroll) {
     V0(start,"release");
 }
 static void BottomDramaDragEnded178R7(Obj self,Sel cmd,Obj scroll,B decelerates) {
-    ((void(*)(Obj,Sel,Obj,B))Original("FQFeedListView","fqx178R7_originalDragEnded:decelerates:"))(self,cmd,scroll,decelerates);
+    ((void(*)(Obj,Sel,Obj,B))Original("FQVShortVideoListVCScrollComponent","fqx178R7_originalDragEnded:decelerates:"))(self,cmd,scroll,decelerates);
     if (!decelerates) BottomDramaDragSettled178R7(self,scroll);
 }
 static void BottomDramaDecelerated178R7(Obj self,Sel cmd,Obj scroll) {
-    ((void(*)(Obj,Sel,Obj))Original("FQFeedListView","fqx178R7_originalDecelerated:"))(self,cmd,scroll);
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCScrollComponent","fqx178R7_originalDecelerated:"))(self,cmd,scroll);
     BottomDramaDragSettled178R7(self,scroll);
 }
 static void BottomCompactInstall178R7(void) {
-    if (!Signature("FQFeedListView","scrollViewWillBeginDragging:","v24@0:8@16") ||
-        !Signature("FQFeedListView","scrollViewDidEndDragging:willDecelerate:","v28@0:8@16B24") ||
-        !Signature("FQFeedListView","scrollViewDidEndDecelerating:","v24@0:8@16")) return;
-    Hook("FQFeedListView","scrollViewWillBeginDragging:","fqx178R7_originalDragBegan:","v24@0:8@16",(Imp)BottomDramaDragBegan178R7);
-    Hook("FQFeedListView","scrollViewDidEndDragging:willDecelerate:","fqx178R7_originalDragEnded:decelerates:","v28@0:8@16B24",(Imp)BottomDramaDragEnded178R7);
-    Hook("FQFeedListView","scrollViewDidEndDecelerating:","fqx178R7_originalDecelerated:","v24@0:8@16",(Imp)BottomDramaDecelerated178R7);
+    // The device snapshots and 7.4.3 headers identify the video component,
+    // not the FQFeedListView used by bookstore and bookshelf collections.
+    const char *owner="FQVShortVideoListVCScrollComponent";
+    if (!Signature(owner,"collectionView","@16@0:8") ||
+        !Signature(owner,"scrollViewWillBeginDragging:","v24@0:8@16") ||
+        !Signature(owner,"scrollViewDidEndDragging:willDecelerate:","v28@0:8@16B24") ||
+        !Signature(owner,"scrollViewDidEndDecelerating:","v24@0:8@16")) return;
+    Hook(owner,"scrollViewWillBeginDragging:","fqx178R7_originalDragBegan:","v24@0:8@16",(Imp)BottomDramaDragBegan178R7);
+    Hook(owner,"scrollViewDidEndDragging:willDecelerate:","fqx178R7_originalDragEnded:decelerates:","v28@0:8@16B24",(Imp)BottomDramaDragEnded178R7);
+    Hook(owner,"scrollViewDidEndDecelerating:","fqx178R7_originalDecelerated:","v24@0:8@16",(Imp)BottomDramaDecelerated178R7);
 }
 static void BottomRestoreFrame178(Obj view,const void *stockKey,const void *appliedKey) {
     Obj stock=objc_getAssociatedObject(view,stockKey),applied=objc_getAssociatedObject(view,appliedKey);
@@ -4974,7 +5249,7 @@ static void BottomApplyFrame178(Obj view,Rect target,const void *stockKey,const 
         objc_setAssociatedObject(view,appliedKey,RectBox(target),1);
 }
 static Rect BottomTrack178(Rect bounds,U count,B icons) {
-    double minimum=icons ? 44 : 52;
+    double minimum=icons ? 56 : 64;
     double available=__builtin_fmax(0,bounds.width-8);
     double width=__builtin_fmin(available,__builtin_fmax(count*minimum,
         available*BottomValue178(13)*0.01));
@@ -5010,7 +5285,7 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
     double maximum=__builtin_fmin(base.width,available.width-8);
     double high=__builtin_fmin(70,available.height);
     if (maximum<=0 || high<44) return base;
-    double minimum=count*(icons ? 44 : 52)+8;
+    double minimum=count*(icons ? 56 : 64)+8;
     double width=compact ? __builtin_fmin(60,__builtin_fmin(maximum,high)) :
         BottomClamp178(base.width*BottomValue178(11)*0.01,__builtin_fmin(minimum,maximum),maximum);
     double height=compact ? width : BottomClamp178(base.height*BottomValue178(12)*0.01,
@@ -5527,7 +5802,10 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         changed=BottomFlag178(tag)!=value;
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
         if (tag>=21) {
-            if (changed) DramaVisibilityRefresh();
+            if (changed) {
+                if (tag<=25) DramaVisibilityRefresh();
+                else FeatureVisibilityRefresh178R9();
+            }
             return;
         }
     }
@@ -5624,7 +5902,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
-static const double BottomSettingsHeight178R7=1048;
+static const double BottomSettingsHeight178R7=1350;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -5669,6 +5947,12 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     BottomSettingsSwitch178(self,content,886,22,"显示搜索按钮",0);
     BottomSettingsSwitch178(self,content,934,23,"显示作者声明",0);
     BottomSettingsSwitch178(self,content,982,24,"显示阅读原著",0);
+    BottomSettingsSwitch178(self,content,1030,25,"显示小说兴趣推荐",0);
+    BottomSettingsLabel178(content,(Rect){20,1092,frame.width-40,28},"其他页面",19,0);
+    BottomSettingsSwitch178(self,content,1138,26,"我的显示继续追剧／追漫",0);
+    BottomSettingsSwitch178(self,content,1186,27,"阅读页显示去赚更多",0);
+    BottomSettingsSwitch178(self,content,1234,28,"侧栏显示常玩游戏",0);
+    BottomSettingsSwitch178(self,content,1282,29,"书架显示漫剧分组",0);
     V0(content,"release");
     V0(scroll,"release");
 }

@@ -285,7 +285,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8"),
+    require(release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9"),
             "This regression targets the R4 custom geometry fault and its R5 repair")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), [*bottom_labels(data), *FRAME_LABELS])
     report = {"passed": True, "sha256": hashlib.sha256(data).hexdigest(),

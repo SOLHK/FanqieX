@@ -220,7 +220,7 @@ def check_native_unwind(baseline: bytes, candidate: bytes) -> dict:
     need(current[:len(old)] == old, 'original 63 entries changed')
     need(current[len(old)] == (old_end, 0), 'old sentinel must become a zero range')
     version, = read(candidate, 0x818, '<I')
-    expected_kind = 3 if version in (0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08) and len(current) > 511 else 2
+    expected_kind = 3 if version in (0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09) and len(current) > 511 else 2
     need(kinds == [expected_kind], 'expected the version-specific bounded unwind page')
     need('__FQPATCH' in segments, 'missing executable extension')
     vm, vm_size, fileoff, filesize, maximum, initial = segments['__FQPATCH']

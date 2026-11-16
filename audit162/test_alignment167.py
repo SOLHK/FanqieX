@@ -99,18 +99,18 @@ def layout_cost(runtime):
 
 def exercise(data,labels,baseline):
     results=[]
-    compact_reader=release_version(data) in ('1.78R7', '1.78R8')
+    compact_reader=release_version(data) in ('1.78R7', '1.78R8', '1.78R9')
     nav_diameter=34. if compact_reader else 36.
     nav_padding=(nav_diameter-24.)*0.5
-    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8')
+    refined_reader=release_version(data) in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9')
     for slide in (0,0x100000000):
         c,r=machine(data,labels,slide)
         size_methods={cl:r.methods[r.get_method(r.classes[cl],r.sel('getInsertViewSize'))]['imp'] for cl in INSERTS}
         call(c,labels,'LFQH_FQHInstall')
-        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8') else 7
+        expected_hooks=10 if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9') else 7
         require(len([e for e in r.events if e['event']=='method_setImplementation'])==expected_hooks,'Exact stable hooks including scoped header owners')
         source=(ROOT/'native'/'AlignedGlass.m').read_text(encoding='utf-8')
-        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8'):
+        if release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9'):
             require('FQHHeader(Get(self,"searchBgView"))' in source and 'PrepareHeaderOwner' in source,'Header uses its clipped capsule path, not generic icon overflow')
         else:
             require('SSBookStoreCategorySignView' not in source and 'resetTopTabSearchViewWithRatio:' not in source and 'static void SearchColor(' not in source,'No category or interactive top-tab transition hook')
