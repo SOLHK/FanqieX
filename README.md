@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R34 测试版
+## FanqieX 1.78R35 测试版
 
-本版将短剧顶部分类胶囊改为与底栏一致的 Regular 液态玻璃，并给详情页返回按钮右侧的剧集标题增加留白。
+本版修复短剧顶部仍然灰白的问题：顶部明暗采用底栏的视频分类配色规则，避免读取外围浅色容器的背景。
 
-- [本版说明和安装方式](docs/REPAIR_1.78R34.md)
+- [本版说明和安装方式](docs/REPAIR_1.78R35.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R34。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R35。
 
 ## FanqieX 1.76
 
@@ -85,7 +85,7 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R34 --output build/ci178r34
+python3 scripts/verify162.py --version 1.78R35 --output build/ci178r35
 ```
 
 macOS / Xcode 27.2 构建：

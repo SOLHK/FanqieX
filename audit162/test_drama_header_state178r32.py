@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Execute header selection/palette fixes with the host's separate cell models.
+"""Execute header selection and the palette fallback without a native root owner.
 
 The host setters and UIColor decomposition are boundaries. Candidate ARM64
-installs the exact hooks, reads native isSelected flags, builds the lens frame
-and applies the already-set content background palette. No pixels are rendered.
+installs the exact hooks, reads native isSelected flags and builds the lens frame.
+This fixture lacks rootTabBarController, so R35 must retain the already-set
+content background fallback. No pixels are rendered.
 """
 import argparse
 import hashlib
@@ -128,11 +129,11 @@ def exercise(data, labels, expect_old=False, expect_button_material_baseline=Fal
                 rt.is_kind(glass, rt.classes["UIButton"]) and rt.objects[glass].state.get("configuration"),
                 "R33 reproduces the category-wide glass-button material instead of the dock's Regular effect view")
         return {"expected_r33_button_material_mismatch_reproduced": True, **initial}
-    if release_version(data) == "1.78R34":
-        require(regular, "R34 uses the same effect-view material family as the bottom dock")
+    if release_version(data) in ("1.78R34", "1.78R35"):
+        require(regular, "R34 and later use the same effect-view material family as the bottom dock")
     require(initial["lens_frame"] == (51., 4., 45., 34.) and initial["glass_style"] == 2,
             "The lens follows the actual comic title and dark content even when both cached indices disagree")
-    require(rt.old_palette_reads == 0, "Header appearance never consults the stale bottom-model resolver")
+    require(rt.old_palette_reads == 0, "Without rootTabBarController, the header uses content background and does not call the unrelated tabBarController resolver")
 
     send(cpu, rt, tabs, SELECT, titles[0], titles[1])
     require(rt.selection_calls == 1 and rt.objects[lens].state["frame"] == (4., 4., 47., 34.),

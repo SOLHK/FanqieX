@@ -3699,10 +3699,16 @@ static I DramaHeaderSelectedCategory(Obj tabs) {
 }
 
 static void DramaHeaderCategoryAppearance(Obj header,Obj glass) {
-    // The host applies the current page color to contentView. Its cached
-    // currentTabModel can lag the title models during native transitions.
-    Obj content=Get(Get(header,"delegate"),"contentView");
+    Obj feed=Get(header,"delegate"),content=Get(feed,"contentView");
     Obj color=Get(content,"backgroundColor");
+    // Video models can leave contentView at SS_COLOR_BG_F6 while the bottom
+    // resolver deliberately selects #222222 for the video page. Use that same
+    // resolver, with the rendered title's model rather than a lagging cache.
+    Obj owner=Get(feed,"rootTabBarController"),models=Get(feed,"tabModels");
+    I selected=DramaHeaderSelectedCategory(Get(feed,"simpleTabView"));
+    if (selected>=0 && (U)selected<DramaCategoryCount(models) && Kind(owner,"SSTabBarController") &&
+        InstanceABI(owner,"bottomTabBackgroundColorWithTabModel:","@24@0:8@16"))
+        color=O1(owner,"bottomTabBackgroundColorWithTabModel:",At(models,(U)selected));
     if (Responds(color,"resolvedColorWithTraitCollection:"))
         color=O1(color,"resolvedColorWithTraitCollection:",Get(content,"traitCollection"));
     I style=0;
