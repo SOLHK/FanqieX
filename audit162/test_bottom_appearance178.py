@@ -60,7 +60,7 @@ class Runtime(AppearanceRuntime):
         self.new_labels = {}
         self.motion_calls = []
         super().__init__(*args, **options)
-        self.motion_bridge = release_version(self.data) == "1.78R26"
+        self.motion_bridge = release_version(self.data) in ("1.78R26", "1.78R36")
         if self.motion_bridge:
             self._class("FQXDockMotion", "NSObject")
         if release_version(self.data) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36"):
