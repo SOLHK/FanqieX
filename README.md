@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R31 本地测试版
+## FanqieX 1.78R32 本地测试版
 
-本版将「导出日志」接到诊断页的原生列表行，并显示生成进度、分享状态和失败原因。
+本版修复短剧顶部分类选中效果、全集和原著入口与进度条的间距，以及详情页的返回和更多按钮。
 
-- [本版说明和安装方式](docs/REPAIR_1.78R31.md)
+- [本版说明和安装方式](docs/REPAIR_1.78R32.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R31。本轮使用 Windows LLVM 与 iOS 27.2 SDK 增量编译，真实 iPhone 触摸和分享面板需在设备上复测。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R32。
 
 ## FanqieX 1.76
 
@@ -85,7 +85,7 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R31 --output build/ci178r31
+python3 scripts/verify162.py --version 1.78R32 --output build/ci178r32
 ```
 
 macOS / Xcode 27.2 构建：

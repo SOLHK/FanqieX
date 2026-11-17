@@ -3180,24 +3180,34 @@ static void DramaDetailNavConstraintsKey(void) {}
 static void DramaDetailNavigationButton(Obj button,Obj nav) {
     if (!Kind(button,"UIButton") || !Belongs(button,nav)) return;
     if (!Enabled() || !FQHGlassAvailable()) { LandscapeControlGlass178R9(button,nav,44); return; }
+    Obj parent=Get(button,"superview"),glyph=Get(button,"imageView");
+    if (!parent || !Kind(glyph,"UIImageView") || !Belongs(glyph,button)) return;
     Obj glass=objc_getAssociatedObject(button,DramaGlassKey);
-    if (!glass) glass=PlaceDramaGlass(button,button,0,(Rect){0,0,36,36});
+    if (glass && Get(glass,"superview")!=parent) {
+        Obj previous=objc_getAssociatedObject(glass,DramaDetailNavConstraintsKey);
+        if (previous) V1(Lookup("NSLayoutConstraint"),"deactivateConstraints:",previous);
+        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,0,1);
+    }
+    if (!glass || Get(glass,"superview")!=parent)
+        glass=PlaceDramaGlass(button,parent,button,(Rect){0,0,36,36});
     if (!glass) return;
     if (!objc_getAssociatedObject(glass,DramaDetailNavConstraintsKey)) {
         VB(glass,"setTranslatesAutoresizingMaskIntoConstraints:",0);
+        // Native back buttons have an off-center image rect. Keep their hit
+        // region intact and center the backing on the actual visible glyph.
+        // A sibling backing cannot be reordered over UIButton's imageView.
         Obj constraints[]={
-            O1(Get(glass,"centerXAnchor"),"constraintEqualToAnchor:",Get(button,"centerXAnchor")),
-            O1(Get(glass,"centerYAnchor"),"constraintEqualToAnchor:",Get(button,"centerYAnchor")),
+            O1(Get(glass,"centerXAnchor"),"constraintEqualToAnchor:",Get(glyph,"centerXAnchor")),
+            O1(Get(glass,"centerYAnchor"),"constraintEqualToAnchor:",Get(glyph,"centerYAnchor")),
             ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"widthAnchor"),sel_registerName("constraintEqualToConstant:"),36.),
             ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"heightAnchor"),sel_registerName("constraintEqualToConstant:"),36.)};
         Obj array=((Obj(*)(Obj,Sel,Obj *,U))Message)(Lookup("NSArray"),sel_registerName("arrayWithObjects:count:"),constraints,4);
         V1(Lookup("NSLayoutConstraint"),"activateConstraints:",array);
-        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,BoolBox(1),1);
+        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,array,1);
     }
-    if (Flag(button,"clipsToBounds")) {
-        objc_setAssociatedObject(button,LandscapeClip178R12Key,BoolBox(1),1);
-        VB(button,"setClipsToBounds:",0);
-    }
+    VB(glass,"setHidden:",Flag(button,"isHidden") || Flag(glyph,"isHidden"));
+    ((void(*)(Obj,Sel,double))Message)(glass,sel_registerName("setAlpha:"),
+        ((double(*)(Obj,Sel))Message)(button,sel_registerName("alpha")));
     DramaClearBackground(button,1);
 }
 static void DramaDetailNavigationApply(Obj component) {
@@ -3221,6 +3231,11 @@ static void DramaDetailNavigationLeft(Obj self,Sel cmd) {
 }
 static void DramaDetailNavigationRight(Obj self,Sel cmd,Obj items) {
     ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCNavBarComponent","fqx178r29_originalNavRight:"))(self,cmd,items);
+    DramaDetailNavigationApply(self);
+}
+static void DramaDetailNavigationLegacyRight(Obj self,Sel cmd,Obj context,U value) {
+    ((void(*)(Obj,Sel,Obj,U))Original("FQVShortVideoListVCNavBarComponent",
+        "fqx178r32_originalLegacyNavRight:showItemValue:"))(self,cmd,context,value);
     DramaDetailNavigationApply(self);
 }
 static void DramaDetailMoreItemSetup(Obj self,Sel cmd) {
@@ -3267,6 +3282,8 @@ static void DramaDetailGlassInstall(void) {
         Hook(nav,"setupLayout:","fqx178r29_originalNavLayout:","v24@0:8@16",(Imp)DramaDetailNavigationLayout);
         Hook(nav,"updateNavgationBarLeftView","fqx178r29_originalNavLeft","v16@0:8",(Imp)DramaDetailNavigationLeft);
         Hook(nav,"updateNavgationBarRightViewWithRightItems:","fqx178r29_originalNavRight:","v24@0:8@16",(Imp)DramaDetailNavigationRight);
+        Hook(nav,"updateNavgationBarRightView:showItemValue:","fqx178r32_originalLegacyNavRight:showItemValue:",
+             "v32@0:8@16Q24",(Imp)DramaDetailNavigationLegacyRight);
     }
     if (Signature("FQVShortVideoMoreBtnNavBarItem","moreBtn","@16@0:8"))
         Hook("FQVShortVideoMoreBtnNavBarItem","setUp","fqx178r29_originalMoreSetup","v16@0:8",(Imp)DramaDetailMoreItemSetup);
@@ -3512,15 +3529,19 @@ static B DramaCategoryCellVisible(Obj models,Obj path) {
     return !path || DramaCategoryButtonVisible(models,((I(*)(Obj,Sel))Message)(path,sel_registerName("item")));
 }
 
-static Obj DramaCategoryCellModels(Obj tabs) {
+static Obj DramaCategoryHeader(Obj tabs) {
     for (Obj node=Get(tabs,"superview");node;node=Get(node,"superview")) {
         if (!Kind(node,"SSVideoSeriesFeedHeaderView")) continue;
         Obj owner=Get(node,"delegate");
         if (DramaVisibilityOwnsHeader(node) && Get(owner,"simpleTabView")==tabs)
-            return DramaCategoryModelsForTabs(owner,tabs);
+            return node;
         break;
     }
     return 0;
+}
+
+static Obj DramaCategoryCellModels(Obj tabs) {
+    return DramaCategoryModelsForTabs(Get(DramaCategoryHeader(tabs),"delegate"),tabs);
 }
 
 static Obj DramaCategoryCell(Obj self,Sel cmd,Obj collection,Obj path) {
@@ -3629,6 +3650,41 @@ static void DramaHeaderSelection(Obj glass,Rect frame) {
     if (Flag(lens,"isHidden")) VB(lens,"setHidden:",0);
 }
 
+static I DramaHeaderSelectedCategory(Obj tabs) {
+    Obj cells=Get(tabs,"dataSource");
+    U count=DramaCategoryCount(cells);
+    I selected=-1;
+    for (U i=0;i<count && i<24;++i) {
+        Obj model=At(cells,i);
+        if (!InstanceABI(model,"isSelected","B16@0:8")) return -1;
+        if (!Flag(model,"isSelected")) continue;
+        if (selected>=0) return -1;
+        selected=(I)i;
+    }
+    return selected;
+}
+
+static void DramaHeaderCategoryAppearance(Obj header,Obj glass) {
+    // The host applies the current page color to contentView. Its cached
+    // currentTabModel can lag the title models during native transitions.
+    Obj content=Get(Get(header,"delegate"),"contentView");
+    Obj color=Get(content,"backgroundColor");
+    if (Responds(color,"resolvedColorWithTraitCollection:"))
+        color=O1(color,"resolvedColorWithTraitCollection:",Get(content,"traitCollection"));
+    I style=0;
+    double red=0,green=0,blue=0,alpha=0,white=0;
+    if (Kind(color,"UIColor")) {
+        if (((B(*)(Obj,Sel,double *,double *,double *,double *))Message)(color,
+            sel_registerName("getRed:green:blue:alpha:"),&red,&green,&blue,&alpha))
+            white=(red+green*2+blue)*0.25;
+        else ((B(*)(Obj,Sel,double *,double *))Message)(color,
+            sel_registerName("getWhite:alpha:"),&white,&alpha);
+        if (alpha>=0.5) style=white<0.5 ? 2 : 1;
+    }
+    if (((I(*)(Obj,Sel))Message)(glass,sel_registerName("overrideUserInterfaceStyle"))!=style)
+        Q1(glass,"setOverrideUserInterfaceStyle:",style);
+}
+
 static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj models,B show) {
     Obj collection=Get(tabs,"collectionView");
     U count=DramaCategoryCount(Get(tabs,"dataSource"));
@@ -3648,38 +3704,31 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
             double right=last.x+last.width+10;
             double height=__builtin_fmin(DramaHeaderButtonHeight,bounds.height);
             capsule=(Rect){left,first.y+(first.height-height)/2,right-left,height};
-            Obj current=Get(Get(header,"delegate"),"currentTabModel");
-            if (current && models) {
-                I index=-1,type=DramaCategoryType(current);
-                for (U i=0;i<DramaCategoryCount(models);++i) {
-                    Obj model=At(models,i);
-                    if (model==current || (type>=0 && DramaCategoryType(model)==type)) { index=(I)i; break; }
+            // Read the same cell-model state used by the host's selected title.
+            I index=DramaHeaderSelectedCategory(tabs);
+            if (index>=0 && (U)index<count && DramaCategoryButtonVisible(models,index)) {
+                Rect selected=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,index),categories);
+                double center=selected.x+selected.width/2,start=left+4,end=right-4;
+                for (I previous=index-1;previous>=firstIndex;--previous) {
+                    if (!DramaCategoryButtonVisible(models,previous)) continue;
+                    Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,previous),categories);
+                    start=__builtin_fmax(start,(neighbor.x+neighbor.width/2+center)/2);
+                    break;
                 }
-                if (index>=0 && (U)index<count && DramaCategoryButtonVisible(models,index)) {
-                    Rect selected=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,index),categories);
-                    double center=selected.x+selected.width/2,start=left+4,end=right-4;
-                    for (I previous=index-1;previous>=firstIndex;--previous) {
-                        if (!DramaCategoryButtonVisible(models,previous)) continue;
-                        Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,previous),categories);
-                        start=__builtin_fmax(start,(neighbor.x+neighbor.width/2+center)/2);
-                        break;
-                    }
-                    for (I next=index+1;next<=lastIndex;++next) {
-                        if (!DramaCategoryButtonVisible(models,next)) continue;
-                        Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,next),categories);
-                        end=__builtin_fmin(end,(neighbor.x+neighbor.width/2+center)/2);
-                        break;
-                    }
-                    selection=(Rect){start-left,4,end-start,height-8};
+                for (I next=index+1;next<=lastIndex;++next) {
+                    if (!DramaCategoryButtonVisible(models,next)) continue;
+                    Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,next),categories);
+                    end=__builtin_fmin(end,(neighbor.x+neighbor.width/2+center)/2);
+                    break;
                 }
+                selection=(Rect){start-left,4,end-start,height-8};
             }
         }
     }
     Obj glass=VisibleRect(capsule) ? PlaceDramaGlass(categories,categories,0,capsule) : (Obj)0;
     DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
     if (glass) {
-        Obj tabBar=Get(Get(Get(header,"delegate"),"tabBarController"),"tabBar");
-        FQHUpdateTabAppearance(tabBar,glass,0);
+        DramaHeaderCategoryAppearance(header,glass);
         DramaHeaderSelection(glass,selection);
     }
     else RemoveDramaGlass(categories);
@@ -3801,6 +3850,18 @@ static void DramaHeaderTabGeometry(Obj self,Sel cmd,double desired,double base,B
 static void DramaHeaderSelectionChanged(Obj self,Sel cmd,Obj model) {
     ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedViewController",
         "fqx_originalDramaHeaderSelected:"))(self,cmd,model);
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+
+static void DramaHeaderTitleSelectionChanged(Obj self,Sel cmd,Obj selected,Obj unselected) {
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSHGBookStoreCategoryTitleView",
+        "fqx_originalDramaTitleSelection:unselected:"))(self,cmd,selected,unselected);
+    DramaVisibilityApplyHeader(DramaCategoryHeader(self));
+}
+
+static void DramaHeaderContentBackgroundChanged(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaContentBackground:"))(self,cmd,model);
     DramaVisibilityApplyHeader(Get(self,"headerView"));
 }
 
@@ -4093,6 +4154,8 @@ static void DramaVisibilityInstall(void) {
     Hook(tabs,"collectionView:layout:sizeForItemAtIndexPath:","fqx_originalDramaTitleSize:layout:path:",
          "{CGSize=dd}40@0:8@16@24@32",(Imp)DramaCategoryCellSize);
     Hook(tabs,"innerCellSpacing","fqx_originalDramaInnerCellSpacing","d16@0:8",(Imp)DramaCategoryCellSpacing);
+    Hook(tabs,"refreshSelectedCellModel:unselectedCellModel:","fqx_originalDramaTitleSelection:unselected:",
+         "v32@0:8@16@24",(Imp)DramaHeaderTitleSelectionChanged);
     if (Signature("SSVideoSeriesFeedHeaderSearchView","setupNewSearchBar","v16@0:8") &&
         Signature("SSVideoSeriesFeedHeaderSearchView","searchBgView","@16@0:8"))
         Hook("SSVideoSeriesFeedHeaderSearchView","setSearchBgView:","fqx_originalDramaSetSearchBackground:",
@@ -4112,6 +4175,8 @@ static void DramaVisibilityInstall(void) {
          "fqx_originalDramaHeaderTabGeometry:base:reserve:","v36@0:8d16d24B32",(Imp)DramaHeaderTabGeometry);
     Hook(feed,"finalizeTabSelectionUIStateWithTabModel:","fqx_originalDramaHeaderSelected:",
          "v24@0:8@16",(Imp)DramaHeaderSelectionChanged);
+    Hook(feed,"updateContentBackgroundColorWithTabModel:","fqx_originalDramaContentBackground:",
+         "v24@0:8@16",(Imp)DramaHeaderContentBackgroundChanged);
     Hook(header,"applySearchBarVisibilityForCurrentLayout","fqx_originalDramaSearchBarLayout",
          "d16@0:8",(Imp)DramaVisibilitySearchBarLayout);
     Hook(header,"updateFindDramaSearchAlphaV731:","fqx_originalDramaSearchBarAlpha:",
@@ -4168,8 +4233,10 @@ static Obj DramaEpisodeContent(Obj entry) {
         return Get(entry,"albumDetailInfo") ? Get(entry,"containerView") : (Obj)0;
     if (!Kind(entry,"SSShortVideoBottomDistributionView")) return 0;
     Obj owned=objc_getAssociatedObject(entry,DramaWatchContentKey);
-    return owned ? owned : DramaWatchIsEpisode(Get(entry,"lastRenderModel")) ?
-        Get(entry,"defaultContentView") : (Obj)0;
+    if (owned) return owned;
+    if (DramaWatchIsEpisode(Get(entry,"lastRenderModel"))) return Get(entry,"defaultContentView");
+    Obj related=objc_getAssociatedObject(entry,DramaDetailRelatedContentKey);
+    return Get(related,"superview")==entry && objc_getAssociatedObject(related,DramaGlassKey) ? related : (Obj)0;
 }
 static Obj DramaEpisodeMaterial(Obj entry) {
     if (Kind(entry,"SSShortVideoOutterMultiGenreFeedAboveProgressView")) {
@@ -4289,13 +4356,27 @@ static double DramaAnchorConstant(Obj anchor) {
     return ((double(*)(Obj,Sel))Message)(anchor,sel_registerName("constant"));
 }
 
+static void DramaSetAnchorConstant(Obj anchor,double value) {
+    // The host updates and reinstalls its Masonry constraint. Keep the offset
+    // on the wrapper and UIKit constraint in sync so a later pass uses it.
+    Obj installed=Get(Get(Get(anchor,"firstItem"),"mas_installedConstraints"),"allObjects");
+    for (U i=0,count=TabCount(installed);i<count;++i) {
+        Obj wrapper=At(installed,i);
+        if (!Kind(wrapper,"MASViewConstraint") || Get(wrapper,"layoutConstraint")!=anchor ||
+            !InstanceABI(wrapper,"setLayoutConstant:","v24@0:8d16")) continue;
+        ((void(*)(Obj,Sel,double))Message)(wrapper,sel_registerName("setLayoutConstant:"),value);
+        return;
+    }
+    ((void(*)(Obj,Sel,double))Message)(anchor,sel_registerName("setConstant:"),value);
+}
+
 static void DramaSpacingRestoreAnchor(Obj root,Obj keep) {
     Obj previous=objc_getAssociatedObject(root,DramaSpacingAnchor178R6Key);
     if (!previous || previous==keep) return;
     Obj stock=objc_getAssociatedObject(previous,DramaSpacingStock178R2Key);
     Obj applied=objc_getAssociatedObject(previous,DramaSpacingApplied178R2Key);
     if (DramaAnchorConstant(previous)==Double(applied))
-        ((void(*)(Obj,Sel,double))Message)(previous,sel_registerName("setConstant:"),Double(stock));
+        DramaSetAnchorConstant(previous,Double(stock));
     objc_setAssociatedObject(previous,DramaSpacingStock178R2Key,0,1);
     objc_setAssociatedObject(previous,DramaSpacingApplied178R2Key,0,1);
     objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,0,1);
@@ -4444,7 +4525,7 @@ void FQHDramaSpacing178R2(Obj root) {
                 objc_setAssociatedObject(anchor,DramaSpacingStock178R2Key,Number(stockConstant),1);
                 objc_setAssociatedObject(anchor,DramaSpacingApplied178R2Key,Number(wantedConstant),1);
                 objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,anchor,1);
-                ((void(*)(Obj,Sel,double))Message)(anchor,sel_registerName("setConstant:"),wantedConstant);
+                DramaSetAnchorConstant(anchor,wantedConstant);
             }
             // The rail can change during a child callback, after the parent
             // has solved constraints. Commit the same resolved frame now.

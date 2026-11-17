@@ -177,7 +177,7 @@ def exercise(data, labels):
          rt.sel("fqx178_bottomOptionChanged:"), switch)
     require(rt.objects[shelf].state["showCellModels"] == newer_items,
             "Restoration uses the newest native array and does not revive removed books")
-    if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"):
+    if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
         call(cpu, labels, "LFQH_FQHInstall")
         controller = rt.obj(SHELF_CONTROLLER, "book grid", viewModel=shelf)
         history_page = rt.obj("UIViewController", "mixed History page", filterSelection="all")
@@ -214,7 +214,7 @@ def exercise(data, labels):
     return {"independent_visibility_switches": 4, "original_arrays_unchanged": True,
             "native_hidden_state_preserved": True, "settings_restore_live_views": True,
             "shared_shelf_display_and_size_mapping": True, "latest_host_array_restored": True,
-            "defers_shelf_reload_while_history_is_active": release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")}
+            "defers_shelf_reload_while_history_is_active": release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")}
 
 
 def main():
@@ -223,7 +223,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"), "Use an R9 or later candidate")
+    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"), "Use an R9 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178", "LFQH_FQHInstall"])
     report = {"passed": True, **exercise(data, labels), "device_tested": False}

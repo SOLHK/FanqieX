@@ -107,6 +107,31 @@ class Runtime(PageRuntime):
         self.keep_stale_category_index = False
         self.search_actions = 0
         self.secondary_fill_style = "dark"
+        self.native_title_models = release_version(data) == "1.78R32"
+        if self.native_title_models:
+            self._class("FQRJXCategoryTitleCellModel", "NSObject")
+            self._add(self.classes["FQRJXCategoryTitleCellModel"], "isSelected", self.HOST_GETTER, "B16@0:8")
+
+    def sync_title_selection(self, tabs, selected):
+        """Model the native title-model update alongside each fixture commit.
+
+        R32's independent header-state test deliberately disagrees these values;
+        this broader visibility fixture continues to model synchronized commits.
+        """
+        if not self.native_title_models:
+            return
+        state = self.objects[tabs].state
+        owner = self.objects[state["delegate"]].state
+        models = self.objects[owner["tabModels"]].state["items"]
+        current = self.objects[selected].state if selected else {}
+        data_source = self.objects[state["dataSource"]].state["items"]
+        cell_class = self.classes["FQRJXCategoryTitleCellModel"]
+        if len(data_source) != len(models) or any(self.objects[item].cls != cell_class for item in data_source):
+            data_source = [self.obj("FQRJXCategoryTitleCellModel", "native title selection", isSelected=False) for _ in models]
+            state["dataSource"] = self.obj("NSArray", "native title models", items=data_source)
+        for model, cell in zip(models, data_source):
+            self.objects[cell].state["isSelected"] = bool(selected) and (
+                model == selected or self.objects[model].state.get("tabType") == current.get("tabType"))
 
     def responds(self, receiver, name):
         if ((name == "allObjects" and self.is_kind(receiver, self.classes["NSHashTable"])) or
@@ -201,6 +226,7 @@ class Runtime(PageRuntime):
             tabs = state.get("simpleTabView")
             if tabs:
                 self.objects[tabs].state.update(dataSource=models, selectedIndex=index)
+                self.sync_title_selection(tabs, entries[index])
             return self.finish(cpu)
         if pc == self.SEARCH_HIDDEN:
             self.objects[receiver].state["hidden"] = bool(cpu.x[2])
@@ -265,6 +291,7 @@ class Runtime(PageRuntime):
                 state["currentTabModel"] = cpu.x[2]
                 if not self.keep_stale_category_index:
                     self.objects[state["simpleTabView"]].state["selectedIndex"] = self.objects[cpu.x[2]].state["index"]
+                self.sync_title_selection(state["simpleTabView"], cpu.x[2])
                 return self.finish(cpu)
             return self.finish(cpu, int(state.get(name, 0)))
         if pc - self.slide == 0xa5d4 and name in (
@@ -286,20 +313,20 @@ def exercise(data, labels):
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), simple_header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
     version = release_version(data)
-    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")
-    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")
+    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")
+    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")
     category_regressions = []
-    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")
-    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}
-    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}
+    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")
+    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}
+    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}
     search_stock_frame = (402., 8., 26., 26.) if compact_header else (392., 0., 44., 44.)
     slot = rt.view("UIView", "native magnifier slot", search_stock_frame, search)
     image = rt.obj("UIImage", "app magnifier")
     icon = rt.view("UIImageView", "native magnifier", (0., 0., 26., 26.) if compact_header else (9., 9., 26., 26.),
                    slot, image=image, contentMode=0, nativeAction="search")
     bar = rt.view("UIView", "fresh find-drama search background")
-    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}
-    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}
+    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}
+    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}
     if first_frame_checked:
         original = bar
         send(cpu, rt, search, "setSearchBgView:", original)
@@ -371,7 +398,7 @@ def exercise(data, labels):
         require(not search_shown() and hidden(slot) and hidden(icon),
                 "Feed appearance with a pending title row cannot reveal either search surface")
 
-    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}
+    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}
     if glass_checked:
         models = [rt.obj(MODEL, f"category {index}", index=index, tabType=kind)
                   for index, kind in enumerate((7, 11, 103))]
@@ -382,6 +409,7 @@ def exercise(data, labels):
         collection = rt.view("UICollectionView", "native category collection", (0., 0., 140., 44.), tabs)
         rt.objects[tabs].state["collectionView"] = collection
         rt.objects[controller].state.update(simpleTabView=tabs, tabModels=rows, currentTabModel=models[0])
+        rt.sync_title_selection(tabs, models[0])
 
         send(cpu, rt, controller, "relayoutHeaderView")
         group, search_glass = material(categories), material(search_surface)
@@ -464,12 +492,14 @@ def exercise(data, labels):
             # A horizontal page transition may commit its model before another
             # controller callback; header layout must redraw that same selection.
             rt.objects[controller].state["currentTabModel"] = models[1]
+            rt.sync_title_selection(tabs, models[1])
             send(cpu, rt, header, "layoutSubviews")
             middle_x = rt.objects[lens].state["frame"][0]
             require(first_x < middle_x < 96. and rt.objects[tabs].state["selectedIndex"] == 2,
                     "Header layout refreshes the current feed selection after paging")
             replacement = rt.obj(MODEL, "replacement current model", tabType=11, index=1)
             rt.objects[controller].state["currentTabModel"] = replacement
+            rt.sync_title_selection(tabs, replacement)
             send(cpu, rt, header, "layoutSubviews")
             require(rt.objects[lens].state["frame"][0] == middle_x,
                     "A replaced current model resolves the same native tab type")
@@ -481,6 +511,7 @@ def exercise(data, labels):
             x, y, _, height = category_state["frame"]
             category_state.update(frame=(x, y, 96., height), bounds=(0., 0., 96., 44.))
             rt.objects[controller].state["currentTabModel"] = models[2]
+            rt.sync_title_selection(tabs, models[2])
             send(cpu, rt, header, "layoutSubviews")
             gx, _, gw, _ = rt.objects[group].state["frame"]
             lx, _, lw, _ = rt.objects[lens].state["frame"]
@@ -547,6 +578,7 @@ def exercise(data, labels):
                 for model, expected in ((models[0], (4., 4., 51.25, 34.)),
                                         (models[2], (55.25, 4., 49.25, 34.))):
                     rt.objects[controller].state["currentTabModel"] = model
+                    rt.sync_title_selection(tabs, model)
                     send(cpu, rt, header, "layoutSubviews")
                     require(rt.objects[lens].state["frame"] == expected,
                             "A hidden middle label is skipped when choosing adjacent visible slot boundaries")
@@ -555,10 +587,12 @@ def exercise(data, labels):
                 unmatched = rt.obj(MODEL, "unmatched committed page", tabType=999, index=2)
                 for model in (models[1], unmatched, 0):
                     rt.objects[controller].state["currentTabModel"] = model
+                    rt.sync_title_selection(tabs, model)
                     send(cpu, rt, header, "layoutSubviews")
                     require(hidden(lens) and rt.objects[tabs].state["selectedIndex"] == 2,
                             "Hidden, unknown or absent committed models never fall back to the stale native index")
                 rt.objects[controller].state["currentTabModel"] = models[2]
+                rt.sync_title_selection(tabs, models[2])
                 send(cpu, rt, header, "layoutSubviews")
                 require(not hidden(lens), "Restoring the committed visible model restores its selection fill")
                 category_regressions.append("hidden neighbors skipped; hidden or missing current model never falls back")
@@ -700,7 +734,7 @@ def exercise(data, labels):
         native_state([source[2], source[1]], 1)
         category_cases.append("native ordering and original selected refresh preserved")
 
-    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"}:
+    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"}:
         titles = ["推荐", "漫剧", "看剧"]
         source = [rt.obj(MODEL, title, tabType=kind, title=rt.text_object(title), index=index)
                   for index, (kind, title) in enumerate(zip((7, 11, 103), titles))]
@@ -816,7 +850,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"),
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"),
             "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])

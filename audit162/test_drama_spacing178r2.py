@@ -9,6 +9,7 @@ unreported parent hierarchy remains an explicit synthetic UIKit boundary.
 """
 import argparse
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -29,6 +30,8 @@ class Runtime(ReaderRuntime):
     PROGRESS_LAYOUT = 0x330f3400
     PROGRESS_PLAYING = 0x330f3500
     PROGRESS_ACTIVATED = 0x330f3600
+    MASONRY_GETTER = 0x330f3700
+    MASONRY_CONSTANT = 0x330f3708
 
     def __init__(self, data):
         super().__init__(data)
@@ -38,9 +41,12 @@ class Runtime(ReaderRuntime):
             ("ObservedHostVideoProgressView", "UIView"),
             ("FQVShortVideoProgressView", "UIView"),
             ("NSLayoutConstraint", "NSObject"),
+            ("MASViewConstraint", "NSObject"),
+            ("NSSet", "NSObject"),
+            ("NativeInsertContainerView", "UIView"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
         self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
@@ -48,15 +54,28 @@ class Runtime(ReaderRuntime):
         self._add(progress, "layoutProgressView", self.PROGRESS_LAYOUT, "v16@0:8")
         self._add(progress, "updateProgressViewWithPlaying:animate:", self.PROGRESS_PLAYING, "v24@0:8B16B20")
         self._add(progress, "updateProgressViewWithActivatedState:", self.PROGRESS_ACTIVATED, "v24@0:8Q16")
+        self._add(self.classes["UIView"], "mas_installedConstraints", self.MASONRY_GETTER, "@16@0:8")
+        self._add(self.classes["MASViewConstraint"], "layoutConstraint", self.MASONRY_GETTER, "@16@0:8")
+        self._add(self.classes["MASViewConstraint"], "setLayoutConstant:", self.MASONRY_CONSTANT, "v24@0:8d16")
         self.display_mutator = None
         self.progress_mutator = None
 
     def responds(self, receiver, name):
         if receiver in self.objects and self.is_kind(receiver, self.classes["NSHashTable"]) and name in ("anyObject", "allObjects"):
             return True
+        if receiver in self.objects and self.objects[receiver].cls == self.classes["NSSet"] and name == "allObjects":
+            return True
         return super().responds(receiver, name)
 
     def handle(self, cpu, pc):
+        if pc == self.MASONRY_GETTER:
+            return self.finish(cpu, self.objects[cpu.x[0]].state.get(self.selector_names[cpu.x[1]], 0))
+        if pc == self.MASONRY_CONSTANT:
+            state = self.objects[cpu.x[0]].state
+            state["layoutConstant"] = cpu.fp(0)
+            self.objects[state["layoutConstraint"]].state["constant"] = cpu.fp(0)
+            self.event("masonryConstant", cpu.x[0], value=cpu.fp(0))
+            return self.finish(cpu)
         if pc == self.DID_DISPLAY:
             if self.display_mutator:
                 self.display_mutator()
@@ -185,7 +204,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
-    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"):
+    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
         return
 
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
@@ -226,7 +245,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     for selector, args, track_y in (("layoutProgressView", (), 871.),
                                      ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
         send(cpu, rt, progress, selector, *args)
-        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"):
+        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
             glass = glass_rect(rt, v["content"])
             require(track_y-glass[1]-glass[3] == 8.,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
@@ -283,9 +302,87 @@ def logged_geometry(data, labels):
     return cpu, rt, v
 
 
+def verify_masonry_reapply(data, labels, related=False):
+    """Host wrapper reapply occurs after the correction/logging callback returns."""
+    fixed = release_version(data) == "1.78R32"
+    cpu, rt, v = fixture(data, labels)
+    root, insert, progress, track = (v[key] for key in ("root", "info", "progress", "track"))
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, root, "layoutSubviews")
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
+    rt.objects[insert].cls = rt.classes["NativeInsertContainerView"]
+    rt.objects[root].state.update(frame=(0., 0., 440., 876.), bounds=(0., 0., 440., 876.),
+                                  insertAboveProgressView=insert)
+    rt.objects[progress].cls = rt.classes["FQVShortVideoProgressView"]
+    rt.objects[progress].state.update(frame=(0., 851., 440., 30.), bounds=(0., 0., 440., 30.),
+                                      progressBarBackgroundView=track)
+    rt.objects[track].state.update(frame=(16., 22., 408., 2.), bounds=(0., 0., 408., 2.))
+    anchor = rt.obj("NSLayoutConstraint", "native bottom anchor", firstItem=insert, secondItem=root,
+                    firstAttribute=4, secondAttribute=4, relation=0, multiplier=1., constant=0., isActive=1)
+    unrelated = rt.obj("NSLayoutConstraint", "unrelated width anchor", firstItem=insert, secondItem=root,
+                       firstAttribute=7, secondAttribute=7, relation=0, multiplier=1., constant=22., isActive=1)
+    wrapper = rt.obj("MASViewConstraint", "host wrapper", layoutConstraint=anchor, layoutConstant=0.)
+    decoy = rt.obj("MASViewConstraint", "unrelated wrapper", layoutConstraint=unrelated, layoutConstant=22.)
+    rt.objects[insert].state["mas_installedConstraints"] = rt.obj("NSSet", "native installed wrappers", items=[decoy, wrapper])
+    rt.objects[root].state["constraints"] = rt.obj("NSArray", "native constraints", items=[unrelated, anchor])
+    require(rt.sel("mas_installedConstraints") not in rt.own[rt.classes["NativeInsertContainerView"]],
+            "The native installed-constraint getter is inherited from UIView")
+
+    if related:
+        entry, content = v["entry"], v["content"]
+        rt.associations.pop((entry, labels["LFQH_DramaWatchContentKey"]), None)
+        rt.objects[entry].state["defaultContentView"] = 0
+        bar = rt.obj("NSObject", "native related-book bar", bottomBarType=rt.text_object("original_novel"))
+        rt.objects[entry].state["lastRenderModel"] = rt.obj("NSObject", "related-book render", bottomBar=bar)
+        rt.associations[(entry, labels["LFQH_DramaDetailRelatedContentKey"])] = content
+        require((content, labels["LFQH_DramaGlassKey"]) in rt.associations,
+                "The related-row fixture retains its actual existing owned glass")
+
+    def solve_native_frame():
+        state = rt.objects[insert].state
+        x, _, width, height = state["frame"]
+        state["frame"] = (x, 876. + rt.objects[anchor].state["constant"] - height, width, height)
+
+    def late_masonry_pass():
+        # Host MASViewConstraint reapply uses its own cached constant. Do not
+        # invoke the plugin again before reading the final visible geometry.
+        rt.objects[anchor].state["constant"] = rt.objects[wrapper].state["layoutConstant"]
+        solve_native_frame()
+
+    solve_native_frame()
+    send(cpu, rt, root, "layoutSubviews")
+    before = glass_rect(rt, v["content"])
+    measured_gap = 873. - before[1] - before[3]
+    late_masonry_pass()
+    after = glass_rect(rt, v["content"])
+    settled_gap = 873. - after[1] - after[3]
+    expected_measured = 8. if fixed or not related else 0.
+    require(measured_gap == expected_measured and settled_gap == (8. if fixed else 0.),
+            "The final host pass preserves R32 spacing and reproduces the R31 stale-wrapper/related-row gap")
+    require(rt.objects[wrapper].state["layoutConstant"] == (-8. if fixed else 0.) and
+            rt.objects[decoy].state["layoutConstant"] == 22. and rt.objects[unrelated].state["constant"] == 22.,
+            "Only the exact native anchor's Masonry wrapper changes")
+    if fixed:
+        for _ in range(3):
+            send(cpu, rt, root, "layoutSubviews")
+            late_masonry_pass()
+            glass = glass_rect(rt, v["content"])
+            require(873. - glass[1] - glass[3] == 8. and rt.objects[wrapper].state["layoutConstant"] == -8.,
+                    "Repeated native wrapper passes do not accumulate the correction")
+        rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+        send(cpu, rt, root, "layoutSubviews")
+        late_masonry_pass()
+        require(rt.objects[wrapper].state["layoutConstant"] == rt.objects[anchor].state["constant"] == 0.,
+                "Disabling restores both the wrapper and UIKit anchor baseline")
+    return {"related_row": related, "measured_gap": measured_gap, "after_wrapper_reapply_gap": settled_gap,
+            "r31_gap_reproduced": not fixed, "masonry_wrapper_persists": fixed,
+            "unrelated_wrapper_unchanged": True}
+
+
 def verify(data, labels):
     cases = []
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")
+    masonry_cases = []
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -345,7 +442,7 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31") else "episode-glass-178R6"
+        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32") else "episode-glass-178R6"
         require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
@@ -370,10 +467,13 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
             cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
         if "LFQH_DramaProgressActivated" in labels:
             cases.append("paused rail, retiring episode and temporarily hidden current insert")
+        if release_version(data) in ("1.78R31", "1.78R32"):
+            masonry_cases = [verify_masonry_reapply(data, labels), verify_masonry_reapply(data, labels, related=True)]
+            cases.append("Masonry wrapper reapply and independently decorated related-book row")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)
@@ -466,7 +566,7 @@ def verify(data, labels):
             [record for event,record in rt.records if event == "dramaControlSpacing178R2"][-1]["status"] == "scanLimit",
             "An incomplete bounded traversal cannot claim a unique episode entry")
     cases.append("scan budget: incomplete discovery restores the host frame")
-    return {"passed": True, "device_tested": False, "cases": cases,
+    return {"passed": True, "device_tested": False, "cases": cases, "masonry_cases": masonry_cases,
             "limits": ["Candidate ARM64 executes against explicit UIKit/Foundation boundaries.",
                        "Real progress-class discovery, clipping, touch delivery and rendering need device acceptance."]}
 
@@ -480,8 +580,11 @@ def main():
     composed = args.candidate.with_suffix(".composed.s")
     pause = "LFQH_DramaProgressActivated"
     direct_pause = [pause] if f"\n{pause}:" in composed.read_text(encoding="utf-8") else []
-    labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + direct_pause)))
+    related = ["LFQH_DramaWatchContentKey", "LFQH_DramaDetailRelatedContentKey", "LFQH_DramaGlassKey"] \
+        if release_version(data) in ("1.78R31", "1.78R32") else []
+    labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + direct_pause + related)))
     result = verify(data, labels)
+    result["candidate_sha256"] = hashlib.sha256(data).hexdigest()
     args.report.write_text(json.dumps(result, ensure_ascii=False, indent=2)+"\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
