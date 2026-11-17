@@ -233,7 +233,7 @@ def verify_native_constraint(data, labels, reference_attribute):
 
     rt.display_mutator = native_display
     send(cpu, rt, root, "controlViewDidDisplay")
-    require(previous_anchor_state["constant"] == stock+2. and anchor_state["constant"] == stock-8.,
+    require(previous_anchor_state["constant"] == stock+2. and anchor_state["constant"] == stock-target_gap,
             "After host display, the replacement anchor owns the gap and the old anchor is restored")
     native_layout(rt, root)
 
@@ -251,11 +251,11 @@ def verify_native_constraint(data, labels, reference_attribute):
         send(cpu, rt, progress, selector, *args)
         if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36"):
             glass = glass_rect(rt, v["content"])
-            require(track_y-glass[1]-glass[3] == 8.,
+            require(track_y-glass[1]-glass[3] == target_gap,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
         native_layout(rt, root)
         glass = glass_rect(rt, v["content"])
-        require(track_y-glass[1]-glass[3] == 8. and anchor_state["constant"] == stock-8.+(track_y-873.),
+        require(track_y-glass[1]-glass[3] == 8. and anchor_state["constant"] == stock-target_gap+(track_y-873.),
                 "The changed track updates the episode gap without a parent callback: "+selector)
     if "LFQH_DramaProgressActivated" in labels:
         other = rt.view("SSShortVideoAlbumSeriesBottomInsertView", "outgoing episode", (0., 760., 440., 40.), root,
@@ -271,14 +271,14 @@ def verify_native_constraint(data, labels, reference_attribute):
         rt.progress_mutator = pause_rail
         send(cpu, rt, progress, "updateProgressViewWithActivatedState:", 3)
         glass = glass_rect(rt, v["content"])
-        require(871.-glass[1]-glass[3] == 8., "Pause keeps the active insert above the thicker rail")
+        require(871.-glass[1]-glass[3] == target_gap, "Pause keeps the active insert above the thicker rail")
         rt.objects[v["entry"]].state["hidden"] = True
         send(cpu, rt, root, "layoutSubviews")
-        require(anchor_state["constant"] == stock-10.,
+        require(anchor_state["constant"] == stock-target_gap-2.,
                 "A temporarily hidden owned insert is not reset by an outgoing episode")
         rt.objects[v["entry"]].state["hidden"] = False
         send(cpu, rt, root, "layoutSubviews")
-        require(871.-glass_rect(rt, v["content"])[1]-glass_rect(rt, v["content"])[3] == 8.,
+        require(871.-glass_rect(rt, v["content"])[1]-glass_rect(rt, v["content"])[3] == target_gap,
                 "The same row is still separated after its foreground returns")
     rt.reparent(root, 0)
     send(cpu, rt, root, "layoutSubviews")
@@ -565,7 +565,7 @@ def verify(data, labels):
     send(cpu, rt, v["root"], "layoutSubviews")
     row = glass_rect(rt, v["content"]) if glass_spacing else global_rect(rt, v["entry"])
     reference_top = 873. if visible_track_spacing else 842.
-    require(reference_top-row[1]-row[3] == 8. and
+    require(reference_top-row[1]-row[3] == (12. if release_version(data) == "1.78R36" else 8.) and
             rt.objects[v["progress"]].state["frame"] == (16., 842., 408., 64.) and
             rt.objects[v["progress"]].state["gestureRecognizers"] == ["host seek pan"],
             "A 64pt native seek owner remains unchanged and cannot inflate the visible gap in R3")
@@ -613,7 +613,7 @@ def verify(data, labels):
     rt.objects[v["progress"]].state["frame"] = (16., 730., 408., 40.)
     for _ in range(4):
         send(cpu, rt, v["root"], "layoutSubviews")
-        require(rt.objects[v["info"]].state["frame"] == (0., 244. if glass_spacing else 241. if visible_track_spacing else 222., 440., 500.),
+        require(rt.objects[v["info"]].state["frame"] == (0., (240. if release_version(data) == "1.78R36" else 244.) if glass_spacing else 241. if visible_track_spacing else 222., 440., 500.),
                 "Stock projection prevents oscillation when the applied group crosses the discovery threshold")
     cases.append("threshold crossing: stable stock-based discovery on repeated layouts")
 
