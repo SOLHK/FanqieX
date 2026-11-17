@@ -8808,8 +8808,10 @@ static void SettingsOpenBookstoreCategories(Obj router,Sel cmd,Obj sender) {
 }
 static void SettingsOpenBackup(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
-    V1(Lookup("FQXSettingsBackup"),"presentFromController:",
-        SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key)));
+    // Backup owns the root settings controller; grouped submenu controllers
+    // are transient presenters and must not become the backup navigation root.
+    Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
+    V1(Lookup("FQXSettingsBackup"),"presentFromController:",owner);
 }
 
 static void SettingsLocalReward178R13(Obj router,Sel cmd,Obj sender) {
