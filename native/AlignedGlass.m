@@ -11,6 +11,7 @@ typedef signed char B;
 typedef struct { double x, y, width, height; } Rect;
 typedef struct { double width, height; } Size;
 typedef struct { double x, y; } Point;
+typedef struct { double top, left, bottom, right; } Insets;
 void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons);
 void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native);
 Rect FQHBottomNativeRect178(Obj proxy,Rect bounds);
@@ -3177,6 +3178,10 @@ static void LandscapeGlassInstall178R9(void) {
 // Portrait episode details use different native owners from the main feed.
 // Keep their buttons, tap recognizers and callback blocks as the input surface.
 static void DramaDetailNavConstraintsKey(void) {}
+static void DramaDetailEpisodeStockKey(void) {}
+static void DramaDetailEpisodeAppliedKey(void) {}
+static void DramaDetailNovelStockKey(void) {}
+static void DramaDetailNovelAppliedKey(void) {}
 static void DramaDetailNavigationButton(Obj button,Obj nav,B stockBackGlyph) {
     if (!Kind(button,"UIButton") || !Belongs(button,nav)) return;
     if (!Enabled() || !FQHGlassAvailable()) { LandscapeControlGlass178R9(button,nav,44); return; }
@@ -3285,10 +3290,53 @@ static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
         DramaClearBackground(self,1);
     else { RemoveDramaGlass(self); DramaClearBackground(self,0); }
 }
+static void DramaDetailBottomSpacing(Obj view,Obj episode,Obj novel) {
+    Obj window=Get(view,"window");
+    if (!window || !Kind(view,"UIView") || !Kind(episode,"UIView") || !Belongs(episode,view)) {
+        BottomRestoreFrame178(episode,DramaDetailEpisodeStockKey,DramaDetailEpisodeAppliedKey);
+        BottomRestoreFrame178(novel,DramaDetailNovelStockKey,DramaDetailNovelAppliedKey);
+        return;
+    }
+    Rect windowBounds=Bounds(window),viewWindow=Convert(view,Bounds(view),window);
+    Insets safe=((Insets(*)(Obj,Sel))Message)(window,sel_registerName("safeAreaInsets"));
+    double safeBottom=windowBounds.y+windowBounds.height-safe.bottom;
+    B hasNovel=Kind(novel,"UIView") && Belongs(novel,view) && !Belongs(novel,episode);
+    Rect episodeWindow=Convert(episode,Bounds(episode),window);
+    double contentBottom=episodeWindow.y+episodeWindow.height;
+    Rect novelWindow={0};
+    if (hasNovel) {
+        novelWindow=Convert(novel,Bounds(novel),window);
+        contentBottom=__builtin_fmax(contentBottom,novelWindow.y+novelWindow.height);
+    }
+    Obj dock=BottomDramaCapsuleForView(view);
+    if (dock) {
+        Rect dockWindow=Convert(dock,Bounds(dock),window);
+        if (VisibleRect(dockWindow)) safeBottom=__builtin_fmin(safeBottom,dockWindow.y);
+    }
+    B eligible=windowBounds.height>windowBounds.width && viewWindow.width>=windowBounds.width*0.5 &&
+        viewWindow.y+viewWindow.height>=safeBottom-180 && viewWindow.y<safeBottom;
+    double shift=eligible ? contentBottom-(safeBottom-8) : 0;
+    if (!eligible || !__builtin_isfinite(shift) || shift<=0.5 || shift>24) {
+        BottomRestoreFrame178(episode,DramaDetailEpisodeStockKey,DramaDetailEpisodeAppliedKey);
+        BottomRestoreFrame178(novel,DramaDetailNovelStockKey,DramaDetailNovelAppliedKey);
+        return;
+    }
+    Rect episodeFrame=Frame(episode);
+    episodeFrame.y-=shift;
+    BottomApplyFrame178(episode,episodeFrame,DramaDetailEpisodeStockKey,DramaDetailEpisodeAppliedKey);
+    if (hasNovel) {
+        Rect novelFrame=Frame(novel);
+        novelFrame.y-=shift;
+        BottomApplyFrame178(novel,novelFrame,DramaDetailNovelStockKey,DramaDetailNovelAppliedKey);
+    } else {
+        BottomRestoreFrame178(novel,DramaDetailNovelStockKey,DramaDetailNovelAppliedKey);
+    }
+}
 static void DramaDetailBottomApply(Obj view) {
     Obj episode=Get(view,"episodeInfoView");
     DramaSmallGlass(episode,Belongs(episode,view));
     Obj novel=Get(view,"relateBookEntranceView");
+    DramaDetailBottomSpacing(view,episode,novel);
     if (novel && !Belongs(novel,episode)) DramaSmallGlass(novel,Belongs(novel,view));
     LandscapeControlGlass178R9(Get(view,"cleanScreenView"),view,44);
 }
