@@ -831,7 +831,8 @@ LUIadd_done:
     ret
 
 // Called at the audited NOP in _open_menu. x20 is the newly created plugin
-// options controller; all original live callee-saved registers are preserved.
+// options controller. R27 replaces that owned root before navigation creation;
+// all other original live callee-saved registers are preserved.
 LUIinstall:
     stp x29, x30, [sp, #-64]!
     mov x29, sp
@@ -890,6 +891,8 @@ LUIinstall_done:
     cbz x19, LUIinstall_return
     mov x0, x19
     bl LFQH_FQHInstallOptionsToggles
+    // The wrapper transfers the caller's +1 ownership to the new menu root.
+    str x0, [sp, #24]
 LUIinstall_return:
     .endif
     ldp x23, x24, [sp, #48]
@@ -1108,7 +1111,9 @@ LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
 LSversion:
-    .if FQ_VERSION == 0x14e1a
+    .if FQ_VERSION == 0x14e1b
+    .asciz "1.78R27"
+    .elseif FQ_VERSION == 0x14e1a
     .asciz "1.78R26"
     .elseif FQ_VERSION == 0x14e19
     .asciz "1.78R25"

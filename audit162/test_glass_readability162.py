@@ -59,7 +59,7 @@ def material_style(data):
 
 
 def run(candidate, previous):
-    optical_drag = release_version(candidate) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26")
+    optical_drag = release_version(candidate) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27")
     require(hashlib.sha256(previous).hexdigest() ==
             '2da6826d63d5e05ec6c2f20d3375d58186474490c9c92dc09c2cc734529560b1',
             'The negative control is the exact shipped 1.6.0')

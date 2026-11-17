@@ -2,16 +2,16 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R26 本地测试版
+## FanqieX 1.78R27 本地测试版
 
-本版修复短剧顶部分类胶囊截断和选中底片与实际页面错位，重做底栏收缩过渡。
-净化开关改为明确的“隐藏”语义，整理分级菜单和全局搜索，修复视频地址延迟就绪时无法导出的问题。
+本版将插件设置真正接到独立分类首页，首页只显示大分类，开关和导出功能逐层进入。
+短剧顶部选中块使用与底栏一致的系统填充、内边距和胶囊形状。
 
-- [本版说明、功能入口和安装方式](docs/REPAIR_1.78R26.md)
+- [本版说明、功能入口和安装方式](docs/REPAIR_1.78R27.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、设置页、诊断日志和 Mach-O 构建标识统一为 1.78R26。本轮使用 Windows LLVM 与 iOS 27.2 SDK 编译；未推送远端或触发 CI，最终显示和触控体验需在 iPhone 上复测。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R27。本轮使用 Windows LLVM 与 iOS 27.2 SDK 编译；未推送远端或触发 CI，最终显示和触控体验需在 iPhone 上复测。
 
 ## FanqieX 1.76
 
@@ -64,7 +64,7 @@ Mach-O 元数据、Info.plist、Frameworks 和 Swift 元数据列表。缺失项
 已覆盖材质复用、关闭恢复、重复布局、浅/深色语义、目标广告删除、正常内容保留、底栏开关、
 Mach-O 页哈希和 Hook 所有权。
 
-历史 1.76 交付来自 Xcode 27.2；当前 R26 构建方式见上文。真实 UIKit 渲染、GPU 折射、触感和 IPA 注入仍需在 iPhone 上验证。
+历史 1.76 交付来自 Xcode 27.2；当前 R27 构建方式见上文。真实 UIKit 渲染、GPU 折射、触感和 IPA 注入仍需在 iPhone 上验证。
 
 ## 安装
 
@@ -86,7 +86,7 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R26 --output build/ci178r26
+python3 scripts/verify162.py --version 1.78R27 --output build/ci178r27
 ```
 
 macOS / Xcode 27.2 构建：

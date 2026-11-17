@@ -73,17 +73,22 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic, copy) NSArray<NSString *> *folders;
 @property(nonatomic, copy) NSString *path;
 @property(nonatomic, strong) UISearchController *search;
-@property(nonatomic, weak) UITableView *rootTable;
 @property(nonatomic, weak) UIViewController *settingsOwner;
 @property(nonatomic, strong) id router;
 @property(nonatomic, strong) UIViewController *adsOwner;
 @property(nonatomic, strong) NSArray<UIView *> *legacyPanels;
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads;
++ (UIViewController *)controllerForController:(UIViewController *)owner;
 + (BOOL)refreshOnController:(UIViewController *)owner;
 + (BOOL)isInstalledOnController:(UIViewController *)owner;
 - (void)configureSearch;
 - (BOOL)updateRows;
 @end
+
+static FQXSettingsMenu *MenuForController(UIViewController *owner) {
+    id linked = objc_getAssociatedObject(owner, MenuKey);
+    return [linked isKindOfClass:NSHashTable.class] ? [linked anyObject] : linked;
+}
 
 static NSString *ControlTitle(UIView *view) {
     if ([view isKindOfClass:UIButton.class]) return [(UIButton *)view titleForState:UIControlStateNormal] ?: view.accessibilityLabel;
@@ -145,9 +150,9 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 @implementation FQXSettingsMenu
 
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads {
-    if (objc_getAssociatedObject(owner, MenuKey)) return;
+    if (MenuForController(owner)) return;
     UITableView *legacy = Invoke(owner, @"tableView");
-    if (!legacy.tableHeaderView) return;
+    if (!legacy) return;
     FQXSettingsMenu *menu = [[self alloc] initWithStyle:UITableViewStyleInsetGrouped];
     menu.catalog = [NSMutableArray array];
     menu.settingsOwner = owner;
@@ -160,7 +165,6 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         NSString *title = ControlTitle(group);
         for (NSUInteger index = 1; index < group.subviews.count; ++index) AddView(menu, group.subviews[index], title);
     }
-    if (!menu.catalog.count) return;
     // Keep native ad/glass controls and their original target/selection actions.
     for (UITableViewController *page in @[(id)owner, (id)ads]) {
         [page loadViewIfNeeded];
@@ -257,29 +261,40 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         row.searchText = SearchText(row.keywords);
         row.searchTitle = SearchText(row.title);
     }
-    // The entry is already a UITableViewController. Prepare its rows before
-    // replacing the existing data source, independently of child appearances.
+    // Own a separate table. The legacy controller only supplies existing
+    // controls and actions; its later lifecycle cannot restore the flat page.
     [menu configureSearch];
     [menu updateRows];
-    if (!menu.folders.count && !menu.visibleRows.count) return;
-    menu.rootTable = legacy;
+    menu.title = owner.title ?: @"FanqieX";
+    menu.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+        target:menu action:@selector(dismissSettings:)];
+    // Keep the result alive until the audited presentation boundary adopts it.
     objc_setAssociatedObject(owner, MenuKey, menu, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    legacy.tableHeaderView = nil;
-    legacy.tableFooterView = nil;
-    legacy.dataSource = menu;
-    legacy.delegate = menu;
-    legacy.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
-    [legacy reloadData];
-    owner.navigationItem.leftBarButtonItem = nil;
-    UIBarButtonItem *done = owner.navigationItem.rightBarButtonItems.firstObject;
-    owner.navigationItem.rightBarButtonItems = done ? @[done] : @[];
-    owner.navigationItem.searchController = menu.search;
-    owner.navigationItem.hidesSearchBarWhenScrolling = NO;
-    owner.definesPresentationContext = YES;
+}
+
++ (UIViewController *)controllerForController:(UIViewController *)owner {
+    FQXSettingsMenu *menu = MenuForController(owner);
+    if (!menu) return owner;
+    if (owner.parentViewController != menu) {
+        // The original controller stays offscreen as a child. Its switches and
+        // router retain their target, and navigationController resolves through
+        // this parent to the same stack used by all visible submenus.
+        [menu addChildViewController:owner];
+        [owner didMoveToParentViewController:menu];
+        NSHashTable *reference = [NSHashTable weakObjectsHashTable];
+        [reference addObject:menu];
+        objc_setAssociatedObject(owner, MenuKey, reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return menu;
+}
+
+- (void)dismissSettings:(UIBarButtonItem *)sender {
+    (void)sender;
+    [self.navigationController dismissViewControllerAnimated:YES completion:nil];
 }
 
 + (BOOL)refreshOnController:(UIViewController *)owner {
-    FQXSettingsMenu *menu = objc_getAssociatedObject(owner, MenuKey);
+    FQXSettingsMenu *menu = MenuForController(owner);
     if (!menu) return NO;
     for (FQXSettingRow *row in menu.catalog) {
         if (![row.title isEqualToString:@"短剧滚动自动收缩"]) continue;
@@ -290,10 +305,11 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     return YES;
 }
 + (BOOL)isInstalledOnController:(UIViewController *)owner {
-    return objc_getAssociatedObject(owner, MenuKey) != nil;
+    return MenuForController(owner) != nil;
 }
 
 - (void)configureSearch {
+    if (self.search) return;
     self.search = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.search.searchResultsUpdater = self;
     self.search.obscuresBackgroundDuringPresentation = NO;
@@ -351,7 +367,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 
 - (void)rebuild {
     BOOL filtering = [self updateRows];
-    UITableView *table = self.rootTable ?: self.tableView;
+    UITableView *table = self.tableView;
     [table reloadData];
     UILabel *empty = [[UILabel alloc] init];
     empty.text = @"没有匹配的设置，可尝试功能名称或关键词";
@@ -512,7 +528,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
     [tableView deselectRowAtIndexPath:path animated:YES];
-    UIViewController *owner = self.rootTable ? self.settingsOwner : self;
+    UIViewController *owner = self;
     if ((NSUInteger)path.row < self.folders.count) {
         NSString *title = self.folders[path.row];
         FQXSettingsMenu *page = [[FQXSettingsMenu alloc] initWithStyle:UITableViewStyleInsetGrouped];

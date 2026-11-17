@@ -106,6 +106,7 @@ class Runtime(PageRuntime):
         self.category_paths = {}
         self.keep_stale_category_index = False
         self.search_actions = 0
+        self.secondary_fill_style = "dark"
 
     def responds(self, receiver, name):
         if ((name == "allObjects" and self.is_kind(receiver, self.classes["NSHashTable"])) or
@@ -162,6 +163,10 @@ class Runtime(PageRuntime):
                 return self.finish(cpu, self.view("UIView", "header selection"))
             if receiver == self.classes["UIColor"] and name == "colorWithWhite:alpha:":
                 return self.finish(cpu, self.color("dark category selection"))
+            if receiver == self.classes["UIColor"] and name == "secondarySystemFillColor":
+                # UIKit's semantic color is the boundary: distinguish two
+                # returned palette values without pretending to render traits.
+                return self.finish(cpu, self.color("secondarySystemFillColor:" + self.secondary_fill_style))
             if name == "stringValue" and self.is_kind(receiver, self.classes["NSNumber"]):
                 return self.finish(cpu, self.text_object(str(int(self.objects[receiver].state["value"]))))
             if receiver == self.classes["NSMutableSet"] and name == "set":
@@ -281,19 +286,20 @@ def exercise(data, labels):
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), simple_header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
     version = release_version(data)
-    native_category_geometry = version == "1.78R26"
+    native_category_geometry = version in ("1.78R26", "1.78R27")
+    unified_selection = version == "1.78R27"
     category_regressions = []
-    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26")
-    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26"}
-    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
+    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27")
+    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}
+    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}
     search_stock_frame = (402., 8., 26., 26.) if compact_header else (392., 0., 44., 44.)
     slot = rt.view("UIView", "native magnifier slot", search_stock_frame, search)
     image = rt.obj("UIImage", "app magnifier")
     icon = rt.view("UIImageView", "native magnifier", (0., 0., 26., 26.) if compact_header else (9., 9., 26., 26.),
                    slot, image=image, contentMode=0, nativeAction="search")
     bar = rt.view("UIView", "fresh find-drama search background")
-    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
-    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
+    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}
+    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}
     if first_frame_checked:
         original = bar
         send(cpu, rt, search, "setSearchBgView:", original)
@@ -365,7 +371,7 @@ def exercise(data, labels):
         require(not search_shown() and hidden(slot) and hidden(icon),
                 "Feed appearance with a pending title row cannot reveal either search surface")
 
-    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
+    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}
     if glass_checked:
         models = [rt.obj(MODEL, f"category {index}", index=index, tabType=kind)
                   for index, kind in enumerate((7, 11, 103))]
@@ -414,6 +420,27 @@ def exercise(data, labels):
                     rt.objects[icon_state["image"]].state["symbolSize"] == 23.,
                     "Both materials share the centerline, and the original full-circle search target displays its larger glyph")
         lens, = rt.objects[group].state["subviews"]
+        if unified_selection:
+            require(rt.is_kind(group, rt.classes["UIButton"]) and
+                    rt.objects[lens].state["superview"] == group,
+                    "The selection is attached to the real glass UIButton, without inventing a contentView API")
+            require(not rt.objects[lens].state["userInteractionEnabled"] and
+                    rt.objects[lens].state["accessibilityElementsHidden"] and
+                    rt.objects[lens].state["clipsToBounds"],
+                    "Selection decoration keeps native input/accessibility and clips its capsule")
+            for style in ("light", "dark"):
+                rt.secondary_fill_style = style
+                send(cpu, rt, header, "layoutSubviews")
+                require(rt.objects[lens].state["backgroundColor"] == rt.color("secondarySystemFillColor:" + style),
+                        "Header refresh uses the current system fill value, not a cached fixed black color")
+            expected_slots = ((4., 4., 47., 34.), (51., 4., 45., 34.), (96., 4., 44., 34.))
+            for model, expected in zip(models, expected_slots):
+                send(cpu, rt, controller, HEADER_SELECTED, model)
+                require(rt.objects[lens].state["frame"] == expected and
+                        rt.objects[rt.layer(lens)].state["cornerRadius"] == 17.,
+                        "Selected fill spans the full neighboring-center slot with four-point capsule insets")
+            send(cpu, rt, controller, HEADER_SELECTED, models[0])
+            category_regressions.append("semantic system fill refresh and full-width selection slots")
         if always_visible_search:
             send(cpu, rt, header, SEARCH_ICON_VISIBILITY, 0, fp=(0.,))
             x, _, width, _ = rt.objects[group].state["frame"]
@@ -457,7 +484,7 @@ def exercise(data, labels):
             send(cpu, rt, header, "layoutSubviews")
             gx, _, gw, _ = rt.objects[group].state["frame"]
             lx, _, lw, _ = rt.objects[lens].state["frame"]
-            require(gx == -2. and gx + gw == 142. and gx + lx + lw == 130.,
+            require(gx == -2. and gx + gw == 142. and gx + lx + lw == (138. if unified_selection else 130.),
                     "The capsule and selection fully cover the last item beyond stale container bounds")
             require(not rt.objects[group].state["userInteractionEnabled"],
                     "The category material leaves native touch dispatch in control")
@@ -516,6 +543,25 @@ def exercise(data, labels):
             x, _, width, _ = rt.objects[group].state["frame"]
             require(width == sum(widths) + 2 * spacing + 20. and rt.origin(categories)[0] + x + width / 2 == 220.,
                     "The compact capsule keeps ten points of inset on both ends and stays centered")
+            if unified_selection:
+                for model, expected in ((models[0], (4., 4., 51.25, 34.)),
+                                        (models[2], (55.25, 4., 49.25, 34.))):
+                    rt.objects[controller].state["currentTabModel"] = model
+                    send(cpu, rt, header, "layoutSubviews")
+                    require(rt.objects[lens].state["frame"] == expected,
+                            "A hidden middle label is skipped when choosing adjacent visible slot boundaries")
+                require(rt.objects[tabs].state["selectedIndex"] == 2,
+                        "Selection decoration does not mutate the native title index")
+                unmatched = rt.obj(MODEL, "unmatched committed page", tabType=999, index=2)
+                for model in (models[1], unmatched, 0):
+                    rt.objects[controller].state["currentTabModel"] = model
+                    send(cpu, rt, header, "layoutSubviews")
+                    require(hidden(lens) and rt.objects[tabs].state["selectedIndex"] == 2,
+                            "Hidden, unknown or absent committed models never fall back to the stale native index")
+                rt.objects[controller].state["currentTabModel"] = models[2]
+                send(cpu, rt, header, "layoutSubviews")
+                require(not hidden(lens), "Restoring the committed visible model restores its selection fill")
+                category_regressions.append("hidden neighbors skipped; hidden or missing current model never falls back")
             del options["FanqieX.DramaCategory.11.1"]
             del state["attributesByPath"]
         options["FanqieAdBlock.GlassDisabled.1"] = True
@@ -654,7 +700,7 @@ def exercise(data, labels):
         native_state([source[2], source[1]], 1)
         category_cases.append("native ordering and original selected refresh preserved")
 
-    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}:
+    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"}:
         titles = ["推荐", "漫剧", "看剧"]
         source = [rt.obj(MODEL, title, tabType=kind, title=rt.text_object(title), index=index)
                   for index, (kind, title) in enumerate(zip((7, 11, 103), titles))]
@@ -752,6 +798,7 @@ def exercise(data, labels):
     return {"independent_combinations": 8, "native_hidden_state_unchanged": True,
             "independent_category_cases": category_cases,
             "category_selection_geometry_regressions": category_regressions,
+            "unified_selection_palette_and_slots_checked": unified_selection,
             "header_glass_and_search_centering_checked": glass_checked,
             "native_search_fade_and_return_checked": always_visible_search,
             "matching_search_and_compact_categories_checked": compact_header,
@@ -769,7 +816,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"),
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27"),
             "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])

@@ -18,6 +18,8 @@ Rect FQHBottomProxyFrame178R5(Obj proxy,Rect stock);
 Rect FQHBottomButtonFrame178R5(Obj button,Rect stock);
 void FQHBottomReset178(Obj bar,Obj proxy);
 static void SettingsInstall178R13(Obj controller);
+static Obj SettingsVisibleController(Obj owner);
+void FQHUpdateTabAppearance(Obj bar,Obj proxy,Obj buttons);
 void FQHRefreshMineQuickAppearance178R13(void);
 static void RefreshFullscreenFill(void);
 extern void Message(void) __asm__("_objc_msgSend");
@@ -3433,19 +3435,20 @@ static void DramaHeaderSelection(Obj glass,Rect frame) {
     }
     if (!lens) {
         lens=O0(Lookup("UIView"),"new");
-        Obj color=((Obj(*)(Obj,Sel,double,double))Message)(Lookup("UIColor"),
-            sel_registerName("colorWithWhite:alpha:"),0.02,0.42);
-        V1(lens,"setBackgroundColor:",color);
         VB(lens,"setUserInteractionEnabled:",0);
         VB(lens,"setAccessibilityElementsHidden:",1);
+        VB(lens,"setClipsToBounds:",1);
+        // PlaceDramaGlass uses a noninteractive UIButton glass surface.
         V1(glass,"addSubview:",lens);
         objc_setAssociatedObject(glass,DramaHeaderSelectionKey,lens,1);
         V0(lens,"release");
     }
     if (!SameRect(Frame(lens),frame)) {
         SetFrame(lens,frame);
-        SetRadius(lens,frame.height/2);
+        SetRadius(lens,__builtin_fmin(frame.width,frame.height)/2);
     }
+    Obj fill=O0(Lookup("UIColor"),"secondarySystemFillColor");
+    if (!SameColor(Get(lens,"backgroundColor"),fill)) V1(lens,"setBackgroundColor:",fill);
     if (Flag(lens,"isHidden")) VB(lens,"setHidden:",0);
 }
 
@@ -3477,16 +3480,31 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
                 }
                 if (index>=0 && (U)index<count && DramaCategoryButtonVisible(models,index)) {
                     Rect selected=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,index),categories);
-                    double start=__builtin_fmax(left+3,selected.x+2);
-                    double end=__builtin_fmin(right-3,selected.x+selected.width-2);
-                    selection=(Rect){start-left,3,end-start,height-6};
+                    double center=selected.x+selected.width/2,start=left+4,end=right-4;
+                    for (I previous=index-1;previous>=firstIndex;--previous) {
+                        if (!DramaCategoryButtonVisible(models,previous)) continue;
+                        Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,previous),categories);
+                        start=__builtin_fmax(start,(neighbor.x+neighbor.width/2+center)/2);
+                        break;
+                    }
+                    for (I next=index+1;next<=lastIndex;++next) {
+                        if (!DramaCategoryButtonVisible(models,next)) continue;
+                        Rect neighbor=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,next),categories);
+                        end=__builtin_fmin(end,(neighbor.x+neighbor.width/2+center)/2);
+                        break;
+                    }
+                    selection=(Rect){start-left,4,end-start,height-8};
                 }
             }
         }
     }
     Obj glass=VisibleRect(capsule) ? PlaceDramaGlass(categories,categories,0,capsule) : (Obj)0;
     DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
-    if (glass) DramaHeaderSelection(glass,selection);
+    if (glass) {
+        Obj tabBar=Get(Get(Get(header,"delegate"),"tabBarController"),"tabBar");
+        FQHUpdateTabAppearance(tabBar,glass,0);
+        DramaHeaderSelection(glass,selection);
+    }
     else RemoveDramaGlass(categories);
 }
 
@@ -6325,8 +6343,16 @@ static Obj ToggleRow(Obj container,double y,Obj title,I tag,B on,Obj observer) {
 }
 // This runs when the existing action has allocated its dynamic settings
 // controller, before UIKit presents the navigation stack.
-void FQHInstallOptionsToggles(Obj controller) {
+Obj FQHInstallOptionsToggles(Obj controller) {
     SettingsInstall178R13(controller);
+    Obj menu=Lookup("FQXSettingsMenu");
+    Obj root=Responds(menu,"controllerForController:") ? O1(menu,"controllerForController:",controller) : (Obj)0;
+    if (!root || root==controller) return controller;
+    // _open_menu owns its freshly allocated root and releases it after the
+    // navigation controller retains it. Transfer that ownership to the menu.
+    V0(root,"retain");
+    V0(controller,"release");
+    return root;
 }
 
 static void FullscreenScaleBaselineKey(void) {}
@@ -8424,7 +8450,7 @@ static void SettingsOpenBookstoreCategories(Obj router,Sel cmd,Obj sender) {
 static void SettingsOpenBackup(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
     V1(Lookup("FQXSettingsBackup"),"presentFromController:",
-        BottomWeakValue178(router,BottomOptionsOwner178Key));
+        SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key)));
 }
 
 static void SettingsLocalReward178R13(Obj router,Sel cmd,Obj sender) {
@@ -8476,9 +8502,24 @@ static Obj SettingsBarItem178R13(Obj router,const char *title,const char *symbol
     return item;
 }
 
+static void SettingsInstallMenu(Obj controller) {
+    Obj menu=Lookup("FQXSettingsMenu");
+    if (!Responds(menu,"installOnController:router:ads:")) return;
+    Obj ads=((Obj(*)(Obj,Sel,I))Message)(O0(Lookup("FanqieAdBlockOptionsController"),"alloc"),
+        sel_registerName("initWithStyle:"),2);
+    objc_setAssociatedObject(ads,SettingsAdPageKey,BoolBox(1),1);
+    ((void(*)(Obj,Sel,Obj,Obj,Obj))Message)(menu,sel_registerName("installOnController:router:ads:"),
+        controller,objc_getAssociatedObject(controller,ToggleObserverKey),ads);
+    V0(ads,"release");
+}
+
 static void SettingsInstall178R13(Obj controller) {
     Obj table=Get(controller,"tableView");
-    if (!table || Get(table,"tableHeaderView") || objc_getAssociatedObject(controller,SettingsAdPageKey)) return;
+    if (!table || objc_getAssociatedObject(controller,SettingsAdPageKey)) return;
+    if (objc_getAssociatedObject(controller,SettingsHeader178R13Key)) {
+        SettingsInstallMenu(controller);
+        return;
+    }
     SettingsInstallSections();
     Obj cls=Lookup("FanqieXBottomOptionsRouter178");
     if (!cls) {
@@ -8637,13 +8678,5 @@ static void SettingsInstall178R13(Obj controller) {
     V0(footer,"release");
     V0(router,"release");
     V0(table,"reloadData");
-    Obj menu=Lookup("FQXSettingsMenu");
-    if (Responds(menu,"installOnController:router:ads:")) {
-        Obj ads=((Obj(*)(Obj,Sel,I))Message)(O0(Lookup("FanqieAdBlockOptionsController"),"alloc"),
-            sel_registerName("initWithStyle:"),2);
-        objc_setAssociatedObject(ads,SettingsAdPageKey,BoolBox(1),1);
-        ((void(*)(Obj,Sel,Obj,Obj,Obj))Message)(menu,sel_registerName("installOnController:router:ads:"),
-            controller,objc_getAssociatedObject(controller,ToggleObserverKey),ads);
-        V0(ads,"release");
-    }
+    SettingsInstallMenu(controller);
 }
