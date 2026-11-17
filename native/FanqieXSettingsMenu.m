@@ -508,8 +508,9 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                     ((void (*)(id, SEL, id))objc_msgSend)(target, selector, button);
             }
         };
-        if (self.search.isActive && self.search.presentingViewController) {
-            [self.search dismissViewControllerAnimated:NO completion:perform];
+        UIViewController *presenter = self.search.presentingViewController;
+        if (presenter.presentedViewController == self.search) {
+            [presenter dismissViewControllerAnimated:NO completion:perform];
         } else {
             self.search.active = NO;
             perform();
@@ -554,7 +555,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             void (^perform)(void) = ^{
                 if ([target respondsToSelector:action]) ((void (*)(id, SEL, id))objc_msgSend)(target, action, owner);
             };
-            if (self.search.isActive && self.search.presentingViewController) [self.search dismissViewControllerAnimated:NO completion:perform];
+            UIViewController *presenter = self.search.presentingViewController;
+            if (presenter.presentedViewController == self.search) [presenter dismissViewControllerAnimated:NO completion:perform];
             else { self.search.active = NO; perform(); }
         }
     }

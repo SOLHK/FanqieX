@@ -2488,6 +2488,8 @@ static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
 static void DramaWatchContentKey(void) {}
 static void DramaWatchArrowKey(void) {}
+static void DramaDetailRelatedContentKey(void) {}
+static void DramaDetailRelatedShadeKey(void) {}
 static void DramaVisibilitySet(Obj view,B visible);
 static U TabCount(Obj items);
 static void DramaSpacingForView(Obj view);
@@ -2757,15 +2759,60 @@ static void DramaWatchGlass(Obj owner,Obj model) {
     DramaEpisodeArrow(content,Get(content,"arrowImageView"));
 }
 
+static void DramaDetailRelatedGlass(Obj owner,B reset) {
+    Obj content=objc_getAssociatedObject(owner,DramaDetailRelatedContentKey);
+    if (!content) return;
+    Obj shade=objc_getAssociatedObject(content,DramaDetailRelatedShadeKey);
+    if (reset || !Enabled() || !FQHGlassAvailable() || !Belongs(content,owner)) {
+        RemoveDramaGlass(content);
+        DramaClearBackground(content,0);
+        if (shade) DramaClearBackground(shade,0);
+        objc_setAssociatedObject(content,DramaDetailRelatedShadeKey,0,1);
+        if (reset) objc_setAssociatedObject(owner,DramaDetailRelatedContentKey,0,1);
+        return;
+    }
+    Rect bounds=Bounds(content),material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
+    if (!VisibleRect(material)) return;
+    if (!shade) {
+        Obj first=O0(Get(content,"subviews"),"firstObject");
+        if (first && object_getClass(first)==Lookup("UIView")) {
+            double white=0,alpha=0;
+            Obj color=Get(first,"backgroundColor");
+            if (((B(*)(Obj,Sel,double *,double *))Message)(color,sel_registerName("getWhite:alpha:"),&white,&alpha) &&
+                white==1 && alpha>0.125 && alpha<=0.15625) shade=first;
+        }
+    }
+    if (!PlaceDramaGlass(content,content,0,material)) return;
+    DramaClearBackground(content,1);
+    if (shade) {
+        objc_setAssociatedObject(content,DramaDetailRelatedShadeKey,shade,1);
+        DramaClearBackground(shade,1);
+    }
+}
+
+static void DramaDetailRelatedContent(Obj self,Sel cmd,Obj content,Obj text,Obj tag,Obj recommendation,Obj book,B readTip) {
+    ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj,B))Original("SSShortVideoBottomDistributionView",
+        "fqx178r30_originalRelatedContent:text:tag:recommendation:book:readTip:"))
+        (self,cmd,content,text,tag,recommendation,book,readTip);
+    // This exact host path constructs "原著 · 第N章" and the chapter title.
+    // Capture its content after native painting; the outer render/layout hook
+    // adds glass after episode decoration has completed, keeping its arrow.
+    if (Kind(content,"SSShortVideoDistributionContentBaseView") && Belongs(content,self))
+        objc_setAssociatedObject(self,DramaDetailRelatedContentKey,content,1);
+}
+
 static void DramaWatchLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchLayout"))(self,cmd);
     DramaWatchGlass(self,Get(self,"lastRenderModel"));
+    DramaDetailRelatedGlass(self,0);
     DramaSpacingForView(self);
 }
 
 static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
+    DramaDetailRelatedGlass(self,1);
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoBottomDistributionView","fqx190_originalDramaWatchRender:"))(self,cmd,model);
     DramaWatchGlass(self,model);
+    DramaDetailRelatedGlass(self,0);
     DramaSpacingForView(self);
 }
 
@@ -3129,15 +3176,39 @@ static void LandscapeGlassInstall178R9(void) {
 
 // Portrait episode details use different native owners from the main feed.
 // Keep their buttons, tap recognizers and callback blocks as the input surface.
+static void DramaDetailNavConstraintsKey(void) {}
+static void DramaDetailNavigationButton(Obj button,Obj nav) {
+    if (!Kind(button,"UIButton") || !Belongs(button,nav)) return;
+    if (!Enabled() || !FQHGlassAvailable()) { LandscapeControlGlass178R9(button,nav,44); return; }
+    Obj glass=objc_getAssociatedObject(button,DramaGlassKey);
+    if (!glass) glass=PlaceDramaGlass(button,button,0,(Rect){0,0,36,36});
+    if (!glass) return;
+    if (!objc_getAssociatedObject(glass,DramaDetailNavConstraintsKey)) {
+        VB(glass,"setTranslatesAutoresizingMaskIntoConstraints:",0);
+        Obj constraints[]={
+            O1(Get(glass,"centerXAnchor"),"constraintEqualToAnchor:",Get(button,"centerXAnchor")),
+            O1(Get(glass,"centerYAnchor"),"constraintEqualToAnchor:",Get(button,"centerYAnchor")),
+            ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"widthAnchor"),sel_registerName("constraintEqualToConstant:"),36.),
+            ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"heightAnchor"),sel_registerName("constraintEqualToConstant:"),36.)};
+        Obj array=((Obj(*)(Obj,Sel,Obj *,U))Message)(Lookup("NSArray"),sel_registerName("arrayWithObjects:count:"),constraints,4);
+        V1(Lookup("NSLayoutConstraint"),"activateConstraints:",array);
+        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,BoolBox(1),1);
+    }
+    if (Flag(button,"clipsToBounds")) {
+        objc_setAssociatedObject(button,LandscapeClip178R12Key,BoolBox(1),1);
+        VB(button,"setClipsToBounds:",0);
+    }
+    DramaClearBackground(button,1);
+}
 static void DramaDetailNavigationApply(Obj component) {
     Obj nav=Get(component,"navBar");
-    LandscapeControlGlass178R9(Get(component,"backBtn"),nav,44);
-    LandscapeControlGlass178R9(Get(component,"moreBtn"),nav,44);
+    DramaDetailNavigationButton(Get(component,"backBtn"),nav);
+    DramaDetailNavigationButton(Get(component,"moreBtn"),nav);
     Obj items=Get(component,"navigationBarRightItems");
     for (U i=0,count=TabCount(items);i<count;++i) {
         Obj item=At(items,i);
         if (Kind(item,"FQVShortVideoMoreBtnNavBarItem"))
-            LandscapeControlGlass178R9(Get(item,"moreBtn"),nav,44);
+            DramaDetailNavigationButton(Get(item,"moreBtn"),nav);
     }
 }
 static void DramaDetailNavigationLayout(Obj self,Sel cmd,Obj container) {
@@ -3155,7 +3226,7 @@ static void DramaDetailNavigationRight(Obj self,Sel cmd,Obj items) {
 static void DramaDetailMoreItemSetup(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoMoreBtnNavBarItem","fqx178r29_originalMoreSetup"))(self,cmd);
     Obj button=Get(self,"moreBtn");
-    LandscapeControlGlass178R9(button,Get(self,"view"),44);
+    DramaDetailNavigationButton(button,Get(self,"view"));
 }
 static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoOriginalNovelEntranceView","fqx178r29_originalDetailNovelLayout"))(self,cmd);
@@ -3179,6 +3250,17 @@ static void DramaDetailTagLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout"))(self,cmd);
     DramaDetailBottomApply(self);
 }
+static void DramaDetailPlayerBottomLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoPlayerBottomView","fqx178r30_originalPlayerBottomLayout"))(self,cmd);
+    if (Flag(self,"isNewSingleSeriesControlViewStyle")) {
+        Obj current=Get(self,"episodeNewInfoView");
+        if (Belongs(current,self)) LandscapeControlGlass178R9(Get(current,"cleanScreenEntrance"),current,44);
+    } else {
+        Obj episode=Get(self,"episodeInfoView");
+        DramaSmallGlass(episode,Belongs(episode,self));
+        LandscapeControlGlass178R9(Get(self,"cleanSwitchView"),self,44);
+    }
+}
 static void DramaDetailGlassInstall(void) {
     const char *nav="FQVShortVideoListVCNavBarComponent";
     if (Signature(nav,"navBar","@16@0:8") && Signature(nav,"backBtn","@16@0:8") && Signature(nav,"moreBtn","@16@0:8")) {
@@ -3193,6 +3275,14 @@ static void DramaDetailGlassInstall(void) {
         LandscapeLayoutHook178R9("SSShortVideoSingleBottomInsertView","fqx178r29_originalSingleBottomLayout",(Imp)DramaDetailSingleLayout);
     if (Signature("SSShortVideoTagListBottomInsertView","episodeInfoView","@16@0:8"))
         LandscapeLayoutHook178R9("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout",(Imp)DramaDetailTagLayout);
+    const char *bottom="FQVShortVideoPlayerBottomView";
+    if (Signature(bottom,"episodeInfoView","@16@0:8") && Signature(bottom,"cleanSwitchView","@16@0:8") &&
+        Signature(bottom,"isNewSingleSeriesControlViewStyle","B16@0:8"))
+        LandscapeLayoutHook178R9(bottom,"fqx178r30_originalPlayerBottomLayout",(Imp)DramaDetailPlayerBottomLayout);
+    Hook("SSShortVideoBottomDistributionView",
+         "applyRelatedInfoUIToContentView:textArray:showTag:recommendTagText:bookInfo:canShowReadTip:",
+         "fqx178r30_originalRelatedContent:text:tag:recommendation:book:readTip:","v60@0:8@16@24@32@40@48B56",
+         (Imp)DramaDetailRelatedContent);
 }
 
 static B DefaultEnabled(Obj key);
