@@ -347,7 +347,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             }
         } else if ([row.path isEqualToString:self.path]) {
             [rows addObject:row];
-        } else if ([row.path hasPrefix:prefix]) {
+        } else if (!self.path.length || [row.path hasPrefix:prefix]) {
             NSString *next = [[row.path substringFromIndex:prefix.length] componentsSeparatedByString:@"/"].firstObject;
             if (next.length) [folders addObject:next];
         }
