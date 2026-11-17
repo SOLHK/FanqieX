@@ -394,7 +394,7 @@ def main():
         if args.version in ('1.78R34', '1.78R35', '1.78R36'):
             run('drama-title-spacing178r34', ['audit162/test_drama_title_spacing178r34.py', candidate,
                 '--report', output / 'drama-title-spacing178r34.json'])
-        if args.version == '1.78R35', '1.78R36':
+        if args.version in ('1.78R35', '1.78R36'):
             run('drama-header-palette178r35', ['audit162/test_drama_header_palette178r35.py', candidate,
                 '--report', output / 'drama-header-palette178r35.json'])
         if args.version in ('1.78R31', '1.78R32', '1.78R33', '1.78R34', '1.78R35', '1.78R36'):
