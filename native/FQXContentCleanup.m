@@ -100,7 +100,8 @@ static void InstallWidgetDialogHooks(void){
  if(FQXInstallOwnedHook(c,s,NO,"v24@0:8@16",(IMP)DialogInnerShow,&old))OriginalDialogInnerShow=(void*)old;
 }
 
-static NSUInteger ForegroundSplashDepth;
+// Keep foreground-only splash suppression isolated to the calling thread.
+static _Thread_local NSUInteger ForegroundSplashDepth;
 static void(*OriginalForegroundEnter)(id,SEL);
 static void ForegroundEnter(id o,SEL cmd){
  ++ForegroundSplashDepth;
@@ -112,6 +113,9 @@ static void SplashBanner(id o,SEL cmd){
  if(!On(KEY("HotLaunchAds"))||!ForegroundSplashDepth)OriginalSplashBanner(o,cmd);
 }
 static void InstallHotLaunchHooks(void){
+ NSString *key=KEY("HotLaunchAds");
+ Bool0("SSReadingAdSplashService","shouldShowSplashAtHotLaunch",NO,key);
+ Bool0("SSReadingAdSplashService","shouldShowSplashAdAtHotLaunchByThirdParty",NO,key);
  Class c=NSClassFromString(@"SSReadingAdSplashService");SEL s=Sel("appWillEnterForeground");IMP old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v16@0:8",(IMP)ForegroundEnter,&old))OriginalForegroundEnter=(void*)old;
  s=Sel("showBannerTopViewInSplash");old=NULL;
