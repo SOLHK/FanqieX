@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import "BookExportSource.h"
 #import "BookExportFormats.h"
+#import "FQXHookInstaller.h"
 
 static const void *FQXExportAccessoryKey = &FQXExportAccessoryKey;
 static const void *FQXExportSessionKey = &FQXExportSessionKey;
@@ -436,9 +437,15 @@ static void FQXExportCellEditing(id cell, SEL selector, BOOL editing) {
             strcmp(method_getTypeEncoding(layout), "v16@0:8") ||
             strcmp(method_getTypeEncoding(model), "v24@0:8@16") ||
             strcmp(method_getTypeEncoding(editing), "v20@0:8B16")) return;
-        FQXDownloadLayout = (void (*)(id, SEL))method_setImplementation(layout, (IMP)FQXExportCellLayout);
-        FQXDownloadModel = (void (*)(id, SEL, id))method_setImplementation(model, (IMP)FQXExportCellModel);
-        FQXDownloadEditing = (void (*)(id, SEL, BOOL))method_setImplementation(editing, (IMP)FQXExportCellEditing);
+        IMP original = NULL;
+        if (FQXInstallOwnedHook(cell, @selector(layoutSubviews), NO, "v16@0:8", (IMP)FQXExportCellLayout, &original))
+            FQXDownloadLayout = (void (*)(id, SEL))original;
+        original = NULL;
+        if (FQXInstallOwnedHook(cell, NSSelectorFromString(@"setModel:"), NO, "v24@0:8@16", (IMP)FQXExportCellModel, &original))
+            FQXDownloadModel = (void (*)(id, SEL, id))original;
+        original = NULL;
+        if (FQXInstallOwnedHook(cell, NSSelectorFromString(@"setEditMode:"), NO, "v20@0:8B16", (IMP)FQXExportCellEditing, &original))
+            FQXDownloadEditing = (void (*)(id, SEL, BOOL))original;
     });
 }
 @end

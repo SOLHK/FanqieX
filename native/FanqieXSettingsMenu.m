@@ -197,7 +197,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         }
     }
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
-    NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入",
+    NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
         @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};

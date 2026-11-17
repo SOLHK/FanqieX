@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "NavigationPreferenceLogic.h"
+#import "FQXHookInstaller.h"
 
 static NSString *const StartupKey = @"FanqieX.StartupTab.1";
 static NSString *const HiddenCategoriesKey = @"FanqieX.BookstoreHiddenCategories.1";
@@ -25,11 +26,10 @@ static BOOL HasHostMethod(Class cls, SEL selector, const char *encoding) {
 }
 
 static IMP ReplaceHostMethod(Class cls, SEL selector, IMP replacement) {
-    Method method = class_getInstanceMethod(cls, selector);
-    IMP original = method_getImplementation(method);
-    if (!class_addMethod(cls, selector, replacement, method_getTypeEncoding(method))) {
-        method_setImplementation(method, replacement);
-    }
+    Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
+    if (!method) return NULL;
+    IMP original = NULL;
+    if (!FQXInstallOwnedHook(cls, selector, NO, method_getTypeEncoding(method), replacement, &original)) return NULL;
     return original;
 }
 

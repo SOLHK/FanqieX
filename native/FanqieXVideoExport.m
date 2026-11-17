@@ -3,6 +3,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "VideoContainer.h"
+#import "FQXHookInstaller.h"
 
 // The host uses TTVideoEngine's playback-state enum. A ready/preloaded
 // player is deliberately insufficient to replace the current selection.
@@ -163,10 +164,9 @@ static NSString *ContainerExtension(NSURL *file) {
     SEL selector = NSSelectorFromString(@"videoEngine:playbackStateDidChanged:");
     Method method = class_getInstanceMethod(cls, selector);
     if (NativePlaybackChanged || !method || strcmp(method_getTypeEncoding(method), "v32@0:8@16q24")) return;
-    NativePlaybackChanged = (void (*)(id, SEL, id, NSInteger))method_getImplementation(method);
-    if (!class_addMethod(cls, selector, (IMP)PlaybackChanged, method_getTypeEncoding(method))) {
-        method_setImplementation(method, (IMP)PlaybackChanged);
-    }
+    IMP original = NULL;
+    if (!FQXInstallOwnedHook(cls, selector, NO, "v32@0:8@16q24", (IMP)PlaybackChanged, &original)) return;
+    NativePlaybackChanged = (void (*)(id, SEL, id, NSInteger))original;
 }
 
 + (void)presentFromController:(UIViewController *)owner {

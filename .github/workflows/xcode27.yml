@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.78R35'
+        run: test "$(cat VERSION)" = '1.78R36'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -50,6 +50,10 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
       - name: Exercise the diagnostic module with real Foundation and libobjc
         run: python3 tests/run_native_smoke.py
+      - name: Verify owned Objective-C hook installation
+        run: |
+          xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -I native tests/native_hook_installer_smoke.m native/FQXHookInstaller.m -framework Foundation -lobjc -o build/xcode27/hook-installer-smoke
+          build/xcode27/hook-installer-smoke
       - name: Exercise the startup journal on real Foundation
         run: python3 tests/run_logger_startup_smoke.py
       - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
@@ -63,9 +67,9 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R35
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.78R36
       - name: Build FanqieX with integrated export and settings modules
-        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.78R35.dylib --output build/xcode27/integrated
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.78R36.dylib --output build/xcode27/integrated
       - name: Exercise export formats and local chapter sources on real Foundation
         run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Exercise settings backup and video container recognition

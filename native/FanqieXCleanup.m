@@ -1,6 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import "FQXHookInstaller.h"
+extern void FQXInstallContentCleanupHooks(void);
 
 #define CLEANUP_OPTIONS(X) \
     X(AuthorWords, "ReaderAuthorWords", "显示作者的话", "reader", YES) \
@@ -22,7 +24,17 @@
     X(Foreground, "NotificationsForeground", "显示前台通知提醒", "notifications", YES) \
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
-    X(DurationLimit, "ReaderAutoReadDurationLimit", "关闭自动阅读广告时长限制", "gestures", NO)
+    X(DurationLimit, "ReaderAutoReadDurationLimit", "关闭自动阅读广告时长限制", "gestures", NO) \
+    X(DramaAutoplay, "DramaAutoplay", "关闭短剧进入自动播放", "drama", NO) \
+    X(ReaderRatingInvite, "ReaderRatingInvite", "关闭阅读评价邀请", "readerFeatures", NO) \
+    X(ExcerptWidgetGuide, "ExcerptWidgetGuide", "隐藏书摘小组件提醒", "readerFeatures", NO) \
+    X(ContentWidgetGuide, "ContentWidgetGuide", "隐藏内容小组件提醒", "readerFeatures", NO) \
+    X(BookstorePublishButton, "BookstorePublishButton", "隐藏书城发帖按钮", "bookstore", NO) \
+    X(ListenPendant, "ListenPendant", "净化听读赚钱悬浮挂件", "readerFeatures", NO) \
+    X(StoryAds, "StoryAds", "短篇正文广告处理", "ads", NO) \
+    X(HotLaunchAds, "HotLaunchAds", "热启动广告专项拦截", "ads", NO) \
+    X(AudioAds, "AudioAds", "听书广告专项控制", "ads", NO) \
+    X(ChapterTitle, "ChapterTitle", "返回标题固定为章节名称", "readerFeatures", NO)
 
 #define OPTION_KEY(name, suffix, title, category, defaultValue) \
     static NSString *const name##Key = @"FanqieX." suffix ".1";
@@ -40,18 +52,16 @@ static Method HostMethod(Class cls, SEL selector, const char *encoding) {
 }
 
 static void Install(Class cls, SEL selector, Method method, IMP replacement) {
-    if (!class_addMethod(cls, selector, replacement, method_getTypeEncoding(method))) {
-        method_setImplementation(method, replacement);
-    }
+    if (!method) return;
+    FQXInstallOwnedHook(cls, selector, NO, method_getTypeEncoding(method), replacement, NULL);
 }
 
 static IMP Replace(NSString *className, SEL selector, const char *encoding, IMP replacement) {
     Class cls = NSClassFromString(className);
     Method method = HostMethod(cls, selector, encoding);
     if (!method) return NULL;
-    IMP original = method_getImplementation(method);
-    Install(cls, selector, method, replacement);
-    return original;
+    IMP original = NULL;
+    return FQXInstallOwnedHook(cls, selector, NO, encoding, replacement, &original) ? original : NULL;
 }
 
 static id HostObject(id owner, SEL selector) {
@@ -283,6 +293,7 @@ static void PauseForTime(id owner, SEL cmd) {
         HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"autoReadInspireOpen"), DurationLimitKey, NO);
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
+        FQXInstallContentCleanupHooks();
     });
 }
 

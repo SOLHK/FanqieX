@@ -4555,7 +4555,7 @@ void FQHDramaSpacing178R2(Obj root) {
             stock.y+=referenceY+stockConstant-(targetInRoot.y+targetInRoot.height);
         }
         Rect material=Convert(glass,Bounds(glass),root);
-        shift=__builtin_fmax(0,material.y+material.height+(stock.y-current.y)+8-track.y);
+        shift=__builtin_fmax(0,material.y+material.height+(stock.y-current.y)+12-track.y);
         B safe=VisibleRect(stock) && __builtin_fabs(targetInRoot.width-targetBounds.width)<0.5 &&
             __builtin_fabs(targetInRoot.height-targetBounds.height)<0.5 && shift<=80 &&
             targetInRoot.y+(stock.y-current.y)-shift>=b.y+8;
@@ -4596,7 +4596,7 @@ void FQHDramaSpacing178R2(Obj root) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
         Put(record,"revision",Text(outer ? "outer-episode-glass" : "episode-glass-178R8"));
-        Put(record,"spacingReference",Text("episodeGlassToTrack")); Put(record,"gap",Number(8));
+        Put(record,"spacingReference",Text("episodeGlassToTrack")); Put(record,"gap",Number(12));
         if (glass) {
             Rect actualGlass=Convert(glass,Bounds(glass),root);
             Put(record,"trackGap",Number(track.y-actualGlass.y-actualGlass.height));
