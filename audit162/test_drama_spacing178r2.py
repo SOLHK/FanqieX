@@ -23,6 +23,7 @@ from test_reader_controls178 import Runtime as ReaderRuntime
 
 EXTRA = ["LFQH_FQHPageInstall", "LFQH_FQHDramaSpacing178R2"]
 DISABLED = "FanqieAdBlock.GlassDisabled.1"
+PROGRESS_STYLE = "updateProgressBarWithProgressBarType:configMaker:"
 
 
 class Runtime(ReaderRuntime):
@@ -32,6 +33,7 @@ class Runtime(ReaderRuntime):
     PROGRESS_ACTIVATED = 0x330f3600
     MASONRY_GETTER = 0x330f3700
     MASONRY_CONSTANT = 0x330f3708
+    PROGRESS_STYLE_UPDATE = 0x330f3710
 
     def __init__(self, data):
         super().__init__(data)
@@ -46,7 +48,7 @@ class Runtime(ReaderRuntime):
             ("NativeInsertContainerView", "UIView"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
         self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
@@ -54,6 +56,7 @@ class Runtime(ReaderRuntime):
         self._add(progress, "layoutProgressView", self.PROGRESS_LAYOUT, "v16@0:8")
         self._add(progress, "updateProgressViewWithPlaying:animate:", self.PROGRESS_PLAYING, "v24@0:8B16B20")
         self._add(progress, "updateProgressViewWithActivatedState:", self.PROGRESS_ACTIVATED, "v24@0:8Q16")
+        self._add(progress, PROGRESS_STYLE, self.PROGRESS_STYLE_UPDATE, "v32@0:8Q16@?24")
         self._add(self.classes["UIView"], "mas_installedConstraints", self.MASONRY_GETTER, "@16@0:8")
         self._add(self.classes["MASViewConstraint"], "layoutConstraint", self.MASONRY_GETTER, "@16@0:8")
         self._add(self.classes["MASViewConstraint"], "setLayoutConstant:", self.MASONRY_CONSTANT, "v24@0:8d16")
@@ -80,7 +83,7 @@ class Runtime(ReaderRuntime):
             if self.display_mutator:
                 self.display_mutator()
             return self.finish(cpu)
-        if pc in (self.PROGRESS_LAYOUT, self.PROGRESS_PLAYING, self.PROGRESS_ACTIVATED):
+        if pc in (self.PROGRESS_LAYOUT, self.PROGRESS_PLAYING, self.PROGRESS_ACTIVATED, self.PROGRESS_STYLE_UPDATE):
             if self.progress_mutator:
                 self.progress_mutator(pc, *cpu.x[2:4])
             return self.finish(cpu)
@@ -204,7 +207,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
-    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
+    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
         return
 
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
@@ -245,7 +248,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     for selector, args, track_y in (("layoutProgressView", (), 871.),
                                      ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
         send(cpu, rt, progress, selector, *args)
-        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
+        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
             glass = glass_rect(rt, v["content"])
             require(track_y-glass[1]-glass[3] == 8.,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
@@ -304,7 +307,7 @@ def logged_geometry(data, labels):
 
 def verify_masonry_reapply(data, labels, related=False):
     """Host wrapper reapply occurs after the correction/logging callback returns."""
-    fixed = release_version(data) == "1.78R32"
+    fixed = release_version(data) in ("1.78R32", "1.78R33")
     cpu, rt, v = fixture(data, labels)
     root, insert, progress, track = (v[key] for key in ("root", "info", "progress", "track"))
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
@@ -379,10 +382,58 @@ def verify_masonry_reapply(data, labels, related=False):
             "unrelated_wrapper_unchanged": True}
 
 
+def verify_first_progress_style(data, labels):
+    cpu, rt, views = fixture(data, labels)
+    root, insert, progress, standard = (views[key] for key in ("root", "info", "progress", "track"))
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
+    send(cpu, rt, root, "layoutSubviews")
+    rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
+    rt.objects[root].state.update(frame=(0., 0., 440., 876.), bounds=(0., 0., 440., 876.),
+                                  insertAboveProgressView=insert)
+    rt.objects[insert].state["frame"] = (0., 676., 440., 200.)
+    rt.objects[progress].cls = rt.classes["FQVShortVideoProgressView"]
+    rt.objects[standard].state.update(frame=(16., 22., 408., 2.), bounds=(0., 0., 408., 2.), hidden=True)
+    custom = rt.view("UIView", "customized rail before first style", (16., 22., 408., 2.), progress, hidden=True)
+    rt.objects[progress].state.update(frame=(0., 851., 440., 30.), bounds=(0., 0., 440., 30.),
+                                      progressBarBackgroundView=standard, customizedProgressBarBackgroundView=custom)
+    anchor = rt.obj("NSLayoutConstraint", "host insert to progress center", firstItem=insert, secondItem=progress,
+                    firstAttribute=4, secondAttribute=10, relation=0, multiplier=1., constant=10., isActive=1)
+    rt.objects[root].state["constraints"] = rt.obj("NSArray", "installed constraints", items=[anchor])
+    send(cpu, rt, root, "layoutSubviews")
+    require(rt.objects[anchor].state["constant"] == 10., "No adjustment while both rails are hidden")
+
+    maker = rt.obj("NSObject", "opaque native configuration block")
+    forwarded = []
+
+    def commit_style(imp, kind, config_maker):
+        require(imp == rt.PROGRESS_STYLE_UPDATE, "No layout or playback callback participates in the style change")
+        forwarded.append((kind, config_maker))
+        rt.objects[standard].state["hidden"] = True
+        rt.objects[custom].state["hidden"] = False
+
+    rt.progress_mutator = commit_style
+    # The host changes both rail visibility flags inside this method before return.
+    # Read the frame now without a follow-up layout pass or player callback.
+    style = 0x100000002
+    send(cpu, rt, progress, PROGRESS_STYLE, style, maker)
+    require(forwarded == [(style, maker)], "The native progress style call preserves its full arguments")
+    glass = glass_rect(rt, views["content"])
+    track = global_rect(rt, custom)
+    gap = track[1] - glass[1] - glass[3]
+    fixed = release_version(data) == "1.78R33"
+    require(gap == (8. if fixed else 0.) and rt.objects[anchor].state["constant"] == (2. if fixed else 10.),
+            f"First visible rail must resolve spacing in the style callback itself, got {gap:g} pt")
+    require(track == (16., 873., 408., 2.) and rt.objects[progress].state["gestureRecognizers"] == ["host seek pan"],
+            "Style postprocessing preserves the native track and seek action")
+    return {"gap_after_style_update": gap, "r32_first_gap_reproduced": not fixed,
+            "native_calls": len(forwarded), "layout_callback_needed": False}
+
+
 def verify(data, labels):
     cases = []
     masonry_cases = []
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32")
+    first_style = None
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -442,7 +493,7 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32") else "episode-glass-178R6"
+        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33") else "episode-glass-178R6"
         require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
@@ -467,13 +518,16 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
             cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
         if "LFQH_DramaProgressActivated" in labels:
             cases.append("paused rail, retiring episode and temporarily hidden current insert")
-        if release_version(data) in ("1.78R31", "1.78R32"):
+        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33"):
             masonry_cases = [verify_masonry_reapply(data, labels), verify_masonry_reapply(data, labels, related=True)]
             cases.append("Masonry wrapper reapply and independently decorated related-book row")
+        if release_version(data) in ("1.78R32", "1.78R33"):
+            first_style = verify_first_progress_style(data, labels)
+            cases.append("First visible custom progress rail, before subsequent layout or playback callbacks")
 
     for scenario in ("landscape", "hidden_progress", "unrelated_divider", "offscreen", "missing_entry", "already_separated", "ambiguous_entries"):
         cpu, rt, v = fixture(data, labels)
@@ -567,6 +621,7 @@ def verify(data, labels):
             "An incomplete bounded traversal cannot claim a unique episode entry")
     cases.append("scan budget: incomplete discovery restores the host frame")
     return {"passed": True, "device_tested": False, "cases": cases, "masonry_cases": masonry_cases,
+            "first_progress_style": first_style,
             "limits": ["Candidate ARM64 executes against explicit UIKit/Foundation boundaries.",
                        "Real progress-class discovery, clipping, touch delivery and rendering need device acceptance."]}
 
@@ -581,7 +636,7 @@ def main():
     pause = "LFQH_DramaProgressActivated"
     direct_pause = [pause] if f"\n{pause}:" in composed.read_text(encoding="utf-8") else []
     related = ["LFQH_DramaWatchContentKey", "LFQH_DramaDetailRelatedContentKey", "LFQH_DramaGlassKey"] \
-        if release_version(data) in ("1.78R31", "1.78R32") else []
+        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33") else []
     labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + direct_pause + related)))
     result = verify(data, labels)
     result["candidate_sha256"] = hashlib.sha256(data).hexdigest()

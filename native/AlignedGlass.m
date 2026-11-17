@@ -3177,7 +3177,7 @@ static void LandscapeGlassInstall178R9(void) {
 // Portrait episode details use different native owners from the main feed.
 // Keep their buttons, tap recognizers and callback blocks as the input surface.
 static void DramaDetailNavConstraintsKey(void) {}
-static void DramaDetailNavigationButton(Obj button,Obj nav) {
+static void DramaDetailNavigationButton(Obj button,Obj nav,B stockBackGlyph) {
     if (!Kind(button,"UIButton") || !Belongs(button,nav)) return;
     if (!Enabled() || !FQHGlassAvailable()) { LandscapeControlGlass178R9(button,nav,44); return; }
     Obj parent=Get(button,"superview"),glyph=Get(button,"imageView");
@@ -3191,20 +3191,28 @@ static void DramaDetailNavigationButton(Obj button,Obj nav) {
     if (!glass || Get(glass,"superview")!=parent)
         glass=PlaceDramaGlass(button,parent,button,(Rect){0,0,36,36});
     if (!glass) return;
-    if (!objc_getAssociatedObject(glass,DramaDetailNavConstraintsKey)) {
+    Obj anchors=objc_getAssociatedObject(glass,DramaDetailNavConstraintsKey);
+    if (!anchors) {
         VB(glass,"setTranslatesAutoresizingMaskIntoConstraints:",0);
-        // Native back buttons have an off-center image rect. Keep their hit
-        // region intact and center the backing on the actual visible glyph.
-        // A sibling backing cannot be reordered over UIButton's imageView.
+        // A sibling backing stays behind the native button and its glyph.
         Obj constraints[]={
             O1(Get(glass,"centerXAnchor"),"constraintEqualToAnchor:",Get(glyph,"centerXAnchor")),
             O1(Get(glass,"centerYAnchor"),"constraintEqualToAnchor:",Get(glyph,"centerYAnchor")),
             ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"widthAnchor"),sel_registerName("constraintEqualToConstant:"),36.),
             ((Obj(*)(Obj,Sel,double))Message)(Get(glass,"heightAnchor"),sel_registerName("constraintEqualToConstant:"),36.)};
-        Obj array=((Obj(*)(Obj,Sel,Obj *,U))Message)(Lookup("NSArray"),sel_registerName("arrayWithObjects:count:"),constraints,4);
-        V1(Lookup("NSLayoutConstraint"),"activateConstraints:",array);
-        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,array,1);
+        anchors=((Obj(*)(Obj,Sel,Obj *,U))Message)(Lookup("NSArray"),sel_registerName("arrayWithObjects:count:"),constraints,4);
+        V1(Lookup("NSLayoutConstraint"),"activateConstraints:",anchors);
+        objc_setAssociatedObject(glass,DramaDetailNavConstraintsKey,anchors,1);
     }
+    // short_video_nav_back puts its visible ink at 11/48 and 16.5/72 on
+    // the @2x/@3x canvases. Align the backing with that ink, preserving the
+    // original image, button frame and tap target.
+    Obj image=stockBackGlyph ? Get(glyph,"image") : 0;
+    double width=image ? ((Size(*)(Obj,Sel))Message)(image,sel_registerName("size")).width : 0;
+    double offset=width*((5.5/24.0)-0.5);
+    Obj centerX=At(anchors,0);
+    if (((double(*)(Obj,Sel))Message)(centerX,sel_registerName("constant"))!=offset)
+        ((void(*)(Obj,Sel,double))Message)(centerX,sel_registerName("setConstant:"),offset);
     VB(glass,"setHidden:",Flag(button,"isHidden") || Flag(glyph,"isHidden"));
     ((void(*)(Obj,Sel,double))Message)(glass,sel_registerName("setAlpha:"),
         ((double(*)(Obj,Sel))Message)(button,sel_registerName("alpha")));
@@ -3212,13 +3220,14 @@ static void DramaDetailNavigationButton(Obj button,Obj nav) {
 }
 static void DramaDetailNavigationApply(Obj component) {
     Obj nav=Get(component,"navBar");
-    DramaDetailNavigationButton(Get(component,"backBtn"),nav);
-    DramaDetailNavigationButton(Get(component,"moreBtn"),nav);
+    Obj name=Get(Get(Get(component,"listVCContext"),"config"),"navBackImageName");
+    DramaDetailNavigationButton(Get(component,"backBtn"),nav,!name || Equal(name,"short_video_nav_back"));
+    DramaDetailNavigationButton(Get(component,"moreBtn"),nav,0);
     Obj items=Get(component,"navigationBarRightItems");
     for (U i=0,count=TabCount(items);i<count;++i) {
         Obj item=At(items,i);
         if (Kind(item,"FQVShortVideoMoreBtnNavBarItem"))
-            DramaDetailNavigationButton(Get(item,"moreBtn"),nav);
+            DramaDetailNavigationButton(Get(item,"moreBtn"),nav,0);
     }
 }
 static void DramaDetailNavigationLayout(Obj self,Sel cmd,Obj container) {
@@ -3241,7 +3250,7 @@ static void DramaDetailNavigationLegacyRight(Obj self,Sel cmd,Obj context,U valu
 static void DramaDetailMoreItemSetup(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoMoreBtnNavBarItem","fqx178r29_originalMoreSetup"))(self,cmd);
     Obj button=Get(self,"moreBtn");
-    DramaDetailNavigationButton(button,Get(self,"view"));
+    DramaDetailNavigationButton(button,Get(self,"view"),0);
 }
 static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoOriginalNovelEntranceView","fqx178r29_originalDetailNovelLayout"))(self,cmd);
@@ -4618,6 +4627,12 @@ static void DramaProgressState(Obj self,Sel cmd,U state,B showDot) {
         self,cmd,state,showDot);
     DramaSpacingForView(self);
 }
+static void DramaProgressConfigure(Obj self,Sel cmd,U type,Obj configMaker) {
+    ((void(*)(Obj,Sel,U,Obj))Original("FQVShortVideoProgressView","fqx_originalDramaProgressConfigure:configMaker:"))(
+        self,cmd,type,configMaker);
+    // Setup can replace the visible track without another layout or playback callback.
+    DramaSpacingForView(self);
+}
 static void DramaEpisodeInsert(Obj self,Sel cmd,Obj insert) {
     ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoVPlayerControlView","fqx_originalDramaEpisodeInsert:"))(self,cmd,insert);
     FQHDramaSpacing178R2(self);
@@ -4674,6 +4689,8 @@ static void DramaSpacingInstall178R2(void) {
          "v24@0:8B16B20",(Imp)DramaProgressPlaying);
     Hook("FQVShortVideoProgressView","updateProgressViewWithActivatedState:",
          "fqx_originalDramaProgressActivated:","v24@0:8Q16",(Imp)DramaProgressActivated);
+    Hook("FQVShortVideoProgressView","updateProgressBarWithProgressBarType:configMaker:",
+         "fqx_originalDramaProgressConfigure:configMaker:","v32@0:8Q16@?24",(Imp)DramaProgressConfigure);
     Hook("FQVShortVideoProgressView","updateProgressViewWithStateChange:showDot:",
          "fqx_originalDramaProgressState:showDot:","v28@0:8Q16B24",(Imp)DramaProgressState);
     Hook("FQVShortVideoVPlayerControlView","setInsertAboveProgressView:","fqx_originalDramaEpisodeInsert:",

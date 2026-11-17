@@ -41,7 +41,7 @@ def open_settings(cpu,rt,d,bootstrap=True):
         require(rt.string_value(rt.objects[options].state.get('title', 0)) == 'FanqieX',
                 'The complete settings opener presents the product as FanqieX')
     nav = rt.objects[rt.objects[options].state['navigationItem']].state
-    if release_version(rt.data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
+    if release_version(rt.data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
         require(not nav.get('left') and nav.get('right'),
                 'Legacy installer preserves Done and adds no toolbar export')
         action = rt.sel('fqab_156_exportDiagnostics:')
@@ -308,7 +308,7 @@ def io_and_ui(data,d,make):
     share=r.objects[target].state['presentedViewController']
     require(r.class_names[r.objects[share].cls]=='UIActivityViewController','Actual UI presenter opens share controller')
     anchor = r.objects[r.objects[share].state['popover']].state
-    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"):
+    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
         require(anchor['source_view'] == button and anchor['source_rect'] == (0, 0, 130, 44),
                 'Actual export presenter anchors to bottom button bounds')
     else:
@@ -334,7 +334,7 @@ def io_and_ui(data,d,make):
     require(corrupted['storageError'] and any(e['event']=='plugin_start' for e in corrupted['entries']),
             'Corrupt restart history is surfaced while current diagnostics export')
     return {'passed':True,'whole_original_settings_menu_executed':True,'high_argument_ABI':True,
-            'bottom_export_button_modeled': release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"),
+            'bottom_export_button_modeled': release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"),
             'journal_atomic_failure_keeps_old_bytes':True,'memory_export_after_storage_failure':True,
             'duplicate_click_guard':True,'worker_to_main_share_and_popover':True,
             'retry_full_persist':True,'failed_export_error_UI':True,'corrupt_restart_reported':True,

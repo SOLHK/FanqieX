@@ -50,7 +50,7 @@ def build_fixture(data, labels, width=440, height=40, slide=0):
 
 
 def exercise(data, labels):
-    require(release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32"),'Header regression is bound to the 1.7.3+ header path')
+    require(release_version(data) in ('1.7.3','1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"),'Header regression is bound to the 1.7.3+ header path')
     cases=[]
     for slide in (0,0x100000000):
         for width in (320,375,390,430,440,768,1024):
