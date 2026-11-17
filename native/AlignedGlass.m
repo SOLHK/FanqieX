@@ -3291,6 +3291,7 @@ static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
     else { RemoveDramaGlass(self); DramaClearBackground(self,0); }
 }
 static void DramaDetailBottomSpacing(Obj view,Obj episode,Obj novel) {
+    // R36: keep the native detail stack clear of the home-indicator and floating-dock edge.
     Obj window=Get(view,"window");
     if (!window || !Kind(view,"UIView") || !Kind(episode,"UIView") || !Belongs(episode,view)) {
         BottomRestoreFrame178(episode,DramaDetailEpisodeStockKey,DramaDetailEpisodeAppliedKey);
