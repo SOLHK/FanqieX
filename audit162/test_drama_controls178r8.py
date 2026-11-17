@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run R8 novel visibility and playback-control materials against candidate ARM64."""
+"""Run novel visibility and playback-control materials against candidate ARM64."""
 import argparse
 import json
 from pathlib import Path
@@ -14,6 +14,7 @@ from test_page_glass174 import EXTRA, make
 ABOVE = "SSShortVideoAboveLeftContainerViewManager"
 REASON = "SSShortVideoRcmdReasonViewManager"
 REASON_VIEW = "SSShortVideoRcmdReasonView"
+REASON_MODEL = "SSShortVideoRcmdReasonModel"
 ENTRANCE = "FQCShortVideoDanmakuEntranceView"
 DANMAKU = "SSShortVideoDanmakuLeftAboveView"
 ASSETS = "FQCShortVideoDanmakuAsset"
@@ -23,19 +24,26 @@ DISABLED_KEY = "FanqieAdBlock.GlassDisabled.1"
 
 
 class Runtime(VisibilityRuntime):
-    HOST_VIEW = 0x33250030
+    HOST_VIEW = 0x3325003C
     ASSET = 0x33250034
 
     def __init__(self, data):
         super().__init__(data)
+        self.novel_restyles = release_version(data) == "1.78R25"
         for name, parent in (
-            (ABOVE, "NSObject"), (REASON, "NSObject"), (REASON_VIEW, "UIView"),
+            (ABOVE, "NSObject"), (REASON, "NSObject"), (REASON_VIEW, "UIView"), (REASON_MODEL, "NSObject"),
             (ENTRANCE, "UIView"), (DANMAKU, "UIView"), (ASSETS, "NSObject"), (PLAYER, "UIView"),
         ):
             self._class(name, parent)
         for cls, selector, encoding, implementation in (
             (ABOVE, "orderedAboveLeftViewsForCurrentState", "@16@0:8", self.HOST_VIEW),
             (ABOVE, "updateLayoutForContainerView", "v16@0:8", self.HOST_VIEW),
+            (REASON_VIEW, "dataModel", "@16@0:8", self.HOST_VIEW),
+            (REASON_VIEW, "gradientBackgroundView", "@16@0:8", self.HOST_VIEW),
+            (REASON_VIEW, "layoutSubviews", "v16@0:8", self.LAYOUT_IMP),
+            (REASON_VIEW, "setDataModel:", "v24@0:8@16", self.HOST_VIEW),
+            (REASON_VIEW, "modelDidUpdate", "v16@0:8", self.HOST_VIEW),
+            (REASON_MODEL, "recType", "i16@0:8", self.HOST_VIEW),
             (ENTRANCE, "layoutSubviews", "v16@0:8", self.LAYOUT_IMP),
             (ENTRANCE, "refreshIcon", "v16@0:8", self.HOST_VIEW),
             (PLAYER, "updateFullscreenBtnLayout", "v16@0:8", self.LAYOUT_IMP),
@@ -55,6 +63,18 @@ class Runtime(VisibilityRuntime):
                 self.objects[state["iconView"]].state["image"] = state["legacyImage"]
             elif name == "updateLayoutForContainerView":
                 state["layoutUpdates"] = state.get("layoutUpdates", 0) + 1
+            elif name == "setDataModel:":
+                state["dataModel"] = argument
+                if self.novel_restyles:
+                    # The host's setDataModel: invokes this method after assigning the new model.
+                    update = self.sel("modelDidUpdate")
+                    method = self.get_method(self.classes[REASON_VIEW], update)
+                    cpu.x[1] = update
+                    cpu.pc = self.methods[method]["imp"]
+                    return True
+                state["backgroundColor"] = self.objects[argument].state["backgroundColor"]
+            elif name == "modelDidUpdate":
+                state["backgroundColor"] = self.objects[state["dataModel"]].state["backgroundColor"]
             return self.finish(cpu, state.get(name, 0))
         if pc - self.slide == 0xa5d4 and receiver in self.objects:
             state = self.objects[receiver].state
@@ -68,7 +88,7 @@ class Runtime(VisibilityRuntime):
         return super().handle(cpu, pc)
 
 
-def exercise(data, labels):
+def exercise(data, labels, novel_glass):
     cpu, rt = make(data, Runtime)
     rt.labels = labels
     call(cpu, labels, "LFQH_FQHPageInstall")
@@ -117,7 +137,9 @@ def exercise(data, labels):
     publish = rt.view("UIButton", "native publish target", (32., 0., 42., 32.), entrance,
                       originalAction="publish")
     legacy = rt.obj("UIImage", "legacy backed toggle")
-    icon = rt.view("UIImageView", "native switch glyph", (0., 0., 32., 32.), toggle, image=legacy, contentMode=0)
+    centered_danmaku = release_version(data) in ("1.78R24", "1.78R25")
+    icon_stock = (1., 3., 24., 24.) if centered_danmaku else (0., 0., 32., 32.)
+    icon = rt.view("UIImageView", "native switch glyph", icon_stock, toggle, image=legacy, contentMode=0)
     rt.objects[entrance].state.update(capsuleView=capsule, toggleButton=toggle, iconView=icon, legacyImage=legacy)
 
     def material(view):
@@ -139,10 +161,57 @@ def exercise(data, labels):
                 "All new controls use the common regular glass configuration")
         return glass
 
+    if novel_glass:
+        pill = rt.view(REASON_VIEW, "original novel CTA", (16., 612., 132., 28.), originalAction="read novel")
+        gradient = rt.view("UIView", "native gradient", (0., 0., 132., 28.), pill)
+        book_icon = rt.view("UIImageView", "native book icon", (8., 8., 12., 12.), pill)
+        text = rt.view("UILabel", "native novel text", (24., 0., 84., 28.), pill)
+        arrow = rt.view("UIImageView", "native CTA arrow", (116., 10., 8., 8.), pill)
+        foreground = [book_icon, text, arrow]
+        rt.objects[pill].state["gradientBackgroundView"] = gradient
+        related_book = rt.obj(REASON_MODEL, "original novel model", recType=25, backgroundColor=shade)
+        other_color = rt.color("recommendation paint")
+        other_reason = rt.obj(REASON_MODEL, "other recommendation", recType=21, backgroundColor=other_color)
+        send(cpu, rt, pill, "setDataModel:", related_book)
+        glass = check_material(pill, (0., 0., 132., 28.))
+        require(rt.objects[gradient].state["hidden"] and rt.objects[pill].state["subviews"] == [glass, gradient, *foreground],
+                "Only the stock gradient is hidden and native foreground stays above glass")
+        if rt.novel_restyles:
+            adapted_color = rt.color("adaptive native pill paint")
+            rt.objects[related_book].state["backgroundColor"] = adapted_color
+            send(cpu, rt, pill, "modelDidUpdate")
+            require(check_material(pill, (0., 0., 132., 28.)) == glass and
+                    rt.objects[gradient].state["hidden"] and
+                    all(not rt.objects[view].state["hidden"] for view in foreground) and
+                    rt.objects[pill].state["originalAction"] == "read novel",
+                    "A native restyle clears the background corners before layout, retaining the same glass and click target")
+        else:
+            adapted_color = shade
+        rt.objects[pill].state["bounds"] = (0., 0., 154., 28.)
+        send(cpu, rt, pill, "layoutSubviews")
+        require(check_material(pill, (0., 0., 154., 28.)) == glass,
+                "Resizing the existing CTA updates its one glass backing")
+        send(cpu, rt, pill, "setDataModel:", other_reason)
+        require(material(pill) is None and not rt.objects[gradient].state["hidden"] and
+                rt.objects[pill].state["backgroundColor"] == other_color and
+                rt.objects[pill].state["originalAction"] == "read novel",
+                "A recycled recommendation restores its own paint and retains the native tap handler")
+        send(cpu, rt, pill, "setDataModel:", related_book)
+        prefs[DISABLED_KEY] = True
+        send(cpu, rt, pill, "layoutSubviews")
+        require(material(pill) is None and not rt.objects[gradient].state["hidden"] and
+                rt.objects[pill].state["backgroundColor"] == adapted_color,
+                "Disabling glass restores the latest original-novel CTA paint")
+        del prefs[DISABLED_KEY]
+
     send(cpu, rt, entrance, "layoutSubviews")
     glass = check_material(toggle, (0., 0., 32., 32.))
     require(material(capsule) is None and rt.objects[icon].state["image"] == rt.assets["fq_danmaku_entrance_v741_off"],
             "Standalone toggle uses the exact translucent off glyph")
+    if centered_danmaku:
+        require(rt.objects[icon].state["frame"] == (4., 4., 24., 24.) and
+                rt.objects[toggle].state["frame"] == (0., 0., 32., 32.),
+                "The standalone glyph is centered without changing its artwork size or tap target")
     rt.objects[entrance].state["danmakuEnabled"] = True
     send(cpu, rt, entrance, "refreshIcon")
     require(rt.objects[icon].state["image"] == rt.assets["fq_danmaku_entrance_v741_on"] and
@@ -153,7 +222,8 @@ def exercise(data, labels):
     send(cpu, rt, entrance, "layoutSubviews")
     check_material(capsule, (0., 0., 74., 32.))
     require(material(toggle) is None and rt.objects[icon].state["image"] == legacy and
-            rt.objects[icon].state["contentMode"] == 0, "Switching to publish restores the native combined artwork")
+            rt.objects[icon].state["contentMode"] == 0 and rt.objects[icon].state["frame"] == icon_stock,
+            "Switching to publish restores the native combined artwork and placement")
     require(rt.objects[toggle].state["originalAction"] == "toggle" and
             rt.objects[publish].state["originalAction"] == "publish", "Both native targets stay intact")
 
@@ -173,7 +243,9 @@ def exercise(data, labels):
             rt.objects[capsule].state["backgroundColor"] == shade, "Disabling glass restores native paint")
 
     return {"novel_toggle": True, "native_tap_targets": True, "standalone_danmaku_states": 2,
-            "publish_and_fullscreen_glass": True, "restored_native_paint": True}
+            "publish_and_fullscreen_glass": True, "restored_native_paint": True,
+            **({"original_novel_glass": True} if novel_glass else {}),
+            **({"cleared_background_after_native_restyle": True} if rt.novel_restyles else {})}
 
 
 def main():
@@ -182,10 +254,12 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"), "Use the 1.78R8 candidate")
+    version = release_version(data)
+    require(version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R25"),
+            "Use a supported FanqieX candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])
-    report = {"passed": True, **exercise(data, labels), "device_tested": False}
+    report = {"passed": True, **exercise(data, labels, version in ("1.78R17", "1.78R25")), "device_tested": False}
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 

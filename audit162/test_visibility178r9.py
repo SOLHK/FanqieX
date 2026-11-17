@@ -20,6 +20,9 @@ SIDEBAR = "SSMyUser621SideBarViewController"
 SHELF_MODEL = "SSBookShelfViewModel"
 SHELF_ITEM = "SSBookShelfCellModel"
 GROUP = "SSBookGroupModel"
+SHELF_OWNER = "SSBookShelf525ViewController"
+SHELF_CONTROLLER = "SSBookShelfSubViewController"
+SHELF_SELECTION = "categoryView:didSelectedItemAtIndex:"
 KEYS = ["FanqieX.MineContinueDrama.1", "FanqieX.ReaderEarnMore.1",
         "FanqieX.SidebarGames.1", "FanqieX.ShelfMotionComic.1"]
 
@@ -27,6 +30,7 @@ KEYS = ["FanqieX.MineContinueDrama.1", "FanqieX.ReaderEarnMore.1",
 class Runtime(BaseRuntime):
     HOST_VISIBILITY = 0x33251000
     HOST_HEIGHT = 0x33251004
+    HOST_SELECTION = 0x33251008
 
     def __init__(self, data):
         super().__init__(data)
@@ -42,8 +46,10 @@ class Runtime(BaseRuntime):
             (GAME, "layoutSubviews", "v16@0:8"),
             (SIDEBAR, "reloadData", "v16@0:8"),
             (SHELF_MODEL, "setShowCellModels:", "v24@0:8@16"),
+            (SHELF_CONTROLLER, "reloadData:", "v24@0:8@16"),
         ):
             self._add(self.classes[cls], name, self.HOST_VISIBILITY, signature)
+        self._add(self.classes[SHELF_OWNER], SHELF_SELECTION, self.HOST_SELECTION, "v32@0:8@16q24")
         self._add(self.metaclasses[self.classes[GAME]], "heightForModels:containerWidth:",
                   self.HOST_HEIGHT, "d32@0:8@16d24")
 
@@ -57,17 +63,22 @@ class Runtime(BaseRuntime):
         name = self.selector_names.get(selector)
         if pc == self.HOST_HEIGHT:
             return self.finish(cpu, fp=(204.,))
+        if pc == self.HOST_SELECTION:
+            state = self.objects[receiver].state
+            state["currentTabVC"] = state["nativeTabs"][cpu.x[3]]
+            return self.finish(cpu)
         if pc == self.HOST_VISIBILITY:
             state = self.objects[receiver].state
             if name == "configInsertObjs:":
                 state["appliedItems"] = argument
             if name == "setShowCellModels:":
                 state["showCellModels"] = argument
-            if name == "reloadData":
+            if name in ("reloadData", "reloadData:"):
                 state["reloads"] = state.get("reloads", 0) + 1
             return self.finish(cpu, int(state.get(name, 0)))
         if pc - self.slide == 0xa5d4 and receiver in self.objects:
-            if name in ("groupModel", "isFakeMotionComicGroup"):
+            if name in ("groupModel", "isFakeMotionComicGroup", "showCellModels", "currentTabVC",
+                        "viewModel", "delegate"):
                 return self.finish(cpu, int(self.objects[receiver].state.get(name, 0)))
         return super().handle(cpu, pc)
 
@@ -166,6 +177,31 @@ def exercise(data, labels):
          rt.sel("fqx178_bottomOptionChanged:"), switch)
     require(rt.objects[shelf].state["showCellModels"] == newer_items,
             "Restoration uses the newest native array and does not revive removed books")
+    if release_version(data) in ("1.78R19", "1.78R25"):
+        call(cpu, labels, "LFQH_FQHInstall")
+        controller = rt.obj(SHELF_CONTROLLER, "book grid", viewModel=shelf)
+        history_page = rt.obj("UIViewController", "mixed History page", filterSelection="all")
+        shelf_owner = rt.obj(SHELF_OWNER, "shelf container", view=rt.ROOT,
+                             nativeTabs=(controller, history_page), currentTabVC=history_page)
+        rt.objects[shelf].state["delegate"] = controller
+        rt.objects[controller].state["delegate"] = shelf_owner
+        state = rt.objects[switch].state
+        state.update(tag=29, isOn=False)
+        call(cpu, labels, "LFQH_FQHBottomOptionChanged178", settings,
+             rt.sel("fqx178_bottomOptionChanged:"), switch)
+        require(prefs[KEYS[3]] is False and rt.objects[shelf].state["showCellModels"] == newer_items and
+                not rt.objects[controller].state.get("reloads"),
+                "Disabling the comic group waits for the bookshelf when History is active")
+        send(cpu, rt, shelf_owner, SHELF_SELECTION, 0, 0)
+        require(items(rt.objects[shelf].state["showCellModels"]) == [normal_item] and
+                rt.objects[controller].state["reloads"] == 1 and
+                rt.objects[history_page].state["filterSelection"] == "all",
+                "The next bookshelf selection applies the pending display change once")
+        state.update(tag=28, isOn=False)
+        call(cpu, labels, "LFQH_FQHBottomOptionChanged178", settings,
+             rt.sel("fqx178_bottomOptionChanged:"), switch)
+        require(rt.objects[controller].state["reloads"] == 1,
+                "Changing the sidebar visibility never reloads the bookshelf")
     rt.objects[history_model].state["shouldShowHistory"] = False
     require(not send(cpu, rt, history_model, "shouldShowHistory")["result"],
             "Enabling the option does not invent native history")
@@ -177,7 +213,8 @@ def exercise(data, labels):
     require(rt.objects[history].state["hidden"], "A native-hidden view stays hidden after toggle restoration")
     return {"independent_visibility_switches": 4, "original_arrays_unchanged": True,
             "native_hidden_state_preserved": True, "settings_restore_live_views": True,
-            "shared_shelf_display_and_size_mapping": True, "latest_host_array_restored": True}
+            "shared_shelf_display_and_size_mapping": True, "latest_host_array_restored": True,
+            "defers_shelf_reload_while_history_is_active": release_version(data) in ("1.78R19", "1.78R25")}
 
 
 def main():
@@ -186,9 +223,9 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"), "Use the R9 candidate")
+    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R25"), "Use an R9 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
-                        EXTRA + ["LFQH_FQHBottomOptionChanged178"])
+                        EXTRA + ["LFQH_FQHBottomOptionChanged178", "LFQH_FQHInstall"])
     report = {"passed": True, **exercise(data, labels), "device_tested": False}
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

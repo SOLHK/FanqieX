@@ -20,6 +20,7 @@ from test_page_glass174 import Runtime as PageRuntime, make
 
 EXTRA = ["LFQH_FQHReader", "LFQH_FQHReaderCount", "LFQH_FQHIconGlass",
          "LFQH_FQHSurface", "LFQH_ReaderBottomGlass", "LFQH_ProfileEntryGlass"]
+TOOLBAR_LAYOUT = "LFQH_ReaderToolbarGlass"
 
 
 class Runtime(PageRuntime):
@@ -102,10 +103,10 @@ def icon(runtime, *args, **kwargs):
 
 def main_checks(data, labels):
     cases = []
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
     nav_glass_frame = (-5., -5., 34., 34.) if compact_reader else (-6., -6., 36., 36.)
     glyph_frame = (3., 3., 18., 18.) if compact_reader else (2., 2., 20., 20.)
-    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"), "These changed visual contracts apply only to 1.78")
+    require(release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"), "These changed visual contracts apply only to 1.78")
     for route in ("insert_accessibility", "direct_action", "nested_identifier", "runtime_insert_class", "runtime_view_class"):
         cpu, runtime = build_fixture(data, labels)
         nav = runtime.view("FQReaderSaasNavigationView", "reader navigation", (0, 62, 402, 44), runtime.ROOT)
@@ -229,10 +230,18 @@ def main_checks(data, labels):
             runtime.objects[caption].state["attributedText"] = plain
         pigment = runtime.color("reader dark pigment" if dark else "reader light pigment")
         runtime.objects[caption].state["textColor"] = pigment
-        call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+        def layout():
+            if TOOLBAR_LAYOUT in labels:
+                call(cpu, labels, TOOLBAR_LAYOUT, toolbar)
+            else:
+                call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+
+        layout()
         surface = call(cpu, labels, "LFQH_FQHSurface", item)["result"]
         require(surface and runtime.objects[glyph].state["frame"] == glyph_frame, "Reader toolbar keeps compact artwork")
-        if compact_reader:
+        if TOOLBAR_LAYOUT in labels:
+            require(runtime.objects[surface].state["frame"] == (-26., -2., 76., 44.), "Reader toolbar lays out the catalog glass")
+        elif compact_reader:
             require(runtime.objects[surface].state["frame"] == (-18., -2., 60., 44.), "Reader tool uses smaller glass")
         fitted = runtime.objects[runtime.objects[caption].state["font"]].state
         require(fitted["pointSize"] == 11 and fitted["weight"] == "medium", "Toolbar captions retain font weight at 11pt")
@@ -241,18 +250,18 @@ def main_checks(data, labels):
         require(hit_contains(runtime, item, (-10., -2., 44., 44.)), "Visual refinement retains the larger native touch area")
         if compact_reader:
             runtime.objects[plain].state["firstRunLength"] = 1
-            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+            layout()
             require(runtime.objects[caption].state["font"] == original_font,
                     "A later styled caption run preserves the host font")
             runtime.objects[plain].state.update(firstRunLength=2,
                 attributes=runtime.obj("NSDictionary", "explicit caption styles", items={"NSFont": original_font}))
-            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+            layout()
             require(runtime.objects[caption].state["font"] == original_font and runtime.objects[caption].state["attributedText"] == plain,
                     "An explicitly styled caption remains intact")
             runtime.objects[caption].state["attributedText"] = 0
-            call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+            layout()
         runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = 1
-        call(cpu, labels, "LFQH_ReaderBottomGlass", item, 0)
+        layout()
         require(runtime.objects[caption].state["font"] == original_font and
                 runtime.objects[glyph].state["frame"] == (0., 0., 24., 24.) and
                 runtime.objects[item].state["hitInsets"] == (0., -15., 0., -15.), "Toolbar disable restores font, glyph and original touch insets")
@@ -272,8 +281,8 @@ def main_checks(data, labels):
     call(cpu, labels, "LFQH_ProfileEntryGlass", cell, 0)
     surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
     require(surface, "Known profile shortcut receives glass")
-    glyph_size = 20. if release_version(data) in ("1.78R9","1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else 18. if compact_reader else 20.
-    if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+    glyph_size = 20. if release_version(data) in ("1.78R9","1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else 18. if compact_reader else 20.
+    if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
         require(runtime.objects[surface].state["frame"]==(-1.,0.,72.,60.),
                 "Profile glass expands with padded captions and remains within the row gap")
         require(runtime.objects[caption].state["frame"]==(7.,32.,56.,20.) and
@@ -285,7 +294,7 @@ def main_checks(data, labels):
     require(runtime.objects[glyph].state["frame"][2:] == (glyph_size, glyph_size), "Profile large-row artwork is capped")
     require(runtime.string_value(runtime.objects[caption].state["text"]) == "浏览历史" and
             not runtime.objects[caption].state.get("hidden", False), "A saved 1.77r3 icon-only setting leaves the native caption visible")
-    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == (13. if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else 12. if compact_reader else 13.),
+    require(runtime.objects[runtime.objects[caption].state["font"]].state["pointSize"] == (13. if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else 12. if compact_reader else 13.),
             "Profile text uses its compact font cap")
     require(runtime.objects[cell].state["frame"] == (78, 0, 70, 60) and runtime.objects[cell].state["userInteractionEnabled"],
             "Native cell remains the unchanged touch target")
@@ -313,7 +322,9 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    labels = labels_for(data, args.candidate.with_suffix(".composed.s"), list(dict.fromkeys(LABELS+EXTRA)))
+    composed = args.candidate.with_suffix(".composed.s")
+    toolbar_labels = [TOOLBAR_LAYOUT] if f"\n{TOOLBAR_LAYOUT}:" in composed.read_text(encoding="utf-8") else []
+    labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + toolbar_labels)))
     result = main_checks(data, labels)
     args.report.write_text(json.dumps(result, ensure_ascii=False, indent=2)+"\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))

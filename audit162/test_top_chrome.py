@@ -5,7 +5,7 @@ import json
 import struct
 from pathlib import Path
 
-from arm64 import CPU, require
+from arm64 import CPU, release_version, require
 from test_feed_viewport import labels_for
 from test_header173 import call, drawn_rect
 from test_home_glass165 import HOME, LABELS, Runtime as HeaderRuntime
@@ -20,6 +20,9 @@ REFRESH_HEADER = 'SSNewRefreshHeader'
 FLAT_STORE = 'SSBookStoreTabViewController'
 SHELF_SCROLL = 'scrollViewDidScroll:'
 SHELF_SELECTION = 'categoryView:didSelectedItemAtIndex:'
+CATEGORY_BASE = 'FQRJXCategoryBaseView'
+SHELF_TITLES = 'SSBookShelfTabSelectView'
+TITLE_SELECTION = 'executeSelectCellAtIndex:selectedType:needAnimation:'
 HISTORY_TAB = 'SSBookHistorySubViewController'
 COLLECT_TAB = 'SSVideoCollectViewController'
 HISTORY_PAGER = 'FQRJXCategoryListContainerView'
@@ -56,6 +59,8 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self._class(FLAT_STORE, 'UIViewController')
         self._class(HISTORY_PAGER, 'UIView')
         self._class(REFRESH_HEADER, 'UIView')
+        self._class(CATEGORY_BASE, 'UIView')
+        self._class(SHELF_TITLES, CATEGORY_BASE)
         self.bookstore_header_reads = 0
         self.original_update_inset = 0x3304e200
         self.original_float_layout = 0x3304e300
@@ -73,12 +78,15 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
         self.original_flat_store_scroll = 0x3304e630
         self.original_flow_layout = 0x3304e640
         self.original_shelf_selection = 0x3304e650
+        self.original_shelf_appear = 0x3304e68c
+        self.original_title_selection = 0x3304e690
+        self.title_selections = []
+        self._add(self.classes[CATEGORY_BASE], TITLE_SELECTION, self.original_title_selection, 'B36@0:8q16Q24B32')
         pager_methods = (
             ('layoutSubviews', 'v16@0:8'), ('scrollDidStop', 'v16@0:8'),
             ('didClickSelectedItemAtIndex:', 'v24@0:8q16'),
             ('cleanValidListWithIndex:', 'v24@0:8q16'),
-            ('initListIfNeededAtIndex:', 'v24@0:8q16'),
-            ('setCurrentIndex:', 'v24@0:8q16'), ('listDidAppear:', 'v24@0:8q16'),
+            ('listWillAppear:', 'v24@0:8q16'), ('listDidAppear:', 'v24@0:8q16'),
             ('clampScrollViewToCurrentIndexIfNeeded', 'v16@0:8'),
         )
         self.history_pager_methods = {}
@@ -88,6 +96,7 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             self.history_pager_methods[address] = selector
         for cls, selector, address, encoding in (
                 (SHELF, SHELF_SELECTION, self.original_shelf_selection, 'v32@0:8@16q24'),
+                (SHELF, 'viewDidAppear:', self.original_shelf_appear, 'v20@0:8B16'),
                 (SHELF_LIST, FLOW_LAYOUT, self.original_flow_layout, 'v16@0:8'),
                 (SHELF_LIST, SHELF_SCROLL, self.original_shelf_scroll, 'v24@0:8@16'),
                 (FLAT_STORE, 'scrollViewDidScroll:', self.original_flat_store_scroll, 'v24@0:8@16'),
@@ -99,6 +108,12 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
             self._add(self.classes[cls], selector, address, encoding)
 
     def handle(self, cpu, pc):
+        if pc == self.original_title_selection:
+            self.title_selections.append(tuple(cpu.x[2:5]))
+            return self.finish(cpu, 1)
+        if pc == self.original_shelf_appear:
+            self.event('shelf_appear', cpu.x[0])
+            return self.finish(cpu)
         if pc == self.original_shelf_selection:
             owner = self.objects[cpu.x[0]].state
             owner['currentTabVC'] = owner['nativeCategoryTabs'][cpu.x[3]]
@@ -114,11 +129,11 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
                 pages = pager['nativeValidLists']
                 if selector == 'cleanValidListWithIndex:':
                     del pages[index]
-                elif selector == 'initListIfNeededAtIndex:':
+                elif selector in ('listWillAppear:', 'didClickSelectedItemAtIndex:'):
                     tabs = self.objects[pager['delegate']].state['nativeCategoryTabs']
-                    pages[index] = tabs[index]
-                elif selector in ('didClickSelectedItemAtIndex:', 'setCurrentIndex:'):
-                    pager.update(currentIndex=index, currentSelectedListViewController=pages[index])
+                    pages.setdefault(index, tabs[index])
+                if selector in ('didClickSelectedItemAtIndex:', 'listDidAppear:'):
+                    pager['currentIndex'] = index
                 elif selector == 'clampScrollViewToCurrentIndexIfNeeded':
                     scroll = self.objects[pager['scrollView']].state
                     scroll['contentOffset'] = (pager['currentIndex'] * scroll['bounds'][2], 0)
@@ -200,13 +215,13 @@ class Runtime(TopChromeRuntime, HeaderRuntime):
                 if name == 'invalidateLayout':
                     state['invalidations'] += 1
                     return self.finish(cpu)
+            if name == 'currentSelectedListViewController' and 'nativeValidLists' in state:
+                return self.finish(cpu, state['nativeValidLists'].get(state['currentIndex'], 0))
             if name in PROPERTIES and name in state:
                 return self.finish(cpu, state[name])
-            if name in ('mj_header', 'animationView', 'isDragging', 'isTracking', 'isDecelerating') and name in state:
+            if name in ('mj_header', 'animationView', 'isDragging', 'isTracking', 'isDecelerating',
+                        'isScrollAnimating') and name in state:
                 return self.finish(cpu, state[name])
-            if name == 'setNeedsLayout' and self.is_kind(cpu.x[0], self.classes[HISTORY_PAGER]):
-                self.event('history_pager_needs_layout', cpu.x[0])
-                return self.finish(cpu)
             if name == 'isRefreshing' and 'refresh_state' in state:
                 return self.finish(cpu, state['refresh_state'] in (3, 4))
             if name == 'colorWithAlphaComponent:' and self.is_kind(cpu.x[0], self.classes['UIColor']):
@@ -525,7 +540,7 @@ def exercise(data, labels, kind):
     artwork = r.view('UIImageView', 'gradient artwork above pager', (0,0,440,boundary), root)
     header = r.view('UIView', 'header controls', (0,0,440,boundary-8), root,
                     backgroundColor=stock_fill, opaque=True)
-    tabs = r.view('UIView', 'host tabs', (0,boundary-36,440,36), header)
+    tabs = r.view(SHELF_TITLES if shelf else 'UIView', 'host tabs', (0,boundary-36,440,36), header)
     tab_strip = r.view('UICollectionView', 'host opaque tab strip', (0,0,440,36), tabs,
                        backgroundColor=stock_fill, opaque=True)
     r.objects[tabs].state['collectionView'] = tab_strip
@@ -789,38 +804,80 @@ def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
     owner_state.update(nativeCategoryTabs=pages, tabVCs=r.obj('NSArray', 'shelf pages', items=pages))
     history_state = r.objects[history].state
     history_state['filterSelection'] = 'listening history'
+    if release_version(c.data) in ('1.78R20', '1.78R25'):
+        r.objects[tabs].state['delegate'] = owner
+        for index, source, expected_animation in ((1, 1, 0), (0, 1, 1), (2, 1, 1), (1, 2, 1), (1, 3, 1)):
+            require(call(c, r, tabs, TITLE_SELECTION, index, source, 1)['result'] == 1 and
+                    r.title_selections[-1] == (index, source, expected_animation),
+                    'Only a native tap into the outer History page skips the click animation')
+        prefs = r.objects[r.DEFAULTS].state['values']
+        prefs['FanqieAdBlock.GlassDisabled.1'] = 1
+        call(c, r, tabs, TITLE_SELECTION, 1, 1, 1)
+        require(r.title_selections[-1] == (1, 1, 1), 'The disabled setting leaves the host tap animation intact')
+        prefs['FanqieAdBlock.GlassDisabled.1'] = 0
+        base = r.obj(CATEGORY_BASE, 'unrelated native category', delegate=owner)
+        call(c, r, base, TITLE_SELECTION, 1, 1, 1)
+        require(r.title_selections[-1] == (1, 1, 1), 'Other category controls keep their inherited behavior')
     pager = r.objects[viewport].state
     scroll = r.objects[horizontal].state
     pager.update(delegate=owner, scrollView=horizontal, nativeValidLists=dict(enumerate(pages)),
-                 currentIndex=2, currentSelectedListViewController=collect)
-    scroll.update(contentOffset=(880, 0), isTracking=False, isDragging=False, isDecelerating=True)
+                 currentIndex=2, currentSelectedListViewController=0)
+    cache = pager['nativeValidLists']
+    scroll.update(contentOffset=(880, 0), isTracking=False, isDragging=False,
+                  isDecelerating=True, isScrollAnimating=False)
     call(c, r, owner, SHELF_SELECTION, tabs, 1)
     call(c, r, viewport, 'layoutSubviews')
     require(pager['currentIndex'] == 2, 'A live swipe may still be on the native collection page')
     scroll['isDecelerating'] = False
     call(c, r, viewport, 'scrollDidStop')
-    require(pager['currentIndex'] == 1 and pager['currentSelectedListViewController'] == history and
+    require(pager['currentIndex'] == 1 and cache[1] == history and
             scroll['contentOffset'] == (440, 0),
             'A settled main History selection reselects the native page over an old Collect index')
 
-    pager['nativeValidLists'][1] = collect
-    pager['currentSelectedListViewController'] = collect
+    cache[1] = collect
     call(c, r, viewport, 'layoutSubviews')
-    require(pager['nativeValidLists'][1] == history and pager['currentSelectedListViewController'] == history,
+    require(cache[1] == history,
             'A stale cached Collect controller at the committed History index is rebuilt through the host')
 
-    scroll['contentOffset'] = (880, 0)
+    scroll.update(contentOffset=(820, 0), isScrollAnimating=True)
     call(c, r, viewport, 'layoutSubviews')
+    require(scroll['contentOffset'] == (820, 0), 'Native animated selections remain in motion')
+    scroll['isScrollAnimating'] = False
+    call(c, r, viewport, 'scrollDidStop')
     require(scroll['contentOffset'] == (440, 0),
-            'A whole Collect page offset is corrected when the native selected controller is already History')
+            'The settled viewport aligns to History even with a fractional offset from a full page')
+
+    if release_version(c.data) in ('1.78R19', '1.78R20', '1.78R25'):
+        owner_state.update(currentTabIndex=2, currentTabVC=collect)
+        pager['currentIndex'] = 2
+        scroll.update(contentOffset=(880, 0), isScrollAnimating=True)
+        call(c, r, viewport, 'layoutSubviews')
+        require(scroll['contentOffset'] == (880, 0) and owner_state['currentTabVC'] == collect,
+                'A pending animated click retains the host transition')
+        call(c, r, viewport, 'scrollViewDidEndScrollingAnimation:', horizontal)
+        require(owner_state['currentTabVC'] == history and pager['currentIndex'] == 1 and
+                scroll['contentOffset'] == (440, 0),
+                'Animation completion reconciles an old Collect owner with the selected History title')
+        scroll['isScrollAnimating'] = False
+
+    del cache[1]
+    scroll['contentOffset'] = (880, 0)
+    call(c, r, owner, 'viewDidAppear:', 0)
+    require(cache[1] == history and scroll['contentOffset'] == (440, 0),
+            'Reappearing with a missing History slot mounts the host list before realigning the viewport')
+
+    cache[1] = r.obj(HISTORY_TAB, 'old history controller')
+    call(c, r, owner, SHELF_SELECTION, tabs, 1)
+    require(cache[1] == history, 'Re-selecting History reconciles a stale instance without another pager layout')
+
     call(c, r, owner, SHELF_SELECTION, tabs, 2)
-    pager.update(currentIndex=2, currentSelectedListViewController=collect)
+    pager['currentIndex'] = 2
     scroll['contentOffset'] = (880, 0)
     call(c, r, viewport, 'layoutSubviews')
     require(pager['currentIndex'] == 2 and scroll['contentOffset'] == (880, 0),
             'An actual Collect selection retains its native empty state')
     call(c, r, owner, SHELF_SELECTION, tabs, 1)
-    pager.update(currentIndex=1, currentSelectedListViewController=history)
+    pager['currentIndex'] = 1
     scroll['contentOffset'] = (440, 0)
     before = len([e for e in r.events if e['event'] == 'history_pager_repair'])
     call(c, r, viewport, 'layoutSubviews')

@@ -17,9 +17,15 @@ from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_NAME = "@rpath/FanqieXExport.dylib"
-INTEGRATED_RELEASES = {0x14E0F: "1.78R15", 0x14E10: "1.78R16"}
+INTEGRATED_RELEASES = {0x14E0F: "1.78R15", 0x14E10: "1.78R16", 0x14E13: "1.78R19", 0x14E14: "1.78R20", 0x14E15: "1.78R21", 0x14E16: "1.78R22", 0x14E17: "1.78R23", 0x14E18: "1.78R24", 0x14E19: "1.78R25"}
 SOURCE_FILES = ("native/BookExport.m", "native/BookExportFormats.m", "native/BookExportFormats.h",
                 "native/BookExportSource.m", "native/BookExportSource.h")
+SETTINGS_FILES = ("native/FanqieXSettingsBackup.m", "native/FanqieXSettingsCodec.c", "native/FanqieXSettingsCodec.h",
+                  "native/FanqieXNavigationPreferences.m", "native/NavigationPreferenceLogic.h")
+SETTINGS_INSTALL_NAME = "@rpath/FanqieX-1.78R23.dylib"
+VIDEO_EXPORT_INSTALL_NAMES = ("@rpath/FanqieX-1.78R24.dylib", "@rpath/FanqieX-1.78R25.dylib")
+VIDEO_EXPORT_FILES = ("native/FanqieXSettingsMenu.m", "native/FanqieXCleanup.m",
+                      "native/FanqieXVideoExport.m", "native/VideoContainer.h")
 FRAMEWORKS = ("Foundation", "UIKit", "CoreGraphics")
 
 
@@ -33,8 +39,14 @@ def integrated_release(core):
     return release
 
 
-def source_manifest():
-    paths = [*SOURCE_FILES, "scripts/build_book_export.py", "scripts/merge_book_export.py"]
+def source_files(install_name):
+    if install_name in VIDEO_EXPORT_INSTALL_NAMES:
+        return SOURCE_FILES + SETTINGS_FILES + VIDEO_EXPORT_FILES
+    return SOURCE_FILES + SETTINGS_FILES if install_name == SETTINGS_INSTALL_NAME else SOURCE_FILES
+
+
+def source_manifest(install_name=INSTALL_NAME):
+    paths = [*source_files(install_name), "scripts/build_book_export.py", "scripts/merge_book_export.py"]
     return {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in paths}
 
 
@@ -88,7 +100,7 @@ def validated_bundle(folder, expected_commit=None, *, expected_core_sha256=None,
         raise ValueError("Export companion lacks a successful reproducible build")
     if expected_commit and report.get("github_sha") != expected_commit:
         raise ValueError("Export companion belongs to a different source commit")
-    if report.get("source_sha256") != source_manifest():
+    if report.get("source_sha256") != source_manifest(install):
         raise ValueError("Export companion sources differ from the current checkout")
     validation = validate_binary(binary, install)
     if report.get("binary") != validation:
@@ -119,12 +131,14 @@ def validated_bundle(folder, expected_commit=None, *, expected_core_sha256=None,
 
 def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INSTALL_NAME):
     objects = []
-    for name in SOURCE_FILES:
-        if not name.endswith(".m"):
+    for name in source_files(install_name):
+        extension = Path(name).suffix
+        if extension not in (".m", ".c"):
             continue
         target = output / (Path(name).stem + ".o")
+        flags = ("-fobjc-arc", "-fblocks") if extension == ".m" else ("-std=c11",)
         command([*compiler, "-target", "arm64-apple-ios15.0.1", "-isysroot", sdk,
-                 "-fobjc-arc", "-fblocks", "-fvisibility=hidden",
+                 *flags, "-fvisibility=hidden",
                  "-Wall", "-Wextra", "-Werror", "-Os", "-c", ROOT / name, "-o", target])
         objects.append(target)
     binary = output / install_name.rsplit("/", 1)[-1]
@@ -137,6 +151,10 @@ def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INS
         arguments.extend(("-headerpad", "0x2000", "-sectcreate", "__TEXT", "__fq_unwind", reserve))
     for name in FRAMEWORKS:
         arguments.extend(("-framework", name))
+    if install_name == SETTINGS_INSTALL_NAME or install_name in VIDEO_EXPORT_INSTALL_NAMES:
+        arguments.extend(("-framework", "CoreFoundation", "-framework", "UniformTypeIdentifiers", "-lz"))
+    if install_name in VIDEO_EXPORT_INSTALL_NAMES:
+        arguments.extend(("-framework", "AVFoundation"))
     command([*arguments, "-lobjc", "-lSystem"])
     return binary
 
@@ -172,7 +190,6 @@ def main():
         if not re.fullmatch(r"\d+\.\d+(?:\.\d+)?", sdk_version):
             raise ValueError("Unexpected SDK version")
         report["sdk_version"] = sdk_version
-        sources = source_manifest()
         if args.core:
             core = args.core.read_bytes()
             version = integrated_release(core)
@@ -181,13 +198,14 @@ def main():
             build_dir.mkdir(exist_ok=True)
         else:
             install_name, build_dir = INSTALL_NAME, output
+        sources = source_manifest(install_name)
         binary = build(build_dir, sdk, args.link_sdk or sdk, compiler, linker, sdk_version, install_name)
         rebuilt_dir = output / "export-rebuild"
         rebuilt_dir.mkdir(exist_ok=True)
         rebuilt = build(rebuilt_dir, sdk, args.link_sdk or sdk, compiler, linker, sdk_version, install_name)
         if binary.read_bytes() != rebuilt.read_bytes():
             raise ValueError("Two export companion builds produced different bytes")
-        if source_manifest() != sources:
+        if source_manifest(install_name) != sources:
             raise ValueError("Export companion sources changed during the build")
         if args.core:
             from merge_book_export import merge

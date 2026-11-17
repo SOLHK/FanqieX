@@ -888,63 +888,102 @@ static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
     BookshelfTopChrome(self);
 }
+static void BookshelfSyncHistoryPager(Obj viewport,B animationEnded);
+static void ShelfApplyPendingMotionComic(Obj controller);
+static Obj BookshelfHistoryAtIndex(Obj owner,I index) {
+    if (index<0) return 0;
+    Obj controllers=Get(owner,"tabVCs");
+    U count=((U(*)(Obj,Sel))Message)(controllers,sel_registerName("count"));
+    Obj tab=(U)index<count ? At(controllers,(U)index) : (Obj)0;
+    return Kind(tab,"SSBookHistorySubViewController") ? tab : (Obj)0;
+}
+static B BookshelfSelectTitle(Obj self,Sel cmd,I index,U selectionType,B animated) {
+    // The host moves its pager before committing the title. A direct History
+    // tap settles in that same turn so a previous cached page cannot flash.
+    if (animated && selectionType==1 && Enabled()) {
+        Obj owner=Get(self,"delegate");
+        if (Kind(owner,"SSBookShelf525ViewController") && BookshelfHistoryAtIndex(owner,index))
+            animated=0;
+    }
+    return ((B(*)(Obj,Sel,I,U,B))Original("SSBookShelfTabSelectView",
+        "fqx_originalShelfSelectTitle:type:animation:"))(self,cmd,index,selectionType,animated);
+}
+static void BookshelfInstallTitleSelection(void) {
+    Obj cls=Lookup("SSBookShelfTabSelectView");
+    const char *selector="executeSelectCellAtIndex:selectedType:needAnimation:",*type="B36@0:8q16Q24B32";
+    Sel entry=sel_registerName(selector),alias=sel_registerName("fqx_originalShelfSelectTitle:type:animation:");
+    if (!ClassABI(cls,selector,type) || class_getInstanceMethod(cls,alias)) return;
+    Method original=class_getInstanceMethod(cls,entry);
+    if (class_addMethod(cls,alias,method_getImplementation(original),type))
+        class_addMethod(cls,entry,(Imp)BookshelfSelectTitle,type);
+}
 static void BookshelfTabCommitted(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController",
         "fqx_originalShelfCommitted:index:"))(self,cmd,category,index);
     // The shared pager still carries the previous tab's geometry until the
     // host updates currentTabVC in this common selection callback.
     BookshelfTopChrome(self);
-    if (Kind(Get(self,"currentTabVC"),"SSBookHistorySubViewController") && Enabled())
-        V0(Get(self,"containerView"),"setNeedsLayout");
+    Obj viewport=Get(self,"containerView");
+    if (Responds(viewport,"fqx_originalHistoryPagerLayout")) BookshelfSyncHistoryPager(viewport,0);
+    ShelfApplyPendingMotionComic(Get(self,"currentTabVC"));
 }
-static void BookshelfSyncHistoryPager(Obj viewport) {
+static void BookshelfHistoryAppear(Obj self,Sel cmd,B animated) {
+    ((void(*)(Obj,Sel,B))Original("SSBookShelf525ViewController","fqx_originalHistoryShelfAppear:"))(self,cmd,animated);
+    BookshelfSyncHistoryPager(Get(self,"containerView"),0);
+    ShelfApplyPendingMotionComic(Get(self,"currentTabVC"));
+}
+static void BookshelfHistorySyncKey(void) {}
+static void BookshelfSyncHistoryPager(Obj viewport,B animationEnded) {
     Obj owner=Get(viewport,"delegate");
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"containerView")!=viewport ||
-        !Kind(Get(owner,"currentTabVC"),"SSBookHistorySubViewController") || !Enabled()) return;
+        !Get(viewport,"window") || objc_getAssociatedObject(viewport,BookshelfHistorySyncKey) || !Enabled()) return;
     Obj tabs=Get(owner,"tabSelectView"),scroll=Get(viewport,"scrollView");
-    if (!tabs || !Get(viewport,"window") || !scroll || Flag(scroll,"isTracking") ||
-        Flag(scroll,"isDragging") || Flag(scroll,"isDecelerating")) return;
+    if (!tabs || !scroll || Flag(scroll,"isTracking") || Flag(scroll,"isDragging") ||
+        Flag(scroll,"isDecelerating") || (!animationEnded && Flag(scroll,"isScrollAnimating"))) return;
+    I index=((I(*)(Obj,Sel))Message)(tabs,sel_registerName("selectedIndex"));
+    Obj history=BookshelfHistoryAtIndex(owner,index);
+    if (!history) return;
 
-    I index=((I(*)(Obj,Sel))Message)(owner,sel_registerName("currentTabIndex"));
-    I title=((I(*)(Obj,Sel))Message)(tabs,sel_registerName("selectedIndex"));
-    if (index<0 || index!=title) return;
+    double width=Bounds(scroll).width;
+    if (width<=0) return;
+    I ownerIndex=((I(*)(Obj,Sel))Message)(owner,sel_registerName("currentTabIndex"));
     I current=((I(*)(Obj,Sel))Message)(viewport,sel_registerName("currentIndex"));
     Obj active=Get(viewport,"currentSelectedListViewController");
-    if (Kind(active,"SSVideoCollectViewController")) {
-        if (current!=index) {
-            Q1(viewport,"didClickSelectedItemAtIndex:",index);
-        } else {
-            // The selected slot still contains the old Collect page after a
-            // tab rebuild. Ask the host to recreate that one list from tabVCs.
-            Q1(viewport,"cleanValidListWithIndex:",index);
-            Q1(viewport,"initListIfNeededAtIndex:",index);
-            Q1(viewport,"setCurrentIndex:",index);
-            Q1(viewport,"listDidAppear:",index);
-        }
-        V0(viewport,"clampScrollViewToCurrentIndexIfNeeded");
-    } else if (current==index && Kind(active,"SSBookHistorySubViewController")) {
-        // A size change can leave the scroll view on Collect even when its
-        // logical owner already changed to History. Only correct a full page.
-        double width=Bounds(scroll).width;
-        Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
-        if (width<=0 || offset.x<0) return;
-        double nearestPage=offset.x/width+0.5;
-        Obj controllers=Get(owner,"tabVCs");
-        U count=((U(*)(Obj,Sel))Message)(controllers,sel_registerName("count"));
-        if (nearestPage>=count) return;
-        U page=(U)nearestPage;
-        if (page!=(U)index && __builtin_fabs(offset.x-page*width)<=1 &&
-            Kind(At(controllers,page),"SSVideoCollectViewController"))
-            V0(viewport,"clampScrollViewToCurrentIndexIfNeeded");
+    B ownerMismatch=ownerIndex!=index || Get(owner,"currentTabVC")!=history;
+    Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
+    if (!ownerMismatch && current==index && active==history && __builtin_fabs(offset.x-index*width)<=0.5) return;
+
+    // Native selection or offset changes can synchronously reenter the pager.
+    objc_setAssociatedObject(viewport,BookshelfHistorySyncKey,BoolBox(1),1);
+    if (ownerMismatch) {
+        ((void(*)(Obj,Sel,Obj,I))Message)(owner,sel_registerName("categoryView:didSelectedItemAtIndex:"),tabs,index);
+        current=((I(*)(Obj,Sel))Message)(viewport,sel_registerName("currentIndex"));
+        active=Get(viewport,"currentSelectedListViewController");
     }
+    if (current!=index) {
+        Q1(viewport,"didClickSelectedItemAtIndex:",index);
+        active=Get(viewport,"currentSelectedListViewController");
+    }
+    if (active!=history) {
+        // A tab rebuild can leave this slot empty or holding a previous controller.
+        if (active) Q1(viewport,"cleanValidListWithIndex:",index);
+        Q1(viewport,"listWillAppear:",index);
+        Q1(viewport,"listDidAppear:",index);
+    }
+    V0(viewport,"clampScrollViewToCurrentIndexIfNeeded");
+    objc_setAssociatedObject(viewport,BookshelfHistorySyncKey,0,1);
 }
 static void BookshelfHistoryPagerLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQRJXCategoryListContainerView","fqx_originalHistoryPagerLayout"))(self,cmd);
-    BookshelfSyncHistoryPager(self);
+    BookshelfSyncHistoryPager(self,0);
 }
 static void BookshelfHistoryPagerStopped(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQRJXCategoryListContainerView","fqx_originalHistoryPagerStopped"))(self,cmd);
-    BookshelfSyncHistoryPager(self);
+    BookshelfSyncHistoryPager(self,0);
+}
+static void BookshelfHistoryPagerAnimationEnded(Obj self,Sel cmd,Obj scroll) {
+    (void)cmd;
+    if (Get(self,"scrollView")==scroll) BookshelfSyncHistoryPager(self,1);
 }
 static void RestoreBookshelfTopInset(Obj self) {
     Obj scroll=Get(self,"collectionView");
@@ -2447,6 +2486,35 @@ static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
 static void DramaWatchContentKey(void) {}
 static void DramaSpacingForView(Obj view);
+static Obj BottomDramaCapsuleForView(Obj view);
+static Rect BottomDramaEpisodeDockFrame(Obj view);
+B BottomSameFrame178(Rect a,Rect b);
+static void BottomRestoreFrame178(Obj view,const void *stockKey,const void *appliedKey);
+static void BottomApplyFrame178(Obj view,Rect target,const void *stockKey,const void *appliedKey);
+
+static void DramaDockAlignedStockKey(void) {}
+static void DramaDockAlignedFrameKey(void) {}
+
+static B DramaAlignWithDockFrame(Obj view,Rect alignment,double inset) {
+    Obj parent=Get(view,"superview");
+    Rect before=Frame(view);
+    if (parent && VisibleRect(alignment)) {
+        Rect bounds=Bounds(parent);
+        Rect target={alignment.x-inset,before.y,alignment.width+2*inset,before.height};
+        if (VisibleRect(target) && alignment.width>=bounds.width*0.5 &&
+            target.x>=bounds.x && target.x+target.width<=bounds.x+bounds.width) {
+            BottomApplyFrame178(view,target,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
+            return !BottomSameFrame178(before,target);
+        }
+    }
+    BottomRestoreFrame178(view,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
+    return !BottomSameFrame178(before,Frame(view));
+}
+static B DramaAlignWithDock(Obj view,Obj dock,double inset) {
+    Obj parent=Get(view,"superview");
+    Rect alignment=parent && dock ? Convert(dock,Bounds(dock),parent) : (Rect){0};
+    return DramaAlignWithDockFrame(view,alignment,inset);
+}
 
 static void RemoveDramaGlass(Obj owner) {
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
@@ -2622,6 +2690,7 @@ static void RestoreDramaWatch(Obj owner,Obj content) {
     Obj shade=objc_getAssociatedObject(content,DramaShadeKey);
     RemoveDramaGlass(content);
     DramaClearBackground(content,0);
+    BottomRestoreFrame178(content,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
     if (shade) DramaClearBackground(shade,0);
     objc_setAssociatedObject(content,DramaShadeKey,0,1);
     objc_setAssociatedObject(owner,DramaWatchContentKey,0,1);
@@ -2644,6 +2713,7 @@ static void DramaWatchGlass(Obj owner,Obj model) {
         if (content==previous) RestoreDramaWatch(owner,content);
         return;
     }
+    DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
     Rect bounds=Bounds(content);
     Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
     if (!VisibleRect(material)) {
@@ -2686,9 +2756,12 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout"))(self,cmd);
     Obj content=Get(self,"containerView");
     if (O0(content,"superview")!=self) return;
+    B glassEnabled=Enabled() && FQHGlassAvailable() && Get(self,"albumDetailInfo");
+    if (glassEnabled) DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
+    else BottomRestoreFrame178(content,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
     Rect bounds=Bounds(content);
     Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
-    if (Enabled() && FQHGlassAvailable() && Get(self,"albumDetailInfo") && VisibleRect(material)) {
+    if (glassEnabled && VisibleRect(material)) {
         if (PlaceDramaGlass(content,content,0,material)) DramaClearBackground(content,1);
     } else {
         RemoveDramaGlass(content);
@@ -2713,6 +2786,8 @@ static B DramaSmallGlass(Obj view,B active) {
 static void DramaDanmakuStockImageKey(void) {}
 static void DramaDanmakuAppliedImageKey(void) {}
 static void DramaDanmakuStockModeKey(void) {}
+static void DramaDanmakuStockFrameKey(void) {}
+static void DramaDanmakuAppliedFrameKey(void) {}
 
 static void DramaDanmakuGlyph(Obj entrance,B glass) {
     Obj icon=Get(entrance,"iconView");
@@ -2735,9 +2810,20 @@ static void DramaDanmakuGlyph(Obj entrance,B glass) {
         if (image!=asset) V1(icon,"setImage:",asset);
         if (mode!=4) Q1(icon,"setContentMode:",4);
         objc_setAssociatedObject(icon,DramaDanmakuAppliedImageKey,asset,1);
+        Obj material=objc_getAssociatedObject(Get(entrance,"toggleButton"),DramaGlassKey);
+        Obj parent=Get(icon,"superview");
+        if (material && parent && Belongs(icon,entrance)) {
+            Rect bounds=Convert(material,Bounds(material),parent),frame=Frame(icon);
+            if (VisibleRect(bounds) && VisibleRect(frame)) {
+                frame.x=bounds.x+(bounds.width-frame.width)*0.5;
+                frame.y=bounds.y+(bounds.height-frame.height)*0.5;
+                BottomApplyFrame178(icon,frame,DramaDanmakuStockFrameKey,DramaDanmakuAppliedFrameKey);
+            }
+        }
     } else if (applied) {
         if (image==applied) V1(icon,"setImage:",objc_getAssociatedObject(icon,DramaDanmakuStockImageKey));
         if (mode==4) Q1(icon,"setContentMode:",(I)Double(stockMode));
+        BottomRestoreFrame178(icon,DramaDanmakuStockFrameKey,DramaDanmakuAppliedFrameKey);
         objc_setAssociatedObject(icon,DramaDanmakuStockImageKey,0,1);
         objc_setAssociatedObject(icon,DramaDanmakuStockModeKey,0,1);
         objc_setAssociatedObject(icon,DramaDanmakuAppliedImageKey,0,1);
@@ -2925,10 +3011,52 @@ static void LandscapeInputBackground178R10(Obj input,Obj background) {
         objc_setAssociatedObject(background,LandscapeInputBackground178R10Key,0,1);
     }
 }
+static void LandscapeCountStockFrameKey(void) {}
+static void LandscapeCountFrameKey(void) {}
+static void LandscapeCountAlignmentKey(void) {}
+static void LandscapeCountFitsKey(void) {}
+
+static void LandscapeCountGlass(Obj owner,Obj button,Obj icon,Obj count) {
+    LandscapeControlGlass178R9(button,owner,36);
+    Obj glass=objc_getAssociatedObject(button,DramaGlassKey);
+    if (!Kind(icon,"UIView") || !Kind(count,"UILabel")) return;
+    I alignment=((I(*)(Obj,Sel))Message)(count,sel_registerName("textAlignment"));
+    B fits=Flag(count,"adjustsFontSizeToFitWidth");
+    if (glass && Belongs(icon,button) && Belongs(count,button)) {
+        // Let the native container settle its child constraints before styling.
+        V0(button,"layoutIfNeeded");
+        Rect bounds=Bounds(glass);
+        Rect iconRect={bounds.x+(bounds.width-15)*0.5,bounds.y+4,15,15};
+        Rect countRect={bounds.x+(bounds.width-25)*0.5,bounds.y+20,25,10.5};
+        BottomApplyFrame178(icon,Convert(glass,iconRect,Get(icon,"superview")),
+            LandscapeCountStockFrameKey,LandscapeCountFrameKey);
+        BottomApplyFrame178(count,Convert(glass,countRect,Get(count,"superview")),
+            LandscapeCountStockFrameKey,LandscapeCountFrameKey);
+        AppearanceFont(count,9.5);
+        if (alignment!=1) {
+            objc_setAssociatedObject(count,LandscapeCountAlignmentKey,Number(alignment),1);
+            Q1(count,"setTextAlignment:",1);
+        }
+        if (!fits) {
+            objc_setAssociatedObject(count,LandscapeCountFitsKey,BoolBox(1),1);
+            VB(count,"setAdjustsFontSizeToFitWidth:",1);
+        }
+    } else {
+        BottomRestoreFrame178(icon,LandscapeCountStockFrameKey,LandscapeCountFrameKey);
+        BottomRestoreFrame178(count,LandscapeCountStockFrameKey,LandscapeCountFrameKey);
+        RestoreAppearanceFont(count);
+        Obj stock=objc_getAssociatedObject(count,LandscapeCountAlignmentKey);
+        if (stock && alignment==1) Q1(count,"setTextAlignment:",(I)Double(stock));
+        if (fits && objc_getAssociatedObject(count,LandscapeCountFitsKey)) VB(count,"setAdjustsFontSizeToFitWidth:",0);
+        objc_setAssociatedObject(count,LandscapeCountAlignmentKey,0,1);
+        objc_setAssociatedObject(count,LandscapeCountFitsKey,0,1);
+    }
+}
+
 static void LandscapeSocialApply178R9(Obj self) {
-    LandscapeControlGlass178R9(Get(self,"likeBtnView"),self,36);
-    LandscapeControlGlass178R9(Get(self,"commentBtnView"),self,36);
-    LandscapeControlGlass178R9(Get(self,"starBtnView"),self,36);
+    LandscapeCountGlass(self,Get(self,"likeBtnView"),Get(self,"likeIcon"),Get(self,"likeCountLabel"));
+    LandscapeCountGlass(self,Get(self,"commentBtnView"),Get(self,"commentIcon"),Get(self,"commentCountLabel"));
+    LandscapeCountGlass(self,Get(self,"starBtnView"),Get(self,"starIcon"),Get(self,"starCountLabel"));
     LandscapeControlGlass178R9(Get(self,"danmakuBtnView"),self,36);
     Obj input=Get(self,"danmakuInputView"),background=Get(self,"danmakuInputBGView");
     LandscapeLeadingSpacing178R12(input,Get(self,"danmakuBtnView"),self,8);
@@ -3048,19 +3176,99 @@ static void DramaSearchSetBackground(Obj self,Sel cmd,Obj background) {
     if (replacement) V0(replacement,"release");
 }
 
+enum { DramaHeaderButtonHeight=42 };
+static void DramaSearchButtonKey(void) {}
+static void DramaSearchHeaderReadyKey(void) {}
+static void DramaSearchFeedAppearedKey(void) {}
+static B DramaCategoryButtonsVisible(Obj models);
+
+static B DramaSearchUsesGlass(Obj owner) {
+    return Enabled() && FQHGlassAvailable() && InstanceABI(owner,"simpleSearchViewDidClicked","v16@0:8");
+}
+
+static B DramaSearchHeaderReady(Obj header,Obj owner) {
+    if (!Get(header,"window")) return 0;
+    if (objc_getAssociatedObject(header,DramaSearchHeaderReadyKey)) return 1;
+    Obj categories=Get(header,"tabContainer"),pill=objc_getAssociatedObject(categories,DramaGlassKey);
+    B categoryReady=pill && Get(pill,"superview")==categories && Belongs(categories,header) && !Flag(categories,"isHidden");
+    B searchOnly=!DramaCategoryButtonsVisible(Get(owner,"tabModels")) &&
+        objc_getAssociatedObject(owner,DramaSearchFeedAppearedKey);
+    if (!categoryReady && !searchOnly) return 0;
+    objc_setAssociatedObject(header,DramaSearchHeaderReadyKey,header,0);
+    return 1;
+}
+
+static B DramaHeaderSearchButton(Obj header,Obj owner,B visible) {
+    Obj button=objc_getAssociatedObject(header,DramaSearchButtonKey);
+    Rect bounds=Bounds(header);
+    if (!visible || bounds.width<54 || !VisibleRect(bounds)) {
+        if (button) {
+            V0(button,"removeFromSuperview");
+            objc_setAssociatedObject(header,DramaSearchButtonKey,0,1);
+        }
+        return 0;
+    }
+    Obj categories=Get(header,"tabContainer");
+    Obj pill=objc_getAssociatedObject(categories,DramaGlassKey),row=pill ? pill : categories;
+    Rect aligned=Belongs(row,header) ? Convert(row,Bounds(row),header) : bounds;
+    double side=__builtin_fmin(DramaHeaderButtonHeight,pill ? aligned.height : bounds.height);
+    double y=__builtin_fmax(bounds.y,__builtin_fmin(bounds.y+bounds.height-side,aligned.y+(aligned.height-side)/2));
+    Rect frame={bounds.x+bounds.width-12-side,y,side,side};
+    if (!VisibleRect(frame)) return 0;
+    if (!button) {
+        Obj configuration=Get(Lookup("UIButtonConfiguration"),"glassButtonConfiguration");
+        Obj symbolConfiguration=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
+            sel_registerName("configurationWithPointSize:weight:scale:"),23.,4,2);
+        Obj symbol=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
+            sel_registerName("systemImageNamed:withConfiguration:"),Text("magnifyingglass"),symbolConfiguration);
+        symbol=((Obj(*)(Obj,Sel,Obj,I))Message)(symbol,sel_registerName("imageWithTintColor:renderingMode:"),
+            Get(Lookup("UIColor"),"whiteColor"),1);
+        if (!configuration || !symbol) return 0;
+        V1(configuration,"setImage:",symbol);
+        typedef struct { double top,leading,bottom,trailing; } DirectionalInsets;
+        ((void(*)(Obj,Sel,DirectionalInsets))Message)(configuration,sel_registerName("setContentInsets:"),
+            (DirectionalInsets){0,0,0,0});
+        button=((Obj(*)(Obj,Sel,Rect))Message)(O0(Lookup("UIButton"),"alloc"),sel_registerName("initWithFrame:"),frame);
+        if (!button) return 0;
+        Q1(button,"setOverrideUserInterfaceStyle:",2);
+        V1(button,"setConfiguration:",configuration);
+        V1(button,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
+        V1(button,"setAccessibilityLabel:",Text("搜索"));
+        ((void(*)(Obj,Sel,Obj,Sel,U))Message)(button,sel_registerName("addTarget:action:forControlEvents:"),
+            owner,sel_registerName("simpleSearchViewDidClicked"),64);
+        objc_setAssociatedObject(header,DramaSearchButtonKey,button,1);
+        V0(button,"release");
+    }
+    if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
+    if (Get(button,"superview")!=header) V1(header,"addSubview:",button);
+    else if (Get(Get(header,"subviews"),"lastObject")!=button) V1(header,"bringSubviewToFront:",button);
+    return 1;
+}
+
 static void DramaVisibilityApplySearch(Obj header,B visible) {
+    Obj owner=Get(header,"delegate");
+    B supported=DramaSearchUsesGlass(owner);
+    // Keep both search surfaces off until the mounted header presents its category row.
+    B waiting=supported && !DramaSearchHeaderReady(header,owner);
+    B glass=DramaHeaderSearchButton(header,owner,visible && supported && !waiting);
+    B stock=visible && !glass && !waiting;
     Obj search=Get(header,"searchViewContainer");
     if (!Kind(search,"SSVideoSeriesFeedHeaderSearchView")) return;
-    Obj slot=Get(search,"searchButtonSlotView");
-    if (Belongs(Get(search,"searchButtonView"),slot))
-        DramaVisibilitySet(slot,visible);
+    Obj slot=Get(search,"searchButtonSlotView"),icon=Get(search,"searchButtonView");
+    DramaVisibilitySet(icon,stock);
+    if (slot) {
+        DramaVisibilitySet(slot,stock);
+        if (stock && Belongs(icon,slot)) {
+            if (Flag(slot,"isHidden")) VB(slot,"setHidden:",0);
+            if (((double(*)(Obj,Sel))Message)(slot,sel_registerName("alpha"))!=1)
+                ((void(*)(Obj,Sel,double))Message)(slot,sel_registerName("setAlpha:"),1);
+        }
+    }
     // The full search field may move from its container to the feed's search row.
     DramaVisibilitySet(Get(search,"searchBgView"),0);
 }
 
 enum { DramaCategoryTagBase=1000 };
-static void DramaCategorySourceKey(void) {}
-static void DramaCategoryPublishingKey(void) {}
 
 static Obj DramaCategoryDefaults(void) {
     return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
@@ -3084,38 +3292,18 @@ static B DramaCategoryVisible(Obj model) {
 static B DramaCategoryMaster(void) {
     return DefaultEnabled(Text("FanqieX.DramaCategories.1"));
 }
-static B DramaCategoryButtonsVisible(Obj owner) {
+static B DramaCategoryButtonsVisible(Obj models) {
     if (!DramaCategoryMaster()) return 0;
-    Obj models=objc_getAssociatedObject(owner,DramaCategorySourceKey);
     U count=DramaCategoryCount(models);
     for (U i=0;i<count;++i) if (DramaCategoryVisible(At(models,i))) return 1;
     return count==0;
 }
-static Obj DramaCategoryFilter(Obj models,I *index) {
-    U count=DramaCategoryCount(models);
-    if (!DramaCategoryMaster() || !count || count>24) return models;
-    U visible=0;
-    for (U i=0;i<count;++i) visible+=DramaCategoryVisible(At(models,i));
-    // With every button off, leave the native feed and its current selection live.
-    if (!visible || visible==count) return models;
-    Obj filtered=O0(Lookup("NSMutableArray"),"array");
-    I selected=0;
-    for (U i=0,j=0;i<count;++i) {
-        Obj model=At(models,i);
-        if (!DramaCategoryVisible(model)) continue;
-        if ((I)i==*index) selected=(I)j;
-        V1(filtered,"addObject:",model);
-        ++j;
-    }
-    *index=selected;
-    return filtered;
+static B DramaCategoryButtonVisible(Obj models,I index) {
+    return index<0 || (U)index>=DramaCategoryCount(models) || DramaCategoryVisible(At(models,(U)index));
 }
-static void DramaCategoryRemember(Obj owner,Obj models) {
+static void DramaCategoryRemember(Obj models) {
     U count=DramaCategoryCount(models);
-    if (!count || count>24 || objc_getAssociatedObject(owner,DramaCategoryPublishingKey)) return;
-    Obj source=O0(models,"copy");
-    objc_setAssociatedObject(owner,DramaCategorySourceKey,source,1);
-    V0(source,"release");
+    if (!count || count>24) return;
     Obj rows=O0(Lookup("NSMutableArray"),"array");
     Obj seen=O0(Lookup("NSMutableSet"),"set");
     for (U i=0;i<count;++i) {
@@ -3136,85 +3324,209 @@ static void DramaCategoryRemember(Obj owner,Obj models) {
         ((void(*)(Obj,Sel,Obj,Obj))Message)(defaults,sel_registerName("setObject:forKey:"),rows,key);
 }
 
+static Obj DramaCategoryModelsForTabs(Obj owner,Obj tabs) {
+    Obj models=Get(owner,"tabModels");
+    return DramaCategoryCount(models)==DramaCategoryCount(Get(tabs,"dataSource")) ? models : (Obj)0;
+}
+
+static B DramaCategoryCellVisible(Obj models,Obj path) {
+    return !path || DramaCategoryButtonVisible(models,((I(*)(Obj,Sel))Message)(path,sel_registerName("item")));
+}
+
+static Obj DramaCategoryCellModels(Obj tabs) {
+    for (Obj node=Get(tabs,"superview");node;node=Get(node,"superview")) {
+        if (!Kind(node,"SSVideoSeriesFeedHeaderView")) continue;
+        Obj owner=Get(node,"delegate");
+        if (DramaVisibilityOwnsHeader(node) && Get(owner,"simpleTabView")==tabs)
+            return DramaCategoryModelsForTabs(owner,tabs);
+        break;
+    }
+    return 0;
+}
+
+static Obj DramaCategoryCell(Obj self,Sel cmd,Obj collection,Obj path) {
+    Obj cell=((Obj(*)(Obj,Sel,Obj,Obj))Original("SSHGBookStoreCategoryTitleView",
+        "fqx_originalDramaTitleCell:path:"))(self,cmd,collection,path);
+    DramaVisibilitySet(cell,DramaCategoryCellVisible(DramaCategoryCellModels(self),path));
+    return cell;
+}
+
+static void DramaCategoryCellSelected(Obj self,Sel cmd,Obj collection,Obj path) {
+    if (!DramaCategoryCellVisible(DramaCategoryCellModels(self),path)) return;
+    ((void(*)(Obj,Sel,Obj,Obj))Original("SSHGBookStoreCategoryTitleView",
+        "fqx_originalDramaTitleCellSelected:path:"))(self,cmd,collection,path);
+}
+
+static Obj DramaCategoryPath(U index) {
+    return ((Obj(*)(Obj,Sel,U,U))Message)(Lookup("NSIndexPath"),
+        sel_registerName("indexPathForItem:inSection:"),index,0);
+}
+
+static Size DramaCategoryCellSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj path) {
+    Size stock=((Size(*)(Obj,Sel,Obj,Obj,Obj))Original("SSHGBookStoreCategoryTitleView",
+        "fqx_originalDramaTitleSize:layout:path:"))(self,cmd,collection,layout,path);
+    Obj models=Enabled() && FQHGlassAvailable() ? DramaCategoryCellModels(self) : (Obj)0;
+    if (models && stock.width>0)
+        stock.width=DramaCategoryCellVisible(models,path) ? stock.width+12 : 0.5;
+    return stock;
+}
+
+static double DramaCategoryCellSpacing(Obj self,Sel cmd) {
+    if (Enabled() && FQHGlassAvailable() && DramaCategoryCellModels(self)) return 0;
+    return ((double(*)(Obj,Sel))Original("SSHGBookStoreCategoryTitleView","fqx_originalDramaInnerCellSpacing"))(self,cmd);
+}
+
+static void DramaCategoryLayoutMaskKey(void) {}
+
+static void DramaCategoryUpdateLayout(Obj tabs,Obj collection,Obj models) {
+    U count=DramaCategoryCount(models),mask=0;
+    if (count && count<=24 && Enabled() && FQHGlassAvailable()) {
+        mask=1U<<count;
+        for (U i=0;i<count;++i) if (DramaCategoryButtonVisible(models,(I)i)) mask|=1U<<i;
+    }
+    Obj previous=objc_getAssociatedObject(tabs,DramaCategoryLayoutMaskKey);
+    if (mask==(previous ? (U)Double(previous) : 0)) return;
+    objc_setAssociatedObject(tabs,DramaCategoryLayoutMaskKey,Number((double)mask),1);
+    V0(Get(collection,"collectionViewLayout"),"invalidateLayout");
+    V0(collection,"layoutIfNeeded");
+}
+
+static Rect DramaCategoryLayoutFrame(Obj tabs,Obj collection,I index) {
+    Obj attributes=O1(collection,"layoutAttributesForItemAtIndexPath:",DramaCategoryPath((U)index));
+    if (attributes) {
+        Rect frame=Frame(attributes);
+        if (VisibleRect(frame)) return frame;
+    }
+    return ((Rect(*)(Obj,Sel,I))Message)(tabs,sel_registerName("getTargetCellFrame:"),index);
+}
+
+static void DramaHeaderStockXKey(void) {}
+static void DramaHeaderCenteredXKey(void) {}
+static void DramaHeaderSelectionKey(void) {}
+
+static void DramaHeaderCenterCategories(Obj header,Obj categories,Rect capsule,B center) {
+    Rect frame=Frame(categories);
+    Obj centered=objc_getAssociatedObject(categories,DramaHeaderCenteredXKey);
+    B applied=centered && frame.x==Double(centered);
+    if (center) {
+        Rect headerBounds=Convert(header,Bounds(header),Get(categories,"superview")),bounds=Bounds(categories);
+        double x=headerBounds.x+(headerBounds.width-capsule.width)/2-(capsule.x-bounds.x);
+        if (!applied) objc_setAssociatedObject(categories,DramaHeaderStockXKey,Number(frame.x),1);
+        objc_setAssociatedObject(categories,DramaHeaderCenteredXKey,Number(x),1);
+        if (frame.x==x) return;
+        frame.x=x;
+    } else {
+        if (!centered) return;
+        Obj stock=objc_getAssociatedObject(categories,DramaHeaderStockXKey);
+        if (applied) frame.x=Double(stock);
+        objc_setAssociatedObject(categories,DramaHeaderStockXKey,0,1);
+        objc_setAssociatedObject(categories,DramaHeaderCenteredXKey,0,1);
+        if (!applied) return;
+    }
+    SetFrame(categories,frame);
+}
+
+static void DramaHeaderSelection(Obj glass,Rect frame) {
+    Obj lens=objc_getAssociatedObject(glass,DramaHeaderSelectionKey);
+    if (!VisibleRect(frame)) {
+        if (lens) VB(lens,"setHidden:",1);
+        return;
+    }
+    if (!lens) {
+        lens=O0(Lookup("UIView"),"new");
+        Obj color=((Obj(*)(Obj,Sel,double,double))Message)(Lookup("UIColor"),
+            sel_registerName("colorWithWhite:alpha:"),0.02,0.42);
+        V1(lens,"setBackgroundColor:",color);
+        VB(lens,"setUserInteractionEnabled:",0);
+        VB(lens,"setAccessibilityElementsHidden:",1);
+        V1(glass,"addSubview:",lens);
+        objc_setAssociatedObject(glass,DramaHeaderSelectionKey,lens,1);
+        V0(lens,"release");
+    }
+    if (!SameRect(Frame(lens),frame)) {
+        SetFrame(lens,frame);
+        SetRadius(lens,frame.height/2);
+    }
+    if (Flag(lens,"isHidden")) VB(lens,"setHidden:",0);
+}
+
+static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj models,B show) {
+    Obj collection=Get(tabs,"collectionView");
+    U count=DramaCategoryCount(Get(tabs,"dataSource"));
+    Rect capsule={0},selection={0};
+    if (show && Enabled() && FQHGlassAvailable() && count && count<=24 &&
+        Belongs(collection,categories) &&
+        InstanceABI(tabs,"getTargetCellFrame:","{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8q16")) {
+        I firstIndex=0,lastIndex=(I)count-1;
+        while (!DramaCategoryButtonVisible(models,firstIndex)) ++firstIndex;
+        while (!DramaCategoryButtonVisible(models,lastIndex)) --lastIndex;
+        Rect bounds=Bounds(categories),first=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,firstIndex),categories);
+        Rect last=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,lastIndex),categories);
+        if (VisibleRect(first) && VisibleRect(last) && VisibleRect(bounds)) {
+            double left=__builtin_fmax(bounds.x-10,first.x-10);
+            double right=__builtin_fmin(bounds.x+bounds.width+10,last.x+last.width+10);
+            double height=__builtin_fmin(DramaHeaderButtonHeight,bounds.height);
+            capsule=(Rect){left,first.y+(first.height-height)/2,right-left,height};
+            if (InstanceABI(tabs,"selectedIndex","q16@0:8")) {
+                I index=((I(*)(Obj,Sel))Message)(tabs,sel_registerName("selectedIndex"));
+                if (index>=0 && (U)index<count && DramaCategoryButtonVisible(models,index)) {
+                    Rect selected=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,index),categories);
+                    double start=__builtin_fmax(left+3,selected.x+2);
+                    double end=__builtin_fmin(right-3,selected.x+selected.width-2);
+                    selection=(Rect){start-left,3,end-start,height-6};
+                }
+            }
+        }
+    }
+    Obj glass=VisibleRect(capsule) ? PlaceDramaGlass(categories,categories,0,capsule) : (Obj)0;
+    DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
+    if (glass) DramaHeaderSelection(glass,selection);
+    else RemoveDramaGlass(categories);
+}
+
 static void DramaVisibilityApplyHeader(Obj header) {
     if (!Kind(header,"SSVideoSeriesFeedHeaderView") || !DramaVisibilityOwnsHeader(header)) return;
     DramaVisibilityTrack(header);
+    B searchVisible=DefaultEnabled(Text("FanqieX.DramaSearch.1"));
     Obj categories=Get(header,"tabContainer");
-    if (Belongs(categories,header))
-        DramaVisibilitySet(categories,DramaCategoryButtonsVisible(Get(header,"delegate")));
-    DramaVisibilityApplySearch(header,DefaultEnabled(Text("FanqieX.DramaSearch.1")));
+    if (Belongs(categories,header)) {
+        Obj owner=Get(header,"delegate"),tabs=Get(owner,"simpleTabView"),collection=Get(tabs,"collectionView");
+        Obj models=DramaCategoryModelsForTabs(owner,tabs);
+        B show=DramaCategoryButtonsVisible(Get(owner,"tabModels"));
+        DramaVisibilitySet(categories,show);
+        if (Belongs(collection,categories)) {
+            DramaCategoryUpdateLayout(tabs,collection,models);
+            U count=DramaCategoryCount(Get(tabs,"dataSource"));
+            for (U i=0;i<count;++i) {
+                Obj path=((Obj(*)(Obj,Sel,I,I))Message)(Lookup("NSIndexPath"),
+                    sel_registerName("indexPathForItem:inSection:"),(I)i,0);
+                // Resolve by index to include already hidden, realized cells.
+                DramaVisibilitySet(O1(collection,"cellForItemAtIndexPath:",path),DramaCategoryButtonVisible(models,(I)i));
+            }
+        }
+        DramaHeaderCategoryGlass(header,categories,tabs,models,show);
+    }
+    DramaVisibilityApplySearch(header,searchVisible);
 }
 
-static B DramaCategorySameOrder(Obj left,Obj right) {
-    U count=DramaCategoryCount(left);
-    if (count!=DramaCategoryCount(right)) return 0;
-    for (U i=0;i<count;++i) {
-        Obj a=At(left,i),b=At(right,i);
-        if (a!=b && (DramaCategoryType(a)<0 || DramaCategoryType(a)!=DramaCategoryType(b))) return 0;
-    }
-    return 1;
-}
-static B DramaCategoryStartPublish(Obj owner) {
-    if (objc_getAssociatedObject(owner,DramaCategoryPublishingKey)) return 0;
-    objc_setAssociatedObject(owner,DramaCategoryPublishingKey,owner,0);
-    return 1;
-}
-static void DramaCategoryFinishPublish(Obj owner,B started) {
-    if (started) objc_setAssociatedObject(owner,DramaCategoryPublishingKey,0,0);
-}
 static void DramaCategorySetup(Obj self,Sel cmd,Obj models,I index,B report,I reason) {
-    DramaCategoryRemember(self,models);
-    Obj visible=DramaCategoryFilter(models,&index);
-    B started=DramaCategoryStartPublish(self);
+    DramaCategoryRemember(models);
+    // Native models and indices own playback and paging as well as the titles.
     ((void(*)(Obj,Sel,Obj,I,B,I))Original("SSVideoSeriesFeedViewController",
-        "fqx_originalDramaCategorySetup:index:report:reason:"))(self,cmd,visible,index,report,reason);
-    DramaCategoryFinishPublish(self,started);
+        "fqx_originalDramaCategorySetup:index:report:reason:"))(self,cmd,models,index,report,reason);
     DramaVisibilityApplyHeader(Get(self,"headerView"));
 }
-static void DramaCategoryCallRefresh(Obj owner,Sel cmd,Obj models,I index,I reason) {
-    B started=DramaCategoryStartPublish(owner);
-    ((void(*)(Obj,Sel,Obj,I,I))Original("SSVideoSeriesFeedViewController",
-        "fqx_originalDramaCategoryRefresh:index:reason:"))(owner,cmd,models,index,reason);
-    DramaCategoryFinishPublish(owner,started);
-}
 static void DramaCategoryRefreshModels(Obj self,Sel cmd,Obj models,I index,I reason) {
-    DramaCategoryRemember(self,models);
-    Obj visible=DramaCategoryFilter(models,&index);
-    DramaCategoryCallRefresh(self,cmd,visible,index,reason);
+    DramaCategoryRemember(models);
+    ((void(*)(Obj,Sel,Obj,I,I))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaCategoryRefresh:index:reason:"))(self,cmd,models,index,reason);
     DramaVisibilityApplyHeader(Get(self,"headerView"));
 }
 static void DramaCategoryRefreshSelected(Obj self,Sel cmd,Obj models,I index) {
-    DramaCategoryRemember(self,models);
-    Obj visible=DramaCategoryFilter(models,&index);
-    if (visible!=models && !DramaCategorySameOrder(visible,Get(self,"tabModels")) &&
-        InstanceABI(self,"fqx_originalDramaCategoryRefresh:index:reason:","v40@0:8@16q24q32")) {
-        DramaCategoryCallRefresh(self,
-            sel_registerName("refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:"),visible,index,10);
-    } else {
-        B started=DramaCategoryStartPublish(self);
-        ((void(*)(Obj,Sel,Obj,I))Original("SSVideoSeriesFeedViewController",
-            "fqx_originalDramaCategoryRefreshSelected:index:"))(self,cmd,visible,index);
-        DramaCategoryFinishPublish(self,started);
-    }
+    DramaCategoryRemember(models);
+    ((void(*)(Obj,Sel,Obj,I))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaCategoryRefreshSelected:index:"))(self,cmd,models,index);
     DramaVisibilityApplyHeader(Get(self,"headerView"));
-}
-static void DramaCategoryRefreshPreference(Obj owner) {
-    Obj source=objc_getAssociatedObject(owner,DramaCategorySourceKey);
-    U count=DramaCategoryCount(source);
-    if (!count || !InstanceABI(owner,"fqx_originalDramaCategoryRefresh:index:reason:","v40@0:8@16q24q32")) return;
-    Obj current=Get(owner,"currentTabModel");
-    I currentType=DramaCategoryType(current),index=0;
-    for (U i=0;i<count;++i) {
-        Obj model=At(source,i);
-        if (model!=current && (currentType<0 || DramaCategoryType(model)!=currentType)) continue;
-        index=(I)i;
-        break;
-    }
-    Obj visible=DramaCategoryFilter(source,&index);
-    if (!DramaCategorySameOrder(visible,Get(owner,"tabModels"))) {
-        DramaCategoryCallRefresh(owner,
-            sel_registerName("refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:"),visible,index,10);
-    }
 }
 
 static void DramaVisibilityKeepSearchHidden(Obj header) {
@@ -3233,6 +3545,12 @@ static void DramaVisibilitySearchBarAlpha(Obj self,Sel cmd,double alpha) {
     DramaVisibilityKeepSearchHidden(self);
 }
 
+static void DramaVisibilitySearchIcon(Obj self,Sel cmd,B visible,double top) {
+    ((void(*)(Obj,Sel,B,double))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchIcon:top:"))(
+        self,cmd,visible,top);
+    DramaVisibilityKeepSearchHidden(self);
+}
+
 static void DramaVisibilityHeaderSetup178R15(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx178r15_originalHeaderSetup"))(self,cmd);
     // The feed sets the delegate before setup and mounts the header afterward.
@@ -3240,11 +3558,16 @@ static void DramaVisibilityHeaderSetup178R15(Obj self,Sel cmd) {
 }
 
 static void DramaVisibilityColdStartSearch178R15(Obj self,Sel cmd) {
-    // This optional launch presentation moves the magnifier out of the slot
-    // and onto the startup overlay, where hiding the slot cannot hide it.
-    if (Kind(Get(self,"host"),"SSVideoSeriesFeedViewController") &&
-        !DefaultEnabled(Text("FanqieX.DramaSearch.1"))) return;
+    Obj owner=Get(self,"host");
+    // The optional stock fly-in reparents the magnifier outside this header.
+    if (Kind(owner,"SSVideoSeriesFeedViewController") &&
+        (!DefaultEnabled(Text("FanqieX.DramaSearch.1")) || DramaSearchUsesGlass(owner))) return;
     ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedSearchIconCoordinator","fqx178r15_originalPrepareColdStartSearch"))(self,cmd);
+}
+
+static void DramaVisibilityColdStartSearchFinished(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedSearchIconCoordinator","fqx_originalDramaFinishColdStartSearch"))(self,cmd);
+    DramaVisibilityKeepSearchHidden(Get(Get(self,"host"),"headerView"));
 }
 
 static void DramaVisibilityHeaderAttached(Obj self,Sel cmd) {
@@ -3252,14 +3575,43 @@ static void DramaVisibilityHeaderAttached(Obj self,Sel cmd) {
     DramaVisibilityApplyHeader(self);
 }
 
+static void DramaVisibilityHeaderBounds(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchHeaderBounds"))(self,cmd);
+    DramaVisibilityKeepSearchHidden(self);
+}
+
+static void DramaVisibilitySearchTransitionFinished(Obj self,Sel cmd,B visible) {
+    ((void(*)(Obj,Sel,B))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchTransitionFinished:"))(
+        self,cmd,visible);
+    DramaVisibilityKeepSearchHidden(self);
+}
+
 static void DramaVisibilityHeaderTabs(Obj self,Sel cmd,Size size) {
     ((void(*)(Obj,Sel,Size))Original("SSVideoSeriesFeedHeaderView","fqx178r7_originalHeaderTabs:"))(self,cmd,size);
     DramaVisibilityApplyHeader(self);
 }
 
+static void DramaHeaderTabGeometry(Obj self,Sel cmd,double desired,double base,B reserve) {
+    ((void(*)(Obj,Sel,double,double,B))Original("SSVideoSeriesFeedHeaderView",
+        "fqx_originalDramaHeaderTabGeometry:base:reserve:"))(self,cmd,desired,base,reserve);
+    DramaVisibilityApplyHeader(self);
+}
+
+static void DramaHeaderSelectionChanged(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSVideoSeriesFeedViewController",
+        "fqx_originalDramaHeaderSelected:"))(self,cmd,model);
+    DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+
 static void DramaVisibilityHeaderLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedViewController","fqx178r7_originalDramaHeaderLayout"))(self,cmd);
     DramaVisibilityApplyHeader(Get(self,"headerView"));
+}
+
+static void DramaVisibilityFeedAppeared(Obj self,Sel cmd,B animated) {
+    ((void(*)(Obj,Sel,B))Original("SSVideoSeriesFeedViewController","fqx_originalDramaSearchFeedAppeared:"))(self,cmd,animated);
+    objc_setAssociatedObject(self,DramaSearchFeedAppearedKey,self,0);
+    DramaVisibilityKeepSearchHidden(Get(self,"headerView"));
 }
 
 static B DramaIsMainFeedConfig(Obj config) {
@@ -3460,6 +3812,28 @@ static B DramaVisibilityAuthor(Obj self,Sel cmd) {
     return visible && DefaultEnabled(Text("FanqieX.DramaAuthorDeclaration.1"));
 }
 
+static void DramaOriginalNovelGlass(Obj view) {
+    Obj model=Get(view,"dataModel");
+    // Fanqie’s isRelateNovelReason compares the model’s recType to 25.
+    B original=Kind(model,"SSShortVideoRcmdReasonModel") && InstanceABI(model,"recType","i16@0:8") &&
+        ((int(*)(Obj,Sel))Message)(model,sel_registerName("recType"))==25;
+    B hasGlass=DramaSmallGlass(view,original);
+    DramaVisibilitySet(Get(view,"gradientBackgroundView"),!hasGlass);
+}
+
+static void DramaOriginalNovelLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoRcmdReasonView","fqx_originalNovelLayout"))(self,cmd);
+    DramaOriginalNovelGlass(self);
+}
+
+static void DramaOriginalNovelModel(Obj self,Sel cmd) {
+    // Adaptive UI changes can repaint the native backing without replacing the model.
+    DramaClearBackground(self,0);
+    DramaVisibilitySet(Get(self,"gradientBackgroundView"),1);
+    ((void(*)(Obj,Sel))Original("SSShortVideoRcmdReasonView","fqx_originalNovelModelUpdate"))(self,cmd);
+    DramaOriginalNovelGlass(self);
+}
+
 static Obj DramaVisibilityNovel(Obj self,Sel cmd) {
     Obj views=((Obj(*)(Obj,Sel))Original("SSShortVideoAboveLeftContainerViewManager",
         "fqx178r8_originalOrderedAboveLeftViews"))(self,cmd);
@@ -3485,15 +3859,12 @@ static Obj DramaVisibilityNovel(Obj self,Sel cmd) {
     return filtered;
 }
 
-static void DramaVisibilityRefresh(B categories) {
+static void DramaVisibilityRefresh(void) {
     Obj owners=Get(DramaVisibilityOwners(),"allObjects");
     U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
     for (U i=0;i<count;++i) {
         Obj owner=At(owners,i);
-        if (Kind(owner,"SSVideoSeriesFeedHeaderView")) {
-            if (categories) DramaCategoryRefreshPreference(Get(owner,"delegate"));
-            DramaVisibilityApplyHeader(owner);
-        }
+        if (Kind(owner,"SSVideoSeriesFeedHeaderView")) DramaVisibilityApplyHeader(owner);
         else if (DramaVisibilityIsMainFeed(owner)) {
             if (Kind(owner,"SSShortVideoAboveLeftContainerViewManager")) V0(owner,"updateLayoutForContainerView");
             else V0(owner,"updateSubViews");
@@ -3514,6 +3885,14 @@ static void DramaVisibilityInstall(void) {
         Hook(feed,"refreshSelectedTabModelWithTabModels:serverSelectedIndex:",
              "fqx_originalDramaCategoryRefreshSelected:index:","v32@0:8@16q24",(Imp)DramaCategoryRefreshSelected);
     }
+    const char *tabs="SSHGBookStoreCategoryTitleView";
+    Hook(tabs,"collectionView:cellForItemAtIndexPath:","fqx_originalDramaTitleCell:path:",
+         "@32@0:8@16@24",(Imp)DramaCategoryCell);
+    Hook(tabs,"collectionView:didSelectItemAtIndexPath:","fqx_originalDramaTitleCellSelected:path:",
+         "v32@0:8@16@24",(Imp)DramaCategoryCellSelected);
+    Hook(tabs,"collectionView:layout:sizeForItemAtIndexPath:","fqx_originalDramaTitleSize:layout:path:",
+         "{CGSize=dd}40@0:8@16@24@32",(Imp)DramaCategoryCellSize);
+    Hook(tabs,"innerCellSpacing","fqx_originalDramaInnerCellSpacing","d16@0:8",(Imp)DramaCategoryCellSpacing);
     if (Signature("SSVideoSeriesFeedHeaderSearchView","setupNewSearchBar","v16@0:8") &&
         Signature("SSVideoSeriesFeedHeaderSearchView","searchBgView","@16@0:8"))
         Hook("SSVideoSeriesFeedHeaderSearchView","setSearchBgView:","fqx_originalDramaSetSearchBackground:",
@@ -3521,15 +3900,27 @@ static void DramaVisibilityInstall(void) {
     Hook(header,"setupSubViews","fqx178r15_originalHeaderSetup","v16@0:8",(Imp)DramaVisibilityHeaderSetup178R15);
     Hook("SSVideoSeriesFeedSearchIconCoordinator","prepareColdStartSearchButtonIfNeeded","fqx178r15_originalPrepareColdStartSearch",
          "v16@0:8",(Imp)DramaVisibilityColdStartSearch178R15);
+    Hook("SSVideoSeriesFeedSearchIconCoordinator","finishColdStartSearchPresentation","fqx_originalDramaFinishColdStartSearch",
+         "v16@0:8",(Imp)DramaVisibilityColdStartSearchFinished);
     Hook(header,"didMoveToWindow","fqx178r7_originalHeaderAttached","v16@0:8",(Imp)DramaVisibilityHeaderAttached);
+    Hook(header,"layoutSubviews","fqx_originalDramaSearchHeaderBounds","v16@0:8",(Imp)DramaVisibilityHeaderBounds);
+    Hook(header,"finishSearchIconVisibilityTransition:","fqx_originalDramaSearchTransitionFinished:",
+         "v20@0:8B16",(Imp)DramaVisibilitySearchTransitionFinished);
     Hook(header,"updateTabViewWithContentSize:","fqx178r7_originalHeaderTabs:",
          "v32@0:8{CGSize=dd}16",(Imp)DramaVisibilityHeaderTabs);
+    Hook(header,"layoutTabContainerWithDesiredWidth:baseWidth:reserveSearchButton:",
+         "fqx_originalDramaHeaderTabGeometry:base:reserve:","v36@0:8d16d24B32",(Imp)DramaHeaderTabGeometry);
+    Hook(feed,"finalizeTabSelectionUIStateWithTabModel:","fqx_originalDramaHeaderSelected:",
+         "v24@0:8@16",(Imp)DramaHeaderSelectionChanged);
     Hook(header,"applySearchBarVisibilityForCurrentLayout","fqx_originalDramaSearchBarLayout",
          "d16@0:8",(Imp)DramaVisibilitySearchBarLayout);
     Hook(header,"updateFindDramaSearchAlphaV731:","fqx_originalDramaSearchBarAlpha:",
          "v24@0:8d16",(Imp)DramaVisibilitySearchBarAlpha);
+    Hook(header,"applySearchIconVisible:tabContainerTop:","fqx_originalDramaSearchIcon:top:",
+         "v28@0:8B16d20",(Imp)DramaVisibilitySearchIcon);
     Hook("SSVideoSeriesFeedViewController","relayoutHeaderView","fqx178r7_originalDramaHeaderLayout",
          "v16@0:8",(Imp)DramaVisibilityHeaderLayout);
+    Hook(feed,"viewDidAppear:","fqx_originalDramaSearchFeedAppeared:","v20@0:8B16",(Imp)DramaVisibilityFeedAppeared);
     const char *manager="SSShortVideoBelowLeftContainerViewManager";
     if (Signature(manager,"updateSubViews","v16@0:8"))
         Hook(manager,"shouldAddAiUsageView","fqx178r7_originalShouldAddAiUsageView","B16@0:8",(Imp)DramaVisibilityAuthor);
@@ -3537,6 +3928,11 @@ static void DramaVisibilityInstall(void) {
     if (Signature(above,"updateLayoutForContainerView","v16@0:8"))
         Hook(above,"orderedAboveLeftViewsForCurrentState","fqx178r8_originalOrderedAboveLeftViews",
              "@16@0:8",(Imp)DramaVisibilityNovel);
+    const char *novel="SSShortVideoRcmdReasonView";
+    if (Signature(novel,"dataModel","@16@0:8") && Signature(novel,"gradientBackgroundView","@16@0:8")) {
+        Hook(novel,"layoutSubviews","fqx_originalNovelLayout","v16@0:8",(Imp)DramaOriginalNovelLayout);
+        Hook(novel,"modelDidUpdate","fqx_originalNovelModelUpdate","v16@0:8",(Imp)DramaOriginalNovelModel);
+    }
     const char *danmaku="FQCShortVideoDanmakuEntranceView";
     Hook(danmaku,"layoutSubviews","fqx178r8_originalDanmakuLayout","v16@0:8",(Imp)DramaDanmakuLayout);
     Hook(danmaku,"refreshIcon","fqx178r8_originalDanmakuRefreshIcon","v16@0:8",(Imp)DramaDanmakuRefreshIcon);
@@ -3552,6 +3948,7 @@ static void DramaSpacingStock178R2Key(void) {}
 static void DramaSpacingApplied178R2Key(void) {}
 static void DramaSpacingLog178R2Key(void) {}
 static void DramaSpacingAnchor178R6Key(void) {}
+static void DramaDockProgressKey(void) {}
 static void DramaDockFeatherBottomGradient178R6(Obj root);
 
 static B DramaSpacingVisible178R2(Obj view) {
@@ -3725,6 +4122,22 @@ void FQHDramaSpacing178R2(Obj root) {
         eligible=VisibleRect(placed) &&
             __builtin_fabs(placed.x-screen.x)<2 && __builtin_fabs(placed.width-b.width)<0.5 &&
             __builtin_fabs(placed.height-b.height)<0.5;
+    }
+    Obj dock=eligible ? BottomDramaCapsuleForView(root) : (Obj)0;
+    Obj previousRail=objc_getAssociatedObject(root,DramaDockProgressKey),rail=0;
+    if (dock) {
+        rail=Get(root,outer ? "progressView" : "progressContainer");
+        if (!Kind(rail,outer ? "SSShortVideoOutterMultiGenreProgressView" : "FQVShortVideoProgressView") ||
+            !Belongs(rail,root)) rail=0;
+    }
+    if (rail!=previousRail) {
+        if (previousRail) DramaAlignWithDock(previousRail,0,16);
+        objc_setAssociatedObject(root,DramaDockProgressKey,rail,1);
+    }
+    // Both native rail types draw and update their fill in a 16-point inset.
+    if (rail && DramaAlignWithDock(rail,dock,16)) {
+        V0(rail,"setNeedsLayout");
+        V0(rail,"layoutIfNeeded");
     }
     if (eligible && outer) {
         entry=Get(root,"aboveProgressView");
@@ -4313,12 +4726,13 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     if (!material) return;
     Obj gradient=Get(self,"filterGradientView");
     if (Get(gradient,"superview")!=self) return;
-    // The host lays out the right fade above its filter button. Keep the
-    // full fade to the left of the capsule when their bounds overlap.
+    // The host puts the fade above the filter button. Clear the glass rim
+    // as well as its nominal frame so the left curve stays continuous.
     Rect fade=Frame(gradient),capsule=Convert(button,Frame(material),self);
-    if (VisibleRect(fade) && fade.x<capsule.x+capsule.width && fade.x+fade.width>capsule.x &&
+    double fadeLimit=capsule.x-2;
+    if (VisibleRect(fade) && fade.x<capsule.x+capsule.width && fade.x+fade.width>fadeLimit &&
         fade.y<capsule.y+capsule.height && fade.y+fade.height>capsule.y) {
-        fade.x=capsule.x-fade.width;
+        fade.x=fadeLimit-fade.width;
         SetFrame(gradient,fade);
     }
 }
@@ -4751,12 +5165,14 @@ static void MineConfiguredEntrances(Obj self,Sel cmd,Obj entries,I style) {
 }
 
 static B MineBenefitsEnabled(void);
+static B MineRecommendationsEnabled(void);
 static void MineControllersKey(void) {}
-static void RefreshMineBenefits(void) {
+static void RefreshMineList(const char *reason) {
     if (!Signature("SSMyUser621ViewController","reloadData:","v24@0:8@16")) return;
     Obj controllers=O0(objc_getAssociatedObject(Lookup("SSMyUser621ViewController"),MineControllersKey),"allObjects");
     U count=((U(*)(Obj,Sel))Message)(controllers,sel_registerName("count"));
-    for (U i=0;i<count;++i) V1(At(controllers,i),"reloadData:",Text("FanqieXMineBenefits"));
+    Obj context=Text(reason);
+    for (U i=0;i<count;++i) V1(At(controllers,i),"reloadData:",context);
 }
 static B MineBenefitsRow(Obj model) {
     if (!Kind(model,"SSMyUserCell2Model") || !InstanceABI(model,"businessStyle","q16@0:8")) return 0;
@@ -4777,12 +5193,14 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     }
     V1(controllers,"addObject:",self);
     Obj filtered=0;
-    B hideBenefits=!MineBenefitsEnabled(),removedGame=0;
+    B hideBenefits=!MineBenefitsEnabled(),hideRecommendations=!MineRecommendationsEnabled(),removedGame=0;
     U count=((U(*)(Obj,Sel))Message)(rows,sel_registerName("count"));
     for (U i=count;i>0;--i) {
         Obj row=At(rows,i-1);
         B game=MineStandaloneGameRow(row);
-        if (!game && !(hideBenefits && MineBenefitsRow(row))) continue;
+        // The entire recommendation waterfall is one native list section.
+        B recommendation=hideRecommendations && Kind(row,"SSMyUserUnlimitedCellModel");
+        if (!game && !recommendation && !(hideBenefits && MineBenefitsRow(row))) continue;
         removedGame|=game;
         if (!filtered) filtered=O0(O0(rows,"mutableCopy"),"autorelease");
         Q1(filtered,"removeObjectAtIndex:",i-1);
@@ -4795,6 +5213,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
 static void FeatureVisibilityOwners178R9Key(void) {}
 static void ReaderEarnInsertObjects178R9Key(void) {}
 static void ShelfMotionComicSource178R9Key(void) {}
+static void ShelfMotionComicPendingKey(void) {}
 static Obj FeatureVisibilityOwners178R9(void) {
     Obj cls=Lookup("NSUserDefaults");
     Obj owners=objc_getAssociatedObject(cls,FeatureVisibilityOwners178R9Key);
@@ -4870,39 +5289,54 @@ static void ShelfMotionComicModels178R9(Obj self,Sel cmd,Obj models) {
     // Filter at the setter so all four paths retain identical row indexes.
     // cacheCellModels, group contents and persisted collections stay native.
     objc_setAssociatedObject(self,ShelfMotionComicSource178R9Key,models,1);
+    objc_setAssociatedObject(self,ShelfMotionComicPendingKey,0,0);
     FeatureVisibilityTrack178R9(self);
     ((void(*)(Obj,Sel,Obj))Original("SSBookShelfViewModel","fqx178R9_originalShowCellModels:"))
         (self,cmd,ShelfMotionComicFiltered178R9(models));
 }
-static void FeatureVisibilityRefresh178R9(void) {
+static void ShelfRefreshMotionComicModel(Obj model,Obj controller) {
+    objc_setAssociatedObject(model,ShelfMotionComicPendingKey,0,0);
+    Obj original=objc_getAssociatedObject(model,ShelfMotionComicSource178R9Key);
+    Obj items=ShelfMotionComicFiltered178R9(original),shown=Get(model,"showCellModels");
+    if (items==shown || ((B(*)(Obj,Sel,Obj))Message)(items,sel_registerName("isEqual:"),shown)) return;
+    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfViewModel","fqx178R9_originalShowCellModels:"))
+        (model,sel_registerName("setShowCellModels:"),items);
+    if (Kind(controller,"SSBookShelfSubViewController") && InstanceABI(controller,"reloadData:","v24@0:8@16"))
+        V1(controller,"reloadData:",Text("FanqieXMotionComicVisibility"));
+}
+static void ShelfApplyPendingMotionComic(Obj controller) {
+    if (!Kind(controller,"SSBookShelfSubViewController")) return;
+    Obj model=Get(controller,"viewModel");
+    if (objc_getAssociatedObject(model,ShelfMotionComicPendingKey))
+        ShelfRefreshMotionComicModel(model,controller);
+}
+static void FeatureVisibilityRefresh178R9(I tag) {
     Obj owners=O0(FeatureVisibilityOwners178R9(),"allObjects");
     U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
     for (U i=0;i<count;++i) {
         Obj owner=At(owners,i);
-        if (Kind(owner,"SSMyUser627HistoryExposeView")) {
+        if (tag==26 && Kind(owner,"SSMyUser627HistoryExposeView")) {
             DramaVisibilitySet(owner,DefaultEnabled(Text("FanqieX.MineContinueDrama.1")));
             V0(Get(owner,"superview"),"setNeedsLayout");
-        } else if (Kind(owner,"FQReaderTopView")) {
+        } else if (tag==27 && Kind(owner,"FQReaderTopView")) {
             Obj objects=objc_getAssociatedObject(owner,ReaderEarnInsertObjects178R9Key);
             ((void(*)(Obj,Sel,Obj))Original("FQReaderTopView","fqx178R9_originalInsertObjects:"))
                 (owner,sel_registerName("configInsertObjs:"),ReaderEarnFiltered178R9(objects));
             V0(owner,"setNeedsLayout");
-        } else if (Kind(owner,"SSMyUser621SideBarGameContainerCell")) {
+        } else if (tag==28 && Kind(owner,"SSMyUser621SideBarGameContainerCell")) {
             DramaVisibilitySet(owner,DefaultEnabled(Text("FanqieX.SidebarGames.1")));
-        } else if (Kind(owner,"SSMyUser621SideBarViewController")) {
+        } else if (tag==28 && Kind(owner,"SSMyUser621SideBarViewController")) {
             V0(Get(Get(owner,"collectionView"),"collectionViewLayout"),"invalidateLayout");
             V0(Get(owner,"collectionView"),"reloadData");
-        } else if (Kind(owner,"SSBookShelfViewModel")) {
-            Obj models=objc_getAssociatedObject(owner,ShelfMotionComicSource178R9Key);
-            ((void(*)(Obj,Sel,Obj))Original("SSBookShelfViewModel","fqx178R9_originalShowCellModels:"))
-                (owner,sel_registerName("setShowCellModels:"),ShelfMotionComicFiltered178R9(models));
+        } else if (tag==29 && Kind(owner,"SSBookShelfViewModel")) {
             Obj controller=Get(owner,"delegate");
-            if (Kind(controller,"SSBookShelfSubViewController") &&
-                InstanceABI(controller,"reloadData:","v24@0:8@16"))
-                V1(controller,"reloadData:",Text("FanqieXMotionComicVisibility"));
+            Obj shelf=Get(controller,"delegate");
+            if (Kind(shelf,"SSBookShelf525ViewController") && Get(shelf,"currentTabVC")!=controller)
+                objc_setAssociatedObject(owner,ShelfMotionComicPendingKey,owner,0);
+            else ShelfRefreshMotionComicModel(owner,controller);
         }
     }
-    RefreshMineBenefits();
+    if (tag!=29) RefreshMineList("FanqieXMineBenefits");
 }
 static void FeatureVisibilityInstall178R9(void) {
     Hook("SSMyUserExposedHistoryCellModel","shouldShowHistory","fqx178R9_originalShouldShowHistory",
@@ -4930,7 +5364,7 @@ static void FeatureVisibilityInstall178R9(void) {
 enum { StoreOption=1, DramaOption, ShelfOption, MineOption, MallOption, ShelfDurationOption,
        MineBenefitsOption, ReaderBottomBackgroundOption, FullscreenFillOption,
        ShelfFilterOption, ReaderThemeIsolationOption, DramaCategoriesOption,
-       DramaSearchOption, DramaAuthorDeclarationOption, DramaOriginalNovelOption };
+       DramaSearchOption, DramaAuthorDeclarationOption, DramaOriginalNovelOption, MineRecommendationsOption };
 static Obj PagePreference(I option) {
     const char *key;
     switch (option) {
@@ -4941,6 +5375,7 @@ static Obj PagePreference(I option) {
         case MallOption: key="FanqieX.BottomMall.1"; break;
         case ShelfDurationOption: key="FanqieX.ShelfReadingDuration.1"; break;
         case MineBenefitsOption: key="FanqieX.MineBenefitsCard.1"; break;
+        case MineRecommendationsOption: key="FanqieX.MineRecommendations.1"; break;
         case ReaderBottomBackgroundOption: key="FanqieX.ReaderBottomBackground.1"; break;
         case FullscreenFillOption: key="FanqieX.FullscreenFill.1"; break;
         case ShelfFilterOption: key="FanqieX.ShelfFilterButton.1"; break;
@@ -4963,6 +5398,7 @@ static Obj PageOptionLabel(I option) {
         case MallOption: label="底栏显示：商城"; break;
         case ShelfDurationOption: label="书架显示今日看听读时长"; break;
         case MineBenefitsOption: label="我的显示金币与福利卡片"; break;
+        case MineRecommendationsOption: label="我的显示推荐内容"; break;
         case FullscreenFillOption: label="横屏画面铺满（等比裁切）"; break;
         case ShelfFilterOption: label="书架显示筛选按钮"; break;
         case ReaderThemeIsolationOption: label="书外主题跟随系统"; break;
@@ -4982,6 +5418,7 @@ static B FullscreenFillEnabled(void) { return PageOptionEnabled(FullscreenFillOp
 static B ShelfFilterVisible(void) { return PageOptionEnabled(ShelfFilterOption); }
 static B ReaderThemeIsolationEnabled(void) { return PageOptionEnabled(ReaderThemeIsolationOption); }
 static B MineBenefitsEnabled(void) { return DefaultEnabled(PagePreference(MineBenefitsOption)); }
+static B MineRecommendationsEnabled(void) { return PageOptionEnabled(MineRecommendationsOption); }
 static B ReaderBottomBackgroundEnabled(void) { return DefaultEnabled(PagePreference(ReaderBottomBackgroundOption)); }
 static void SetDefault(Obj key,B value) {
     ((void(*)(Obj,Sel,B,Obj))Message)(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
@@ -5420,7 +5857,8 @@ static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
     if (tag>=ShelfDurationOption) {
         SetDefault(key,on);
         if (tag==ShelfDurationOption) RefreshShelfDuration(on);
-        else if (tag==MineBenefitsOption) RefreshMineBenefits();
+        else if (tag==MineBenefitsOption) RefreshMineList("FanqieXMineBenefits");
+        else if (tag==MineRecommendationsOption) RefreshMineList("FanqieXMineRecommendations");
         else if (tag==ShelfFilterOption) RefreshShelfFilter();
         else if (tag==ReaderThemeIsolationOption && on) FQHApplyReaderThemeIsolation();
         else if (tag==FullscreenFillOption) RefreshFullscreenFill();
@@ -5968,10 +6406,13 @@ static void DramaQualityInstall178R11(void) {
 static void FullscreenPlayersKey(void) {}
 static void FullscreenLogStateKey(void) {}
 static void FullscreenLogBoundsKey(void) {}
+static void FullscreenAlignBaselineKey(void) {}
 // TTVideoEngineScalingModeAspectFill=2 is the native, proportional crop mode.
 // Only its video surface fills the canvas; the player's controls keep their size.
 // https://docs.volcengine.com/docs/video-on-demand/ios-player-types?lang=zh
-enum { FullscreenAspectFillMode=2 };
+// TTPlayerView alignment 5 sets the scaled surface's center to the viewport's
+// horizontal midpoint and its bottom edge to the viewport's bottom edge.
+enum { FullscreenAspectFillMode=2, FullscreenBottomCenterMode=5 };
 
 static Obj FullscreenPlayers(void) {
     Obj cls=Lookup("FQVPlayer");
@@ -6007,20 +6448,25 @@ static B FullscreenFillViewport(Obj player,Rect *viewport) {
     return 1;
 }
 
-static void FullscreenScale(Obj engine,B fill) {
-    if (!engine) return;
-    Obj baseline=objc_getAssociatedObject(engine,FullscreenScaleBaselineKey);
+static void FullscreenOverrideMode(Obj engine,B fill,const void *key,const char *getter,const char *setter,I target) {
+    Obj baseline=objc_getAssociatedObject(engine,key);
     if (!fill && !baseline) return;
-    I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName("scaleMode"));
-    if (fill && mode!=FullscreenAspectFillMode) {
+    I mode=((I(*)(Obj,Sel))Message)(engine,sel_registerName(getter));
+    if (fill && mode!=target) {
         Obj box=((Obj(*)(Obj,Sel,I))Message)(Lookup("NSNumber"),sel_registerName("numberWithInteger:"),mode);
-        objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,box,1);
-        Q1(engine,"setScaleMode:",FullscreenAspectFillMode);
+        objc_setAssociatedObject(engine,key,box,1);
+        Q1(engine,setter,target);
     } else if (!fill) {
         I previous=((I(*)(Obj,Sel))Message)(baseline,sel_registerName("integerValue"));
-        objc_setAssociatedObject(engine,FullscreenScaleBaselineKey,0,1);
-        if (mode==FullscreenAspectFillMode) Q1(engine,"setScaleMode:",previous);
+        objc_setAssociatedObject(engine,key,0,1);
+        if (mode==target) Q1(engine,setter,previous);
     }
+}
+
+static void FullscreenScale(Obj engine,B fill) {
+    if (!engine) return;
+    FullscreenOverrideMode(engine,fill,FullscreenAlignBaselineKey,"alignMode","setAlignMode:",FullscreenBottomCenterMode);
+    FullscreenOverrideMode(engine,fill,FullscreenScaleBaselineKey,"scaleMode","setScaleMode:",FullscreenAspectFillMode);
 }
 
 static void FullscreenDiagnostics(Obj player,B fill) {
@@ -6041,7 +6487,7 @@ static void FullscreenDiagnostics(Obj player,B fill) {
     objc_setAssociatedObject(player,FullscreenLogStateKey,Number(state),1);
     objc_setAssociatedObject(player,FullscreenLogBoundsKey,RectBox(bounds),1);
     Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
-    Put(record,"revision",Text("aspect-fill-178R2"));
+    Put(record,"revision",Text("bottom-aligned-aspect-fill"));
     B applied=fill && engine && mode==FullscreenAspectFillMode;
     Put(record,"mode",Text(applied ? "aspectFill" : "native"));
     Put(record,"enabled",BoolBox(enabled)); Put(record,"isFullscreen",BoolBox(full));
@@ -6142,7 +6588,9 @@ static void FullscreenFillInstall(void) {
         !Signature(cell,"isInPlayerScaleMode","B16@0:8") ||
         !Signature(cell,"modelDidDisplay","v16@0:8") ||
         !Signature("TTVideoEngine","scaleMode","q16@0:8") ||
-        !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16")) return;
+        !Signature("TTVideoEngine","setScaleMode:","v24@0:8q16") ||
+        !Signature("TTVideoEngine","alignMode","q16@0:8") ||
+        !Signature("TTVideoEngine","setAlignMode:","v24@0:8q16")) return;
     Hook("FQVPlayer","landscapePlayerViewFrame","fqx190_originalLandscapeFrame",
          "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8",(Imp)FullscreenPlayerFrame);
     Hook("FQVPlayer","layoutSubviews","fqx190_originalPlayerLayout","v16@0:8",(Imp)FullscreenPlayerLayout);
@@ -6217,6 +6665,12 @@ static void ReaderScreenshotShare178R14(Obj self,Sel cmd,Obj action) {
     }
 }
 void FQHPageInstall(void) {
+    Obj cleanup=Lookup("FQXCleanup");
+    if (Responds(cleanup,"install")) V0(cleanup,"install");
+    Obj videoExport=Lookup("FQXVideoExport");
+    if (Responds(videoExport,"install")) V0(videoExport,"install");
+    Obj navigationPreferences=Lookup("FQXNavigationPreferences");
+    if (Responds(navigationPreferences,"install")) V0(navigationPreferences,"install");
     Hook("SSReadingShareScreenshotPendantView","showWithShareAction:","fqx178r14_originalScreenshotShare:","v24@0:8@?16",(Imp)ReaderScreenshotShare178R14);
     DramaCleanInstall178R11();
     DramaQualityInstall178R11();
@@ -6330,14 +6784,19 @@ void FQHInstall(void) {
          "fqx_originalShelfCommitted:index:","v32@0:8@16q24",(Imp)BookshelfTabCommitted);
     if (Signature("FQRJXCategoryListContainerView","didClickSelectedItemAtIndex:","v24@0:8q16") &&
         Signature("FQRJXCategoryListContainerView","cleanValidListWithIndex:","v24@0:8q16") &&
-        Signature("FQRJXCategoryListContainerView","initListIfNeededAtIndex:","v24@0:8q16") &&
-        Signature("FQRJXCategoryListContainerView","setCurrentIndex:","v24@0:8q16") &&
+        Signature("FQRJXCategoryListContainerView","listWillAppear:","v24@0:8q16") &&
         Signature("FQRJXCategoryListContainerView","listDidAppear:","v24@0:8q16") &&
         Signature("FQRJXCategoryListContainerView","clampScrollViewToCurrentIndexIfNeeded","v16@0:8")) {
+        BookshelfInstallTitleSelection();
         Hook("FQRJXCategoryListContainerView","layoutSubviews","fqx_originalHistoryPagerLayout",
              "v16@0:8",(Imp)BookshelfHistoryPagerLayout);
         Hook("FQRJXCategoryListContainerView","scrollDidStop","fqx_originalHistoryPagerStopped",
              "v16@0:8",(Imp)BookshelfHistoryPagerStopped);
+        class_addMethod(Lookup("FQRJXCategoryListContainerView"),
+            sel_registerName("scrollViewDidEndScrollingAnimation:"),
+            (Imp)BookshelfHistoryPagerAnimationEnded,"v24@0:8@16");
+        Hook("SSBookShelf525ViewController","viewDidAppear:","fqx_originalHistoryShelfAppear:",
+             "v20@0:8B16",(Imp)BookshelfHistoryAppear);
     }
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
     Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
@@ -6367,9 +6826,12 @@ static void BottomBarBox178Key(void) {}
 static void BottomProxyBox178Key(void) {}
 static void BottomButtons178Key(void) {}
 static void BottomBars178Key(void) {}
+static void BottomWindowBarKey(void) {}
 static void BottomCompact178Key(void) {}
 static void BottomSelectedBox178Key(void) {}
 static void BottomDragStart178R7Key(void) {}
+static void BottomDragReleasedKey(void) {}
+static void BottomDragAttachedKey(void) {}
 static void BottomCompactButton178R7Key(void) {}
 static void BottomCompactOverlay178R7Key(void) {}
 static void BottomSymbol178Key(void) {}
@@ -6381,6 +6843,7 @@ static void BottomStockImage178Key(void) {}
 static void BottomOptionsOwner178Key(void) {}
 static void BottomOptionValue178Key(void) {}
 static void BottomSettingViews178Key(void) {}
+static void SettingsCompactSwitchKey(void) {}
 static void BottomSettingsScroll178Key(void) {}
 static void BottomLayoutLog178Key(void) {}
 static void BottomTitles178R2Key(void) {}
@@ -6388,6 +6851,12 @@ static void BottomTitleFallback178R2Key(void) {}
 
 static Obj BottomDefaults178(void) {
     return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+}
+enum { BottomCompactRight, BottomCompactLeft, BottomCompactCenter };
+static const char *BottomCompactPositionKey="FanqieX.BottomDramaCompactPosition.1";
+static I BottomCompactPosition(void) {
+    return ((I(*)(Obj,Sel,Obj))Message)(BottomDefaults178(),sel_registerName("integerForKey:"),
+        Text(BottomCompactPositionKey));
 }
 static Obj BottomPreference178(I tag) {
     if (tag>=DramaCategoryTagBase && tag-DramaCategoryTagBase<=2147483647)
@@ -6480,12 +6949,12 @@ static B BottomVisible178(Obj view,Obj window) {
 static B BottomIsDrama178(Obj owner) {
     if (!Kind(owner,"SSTabBarController")) return 0;
     Obj types=Get(owner,"typeArray"),page=Get(owner,"selectedViewController");
-    if (Kind(page,"SSShortVideoRcmdMainViewController") ||
-        Kind(Get(page,"topViewController"),"SSShortVideoRcmdMainViewController")) return 1;
-    if (InstanceABI(owner,"currentSelectedVCTabType","i16@0:8"))
-        return ((int(*)(Obj,Sel))Message)(owner,sel_registerName("currentSelectedVCTabType"))==7;
+    // currentSelectedVCTabType returns the feed container's selected category.
+    // Use the root tab controller's own selection and its parallel type array.
     U count=TabCount(types);
-    if (!count || count>8 || !page) return 0;
+    if (!count || count>8 || !page)
+        return Kind(page,"SSShortVideoRcmdMainViewController") ||
+            Kind(Get(page,"topViewController"),"SSShortVideoRcmdMainViewController");
     if (Responds(owner,"selectedIndex")) {
         U index=((U(*)(Obj,Sel))Message)(owner,sel_registerName("selectedIndex"));
         if (index<count) return TabOption(owner,At(types,index))==DramaOption;
@@ -6512,11 +6981,17 @@ static Obj DramaPureCleanDock178R13(Obj view) {
     return 0;
 }
 static Obj BottomDramaCapsuleForView(Obj view) {
-    if (!Enabled()) return 0;
-    Obj bar=DramaPureCleanDock178R13(view);
+    Obj window=Get(view,"window"),bar=BottomWeakValue178(window,BottomWindowBarKey);
+    if (!bar || !Enabled() || Get(bar,"window")!=window) return 0;
+    Obj owner=Get(bar,"delegate");
+    if (!BottomIsDrama178(owner) || Get(owner,"presentedViewController") ||
+        !BottomDramaOwnsView178R13(Get(owner,"selectedViewController"),view)) return 0;
     Obj proxy=BottomWeakValue178(bar,BottomProxyBox178Key);
-    if (!bar || Get(proxy,"superview")!=bar || !BottomVisible178(proxy,Get(view,"window")) ||
-        Get(Get(bar,"delegate"),"presentedViewController")) return 0;
+    if (Get(proxy,"superview")!=bar) return 0;
+    for (Obj node=proxy;node!=window;node=Get(node,"superview")) {
+        if (!node || Flag(node,"isHidden") ||
+            ((double(*)(Obj,Sel))Message)(node,sel_registerName("alpha"))<0.01) return 0;
+    }
     return proxy;
 }
 static B BottomContainsCapsulePoint(Obj capsule,Point point) {
@@ -6526,11 +7001,10 @@ static B BottomContainsCapsulePoint(Obj capsule,Point point) {
 }
 static B BottomDramaSeekShouldBegin(Obj self,Sel cmd,Obj gesture) {
     const char *owner="FQVShortVideoVPlayerControlView";
-    if (gesture && Get(self,"progressPanGesture")==gesture &&
-        DramaIsMainFeedConfig(DramaDockControlConfig(self))) {
+    if (gesture && Get(self,"progressPanGesture")==gesture) {
         Obj proxy=BottomDramaCapsuleForView(self);
         if (proxy) {
-            // The inner player has no progress touch-filter delegate.
+            // Fall back to the initial pan position if the touch filter was bypassed.
             Point point=((Point(*)(Obj,Sel,Obj))Message)(gesture,sel_registerName("locationInView:"),proxy);
             Point movement=((Point(*)(Obj,Sel,Obj))Message)(gesture,sel_registerName("translationInView:"),proxy);
             if (BottomContainsCapsulePoint(proxy,(Point){point.x-movement.x,point.y-movement.y})) return 0;
@@ -6538,14 +7012,20 @@ static B BottomDramaSeekShouldBegin(Obj self,Sel cmd,Obj gesture) {
     }
     return ((B(*)(Obj,Sel,Obj))Original(owner,"fqx178r15_originalDramaSeekShouldBegin:"))(self,cmd,gesture);
 }
+static B BottomDramaProgressTouch(Obj view,Obj gesture,Obj touch) {
+    if (!gesture || Get(view,"progressPanGesture")!=gesture) return 1;
+    Obj proxy=BottomDramaCapsuleForView(view);
+    return !proxy || !BottomContainsCapsulePoint(proxy,
+        ((Point(*)(Obj,Sel,Obj))Message)(touch,sel_registerName("locationInView:"),proxy));
+}
+static B BottomInnerDramaSeekTouch(Obj self,Sel cmd,Obj gesture,Obj touch) {
+    (void)cmd;
+    return BottomDramaProgressTouch(self,gesture,touch);
+}
 static B BottomOuterDramaSeekTouch(Obj self,Sel cmd,Obj gesture,Obj touch) {
-    const char *owner="SSShortVideoOutterMultiGenreFeedControlView";
-    if (gesture && Get(self,"progressPanGesture")==gesture) {
-        Obj proxy=BottomDramaCapsuleForView(self);
-        if (proxy && BottomContainsCapsulePoint(proxy,
-            ((Point(*)(Obj,Sel,Obj))Message)(touch,sel_registerName("locationInView:"),proxy))) return 0;
-    }
-    return ((B(*)(Obj,Sel,Obj,Obj))Original(owner,"fqx_originalOuterDramaSeekTouch::"))(self,cmd,gesture,touch);
+    return BottomDramaProgressTouch(self,gesture,touch) &&
+        ((B(*)(Obj,Sel,Obj,Obj))Original("SSShortVideoOutterMultiGenreFeedControlView",
+            "fqx_originalOuterDramaSeekTouch::"))(self,cmd,gesture,touch);
 }
 static Obj BottomOuterDramaHit(Obj self,Sel cmd,Point point,Obj event) {
     const char *owner="SSShortVideoOutterMultiGenreFeedControlView";
@@ -6555,6 +7035,26 @@ static Obj BottomOuterDramaHit(Obj self,Sel cmd,Point point,Obj event) {
         if (BottomContainsCapsulePoint(proxy,(Point){position.x,position.y})) return 0;
     }
     return ((Obj(*)(Obj,Sel,Point,Obj))Original(owner,"fqx_originalOuterDramaHit::"))(self,cmd,point,event);
+}
+static Obj BottomDramaWindowHit(Obj self,Sel cmd,Point point,Obj event) {
+    Obj hit=((Obj(*)(Obj,Sel,Point,Obj))Original("UIWindow","fqx_originalDramaWindowHit::"))(self,cmd,point,event);
+    Obj proxy=BottomDramaCapsuleForView(hit);
+    if (!proxy || Get(hit,"window")!=self) return hit;
+    Rect local=Convert(self,(Rect){point.x,point.y,0,0},proxy);
+    if (!BottomContainsCapsulePoint(proxy,(Point){local.x,local.y})) return hit;
+    // Resolve the initial touch before UIKit attaches recognizers to the hit
+    // view. Rejecting the seek pan alone cannot retarget it to a sibling dock.
+    Obj bar=Get(proxy,"superview");
+    for (Obj node=hit; node; node=Get(node,"superview")) {
+        if (Kind(node,"FQVShortVideoVPlayerControlView") ||
+            Kind(node,"SSShortVideoOutterMultiGenreFeedControlView") ||
+            Kind(node,"FQVCollectionView")) {
+            Rect inBar=Convert(self,(Rect){point.x,point.y,0,0},bar);
+            Obj dockHit=((Obj(*)(Obj,Sel,Point,Obj))Message)(bar,cmd,(Point){inBar.x,inBar.y},event);
+            return dockHit && dockHit!=bar && Belongs(dockHit,bar) ? dockHit : hit;
+        }
+    }
+    return hit;
 }
 static B BottomCompactActive178R7(Obj bar) {
     return BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
@@ -6577,48 +7077,124 @@ static Obj BottomDramaPage178R7(Obj bar) {
         Get(owner,"presentedViewController") || (!pureClean && !BottomVisible178(bar,Get(bar,"window")))) return 0;
     return page;
 }
-static Obj BottomDramaScrollBar178R7(Obj list,Obj scroll) {
+static Obj BottomDramaScrollBar(Obj scroll,const char **reason) {
     Obj window=Get(scroll,"window");
-    if (!Kind(scroll,"FQVCollectionView") || Get(list,"collectionView")!=scroll ||
-        !BottomVisible178(scroll,window)) return 0;
+    *reason="feed-not-visible";
+    if (!BottomVisible178(scroll,window)) return 0;
+    *reason="feed-not-full-width-portrait";
     Rect placed=Convert(scroll,Bounds(scroll),window),screen=Bounds(window);
     if (!BottomRect178(placed) || placed.height<=placed.width ||
         __builtin_fabs(placed.x-screen.x)>=2 || placed.width<screen.width-4 ||
         placed.y>=screen.y+screen.height || placed.y+placed.height<=screen.y) return 0;
-    Obj bars=Get(BottomBars178(),"allObjects");
-    U count=TabCount(bars);
-    for (U i=0;i<count;++i) {
-        Obj bar=At(bars,i);
-        if (Get(bar,"window")!=window) continue;
-        Obj page=BottomDramaPage178R7(bar);
-        if (page && BottomDramaOwnsView178R13(page,scroll)) return bar;
-    }
-    return 0;
+    *reason="dock-not-registered";
+    Obj bar=BottomWeakValue178(window,BottomWindowBarKey);
+    if (!bar || Get(bar,"window")!=window) return 0;
+    *reason="dock-not-on-visible-drama-page";
+    Obj page=BottomDramaPage178R7(bar);
+    if (!page) return 0;
+    *reason="feed-outside-selected-page";
+    return BottomDramaOwnsView178R13(page,scroll) ? bar : 0;
 }
-static void BottomDramaDragBegan178R7(Obj self,Sel cmd,Obj scroll) {
-    // Only an actual drag supplies an origin. The host may complete it via
-    // deceleration, a snapping animation or its deferred scroll-end path.
-    Obj start=Enabled() && BottomFlag178(2) && Kind(scroll,"FQVCollectionView") && Get(self,"collectionView")==scroll
-        ? Get(self,"currentIndexPathForFullScreenCell") : (Obj)0;
-    objc_setAssociatedObject(self,BottomDragStart178R7Key,start,1);
-    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCScrollComponent","fqx178R7_originalDragBegan:"))(self,cmd,scroll);
+static void BottomDramaDragLog(const char *phase,const char *result,double offset) {
+    if (!FQDDiagnosticsEnabled()) return;
+    Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
+    Put(record,"phase",Text(phase));
+    Put(record,"result",Text(result));
+    if (__builtin_isfinite(offset)) Put(record,"offsetY",Number(offset));
+    FQDRecord("bottomCompactGesture",record);
 }
-static void BottomDramaDragSettled178R13(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("FQVShortVideoListVCScrollComponent","fqx178R13_originalScrollDidEnd"))(self,cmd);
-    Obj start=O0(objc_getAssociatedObject(self,BottomDragStart178R7Key),"retain");
+static double BottomDramaOffsetY(Obj scroll) {
+    return ((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset")).y;
+}
+static I BottomDramaPageAtOffset(double offset,double height) {
+    return (I)(__builtin_fmax(0,offset)/height+0.5);
+}
+static void BottomDramaResetDrag(Obj scroll) {
+    objc_setAssociatedObject(scroll,BottomDragStart178R7Key,0,1);
+    objc_setAssociatedObject(scroll,BottomDragReleasedKey,0,1);
+}
+static void BottomDramaResolveDrag(Obj scroll) {
+    Obj start=objc_getAssociatedObject(scroll,BottomDragReleasedKey);
     if (!start) return;
-    objc_setAssociatedObject(self,BottomDragStart178R7Key,0,1);
-    Obj bar=BottomDramaScrollBar178R7(self,Get(self,"collectionView"));
-    Obj current=bar ? Get(self,"currentIndexPathForFullScreenCell") : (Obj)0;
-    if (current && ((I(*)(Obj,Sel,Obj))Message)(current,sel_registerName("compare:"),start)>0)
-        BottomSetCompact178(bar,1);
-    V0(start,"release");
+    Rect bounds=Bounds(scroll);
+    double offset=BottomDramaOffsetY(scroll);
+    if (!BottomRect178(bounds) || !__builtin_isfinite(offset)) {
+        BottomDramaResetDrag(scroll);
+        return;
+    }
+    I origin=(I)Double(start),page=BottomDramaPageAtOffset(offset,bounds.height);
+    // The portrait drama feed snaps at multiples of its viewport height.
+    // A final bounds change can precede the delegate's idle-state update.
+    if (__builtin_fabs(offset-page*bounds.height)>1 ||
+        (page==origin && (Flag(scroll,"isDragging") || Flag(scroll,"isDecelerating") ||
+            Flag(scroll,"isScrollAnimating")))) return;
+    BottomDramaResetDrag(scroll);
+    const char *result;
+    Obj bar=BottomDramaScrollBar(scroll,&result);
+    if (bar) {
+        result=page>origin ? "next-page" : page<origin ? "previous-page" : "same-page";
+        if (page>origin) BottomSetCompact178(bar,1);
+    }
+    BottomDramaDragLog("resolve",result,offset);
+}
+static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
+    (void)cmd;
+    I state=((I(*)(Obj,Sel))Message)(pan,sel_registerName("state"));
+    if (state==1) {
+        BottomDramaResetDrag(self);
+        if (!Enabled() || !BottomFlag178(2)) return;
+        double offset=BottomDramaOffsetY(self);
+        const char *result;
+        Obj bar=BottomDramaScrollBar(self,&result);
+        if (bar) {
+            if (!__builtin_isfinite(offset)) result="invalid-offset";
+            else if (BottomCompactActive178R7(bar)) result="already-compact";
+            else {
+                result="tracking";
+                I page=BottomDramaPageAtOffset(offset,Bounds(self).height);
+                objc_setAssociatedObject(self,BottomDragStart178R7Key,Number(page),1);
+            }
+        }
+        BottomDramaDragLog("begin",result,offset);
+    } else if (state==3) {
+        Obj start=objc_getAssociatedObject(self,BottomDragStart178R7Key);
+        if (!start) return;
+        objc_setAssociatedObject(self,BottomDragReleasedKey,start,1);
+        objc_setAssociatedObject(self,BottomDragStart178R7Key,0,1);
+        BottomDramaDragLog("end","waiting-for-page",BottomDramaOffsetY(self));
+        BottomDramaResolveDrag(self);
+    } else if (state==4 || state==5) {
+        BottomDramaResetDrag(self);
+    }
+}
+static void BottomDramaScrollWindow(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVCollectionView","fqx_originalDramaScrollWindow"))(self,cmd);
+    if (!Get(self,"window")) {
+        BottomDramaResetDrag(self);
+        return;
+    }
+    if (objc_getAssociatedObject(self,BottomDragAttachedKey)) return;
+    Obj pan=Get(self,"panGestureRecognizer");
+    if (!pan) return;
+    ((void(*)(Obj,Sel,Obj,Sel))Message)(pan,sel_registerName("addTarget:action:"),self,
+        sel_registerName("fqx_dramaScrollPan:"));
+    objc_setAssociatedObject(self,BottomDragAttachedKey,BoolBox(1),1);
+    if (BottomFlag178(2)) BottomDramaDragLog("attach","native-pan",BottomDramaOffsetY(self));
+}
+static void BottomDramaScrollLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVCollectionView","fqx_originalDramaScrollLayout"))(self,cmd);
+    BottomDramaResolveDrag(self);
 }
 static void BottomCompactInstall178R7(void) {
     const char *player="FQVShortVideoVPlayerControlView";
-    if (Signature(player,"progressPanGesture","@16@0:8"))
+    if (Signature(player,"progressPanGesture","@16@0:8")) {
         Hook(player,"gestureRecognizerShouldBegin:","fqx178r15_originalDramaSeekShouldBegin:",
              "B24@0:8@16",(Imp)BottomDramaSeekShouldBegin);
+        Obj cls=Lookup(player);
+        Sel touch=sel_registerName("gestureRecognizer:shouldReceiveTouch:");
+        if (!class_getInstanceMethod(cls,touch))
+            class_addMethod(cls,touch,(Imp)BottomInnerDramaSeekTouch,"B32@0:8@16@24");
+    }
     const char *outer="SSShortVideoOutterMultiGenreFeedControlView";
     if (Signature(outer,"progressPanGesture","@16@0:8")) {
         Hook(outer,"gestureRecognizer:shouldReceiveTouch:","fqx_originalOuterDramaSeekTouch::",
@@ -6626,13 +7202,16 @@ static void BottomCompactInstall178R7(void) {
         Hook(outer,"hitTest:withEvent:","fqx_originalOuterDramaHit::",
              "@40@0:8{CGPoint=dd}16@32",(Imp)BottomOuterDramaHit);
     }
-    const char *owner="FQVShortVideoListVCScrollComponent";
-    if (!Signature(owner,"collectionView","@16@0:8") ||
-        !Signature(owner,"currentIndexPathForFullScreenCell","@16@0:8") ||
-        !Signature(owner,"scrollViewWillBeginDragging:","v24@0:8@16") ||
-        !Signature(owner,"onScrollDidEnd","v16@0:8")) return;
-    Hook(owner,"scrollViewWillBeginDragging:","fqx178R7_originalDragBegan:","v24@0:8@16",(Imp)BottomDramaDragBegan178R7);
-    Hook(owner,"onScrollDidEnd","fqx178R13_originalScrollDidEnd","v16@0:8",(Imp)BottomDramaDragSettled178R13);
+    Hook("UIWindow","hitTest:withEvent:","fqx_originalDramaWindowHit::",
+         "@40@0:8{CGPoint=dd}16@32",(Imp)BottomDramaWindowHit);
+    const char *collection="FQVCollectionView";
+    Obj cls=Lookup(collection);
+    if (!Signature(collection,"didMoveToWindow","v16@0:8") ||
+        !Signature(collection,"layoutSubviews","v16@0:8") ||
+        !class_addMethod(cls,sel_registerName("fqx_dramaScrollPan:"),(Imp)BottomDramaDrag,"v24@0:8@16")) return;
+    Hook(collection,"layoutSubviews","fqx_originalDramaScrollLayout","v16@0:8",(Imp)BottomDramaScrollLayout);
+    if (Signature(collection,"fqx_originalDramaScrollLayout","v16@0:8"))
+        Hook(collection,"didMoveToWindow","fqx_originalDramaScrollWindow","v16@0:8",(Imp)BottomDramaScrollWindow);
 }
 // UIKit derives frame from center and bounds; a fractional pixel can come
 // back one representable CGFloat away from the value written by the layout.
@@ -6773,19 +7352,17 @@ static B BottomOwnsButton178(Obj button,Obj proxy,Obj bar) {
     return parent==proxy || parent==Get(proxy,"contentView") ||
         (parent && Get(parent,"superview")==bar);
 }
-static B BottomCustom178R5(Obj bar) {
-    return BottomValue178(11)!=100 || BottomValue178(12)!=100 || BottomValue178(13)!=100 ||
-        BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
+static B BottomCustom178R5(B compact) {
+    return compact || BottomValue178(11)!=100 || BottomValue178(12)!=100 || BottomValue178(13)!=100;
 }
 // The legacy layout calculates stock button frames before the capsule frame.
 // Convert at those existing write boundaries, so UIKit never observes a stock
 // size followed by a custom size during a single layout/tracking transaction.
-static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
+static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact) {
     Rect available=Bounds(bar);
     if (!BottomRect178(base) || !BottomRect178(available) || !count || count>8 ||
-        !BottomCustom178R5(bar)) return base;
+        !BottomCustom178R5(compact)) return base;
     B icons=BottomFlag178(1);
-    B compact=BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
     double maximum=__builtin_fmin(base.width,available.width-8);
     // Once the dock reaches the top of its host bar, retain at least 12 pt
     // of the original bottom clearance, or all of it on a tighter host.
@@ -6799,13 +7376,28 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count) {
         BottomClamp178(base.width*BottomValue178(11)*0.01,__builtin_fmin(minimum,maximum),maximum);
     double height=compact ? width : BottomClamp178(base.height*BottomValue178(12)*0.01,
         __builtin_fmin(48,high),high);
-    double x=compact ? __builtin_fmin(base.x+base.width,available.x+available.width-8)-width :
-        available.x+(available.width-width)*0.5;
+    double x=available.x+(available.width-width)*0.5;
+    if (compact) {
+        I position=BottomCompactPosition();
+        if (position==BottomCompactLeft) x=__builtin_fmax(base.x,available.x+8);
+        else if (position!=BottomCompactCenter)
+            x=__builtin_fmin(base.x+base.width,available.x+available.width-8)-width;
+    }
     double scale=((double(*)(Obj,Sel))Message)(Get(Get(bar,"window"),"screen"),sel_registerName("scale"));
     if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
     return (Rect){BottomPixel178(x,scale),
         BottomPixel178(BottomClamp178(base.y+base.height-height,available.y,
             bottom-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
+}
+static Rect BottomDramaEpisodeDockFrame(Obj view) {
+    Obj dock=BottomDramaCapsuleForView(view), parent=Get(view,"superview");
+    if (!dock || !parent) return (Rect){0};
+    Obj bar=Get(dock,"superview");
+    if (!BottomCompactActive178R7(bar)) return Convert(dock,Bounds(dock),parent);
+    Obj base=objc_getAssociatedObject(dock,BottomBaseFrame178Key);
+    if (!base) return (Rect){0};
+    U count=TabCount(objc_getAssociatedObject(dock,BottomButtons178Key));
+    return Convert(bar,BottomTarget178R5(bar,UnboxRect(base),count,0),parent);
 }
 static void BottomRememberRect178R5(Obj view,const void *key,Rect rect) {
     Obj saved=objc_getAssociatedObject(view,key);
@@ -6825,7 +7417,7 @@ Rect FQHBottomProxyFrame178R5(Obj proxy,Rect stock) {
     U count=TabCount(objc_getAssociatedObject(proxy,BottomButtons178Key));
     if (!Enabled() || !Kind(bar,"SSTabBar") || Get(proxy,"superview")!=bar ||
         !BottomRect178(stock) || !count || count>8) return stock;
-    Rect target=BottomTarget178R5(bar,stock,count);
+    Rect target=BottomTarget178R5(bar,stock,count,BottomCompactActive178R7(bar));
     // Incoming host geometry is authoritative, including a rotated/new dock.
     // Never recover this baseline from the already customized current frame.
     BottomRememberRect178R5(proxy,BottomBaseFrame178Key,stock);
@@ -6845,8 +7437,9 @@ Rect FQHBottomButtonFrame178R5(Obj button,Rect stock) {
     BottomRememberRect178R5(button,BottomButtonStock178Key,stock);
     Rect target=stock;
     Obj saved=objc_getAssociatedObject(proxy,BottomBaseFrame178Key);
-    if (saved && BottomCustom178R5(bar)) {
-        Rect capsule=BottomTarget178R5(bar,UnboxRect(saved),count),bounds=Bounds(proxy);
+    B compact=BottomCompactActive178R7(bar);
+    if (saved && BottomCustom178R5(compact)) {
+        Rect capsule=BottomTarget178R5(bar,UnboxRect(saved),count,compact),bounds=Bounds(proxy);
         if (BottomRect178(capsule)) {
             bounds.width=capsule.width; bounds.height=capsule.height;
             Rect track=BottomTrack178(bounds,count,BottomFlag178(1));
@@ -7115,6 +7708,8 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     }
     BottomSetWeak178(proxy,BottomBarBox178Key,bar);
     BottomSetWeak178(bar,BottomProxyBox178Key,proxy);
+    Obj window=Get(bar,"window");
+    if (window) BottomSetWeak178(window,BottomWindowBarKey,bar);
     objc_setAssociatedObject(proxy,BottomButtons178Key,buttons,1);
     V1(BottomBars178(),"addObject:",bar);
     Obj page=BottomDramaPage178R7(bar);
@@ -7130,14 +7725,15 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
         base=current;
         objc_setAssociatedObject(proxy,BottomBaseFrame178Key,RectBox(base),1);
     }
-    if (!BottomCustom178R5(bar)) {
+    B compact=BottomCompactActive178R7(bar);
+    if (!BottomCustom178R5(compact)) {
         BottomRestoreFrame178(proxy,BottomBaseFrame178Key,BottomAppliedFrame178Key);
         Obj content=Get(proxy,"contentView");
         if (content && !BottomSameFrame178(Frame(content),Bounds(proxy))) SetFrame(content,Bounds(proxy));
         for (U i=0;i<count;++i) BottomRestoreFrame178(At(buttons,i),BottomButtonStock178Key,BottomButtonApplied178Key);
         return;
     }
-    Rect target=BottomTarget178R5(bar,base,count);
+    Rect target=BottomTarget178R5(bar,base,count,compact);
     if (!BottomSameFrame178(current,target)) SetFrame(proxy,target);
     BottomRememberRect178R5(proxy,BottomAppliedFrame178Key,target);
     Obj content=Get(proxy,"contentView");
@@ -7259,7 +7855,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         Put(record,"frame",RectArray(Frame(proxy))); Put(record,"iconPointSize",Number(size));
         Put(record,"buttonWidthPercent",Number(BottomValue178(13)));
         Put(record,"renderer",Text(native ? "native" : "buttons"));
-        Put(record,"compactTrigger",Text("hostSettledFeedPage"));
+        Put(record,"compactTrigger",Text("nativePanAndSettledOffset"));
         Obj previous=objc_getAssociatedObject(proxy,BottomLayoutLog178Key);
         if (!previous || !((B(*)(Obj,Sel,Obj))Message)(previous,sel_registerName("isEqual:"),record)) {
             FQDRecord("bottomAppearance178",record);
@@ -7301,8 +7897,9 @@ static Obj BottomValueText178(I tag) {
     Obj value=Get(Number(BottomValue178(tag)),"stringValue");
     return O1(value,"stringByAppendingString:",Text(tag==14 || tag==15 ? " pt" : "%"));
 }
+static void SettingsUpdateCompactPosition(Obj owner);
 void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
-    (void)self; (void)cmd;
+    (void)cmd;
     I tag=((I(*)(Obj,Sel))Message)(sender,sel_registerName("tag"));
     Obj key=BottomPreference178(tag);
     if (!key) return;
@@ -7311,10 +7908,11 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         B value=BoolProp(sender,"isOn");
         changed=BottomFlag178(tag)!=value;
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
+        if (tag==2 && changed) SettingsUpdateCompactPosition(self);
         if (tag>=21) {
             if (changed) {
-                if (tag<=25 || tag>=DramaCategoryTagBase) DramaVisibilityRefresh(tag==21 || tag>=DramaCategoryTagBase);
-                else if (tag<=29) FeatureVisibilityRefresh178R9();
+                if (tag<=25 || tag>=DramaCategoryTagBase) DramaVisibilityRefresh();
+                else if (tag<=29) FeatureVisibilityRefresh178R9(tag);
                 else if (tag==30 || tag==33) DramaPureCleanRefresh178R13();
                 else if (tag==34) FQHRefreshMineQuickAppearance178R13();
             }
@@ -7354,6 +7952,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
         Obj key=BottomPreference178(tag);
         if (key) V1(defaults,"removeObjectForKey:",key);
     }
+    V1(defaults,"removeObjectForKey:",Text(BottomCompactPositionKey));
     Obj controls=objc_getAssociatedObject(self,BottomSettingViews178Key);
     U count=TabCount(controls);
     for (U i=0;i<count;++i) {
@@ -7366,6 +7965,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
             V1(objc_getAssociatedObject(control,BottomOptionValue178Key),"setText:",BottomValueText178(tag));
         }
     }
+    SettingsUpdateCompactPosition(BottomWeakValue178(self,BottomOptionsOwner178Key));
     BottomRefresh178();
 }
 static Obj BottomSettingsLabel178(Obj parent,Rect frame,const char *text,double point,B secondary) {
@@ -7394,6 +7994,7 @@ static void BottomSettingsSwitch178(Obj controller,Obj parent,double y,I tag,con
         controller,sel_registerName("fqx178_bottomOptionChanged:"),4096);
     V1(parent,"addSubview:",toggle);
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",toggle);
+    if (tag==2) objc_setAssociatedObject(controller,SettingsCompactSwitchKey,toggle,1);
     V0(toggle,"release");
 }
 static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,const char *title,float low,float high) {
@@ -7492,6 +8093,7 @@ static void BottomOpenSettings178(Obj self,Sel cmd,Obj sender) {
     if (!nav || Get(owner,"presentedViewController")) return;
     Obj controller=O0(BottomSettingsClass178(),"new");
     if (!controller) return;
+    BottomSetWeak178(controller,BottomOptionsOwner178Key,owner);
     V1(controller,"setTitle:",Text("外观"));
     ((void(*)(Obj,Sel,Obj,B))Message)(nav,sel_registerName("pushViewController:animated:"),controller,1);
     V0(controller,"release");
@@ -7519,8 +8121,61 @@ static Obj OptionsEntry178(Obj container,Obj observer,Rect frame,const char *tit
 static void SettingsHeader178R13Key(void) {}
 static void SettingsSearch178R13Key(void) {}
 static void SettingsGroups178R13Key(void) {}
+static void SettingsAdPageKey(void) {}
+static void SettingsCompactPositionRowKey(void) {}
+
+static I SettingsNativeSection(Obj owner,I section) {
+    return objc_getAssociatedObject(owner,SettingsAdPageKey) ? section : 3;
+}
+static I SettingsSectionCount(Obj self,Sel cmd,Obj table) {
+    (void)cmd; (void)table;
+    return objc_getAssociatedObject(self,SettingsAdPageKey) ? 3 : 1;
+}
+static I SettingsRowCount(Obj self,Sel cmd,Obj table,I section) {
+    return ((I(*)(Obj,Sel,Obj,I))Original("FanqieAdBlockOptionsController",
+        "fqx_originalSettingsRows:section:"))(self,cmd,table,SettingsNativeSection(self,section));
+}
+static Obj SettingsSectionTitle(Obj self,Sel cmd,Obj table,I section) {
+    return ((Obj(*)(Obj,Sel,Obj,I))Original("FanqieAdBlockOptionsController",
+        "fqx_originalSettingsHeader:section:"))(self,cmd,table,SettingsNativeSection(self,section));
+}
+static Obj SettingsSectionFooter(Obj self,Sel cmd,Obj table,I section) {
+    return ((Obj(*)(Obj,Sel,Obj,I))Original("FanqieAdBlockOptionsController",
+        "fqx_originalSettingsFooter:section:"))(self,cmd,table,SettingsNativeSection(self,section));
+}
+static Obj SettingsNativeCell(Obj self,Sel cmd,Obj table,Obj path) {
+    if (!objc_getAssociatedObject(self,SettingsAdPageKey)) {
+        I row=((I(*)(Obj,Sel))Message)(path,sel_registerName("row"));
+        path=((Obj(*)(Obj,Sel,I,I))Message)(Lookup("NSIndexPath"),sel_registerName("indexPathForRow:inSection:"),row,3);
+    }
+    return ((Obj(*)(Obj,Sel,Obj,Obj))Original("FanqieAdBlockOptionsController",
+        "fqx_originalSettingsCell:path:"))(self,cmd,table,path);
+}
+static void SettingsInstallSections(void) {
+    const char *cls="FanqieAdBlockOptionsController";
+    Hook(cls,"numberOfSectionsInTableView:","fqx_originalSettingsSections:","q24@0:8@16",(Imp)SettingsSectionCount);
+    Hook(cls,"tableView:numberOfRowsInSection:","fqx_originalSettingsRows:section:","q32@0:8@16q24",(Imp)SettingsRowCount);
+    Hook(cls,"tableView:titleForHeaderInSection:","fqx_originalSettingsHeader:section:","@32@0:8@16q24",(Imp)SettingsSectionTitle);
+    Hook(cls,"tableView:titleForFooterInSection:","fqx_originalSettingsFooter:section:","@32@0:8@16q24",(Imp)SettingsSectionFooter);
+    Hook(cls,"tableView:cellForRowAtIndexPath:","fqx_originalSettingsCell:path:","@32@0:8@16@24",(Imp)SettingsNativeCell);
+}
+
+static void SettingsOpenAds(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
+    Obj navigation=Get(owner,"navigationController");
+    if (!navigation) return;
+    Obj page=((Obj(*)(Obj,Sel,I))Message)(O0(Lookup("FanqieAdBlockOptionsController"),"alloc"),sel_registerName("initWithStyle:"),2);
+    objc_setAssociatedObject(page,SettingsAdPageKey,BoolBox(1),1);
+    V1(page,"setTitle:",Text("广告与福利"));
+    ((void(*)(Obj,Sel,Obj,B))Message)(navigation,sel_registerName("pushViewController:animated:"),page,1);
+    V0(page,"release");
+}
 
 static void SettingsContentWidth178R14(Obj controller) {
+    Obj menu=Lookup("FQXSettingsMenu");
+    if (Responds(menu,"isInstalledOnController:") &&
+        ((B(*)(Obj,Sel,Obj))Message)(menu,sel_registerName("isInstalledOnController:"),controller)) return;
     Obj table=Get(controller,"tableView"),header=objc_getAssociatedObject(controller,SettingsHeader178R13Key);
     Obj footer=Get(table,"tableFooterView");
     double width=Bounds(table).width;
@@ -7586,6 +8241,46 @@ static Obj SettingsPanel178R13(Obj parent,Rect frame,B card) {
     return panel;
 }
 
+static void SettingsSetCompactPosition(Obj router,Sel cmd,Obj sender) {
+    (void)cmd;
+    I position=((I(*)(Obj,Sel))Message)(sender,sel_registerName("tag"));
+    ((void(*)(Obj,Sel,I,Obj))Message)(BottomDefaults178(),sel_registerName("setInteger:forKey:"),
+        position,Text(BottomCompactPositionKey));
+    BottomRefresh178();
+    Obj navigation=Get(BottomWeakValue178(router,BottomOptionsOwner178Key),"navigationController");
+    ((Obj(*)(Obj,Sel,B))Message)(navigation,sel_registerName("popViewControllerAnimated:"),1);
+}
+
+static void SettingsCompactPositionChoice(Obj card,Obj router,double y,I position,I selected,
+    const char *label,const char *checked) {
+    Obj choice=OptionsEntry178(card,router,(Rect){0,y,Bounds(card).width,48},
+        position==selected ? checked : label,label,"fqx_setCompactPosition:");
+    Q1(choice,"setTag:",position);
+}
+
+static void SettingsOpenCompactPosition(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
+    Obj navigation=Get(owner,"navigationController");
+    if (!navigation || !BottomFlag178(2)) return;
+    Obj page=O0(Lookup("UIViewController"),"new");
+    V1(page,"setTitle:",Text("收缩位置"));
+    Q1(page,"setEdgesForExtendedLayout:",0);
+    Obj root=Get(page,"view");
+    V1(root,"setBackgroundColor:",O0(Lookup("UIColor"),"systemGroupedBackgroundColor"));
+    Obj viewport=Get(navigation,"viewIfLoaded");
+    Rect bounds=Bounds(viewport ? viewport : Get(owner,"tableView"));
+    SetFrame(root,bounds);
+    Obj card=SettingsPanel178R13(root,(Rect){20,16,bounds.width-40,144},1);
+    I selected=BottomCompactPosition();
+    if (selected<BottomCompactRight || selected>BottomCompactCenter) selected=BottomCompactRight;
+    SettingsCompactPositionChoice(card,router,0,BottomCompactLeft,selected,"左侧","左侧  ✓");
+    SettingsCompactPositionChoice(card,router,48,BottomCompactCenter,selected,"居中","居中  ✓");
+    SettingsCompactPositionChoice(card,router,96,BottomCompactRight,selected,"右侧","右侧  ✓");
+    ((void(*)(Obj,Sel,Obj,B))Message)(navigation,sel_registerName("pushViewController:animated:"),page,1);
+    V0(page,"release");
+}
+
 static Obj SettingsGroup178R13(Obj header,const char *title) {
     Obj group=SettingsPanel178R13(header,(Rect){20,0,Bounds(header).width-40,1},1);
     BottomSettingsLabel178(group,(Rect){16,8,Bounds(group).width-32,25},title,14,1);
@@ -7628,6 +8323,8 @@ static void SettingsSearchChanged178R13(Obj router,Sel cmd,Obj search,Obj query)
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key),table=Get(owner,"tableView");
     Obj header=objc_getAssociatedObject(owner,SettingsHeader178R13Key);
     Obj groups=objc_getAssociatedObject(header,SettingsGroups178R13Key);
+    Obj compactPosition=objc_getAssociatedObject(owner,SettingsCompactPositionRowKey);
+    B autoCompact=BottomFlag178(2);
     B filtering=((U(*)(Obj,Sel))Message)(query,sel_registerName("length"))!=0;
     double y=60;
     for (U i=0;i<TabCount(groups);++i) {
@@ -7636,6 +8333,7 @@ static void SettingsSearchChanged178R13(Obj router,Sel cmd,Obj search,Obj query)
         for (U j=1;j<TabCount(rows);++j) {
             Obj row=At(rows,j);
             B show=!filtering || SettingsMatches178R13(Get(row,"accessibilityIdentifier"),query);
+            if (row==compactPosition && !autoCompact) show=0;
             VB(row,"setHidden:",!show);
             if (!show) continue;
             Rect frame=Frame(row);
@@ -7660,6 +8358,19 @@ static void SettingsSearchChanged178R13(Obj router,Sel cmd,Obj search,Obj query)
     }
 }
 
+static void SettingsUpdateCompactPosition(Obj owner) {
+    Obj menu=Lookup("FQXSettingsMenu");
+    if (Responds(menu,"refreshOnController:") &&
+        ((B(*)(Obj,Sel,Obj))Message)(menu,sel_registerName("refreshOnController:"),owner)) return;
+    Obj search=objc_getAssociatedObject(owner,SettingsSearch178R13Key);
+    if (!search) return;
+    Obj toggle=objc_getAssociatedObject(owner,SettingsCompactSwitchKey);
+    B enabled=BottomFlag178(2);
+    if (BoolProp(toggle,"isOn")!=enabled)
+        ((void(*)(Obj,Sel,B,B))Message)(toggle,sel_registerName("setOn:animated:"),enabled,0);
+    SettingsSearchChanged178R13(objc_getAssociatedObject(owner,ToggleObserverKey),0,search,Get(search,"text"));
+}
+
 static void SettingsFocus178R13(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
@@ -7676,21 +8387,53 @@ static void SettingsDiagnosticToggle178R13(Obj router,Sel cmd,Obj sender) {
     FQDSetDiagnosticsEnabled(Flag(sender,"isOn"));
 }
 
+static Obj SettingsVisibleController(Obj owner) {
+    Obj visible=Get(Get(owner,"navigationController"),"topViewController");
+    return visible ? visible : owner;
+}
+
 static void SettingsExport178R13(Obj router,Sel cmd,Obj sender) {
     (void)cmd;
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
-    if (Responds(owner,"fqab_156_exportDiagnostics:")) V1(owner,"fqab_156_exportDiagnostics:",sender);
+    Obj visible=SettingsVisibleController(owner);
+    const char *export="fqab_156_exportDiagnostics:",*present="fqab_156_presentDiagnostics:";
+    if (visible!=owner && Kind(visible,"FQXSettingsMenu") && !Responds(visible,export)) {
+        Sel start=sel_registerName(export),done=sel_registerName(present);
+        Obj source=object_getClass(owner),target=object_getClass(visible);
+        Method begin=class_getInstanceMethod(source,start),finish=class_getInstanceMethod(source,done);
+        if (begin && finish) {
+            // These actions store state on their receiver and use UIViewController APIs.
+            class_addMethod(target,done,method_getImplementation(finish),"v24@0:8@16");
+            class_addMethod(target,start,method_getImplementation(begin),"v24@0:8@16");
+        }
+    }
+    if (Responds(visible,export)) V1(visible,export,sender);
 }
 
 static void SettingsOpenBookExport(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
-    V1(Lookup("FQXBookExportPlugin"),"openFromSettingsController:",owner);
+    V1(Lookup("FQXBookExportPlugin"),"openFromSettingsController:",SettingsVisibleController(owner));
+}
+static void SettingsOpenStartup(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    V1(Lookup("FQXNavigationPreferences"),"openStartupFromController:",
+        SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key)));
+}
+static void SettingsOpenBookstoreCategories(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    V1(Lookup("FQXNavigationPreferences"),"openBookstoreFromController:",
+        SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key)));
+}
+static void SettingsOpenBackup(Obj router,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    V1(Lookup("FQXSettingsBackup"),"presentFromController:",
+        BottomWeakValue178(router,BottomOptionsOwner178Key));
 }
 
 static void SettingsLocalReward178R13(Obj router,Sel cmd,Obj sender) {
     (void)cmd; (void)sender;
-    Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key);
+    Obj owner=SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key));
     if (!owner || Get(owner,"presentedViewController")) return;
     B enabled=BottomFlag178(35);
     Obj alert=((Obj(*)(Obj,Sel,Obj,Obj,I))Message)(Lookup("UIAlertController"),
@@ -7739,7 +8482,8 @@ static Obj SettingsBarItem178R13(Obj router,const char *title,const char *symbol
 
 static void SettingsInstall178R13(Obj controller) {
     Obj table=Get(controller,"tableView");
-    if (!table || Get(table,"tableHeaderView")) return;
+    if (!table || Get(table,"tableHeaderView") || objc_getAssociatedObject(controller,SettingsAdPageKey)) return;
+    SettingsInstallSections();
     Obj cls=Lookup("FanqieXBottomOptionsRouter178");
     if (!cls) {
         cls=AllocateClass(Lookup("NSObject"),"FanqieXBottomOptionsRouter178",0);
@@ -7751,8 +8495,14 @@ static void SettingsInstall178R13(Obj controller) {
         class_addMethod(cls,sel_registerName("fqx178_diagnostics:"),(Imp)SettingsDiagnosticToggle178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_export:"),(Imp)SettingsExport178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx_openBookExport:"),(Imp)SettingsOpenBookExport,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openStartup:"),(Imp)SettingsOpenStartup,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openBookstoreCategories:"),(Imp)SettingsOpenBookstoreCategories,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openBackup:"),(Imp)SettingsOpenBackup,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_testListenReward:"),(Imp)SettingsLocalReward178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_jump:"),(Imp)SettingsJump178R13,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openAds:"),(Imp)SettingsOpenAds,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_openCompactPosition:"),(Imp)SettingsOpenCompactPosition,"v24@0:8@16");
+        class_addMethod(cls,sel_registerName("fqx_setCompactPosition:"),(Imp)SettingsSetCompactPosition,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx176_toggle:"),(Imp)ToggleChanged,"v24@0:8@16");
         RegisterClass(cls);
     }
@@ -7795,6 +8545,10 @@ static void SettingsInstall178R13(Obj controller) {
         SettingsToggle178R13(group,controller,router,option,1,0,0);
     group=SettingsGroup178R13(header,"短剧播放");
     SettingsToggle178R13(group,controller,router,2,0,"短剧滚动自动收缩",0);
+    Obj position=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
+        "收缩位置  ›","收缩位置","fqx_openCompactPosition:");
+    V1(position,"setAccessibilityIdentifier:",Text("短剧滚动自动收缩位置 左侧 居中 右侧"));
+    objc_setAssociatedObject(controller,SettingsCompactPositionRowKey,position,1);
     SettingsToggle178R13(group,controller,router,30,0,"默认清屏播放",0);
     SettingsToggle178R13(group,controller,router,33,0,"纯净清屏","默认清屏时隐藏进度、合集、互动和底栏。");
     SettingsToggle178R13(group,controller,router,31,0,"暂停时显示界面",0);
@@ -7834,14 +8588,25 @@ static void SettingsInstall178R13(Obj controller) {
     SettingsToggle178R13(group,controller,router,36,0,"截图后一键分享",0);
     group=SettingsGroup178R13(header,"个人页与侧栏");
     SettingsToggle178R13(group,controller,router,MineBenefitsOption,1,0,0);
+    SettingsToggle178R13(group,controller,router,MineRecommendationsOption,1,0,0);
     SettingsToggle178R13(group,controller,router,26,0,"我的显示继续追剧／追漫",0);
     SettingsToggle178R13(group,controller,router,28,0,"侧栏显示常玩游戏",0);
+    group=SettingsGroup178R13(header,"页面与配置");
+    Obj startup=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
+        "默认启动页  ›","默认启动页","fqx_openStartup:");
+    V1(startup,"setAccessibilityIdentifier:",Text("默认启动页 跟随应用 书城 短剧 书架 我的"));
+    Obj categories=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
+        "书城顶部分类  ›","书城顶部分类","fqx_openBookstoreCategories:");
+    V1(categories,"setAccessibilityIdentifier:",Text("书城顶部分类 推荐 小说 听书 看剧 显示 隐藏"));
+    Obj backup=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
+        "设置备份与恢复  ›","设置备份与恢复","fqx_openBackup:");
+    V1(backup,"setAccessibilityIdentifier:",Text("设置备份与恢复 配置 导入 导出 合并 覆盖 默认"));
     group=SettingsGroup178R13(header,"更多设置");
     double rowWidth=Bounds(group).width;
     Obj look=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"外观与尺寸  ›","外观","fqx178_openBottom:");
     V1(look,"setAccessibilityIdentifier:",Text("外观 底栏 尺寸 图标 短剧右侧互动按钮 收藏 评论 点赞 分享 大小 我的快捷入口仅显示图标"));
-    Obj ads=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"广告与拦截  ›","广告与拦截","fqx178_jump:");
-    V1(ads,"setAccessibilityIdentifier:",Text("广告 拦截 开屏 阅读底栏 插屏 弹窗"));
+    Obj ads=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"广告与福利  ›","广告与福利","fqx_openAds:");
+    V1(ads,"setAccessibilityIdentifier:",Text("广告 福利 拦截 开屏 阅读底栏 插屏 弹窗 自动签到 金币 福利标签"));
     Obj diagnostic=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"诊断与日志  ›","诊断与日志","fqx178_jump:");
     Q1(diagnostic,"setTag:",1);
     V1(diagnostic,"setAccessibilityIdentifier:",Text("开启诊断 增强诊断 导出日志 听书奖励本地测试 模拟立即领取"));
@@ -7875,4 +8640,14 @@ static void SettingsInstall178R13(Obj controller) {
     SettingsContentWidth178R14(controller);
     V0(footer,"release");
     V0(router,"release");
+    V0(table,"reloadData");
+    Obj menu=Lookup("FQXSettingsMenu");
+    if (Responds(menu,"installOnController:router:ads:")) {
+        Obj ads=((Obj(*)(Obj,Sel,I))Message)(O0(Lookup("FanqieAdBlockOptionsController"),"alloc"),
+            sel_registerName("initWithStyle:"),2);
+        objc_setAssociatedObject(ads,SettingsAdPageKey,BoolBox(1),1);
+        ((void(*)(Obj,Sel,Obj,Obj,Obj))Message)(menu,sel_registerName("installOnController:router:ads:"),
+            controller,objc_getAssociatedObject(controller,ToggleObserverKey),ads);
+        V0(ads,"release");
+    }
 }

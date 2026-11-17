@@ -370,6 +370,8 @@ class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
                 ("FQVShortVideoLandscapePlayerCellView", "isInPlayerScaleMode", "B16@0:8"),
                 ("FQVShortVideoLandscapePlayerCellView", "modelDidDisplay", "v16@0:8"),
                 ("TTVideoEngine", "scaleMode", "q16@0:8"),
+                ("TTVideoEngine", "alignMode", "q16@0:8"),
+                ("TTVideoEngine", "setAlignMode:", "v24@0:8q16"),
                 ("TTVideoEngine", "getOptionBykey:", "@24@0:8@16"),
                 ("TTVideoEngine", "setOptionForKey:value:", "v32@0:8q16@24"),
                 ("TTVideoEngine", "setEffectParams:", "v24@0:8@16"),
@@ -438,16 +440,19 @@ class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu)
             if name == "landscapePlayerViewFrame":
                 return self.finish(cpu, fp=state["landscapePlayerViewFrame"])
-            if name in ("setScaleMode:", "setIsFullScreen:", "setVideoEngine:"):
+            if name in ("setScaleMode:", "setAlignMode:", "setIsFullScreen:", "setVideoEngine:"):
                 key = name[3].lower() + name[4:-1]
                 state[key] = cpu.x[2]
                 if name == "setScaleMode:":
                     state.setdefault("scaleWrites", []).append(cpu.x[2])
+                if name == "setAlignMode:":
+                    state.setdefault("alignWrites", []).append(cpu.x[2])
                 return self.finish(cpu)
             if name == "prepareWithVideoInfo:async:":
                 state["prepareArguments"] = tuple(cpu.x[2:4])
                 engine = self.objects[state["videoEngine"]].state
                 engine["scaleMode"] = state["nativeScaleMode"]
+                engine["alignMode"] = state["nativeAlignMode"]
                 engine["options"] = {}
                 return self.finish(cpu)
             if name == "updatePlayerLayout":
@@ -455,9 +460,10 @@ class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
                 return self.finish(cpu)
             if name == "videoEngineReadyToDisPlay:":
                 engine = self.objects[state["videoEngine"]].state
-                state["readySnapshot"] = (engine["scaleMode"], state.get("playerLayoutUpdates", 0))
+                state["readySnapshot"] = (engine["scaleMode"], state.get("playerLayoutUpdates", 0), engine["alignMode"])
                 if "nativeReadyScaleMode" in state:
                     engine["scaleMode"] = state["nativeReadyScaleMode"]
+                    engine["alignMode"] = state["nativeAlignMode"]
                 return self.finish(cpu)
             return self.finish(cpu, state.get(name, 0))
         if pc == self.PUBLISH_SET:
@@ -868,13 +874,13 @@ def static_checks():
 
 
 def exercise(data, labels):
-    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
-    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
+    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
+    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
-    equal_reader_tools = release_version(data) in ("1.78R15", "1.78R16") and "LFQH_ReaderToolbarGlass" in labels
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
+    equal_reader_tools = release_version(data) in ("1.78R15", "1.78R16", "1.78R25") and "LFQH_ReaderToolbarGlass" in labels
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1121,6 +1127,8 @@ def exercise(data, labels):
             runtime.objects[filter_button].state["frame"] == ((313., 2., 58., 30.) if aligned_shelf else (324., 2., 58., 30.)),
             "the filter capsule preserves native size and tap, with R12's 20pt page edge")
     fade_x = 290. if aligned_shelf else 301.
+    if release_version(data) in ("1.78R18", "1.78R25"):
+        fade_x -= 2.
     require(runtime.objects[filter_fade].state["frame"] == (fade_x, 0., 24., 44.),
             "the overlapping native fade stops before the capsule's left edge")
     send(cpu, runtime, header, "layoutSubviews")
@@ -1869,7 +1877,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1881,7 +1889,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1913,9 +1921,9 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
                 corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
-                full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16")
+                full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
                 require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
                         runtime.objects[label].state["textAlignment"] == 1,
                         "the configured corner shape keeps the caption centered above the native tap area")
@@ -2076,7 +2084,7 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     runtime.tab_app = runtime.obj("UIApplication", "plugin settings app", opened_urls=[])
     version = release_version(data)
-    if version in ("1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+    if version in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
         switches = exercise_settings(cpu, runtime, labels, options, titles)
     else:
         call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
@@ -2410,6 +2418,28 @@ def exercise(data, labels):
         require(mine_prefs[mine_benefits_key] is on, "the benefits switch persists its setting")
     require(runtime.mine_reloads == [(legacy_owner, "FanqieXMineBenefits")] * 2 and not runtime.tab_refreshes,
             "each benefits change refreshes the mounted native Mine list without rebuilding tabs")
+    mine_recommendations_checked = release_version(data) in ("1.78R20", "1.78R25")
+    if mine_recommendations_checked:
+        runtime._class("SSMyUserUnlimitedCellModel", "NSObject")
+        waterfall = runtime.obj("SSMyUserUnlimitedCellModel", "native recommendation waterfall")
+        rows = [*original_mine_rows, waterfall]
+        plan_with_recommendations = runtime.obj("NSArray", "native complete Mine plan", items=rows[:])
+        runtime.objects[legacy_owner].state["list_objects"] = plan_with_recommendations
+        switch = switches[11]
+        switch_state = runtime.objects[switch].state
+        target, action, _ = switch_state["control_targets"][0]
+        require(switch_state["isOn"] and send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"] ==
+                plan_with_recommendations, "the preference defaults to showing the native waterfall")
+        for on in (False, True):
+            switch_state["isOn"] = on
+            send(cpu, runtime, target, runtime.selector_names[action], switch)
+            result = send(cpu, runtime, legacy_owner, "objectsForListAdapter:", 0)["result"]
+            require(mine_prefs["FanqieX.MineRecommendations.1"] is on and
+                    runtime.objects[result].state["items"] == (rows if on else original_mine_rows) and
+                    runtime.objects[plan_with_recommendations].state["items"] == rows,
+                    "the setting removes and restores only the waterfall in the Mine list diff")
+        require(runtime.mine_reloads[-2:] == [(legacy_owner, "FanqieXMineRecommendations")] * 2 and
+                not runtime.tab_refreshes, "each change refreshes the mounted Mine controller")
     backdrop_switch = switches[7]
     backdrop_observer, backdrop_action, _ = runtime.objects[backdrop_switch].state["control_targets"][0]
     for on in (False, True):
@@ -2466,6 +2496,7 @@ def exercise(data, labels):
         "shelf_filters": len(filters),
         "profile_shortcuts": shortcut_count,
         "mine_benefits_section_toggle": True,
+        **({"mine_recommendation_waterfall_toggle": True} if mine_recommendations_checked else {}),
         "profile_search_clips_carousel": True,
         "profile_top_blur_and_feed_underlap": True,
         "bookstore_and_profile_publish_glass": True,
@@ -2497,6 +2528,8 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
     toggle = runtime.objects[switch].state
     observer, action, _ = toggle["control_targets"][0]
     selector = runtime.selector_names[action]
+    bottom_align = release_version(runtime.data) in ("1.78R19", "1.78R25")
+    active_align = 5 if bottom_align else 0
     for width, height in ((956, 440), (812, 375)):
         canvas = (0., 0., float(width), float(height))
         frame_width = height * (16 / 9)
@@ -2505,7 +2538,7 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         cell = runtime.view("FQVShortVideoLandscapePlayerCellView", "landscape cell",
                             canvas, window, isInPlayerScaleMode=False)
         holder = runtime.view("UIView", "player holder", canvas, cell)
-        engine = runtime.obj("TTVideoEngine", "video engine", scaleMode=1)
+        engine = runtime.obj("TTVideoEngine", "video engine", scaleMode=1, alignMode=0)
         engine_state = runtime.objects[engine].state
         player = runtime.view("FQVPlayer", "video player", canvas, holder,
                               isFullScreen=True, videoEngine=engine, landscapePlayerViewFrame=stock)
@@ -2524,6 +2557,8 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         send(cpu, runtime, observer, selector, switch)
         require(prefs[key] and displayed() == canvas and engine_state["scaleMode"] == 2,
                 "enabling fill immediately uses native proportional crop across the whole canvas")
+        require(engine_state["alignMode"] == active_align,
+                "native bottom-center alignment preserves the lower edge of the video")
         send(cpu, runtime, player, "layoutSubviews")
         require(not engine_state.get("effects") and not engine_state.get("options"),
                 "fill neither creates a Gaussian background nor changes unrelated renderer options")
@@ -2541,20 +2576,22 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
 
         runtime.objects[cell].state["isInPlayerScaleMode"] = True
         send(cpu, runtime, player, "layoutSubviews")
-        require(displayed() == stock and engine_state["scaleMode"] == 1,
+        require(displayed() == stock and engine_state["scaleMode"] == 1 and engine_state["alignMode"] == 0,
                 "opening a native landscape side panel restores the stock presentation")
         runtime.objects[cell].state["isInPlayerScaleMode"] = False
         send(cpu, runtime, player, "layoutSubviews")
         require(engine_state["scaleMode"] == 2, "closing the side panel reapplies crop")
 
-        replacement = runtime.obj("TTVideoEngine", "replacement engine", scaleMode=2)
+        replacement = runtime.obj("TTVideoEngine", "replacement engine", scaleMode=2, alignMode=4)
         send(cpu, runtime, player, "setVideoEngine:", replacement)
-        require(engine_state["scaleMode"] == 1, "the pooled engine is restored before replacement")
-        require(runtime.objects[replacement].state["scaleMode"] == 2,
-                "a native aspect-fill replacement already has the correct mode")
+        require(engine_state["scaleMode"] == 1 and engine_state["alignMode"] == 0,
+                "the pooled engine's scale and alignment are restored before replacement")
+        replacement_state = runtime.objects[replacement].state
+        require(replacement_state["scaleMode"] == 2 and replacement_state["alignMode"] == (5 if bottom_align else 4),
+                "bottom alignment is configured independently for an engine already using aspect fill")
         send(cpu, runtime, player, "setIsFullScreen:", 0)
-        require(displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
-                "leaving fullscreen preserves a replacement already configured to fill by the host")
+        require(displayed() == stock and replacement_state["scaleMode"] == 2 and replacement_state["alignMode"] == 4,
+                "leaving fullscreen restores the replacement engine's alignment and preserves its original scale")
         send(cpu, runtime, player, "setIsFullScreen:", 1)
         send(cpu, runtime, player, "layoutSubviews")
 
@@ -2563,9 +2600,9 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
                                  isInPlayerScaleMode=False)
         next_holder = runtime.view("UIView", "next player holder",
                                    (0.5, 0., float(width), float(height)), next_cell)
-        next_engine = runtime.obj("TTVideoEngine", "next engine", scaleMode=1, resolution="native adaptive")
+        next_engine = runtime.obj("TTVideoEngine", "next engine", scaleMode=1, alignMode=0, resolution="native adaptive")
         next_player = runtime.view("FQVPlayer", "next player", canvas, next_holder,
-                                   isFullScreen=True, videoEngine=next_engine, nativeScaleMode=1,
+                                   isFullScreen=True, videoEngine=next_engine, nativeScaleMode=1, nativeAlignMode=0,
                                    landscapePlayerViewFrame=stock)
         next_state = runtime.objects[next_player].state
         next_engine_state = runtime.objects[next_engine].state
@@ -2576,7 +2613,8 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
                 "an offscreen cell prepares full-frame crop with fractional layout rounding")
         info = runtime.obj("NSObject", "next video info")
         send(cpu, runtime, next_player, "prepareWithVideoInfo:async:", info, 1)
-        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 2,
+        require(next_state["prepareArguments"] == (info, 1) and next_engine_state["scaleMode"] == 2
+                and next_engine_state["alignMode"] == active_align,
                 "crop returns after native preparation resets the renderer")
         require(next_engine_state["resolution"] == "native adaptive",
                 "fill preserves the native resolution selection")
@@ -2585,10 +2623,10 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         previous_updates = next_state["playerLayoutUpdates"]
         next_state["nativeReadyScaleMode"] = 1
         send(cpu, runtime, next_player, "videoEngineReadyToDisPlay:", next_engine)
-        require(next_state["readySnapshot"] == (2, previous_updates + 1),
+        require(next_state["readySnapshot"] == (2, previous_updates + 1, active_align),
                 "the engine and frame are ready before the host reveals the first frame")
-        require(next_engine_state["scaleMode"] == 2,
-                "a scale reset inside the host ready callback is corrected before it returns")
+        require(next_engine_state["scaleMode"] == 2 and next_engine_state["alignMode"] == active_align,
+                "host scale and alignment resets inside the ready callback are corrected before it returns")
 
         runtime.objects[next_cell].state["frame"] = canvas
         next_engine_state["scaleMode"] = 1
@@ -2596,25 +2634,27 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         require(displayed(next_player) == canvas and next_engine_state["scaleMode"] == 2,
                 "paging to an already-ready cell restores crop without a new player layout or ready callback")
         scale_writes = list(next_engine_state["scaleWrites"])
+        align_writes = list(next_engine_state.get("alignWrites", ()))
         send(cpu, runtime, next_cell, "modelDidDisplay")
-        require(next_engine_state["scaleWrites"] == scale_writes,
-                "the renderer mode remains stable when the cell is displayed again")
+        require(next_engine_state["scaleWrites"] == scale_writes and list(next_engine_state.get("alignWrites", ())) == align_writes,
+                "the renderer does not repeat scale or alignment updates on a stable cell")
 
         toggle["isOn"] = False
         send(cpu, runtime, observer, selector, switch)
         require(not prefs[key] and displayed() == stock and runtime.objects[replacement].state["scaleMode"] == 2,
                 "turning off fill immediately restores native framing")
-        require(next_engine_state["scaleMode"] == 1 and displayed(next_player) == stock,
+        require(next_engine_state["scaleMode"] == 1 and next_engine_state["alignMode"] == 0 and displayed(next_player) == stock,
                 "turning off fill restores every live pooled renderer's original scale")
 
         # The host can request another mode while fill owns the previous one.
         toggle["isOn"] = True
         send(cpu, runtime, observer, selector, switch)
         next_engine_state["scaleMode"] = 3
+        next_engine_state["alignMode"] = 7
         toggle["isOn"] = False
         send(cpu, runtime, observer, selector, switch)
-        require(next_engine_state["scaleMode"] == 3,
-                "a newer host scale request wins when the plugin releases its override")
+        require(next_engine_state["scaleMode"] == 3 and next_engine_state["alignMode"] == 7,
+                "newer host scale and alignment requests survive when the plugin releases its override")
 
         # Another host scene can already have enabled its own background effect.
         replacement_state = runtime.objects[replacement].state
@@ -2639,13 +2679,13 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
         for view in (window, cell, holder, player):
             runtime.objects[view].state.update(frame=portrait, bounds=portrait)
         send(cpu, runtime, player, "layoutSubviews")
-        require(displayed() == stock and engine_state["scaleMode"] == 1,
-                "rotation to portrait restores native framing and the original fit mode")
+        require(displayed() == stock and engine_state["scaleMode"] == 1 and engine_state["alignMode"] == 0,
+                "rotation to portrait restores native framing, scaling, and alignment")
         for view in (window, cell, holder, player):
             runtime.objects[view].state.update(frame=canvas, bounds=canvas)
         send(cpu, runtime, player, "layoutSubviews")
-        require(displayed() == canvas and engine_state["scaleMode"] == 2,
-                "rotation back to landscape reapplies crop across the full canvas")
+        require(displayed() == canvas and engine_state["scaleMode"] == 2 and engine_state["alignMode"] == active_align,
+                "rotation back to landscape reapplies the same crop mode and alignment")
         # A fullscreen flag on a smaller floating player does not make it screen-sized.
         runtime.objects[player].state.update(frame=(0., 0., width-100., float(height)),
                                              bounds=(0., 0., width-100., float(height)))
@@ -2717,9 +2757,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2745,7 +2785,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2890,7 +2930,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3042,14 +3082,14 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16") else []
+    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else []
     composed = args.candidate.with_suffix(".composed.s")
     toolbar = "LFQH_ReaderToolbarGlass"
     toolbar_labels = [toolbar] if f"\n{toolbar}:" in composed.read_text(encoding="utf-8") else []
     labels = labels_for(data, composed, LABELS + EXTRA + settings_labels + toolbar_labels)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

@@ -40,10 +40,14 @@ DRAG_METHODS = (
 )
 NATIVE_SETTLE = ("onScrollDidEnd", "v16@0:8", 0x33160300)
 NATIVE_PAGE = ("currentIndexPathForFullScreenCell", "@16@0:8", 0x33160400)
+NATIVE_ANIMATION_END = ("scrollViewDidEndScrollingAnimation:", "v24@0:8@16", 0x33160500)
+NATIVE_FEED_WINDOW = ("didMoveToWindow", "v16@0:8", 0x33160600)
+NATIVE_FEED_LAYOUT = ("layoutSubviews", "v16@0:8", 0x33160700)
+NATIVE_INNER_FEED_TYPE = 0x33160800
 
 
 def bottom_labels(data):
-    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16") else LEGACY_PAN]
+    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else LEGACY_PAN]
 
 
 class Runtime(AppearanceRuntime):
@@ -55,7 +59,7 @@ class Runtime(AppearanceRuntime):
         self.content_writes = []
         self.new_labels = {}
         super().__init__(*args, **options)
-        if release_version(self.data) in ("1.78R15", "1.78R16"):
+        if release_version(self.data) in ("1.78R15", "1.78R16", "1.78R25"):
             self.objects[self.MAIN_BUNDLE].state["info"] = {
                 "UIDesignRequiresCompatibility": True, "DTSDKName": "iphoneos26.0",
             }
@@ -72,16 +76,20 @@ class Runtime(AppearanceRuntime):
         ):
             if cls not in self.classes:
                 self._class(cls, parent)
-        self.canonical_settle = release_version(self.data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16")
-        real_video_feed = release_version(self.data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16")
+        self.canonical_settle = release_version(self.data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
+        self.native_pan_pages = release_version(self.data) in ("1.78R23", "1.78R24", "1.78R25")
+        real_video_feed = release_version(self.data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
         self.feed_class = "FQVCollectionView" if real_video_feed else "FQFeedListCollectionView"
         self.feed_owner_class = "FQVShortVideoListVCScrollComponent" if real_video_feed else "FQFeedListView"
         for owner in ("FQFeedListView", "FQVShortVideoListVCScrollComponent"):
             self._add(self.classes[owner], "collectionView", self.LAYOUT_IMP, "@16@0:8")
             for selector, encoding, imp in DRAG_METHODS:
                 self._add(self.classes[owner], selector, imp, encoding)
-        for selector, encoding, imp in (NATIVE_SETTLE, NATIVE_PAGE):
+        for selector, encoding, imp in (NATIVE_SETTLE, NATIVE_PAGE, NATIVE_ANIMATION_END):
             self._add(self.classes["FQVShortVideoListVCScrollComponent"], selector, imp, encoding)
+        for owner, method in (("UIView", NATIVE_FEED_WINDOW), ("UICollectionView", NATIVE_FEED_LAYOUT)):
+            selector, encoding, imp = method
+            self._add(self.classes[owner], selector, imp, encoding)
         self.screen = self.obj("UIScreen", "3x display", scale=3.0)
         self.objects[self.WINDOW].state["screen"] = self.screen
         self.page_view = self.view("UIView", "selected page root", (0, 0, 440, 882), self.ROOT)
@@ -200,10 +208,13 @@ class Runtime(AppearanceRuntime):
 
     def handle(self, cpu, pc):
         local = pc - self.slide
+        if pc == NATIVE_INNER_FEED_TYPE:
+            return self.finish(cpu, self.objects[cpu.x[0]].state["innerFeedType"])
         if pc == NATIVE_PAGE[2]:
             feed = self.objects[cpu.x[0]].state["collectionView"]
-            return self.finish(cpu, self.obj("NSIndexPath", "native fullscreen page", index=self.objects[feed].state["pageIndex"]))
-        for selector, _, imp in (*DRAG_METHODS, NATIVE_SETTLE):
+            index = self.objects[feed].state["pageIndex"]
+            return self.finish(cpu, 0 if index is None else self.obj("NSIndexPath", "native fullscreen page", index=index))
+        for selector, _, imp in (*DRAG_METHODS, NATIVE_SETTLE, NATIVE_ANIMATION_END, NATIVE_FEED_WINDOW, NATIVE_FEED_LAYOUT):
             if pc == imp:
                 self.event("host_feed_callback", cpu.x[0], selector=selector)
                 return self.finish(cpu)
@@ -332,9 +343,12 @@ class Runtime(AppearanceRuntime):
                 return self.finish(cpu, state.get(name, 0))
             if name == "intValue":
                 return self.finish(cpu, int(state.get("value", 0)))
-            if name in ("isDragging", "isDecelerating", "isTracking") and self.is_kind(
+            if name in ("isDragging", "isDecelerating", "isTracking", "isScrollAnimating") and self.is_kind(
                     receiver, self.classes["UIScrollView"]):
                 return self.finish(cpu, int(state.get(name[2].lower() + name[3:], False)))
+            if name == "contentOffset" and "pagingOffset" in state:
+                # Scripted host movement for the shared page-index fixtures.
+                return self.finish(cpu, fp=state["pagingOffset"])
             if name in ("contentOffset", "contentInset"):
                 return self.finish(cpu, fp=state[name])
             if name == "clipsToBounds":
@@ -473,7 +487,7 @@ def overlay_image(runtime, button):
 
 
 def dock_renderer(data, fallback):
-    if release_version(data) in ("1.78R14", "1.78R15", "1.78R16"):
+    if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
         return "drag"
     return "fallback" if fallback else "native"
 
@@ -482,7 +496,7 @@ def check_input(runtime, cpu, fallback, expected):
     previous_count = len(runtime.route_calls)
     icon_mode = runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False)
     effect_style = int(release_version(runtime.data) == "1.78R7" and icon_mode)
-    if fallback or release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16"):
+    if fallback or release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
         require_fallback(runtime, effect_style=effect_style)
         # The unchanged original button IMP maps the current array identity.
         cpu.run(0x56c0, runtime.BAR, runtime.sel("fqab_homeTabPressed:"),
@@ -526,7 +540,7 @@ def default_and_geometry(data, labels):
                             rect[0] + rect[2] <= proxy[2] + 0.5 and
                             rect[1] + rect[3] <= proxy[3] + 0.5,
                             "Buttons stay inside the resized capsule")
-                if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16"):
+                if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
                     lens = runtime.associated(runtime.PROXY, "lens")
                     require(runtime.objects[lens].state["frame"] == runtime.objects[
                         runtime.buttons[runtime.selected_index()]].state["frame"],
@@ -623,7 +637,7 @@ def icon_lifecycle(data, labels):
             check_input(runtime, cpu, fallback, len(titles)-1)
             runtime.defaults(**{ICONS: False})
             repair(cpu, runtime, entries)
-            if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"):
+            if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
                 require(runtime.objects[runtime.PROXY].state["effect"] == effect,
                         "Toggling the icon-only preference reuses the existing Regular glass")
             require(all(not overlays(runtime, b) for b in runtime.buttons),
@@ -759,16 +773,37 @@ def compact_button(runtime):
 def page_drag(cpu, runtime, feed, initial, final, *, decelerates=False, complete=True):
     state = runtime.objects[feed].state
     owner = state["listOwner"]
+    height = state["bounds"][3]
     state["pageIndex"] = initial
+    state["pagingOffset"] = (0., initial * height)
+    if runtime.native_pan_pages:
+        pan = state["panGestureRecognizer"]
+        cpu.run(0xa5d4, args=(feed, runtime.sel(NATIVE_FEED_WINDOW[0])), max_steps=3000000)
+        send_pan(cpu, runtime, pan, 1)
+        if not decelerates:
+            state["pagingOffset"] = (0., final * height)
+        else:
+            state["pagingOffset"] = (0., (initial + (final - initial) * .4) * height)
+            state["pendingOffset"] = (0., final * height)
+        send_pan(cpu, runtime, pan, 3)
+        if complete and decelerates:
+            page_scroll_did_end(cpu, runtime, feed)
+        return
     begin, end, _ = (runtime.sel(row[0]) for row in DRAG_METHODS)
     cpu.run(0xa5d4, args=(owner, begin, feed), max_steps=3000000)
     state["pageIndex"] = final
+    state["pagingOffset"] = (0., final * height)
     cpu.run(0xa5d4, args=(owner, end, feed, int(decelerates)), max_steps=3000000)
     if complete and (decelerates or runtime.canonical_settle):
         page_scroll_did_end(cpu, runtime, feed)
 
 
 def page_scroll_did_end(cpu, runtime, feed):
+    if runtime.native_pan_pages:
+        state = runtime.objects[feed].state
+        state["pagingOffset"] = state.pop("pendingOffset", state["pagingOffset"])
+        cpu.run(0xa5d4, args=(feed, runtime.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
+        return
     owner = runtime.objects[feed].state["listOwner"]
     selector = NATIVE_SETTLE[0] if runtime.canonical_settle else DRAG_METHODS[2][0]
     args = (owner, runtime.sel(selector)) if runtime.canonical_settle else (owner, runtime.sel(selector), feed)
@@ -791,8 +826,11 @@ def settled_scroll_lifecycle(data, labels):
         cpu, runtime, entries = fixture(data, labels, selected=1, fallback=fallback)
         feed, pan, _ = runtime.add_feed()
         state = runtime.objects[feed].state
+        if runtime.native_pan_pages:
+            cpu.run(0xa5d4, args=(feed, runtime.sel(NATIVE_FEED_WINDOW[0])), max_steps=3000000)
         before = host_geometry(runtime, (feed,))
-        initial_targets = copy.deepcopy(runtime.objects[pan].state)
+        routing_fields = ("target", "action", "delegate", "extra_targets", "enabled")
+        initial_targets = {key: copy.deepcopy(runtime.objects[pan].state[key]) for key in routing_fields}
         stock = runtime.objects[runtime.PROXY].state["frame"]
         repair(cpu, runtime, entries)
         page_drag(cpu, runtime, feed, 1, 2)
@@ -826,7 +864,7 @@ def settled_scroll_lifecycle(data, labels):
         compact_animations = runtime.objects[runtime.layer(button)].state.get("animations", [])
         require([runtime.string_value(key) for _, key in compact_animations] == ["position"],
                 "The visible compact icon moves with the glass")
-        if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16"):
+        if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
             require(runtime.objects[runtime.objects[runtime.buttons[0]].state["superview"]].state["hidden"],
                     "The fallback overlay does not leave hidden tab targets active")
         else:
@@ -850,7 +888,8 @@ def settled_scroll_lifecycle(data, labels):
         repair(cpu, runtime, entries)
         require(not compact_button(runtime) and not runtime.objects[runtime.PROXY_CONTENT].state["hidden"],
                 "Turning the setting off restores the normal renderer")
-        require(runtime.objects[pan].state == initial_targets and host_geometry(runtime, (feed,)) == before,
+        require({key: runtime.objects[pan].state[key] for key in routing_fields} == initial_targets and
+                host_geometry(runtime, (feed,)) == before,
                 "Original feed touch routing and geometry remain intact")
         require(any(event["event"] == "host_feed_callback" for event in runtime.events),
                 "The host paging callbacks still execute")
@@ -887,7 +926,8 @@ def scroll_rejections(data, labels):
             repair(cpu, runtime, entries)
             require(runtime.objects[runtime.PROXY].state["frame"] == stock and
                     not compact_button(runtime), "Unsafe feed callback rejected: " + reason)
-        require(not runtime.objects[pan].state["extra_targets"], "Unsafe scroll rejected: " + reason)
+        if not runtime.native_pan_pages:
+            require(not runtime.objects[pan].state["extra_targets"], "Unsafe scroll rejected: " + reason)
         require(host_geometry(runtime, (feed,)) == before, "Rejected scroll leaves host geometry intact")
         cases.append(reason)
     return cases
@@ -997,7 +1037,8 @@ def layout_direction_and_disable(data, labels):
         repair(cpu, runtime, entries)
         runtime.objects[runtime.owner].state["selectedIndex"] = 0
         repair(cpu, runtime, entries)
-        require(not runtime.objects[pan].state["extra_targets"] and not compact_button(runtime),
+        require((runtime.native_pan_pages or not runtime.objects[pan].state["extra_targets"]) and
+                not compact_button(runtime),
                 "Leaving the drama tab restores its navigation")
         before_disable = host_geometry(runtime, (feed,))
         runtime.defaults(**{"FanqieAdBlock.GlassDisabled.1": 1})

@@ -20,6 +20,8 @@ SOCIAL = "SSShortVideoLandscapeBizInteractionView"
 ENTRY = "SSShortVideoLandscapeAutoInflowTipView"
 ADJUST = "FQVLandscapeAdjustButtonBase"
 ITEM = "FQVShortVideoLandscapeNavBarItem"
+REACTIONS = ("like", "comment", "star")
+REACTION_CHILDREN = tuple(kind + suffix for kind in REACTIONS for suffix in ("Icon", "CountLabel"))
 
 
 class Runtime(BaseRuntime):
@@ -44,15 +46,30 @@ class Runtime(BaseRuntime):
         if pc == self.NATIVE_LAYOUT:
             state = self.objects[receiver].state
             state["nativeLayouts"] = state.get("nativeLayouts", 0) + 1
+            for button in state.get("reactionButtons", ()):
+                self.objects[button].state["reactionLayoutPending"] = True
             return self.finish(cpu)
         if pc == self.NATIVE_REFRESH:
             state = self.objects[receiver].state
             icon = self.objects[state["danmakuBtnView"]].state
             icon["hidden"] = state.get("hideDanmaku", False)
             icon["alpha"] = state.get("danmakuAlpha", 1.)
+            for label, value in state.get("updatedCounts", ()):
+                self.objects[label].state["text"] = value
             return self.finish(cpu)
         if pc - self.slide == 0xa5d4 and receiver in self.objects:
             state = self.objects[receiver].state
+            if name == "layoutIfNeeded" and "reactionFrames" in state:
+                if state.pop("reactionLayoutPending", False):
+                    for view, frame in state["reactionFrames"]:
+                        self.objects[view].state.update(frame=frame, bounds=(0., 0., *frame[2:]))
+                return self.finish(cpu)
+            if self.is_kind(receiver, self.classes["UILabel"]):
+                if name in ("textAlignment", "adjustsFontSizeToFitWidth"):
+                    return self.finish(cpu, state.get(name, 0))
+                if name in ("setTextAlignment:", "setAdjustsFontSizeToFitWidth:"):
+                    state[name[3].lower() + name[4:-1]] = cpu.x[2]
+                    return self.finish(cpu)
             if name == "contentEdgeInsets":
                 return self.finish(cpu, fp=state.get(name, (0., 0., 0., 0.)))
             if name == "setContentEdgeInsets:":
@@ -72,7 +89,7 @@ class Runtime(BaseRuntime):
                         "landingMuteView", "seriesBtn", "playRateBtn", "resolutionBtn", "likeBtnView",
                         "commentBtnView", "starBtnView", "danmakuBtnView", "danmakuInputView",
                         "danmakuInputBGView", "danmakuPublishBtn", "itemList", "rcmdReasonModel",
-                        "content", "recommendReason", "reasonText") and name in state:
+                        "content", "recommendReason", "reasonText", *REACTION_CHILDREN) and name in state:
                 return self.finish(cpu, state[name])
         return super().handle(cpu, pc)
 
@@ -179,16 +196,89 @@ def exercise(data, labels):
             "navigation_first_layout": True}
 
 
+def reaction_content_inside_glass(data, labels):
+    cpu, rt = make(data, Runtime)
+    rt.labels = labels
+    call(cpu, labels, "LFQH_FQHPageInstall")
+    prefs = rt.objects[rt.DEFAULTS].state["values"]
+    social = rt.view(SOCIAL, "bottom social row", (20., 340., 420., 36.))
+    state = rt.objects[social].state
+    state["danmakuBtnView"] = rt.view("UIImageView", "danmaku", (150., 0., 32., 32.), social)
+    font = rt.obj("UIFont", "native count font", pointSize=13.)
+    counter_fields = ("frame", "font", "textAlignment", "numberOfLines", "adjustsFontSizeToFitWidth")
+    reactions = []
+    for index, (kind, count) in enumerate(zip(REACTIONS, ("1.7万", "9999", "2001"))):
+        button_frame = (48. * index, 0., 32., 32.)
+        button = rt.view("UIButton", kind, button_frame, social, originalAction=kind)
+        icon = rt.view("UIImageView", kind + " icon", (1., 4., 22., 22.), button)
+        label = rt.view("UILabel", kind + " count", (22., 10., 34., 15.), button,
+                        text=rt.text_object(count), font=font, textAlignment=0, numberOfLines=1,
+                        adjustsFontSizeToFitWidth=False)
+        state.update({kind + "BtnView": button, kind + "Icon": icon, kind + "CountLabel": label})
+        rt.objects[button].state["reactionFrames"] = [(v, rt.objects[v].state["frame"]) for v in (icon, label)]
+        stock = {key: rt.objects[label].state[key] for key in counter_fields}
+        reactions.append((button, icon, label, button_frame, stock))
+    state["reactionButtons"] = [reaction[0] for reaction in reactions]
+
+    def check_geometry():
+        frames = []
+        for button, icon, label, button_frame, _ in reactions:
+            native = rt.objects[button].state
+            glass, = (rt.objects[v].state for v in native["subviews"] if rt.objects[v].state.get("configuration"))
+            icon_state, label_state = rt.objects[icon].state, rt.objects[label].state
+            ix, iy, iw, ih = icon_state["frame"]
+            lx, ly, lw, lh = label_state["frame"]
+            x, y, width, height = glass["frame"]
+            require((width, height) == (36., 36.), "All three reaction glasses keep the 36pt diameter")
+            require(x < ix and ix + iw < x + width and y < iy and iy + ih <= ly and
+                    x < lx and lx + lw < x + width and ly + lh < y + height,
+                    "Both native items fit inside each glass with the glyph above the count")
+            require(ix + iw / 2 == lx + lw / 2 == x + width / 2,
+                    "The icon and count share the glass centerline")
+            require(label_state["textAlignment"] == 1 and label_state["numberOfLines"] == 1 and
+                    label_state["adjustsFontSizeToFitWidth"] and rt.objects[label_state["font"]].state["pointSize"] == 9.5,
+                    "The native count stays on a centered line in its smaller font")
+            require(not native.get("reactionLayoutPending") and
+                    native["frame"] == button_frame and native["originalAction"] == rt.objects[button].name and
+                    icon_state["superview"] == label_state["superview"] == button and
+                    not glass["userInteractionEnabled"], "Native touch targets, actions and contents stay owned by the host")
+            frames.append((icon_state["frame"], label_state["frame"]))
+        return frames
+
+    send(cpu, rt, social, "layoutSubviews")
+    initial = check_geometry()
+    send(cpu, rt, social, "layoutSubviews")
+    require(check_geometry() == initial, "Repeated native layout keeps the stacked geometry")
+    state["updatedCounts"] = [(reaction[2], rt.text_object(count))
+                              for reaction, count in zip(reactions, ("1.8万", "9999+", "2002"))]
+    send(cpu, rt, social, "refreshUI")
+    require(all(rt.objects[label].state["text"] == value for label, value in state["updatedCounts"]) and
+            check_geometry() == initial, "Native count refresh keeps its current text and the fitted geometry")
+
+    prefs["FanqieAdBlock.GlassDisabled.1"] = True
+    send(cpu, rt, social, "layoutSubviews")
+    for button, icon, label, button_frame, stock in reactions:
+        require(rt.objects[button].state["frame"] == button_frame and
+                rt.objects[icon].state["frame"] == (1., 4., 22., 22.) and
+                {key: rt.objects[label].state[key] for key in counter_fields} == stock,
+                "Disabling glass restores the stock geometry and label style")
+    return {"reaction_controls": len(reactions), "diameter_pt": 36,
+            "icon_and_count_frames": initial, "updates_preserve_text": True,
+            "native_actions_and_disable_restore": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16"), "Use R9 through R12")
+    require(release_version(data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"), "Use R9 through R12")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {"passed": True, "candidate_sha256": hashlib.sha256(data).hexdigest(),
               **exercise(data, labels), "device_tested": False}
+    if release_version(data) in ("1.78R22", "1.78R25"):
+        report["landscape_reactions"] = reaction_content_inside_glass(data, labels)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf8")
     print(json.dumps(report, indent=2))
 

@@ -81,11 +81,16 @@ def fixup_input(data, items, image_segments):
             starts.append(b"")
             continue
         at = start + relative
+        need(start + 4 * (seg_count + 1) <= at <= imports - 22,
+             "Chained segment header outside starts table")
         size, page_size, pointer_format, segment_offset, max_pointer, page_count = struct.unpack_from(
             "<IHHQIH", blob, at)
+        row_size = 22 + page_count * 2
+        # LLD rounds segment starts records to 8 bytes. Only zero alignment
+        # padding is accepted here; walk_fixups still requires one start per page.
         need(pointer_format in (2, 6) and page_size == PAGE and not max_pointer and
-             size == 22 + page_count * 2 and at + size <= imports and
-             start + 4 * (seg_count + 1) <= at and
+             size in (row_size, align(row_size, 8)) and at + size <= imports and
+             not any(blob[at + row_size:at + size]) and
              page_count <= image_segments[index]["vmsize"] // PAGE and
              image_segments[index]["initprot"] == 3 and
              segment_offset == image_segments[index]["vmaddr"],

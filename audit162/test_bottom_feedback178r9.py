@@ -8,8 +8,9 @@ from pathlib import Path
 from arm64 import release_version, require
 from test_bottom_appearance178 import (
     BUTTON_WIDTH, COMPACT, HEIGHT, ICONS, LENGTH, PAGE_HOOK, DRAG_METHODS,
-    bottom_labels, compact_button, page_drag, settled_scroll_lifecycle,
-    scroll_rejections,
+    NATIVE_ANIMATION_END, NATIVE_FEED_LAYOUT, NATIVE_FEED_WINDOW, NATIVE_INNER_FEED_TYPE, NATIVE_SETTLE,
+    bottom_labels, compact_button, host_geometry, page_drag, send_pan,
+    settled_scroll_lifecycle, scroll_rejections, tap_expand,
 )
 from test_bottom_interaction178r5 import (
     FRAME_LABELS, changes_for, fixture, host_layout,
@@ -20,7 +21,7 @@ from test_native_orchestration162 import repair
 
 def observed_dock(data, labels):
     cases = []
-    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16')
+    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25')
     for fallback in (False, True):
         for icons, minimum in ((False, 64), (True, 56)):
             cpu, rt, entries = fixture(data, labels, fallback=fallback)
@@ -92,6 +93,127 @@ def observed_video_delegate(data, labels):
             'page_transition': [4, 5], 'compacted': True}
 
 
+def native_scroll_completion_and_dock_position(data, labels):
+    cases = []
+    begin, end, decelerated = (method[0] for method in DRAG_METHODS)
+    animation_ended = NATIVE_ANIMATION_END[0]
+    stock = (20., 0., 376., 56.)
+    position_key = 'FanqieX.BottomDramaCompactPosition.1'
+    for position, x, completion in ((0, 336., end), (1, 20., decelerated), (2, 190., animation_ended)):
+        cpu, rt, entries = fixture(data, labels, selected=1, stock=stock)
+        feed, _, _ = rt.add_feed()
+        state = rt.objects[feed].state
+        state.update(frame=(0., 0., 440., 956.), bounds=(0., 0., 440., 956.),
+                     contentOffset=(0., 0.), pageIndex=None)
+        rt.defaults(**{COMPACT: True, position_key: position})
+        repair(cpu, rt, entries)
+        selected = rt.objects[rt.BAR].state['selectedItem']
+        owner = state['listOwner']
+
+        cpu.run(0xa5d4, args=(owner, rt.sel(begin), feed), max_steps=3000000)
+        state['contentOffset'] = (0., 200.)
+        cpu.run(0xa5d4, args=(owner, rt.sel(end), feed, 0), max_steps=3000000)
+        repair(cpu, rt, entries)
+        require(not compact_button(rt), 'A partial drag preserves the expanded dock')
+
+        state['contentOffset'] = (0., 956.)
+        cpu.run(0xa5d4, args=(owner, rt.sel(begin), feed), max_steps=3000000)
+        state.update(contentOffset=(0., 1912.), decelerating=completion == decelerated,
+                     scrollAnimating=completion == animation_ended)
+        geometry = host_geometry(rt, (feed,))
+        cpu.run(0xa5d4, args=(owner, rt.sel(end), feed, int(state['decelerating'])), max_steps=3000000)
+        if completion != end:
+            cpu.run(0xa5d4, args=(owner, rt.sel(NATIVE_SETTLE[0])), max_steps=3000000)
+            repair(cpu, rt, entries)
+            require(not compact_button(rt), 'A premature native callback must preserve the pending drag')
+            state['decelerating'] = False
+            cpu.run(0xa5d4, args=(owner, rt.sel(completion), feed), max_steps=3000000)
+        repair(cpu, rt, entries)
+        button = compact_button(rt)
+        expected = (x, 0., 60., 60.)
+        require(button and rt.objects[button].state['frame'] == expected and
+                rt.objects[rt.PROXY].state['frame'] == expected,
+                'The actual settled gesture places the glass and its touch target at the saved position')
+        require(host_geometry(rt, (feed,)) == geometry, 'Compaction preserves native feed geometry')
+
+        tap_expand(cpu, rt)
+        repair(cpu, rt, entries)
+        require(not compact_button(rt) and rt.objects[rt.PROXY].state['frame'] == stock and
+                rt.objects[rt.BAR].state['selectedItem'] == selected,
+                'A tap restores the expanded geometry at the same selection from every position')
+        state.update(contentOffset=(0., 2868.), scrollAnimating=False)
+        cpu.run(0xa5d4, args=(owner, rt.sel(animation_ended), feed), max_steps=3000000)
+        repair(cpu, rt, entries)
+        require(not compact_button(rt), 'Programmatic paging cannot compact without a new gesture')
+        cases.append({'native_completion': completion, 'nil_native_index': True,
+                      'position': position, 'compacted_frame': expected, 'tap_expands': True})
+    return cases
+
+
+def native_pan_and_settled_offset(data, labels):
+    cases = []
+    stock = (20., 0., 376., 56.)
+    position_key = 'FanqieX.BottomDramaCompactPosition.1'
+    for position, x in ((0, 336.), (1, 20.), (2, 190.)):
+        cpu, rt, entries = fixture(data, labels, selected=1, stock=stock)
+        if release_version(data) in ('1.78R24', '1.78R25'):
+            # The selected outer tab is Short Drama even when its container
+            # provider reports a recommendation category with another type.
+            rt._add(rt.classes['SSTabBarController'], 'currentSelectedVCTabType', NATIVE_INNER_FEED_TYPE, 'i16@0:8')
+            rt.objects[rt.owner].state['innerFeedType'] = 0
+        feed, pan, target = rt.add_feed()
+        state = rt.objects[feed].state
+        state.update(frame=(0., 0., 440., 956.), pageIndex=None)
+        rt.defaults(**{COMPACT: True, position_key: position})
+
+        def offset(y):
+            state.update(contentOffset=(0., y), bounds=(0., y, 440., 956.))
+
+        offset(0.)
+        repair(cpu, rt, entries)
+        for _ in range(2):
+            cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_WINDOW[0])), max_steps=3000000)
+        gesture = rt.objects[pan].state
+        require(gesture['delegate'] == gesture['target'] == target and
+                gesture['action'] == rt.sel('hostPan:') and len(gesture['extra_targets']) == 1,
+                'One extra target observes the native recognizer without replacing its delegate or action')
+        send_pan(cpu, rt, pan, 1)
+        offset(418.3333333333333)
+        send_pan(cpu, rt, pan, 3)
+        for y in (418.3333333333333, 882.):
+            offset(y)
+            cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
+            repair(cpu, rt, entries)
+            require(not compact_button(rt), 'The released pan waits for an actual full-page position')
+
+        offset(956.)
+        state['decelerating'] = True
+        geometry = host_geometry(rt, (feed,))
+        cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
+        repair(cpu, rt, entries)
+        button = compact_button(rt)
+        expected = (x, 0., 60., 60.)
+        require(button and rt.objects[button].state['frame'] == expected and
+                rt.objects[rt.PROXY].state['frame'] == expected,
+                'Observed scrolling compacts at the saved position without private completion callbacks')
+        require(host_geometry(rt, (feed,)) == geometry, 'Compaction preserves verified viewport bounds and offset')
+
+        tap_expand(cpu, rt)
+        repair(cpu, rt, entries)
+        require(rt.objects[rt.PROXY].state['frame'] == stock, 'The compact control restores its stock frame on tap')
+        state['decelerating'] = False
+        send_pan(cpu, rt, pan, 1)
+        offset(1200.)
+        send_pan(cpu, rt, pan, 4)
+        offset(1912.)
+        cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
+        repair(cpu, rt, entries)
+        require(not compact_button(rt), 'A canceled gesture and unrelated programmatic paging cannot compact')
+        cases.append({'position': position, 'native_offsets': [0., 418.3333333333333, 956.],
+                      'compacted_frame': expected, 'tap_expands': True})
+    return cases
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('candidate', type=Path)
@@ -107,6 +229,10 @@ def main():
               'excluded_contexts': scroll_rejections(data, labels),
               'device_tested': False, 'physical_touch_tested': False,
               'boundary': 'Actual candidate ARM64; explicit UIKit/Foundation boundary objects'}
+    if release_version(data) == '1.78R22':
+        report['native_scroll_completion'] = native_scroll_completion_and_dock_position(data, labels)
+    if release_version(data) in ('1.78R23', '1.78R24', '1.78R25'):
+        report['native_pan_and_settled_offset'] = native_pan_and_settled_offset(data, labels)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))

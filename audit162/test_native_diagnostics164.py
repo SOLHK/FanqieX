@@ -296,7 +296,7 @@ def comment_detail_budget(data, labels, slide):
     mutations = ('setIdeaCount:', 'setBubbleData:', 'updateIdeaLabelCount')
 
     send(cpu, rt, bubble, 'setModel:', model)
-    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16'):
+    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25'):
         for value in range(1, 13):
             send(cpu, rt, model, mutations[0], value)
             send(cpu, rt, model, mutations[1], payload)
@@ -457,7 +457,7 @@ def enhanced_actions(data, labels, slide):
     page=rt.obj('UIViewController','page')
     control=rt.view('UIControl','control',parent=rt.ROOT)
     rt.objects[control].state['nextResponder']=page
-    if release_version(data) not in ('1.78R13', '1.78R14', '1.78R15', '1.78R16'):
+    if release_version(data) not in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25'):
         send(cpu,rt,app,'sendAction:to:from:forEvent:',rt.sel('hostAction:'),page,control,0)
         require(not rt.delayed, 'Normal mode schedules no action watcher')
         rt.objects[rt.DEFAULTS].state['values']['FanqieX.EnhancedDiagnostics.1']=1
@@ -525,7 +525,7 @@ def main():
         cases.append({'ordered_requests':ordered_requests(data,labels,slide)})
         cases.append({'enhanced_actions':enhanced_actions(data,labels,slide)})
         cases.append({'exceptions_navigation':exceptions_and_navigation(data,labels,slide)})
-        if release_version(data) not in ('1.78R13', '1.78R14', '1.78R15', '1.78R16'):
+        if release_version(data) not in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25'):
             cases.append({'settings':settings_mode(data,labels,slide)})
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'cases': cases, 'device_tested': False, 'native_transport_executed': False,

@@ -153,7 +153,7 @@ def exercise(data,labels):
         r.objects[cell].state[key]=r.label(key,cell,(0,-8,34,34),"圈子",alignment=0)
         r.objects[r.objects[cell].state[key]].state["transform"]=(1.,0.,0.,1.,0.,0.)
     for i,model in enumerate(models): send(c,r,view,"refreshCellModel:index:",model,i)
-    if release_version(data) in ("1.78R15", "1.78R16"):
+    if release_version(data) in ("1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R25"):
         collection=r.view("UICollectionView","actual title collection",(0,0,440,34),view)
         r.objects[view].state["collectionView"]=collection
         first=r.view(CELL,"first frame before UIKit layout",(20,0,46,34),collection,cellModel=models[0],layout_passes=0)
@@ -222,14 +222,31 @@ def exercise(data,labels):
     send(c,r,f,"layoutSubviews")
     surface=c.run(labels["LFQH_FQHSurface"],args=(f,))["result"]
     require(r.objects[surface].state["frame"]==(1.,1.,56.,28.),"Filter glass stays entirely inside its clipping row")
+    cases=["six exact selection hooks","16 click/swipe cycles","late native label and constraint consumers",
+           "collection title width and disabled native width",
+           "selection color preserved","disable restores native state","filter font and clipping boundary"]
+    if release_version(data)=="1.78R18":
+        r.objects[r.WINDOW].state.update(frame=(0,0,440,956),bounds=(0,0,440,956))
+        targets=[(header,r.sel("filterBtnClick"),64)]
+        action=r.view("UIButton","Filter action",(362,0,66,30),header,control_targets=targets)
+        fade=r.view("UIView","stock trailing fade",(332.5,0,24,30),header)
+        header_state=r.objects[header].state
+        header_state.update(filterButton=action,filterGradientView=fade)
+        for left,expected in ((332.5,330.),(331.5,330.),(329.,329.)):
+            header_state["host_filter_fade_frame"]=(left,0,24,30)
+            send(c,r,header,"layoutSubviews")
+            require(r.objects[fade].state["frame"]==(expected,0.,24.,30.),
+                    "The stock fade clears the capsule's outer rim and retains its width")
+        require(r.objects[action].state["frame"]==(355.,0.,66.,30.) and
+                r.objects[action].state["control_targets"]==targets,
+                "Clearing the rim preserves the capsule alignment and the native filter action")
+        cases.append("filter action rim clearance and native target")
     r.objects[r.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"]=1
     require(send(c,r,f,"fontForSelectState:",1)["result"]==selected,"Disabled filter returns its native selected font")
     return {"passed":True,"device_tested":False,"host_binary_inspected":True,
             "host_methods":{"updateLabelWithModel:":"0x10d504974","updateLayoutWithModel:":"0x10d505208",
                             "fontForSelectState:":"0x10d4cad74"},
-            "cases":["six exact selection hooks","16 click/swipe cycles","late native label and constraint consumers",
-                     "collection title width and disabled native width",
-                     "selection color preserved","disable restores native state","filter font and clipping boundary"],
+            "cases":cases,
             "limits":["Candidate ARM64 instructions execute; UIKit drawing and native constraint solver are modeled boundaries."]}
 
 
