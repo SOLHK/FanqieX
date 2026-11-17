@@ -79,6 +79,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic, strong) NSArray<UIView *> *legacyPanels;
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads;
 + (UIViewController *)controllerForController:(UIViewController *)owner;
++ (UIViewController *)visibleControllerForController:(UIViewController *)owner;
 + (BOOL)refreshOnController:(UIViewController *)owner;
 + (BOOL)isInstalledOnController:(UIViewController *)owner;
 - (void)configureSearch;
@@ -99,6 +100,7 @@ static NSString *ControlTitle(UIView *view) {
 }
 
 static NSString *PathForTitle(NSString *group, NSString *title) {
+    if ([title isEqualToString:@"Telegram 频道"]) return @"";
     if ([group isEqualToString:@"底栏入口"]) return @"页面与导航/底栏入口";
     if ([group isEqualToString:@"短剧播放"]) {
         if ([title containsString:@"分类"]) return @"短剧/顶部分类";
@@ -286,6 +288,11 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         objc_setAssociatedObject(owner, MenuKey, reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return menu;
+}
+
++ (UIViewController *)visibleControllerForController:(UIViewController *)owner {
+    FQXSettingsMenu *menu = MenuForController(owner);
+    return menu.navigationController.topViewController ?: menu;
 }
 
 - (void)dismissSettings:(UIBarButtonItem *)sender {
@@ -501,7 +508,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                     ((void (*)(id, SEL, id))objc_msgSend)(target, selector, button);
             }
         };
-        if (self.search.presentingViewController) {
+        if (self.search.isActive && self.search.presentingViewController) {
             [self.search dismissViewControllerAnimated:NO completion:perform];
         } else {
             self.search.active = NO;
@@ -547,7 +554,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             void (^perform)(void) = ^{
                 if ([target respondsToSelector:action]) ((void (*)(id, SEL, id))objc_msgSend)(target, action, owner);
             };
-            if (self.search.presentingViewController) [self.search dismissViewControllerAnimated:NO completion:perform];
+            if (self.search.isActive && self.search.presentingViewController) [self.search dismissViewControllerAnimated:NO completion:perform];
             else { self.search.active = NO; perform(); }
         }
     }

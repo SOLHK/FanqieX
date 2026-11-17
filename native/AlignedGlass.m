@@ -2487,6 +2487,9 @@ static void DramaGlassKey(void) {}
 static void DramaBackgroundKey(void) {}
 static void DramaShadeKey(void) {}
 static void DramaWatchContentKey(void) {}
+static void DramaWatchArrowKey(void) {}
+static void DramaVisibilitySet(Obj view,B visible);
+static U TabCount(Obj items);
 static void DramaSpacingForView(Obj view);
 static Obj BottomDramaCapsuleForView(Obj view);
 static Rect BottomDramaEpisodeDockFrame(Obj view);
@@ -2687,8 +2690,17 @@ static void DramaClearBackground(Obj view,B clear) {
     }
 }
 
+static void DramaEpisodeArrow(Obj content,Obj arrow) {
+    if (!Kind(arrow,"UIImageView") || !Belongs(arrow,content)) arrow=0;
+    Obj previous=objc_getAssociatedObject(content,DramaWatchArrowKey);
+    if (previous!=arrow) DramaVisibilitySet(previous,1);
+    if (previous!=arrow) objc_setAssociatedObject(content,DramaWatchArrowKey,arrow,1);
+    if (arrow) DramaVisibilitySet(arrow,0);
+}
+
 static void RestoreDramaWatch(Obj owner,Obj content) {
     if (!content) return;
+    DramaEpisodeArrow(content,0);
     Obj shade=objc_getAssociatedObject(content,DramaShadeKey);
     RemoveDramaGlass(content);
     DramaClearBackground(content,0);
@@ -2740,6 +2752,9 @@ static void DramaWatchGlass(Obj owner,Obj model) {
     }
     DramaClearBackground(content,1);
     if (shade) DramaClearBackground(shade,1);
+    // This chevron belongs only to the decorated "watch all episodes" row.
+    // The original-novel and other distribution rows keep their native arrows.
+    DramaEpisodeArrow(content,Get(content,"arrowImageView"));
 }
 
 static void DramaWatchLayout(Obj self,Sel cmd) {
@@ -2764,8 +2779,12 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
     Rect bounds=Bounds(content);
     Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
     if (glassEnabled && VisibleRect(material)) {
-        if (PlaceDramaGlass(content,content,0,material)) DramaClearBackground(content,1);
+        if (PlaceDramaGlass(content,content,0,material)) {
+            DramaClearBackground(content,1);
+            DramaEpisodeArrow(content,Get(self,"arrowImageView"));
+        }
     } else {
+        DramaEpisodeArrow(content,0);
         RemoveDramaGlass(content);
         DramaClearBackground(content,0);
     }
@@ -3106,6 +3125,74 @@ static void LandscapeGlassInstall178R9(void) {
     Hook("FQVShortVideoLandscapeNavBar","refreshLayout","fqx178r9_originalLandscapeNavLayout","v16@0:8",(Imp)LandscapeNavGlass178R9);
     Hook("SSShortVideoLandscapeBizInteractionView","refreshUI","fqx178r9_originalLandscapeSocialRefresh","v16@0:8",(Imp)LandscapeSocialRefresh178R9);
     Hook("SSShortVideoLandscapeBizInteractionView","danmakuSwitchDidChange:","fqx178r9_originalLandscapeDanmakuChanged:","v20@0:8B16",(Imp)LandscapeDanmakuChanged178R9);
+}
+
+// Portrait episode details use different native owners from the main feed.
+// Keep their buttons, tap recognizers and callback blocks as the input surface.
+static void DramaDetailNavigationApply(Obj component) {
+    Obj nav=Get(component,"navBar");
+    LandscapeControlGlass178R9(Get(component,"backBtn"),nav,44);
+    LandscapeControlGlass178R9(Get(component,"moreBtn"),nav,44);
+    Obj items=Get(component,"navigationBarRightItems");
+    for (U i=0,count=TabCount(items);i<count;++i) {
+        Obj item=At(items,i);
+        if (Kind(item,"FQVShortVideoMoreBtnNavBarItem"))
+            LandscapeControlGlass178R9(Get(item,"moreBtn"),nav,44);
+    }
+}
+static void DramaDetailNavigationLayout(Obj self,Sel cmd,Obj container) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCNavBarComponent","fqx178r29_originalNavLayout:"))(self,cmd,container);
+    DramaDetailNavigationApply(self);
+}
+static void DramaDetailNavigationLeft(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoListVCNavBarComponent","fqx178r29_originalNavLeft"))(self,cmd);
+    DramaDetailNavigationApply(self);
+}
+static void DramaDetailNavigationRight(Obj self,Sel cmd,Obj items) {
+    ((void(*)(Obj,Sel,Obj))Original("FQVShortVideoListVCNavBarComponent","fqx178r29_originalNavRight:"))(self,cmd,items);
+    DramaDetailNavigationApply(self);
+}
+static void DramaDetailMoreItemSetup(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("FQVShortVideoMoreBtnNavBarItem","fqx178r29_originalMoreSetup"))(self,cmd);
+    Obj button=Get(self,"moreBtn");
+    LandscapeControlGlass178R9(button,Get(self,"view"),44);
+}
+static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoOriginalNovelEntranceView","fqx178r29_originalDetailNovelLayout"))(self,cmd);
+    Rect bounds=Bounds(self),frame={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
+    if (Enabled() && FQHGlassAvailable() && VisibleRect(frame) && PlaceDramaGlass(self,self,0,frame))
+        DramaClearBackground(self,1);
+    else { RemoveDramaGlass(self); DramaClearBackground(self,0); }
+}
+static void DramaDetailBottomApply(Obj view) {
+    Obj episode=Get(view,"episodeInfoView");
+    DramaSmallGlass(episode,Belongs(episode,view));
+    Obj novel=Get(view,"relateBookEntranceView");
+    if (novel && !Belongs(novel,episode)) DramaSmallGlass(novel,Belongs(novel,view));
+    LandscapeControlGlass178R9(Get(view,"cleanScreenView"),view,44);
+}
+static void DramaDetailSingleLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoSingleBottomInsertView","fqx178r29_originalSingleBottomLayout"))(self,cmd);
+    DramaDetailBottomApply(self);
+}
+static void DramaDetailTagLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout"))(self,cmd);
+    DramaDetailBottomApply(self);
+}
+static void DramaDetailGlassInstall(void) {
+    const char *nav="FQVShortVideoListVCNavBarComponent";
+    if (Signature(nav,"navBar","@16@0:8") && Signature(nav,"backBtn","@16@0:8") && Signature(nav,"moreBtn","@16@0:8")) {
+        Hook(nav,"setupLayout:","fqx178r29_originalNavLayout:","v24@0:8@16",(Imp)DramaDetailNavigationLayout);
+        Hook(nav,"updateNavgationBarLeftView","fqx178r29_originalNavLeft","v16@0:8",(Imp)DramaDetailNavigationLeft);
+        Hook(nav,"updateNavgationBarRightViewWithRightItems:","fqx178r29_originalNavRight:","v24@0:8@16",(Imp)DramaDetailNavigationRight);
+    }
+    if (Signature("FQVShortVideoMoreBtnNavBarItem","moreBtn","@16@0:8"))
+        Hook("FQVShortVideoMoreBtnNavBarItem","setUp","fqx178r29_originalMoreSetup","v16@0:8",(Imp)DramaDetailMoreItemSetup);
+    Hook("SSShortVideoOriginalNovelEntranceView","layoutSubviews","fqx178r29_originalDetailNovelLayout","v16@0:8",(Imp)DramaDetailOriginalLayout);
+    if (Signature("SSShortVideoSingleBottomInsertView","episodeInfoView","@16@0:8"))
+        LandscapeLayoutHook178R9("SSShortVideoSingleBottomInsertView","fqx178r29_originalSingleBottomLayout",(Imp)DramaDetailSingleLayout);
+    if (Signature("SSShortVideoTagListBottomInsertView","episodeInfoView","@16@0:8"))
+        LandscapeLayoutHook178R9("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout",(Imp)DramaDetailTagLayout);
 }
 
 static B DefaultEnabled(Obj key);
@@ -3652,7 +3739,6 @@ static B DramaPlaybackPreference178R11(const char *key) {
 static Obj BottomWeak178(Obj object);
 static Obj DramaPureCleanDock178R13(Obj view);
 static B BottomDramaOwnsView178R13(Obj page,Obj view);
-static U TabCount(Obj items);
 static void DramaPureCleanViews178R13Key(void) {}
 static void DramaPureCleanOwner178R13Key(void) {}
 static void DramaPureCleanEnded178R13Key(void) {}
@@ -6711,6 +6797,7 @@ void FQHPageInstall(void) {
     DramaSpacingInstall178R2();
     DramaVisibilityInstall();
     LandscapeGlassInstall178R9();
+    DramaDetailGlassInstall();
     FeatureVisibilityInstall178R9();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
@@ -8410,7 +8497,10 @@ static void SettingsDiagnosticToggle178R13(Obj router,Sel cmd,Obj sender) {
 }
 
 static Obj SettingsVisibleController(Obj owner) {
-    Obj visible=Get(Get(owner,"navigationController"),"topViewController");
+    Obj menu=Lookup("FQXSettingsMenu");
+    Obj visible=Responds(menu,"visibleControllerForController:") ? O1(menu,"visibleControllerForController:",owner) : (Obj)0;
+    if (visible) return visible;
+    visible=Get(Get(owner,"navigationController"),"topViewController");
     return visible ? visible : owner;
 }
 

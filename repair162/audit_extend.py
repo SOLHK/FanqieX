@@ -133,7 +133,7 @@ def audit(source, candidate, payload=None):
     require([s["raw"] for s in ns[:2]] == [s["raw"] for s in os[:2]], "original segment descriptors")
     patch = ns[2]
     delta = patch["fs"]
-    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, 0x48000, 0x4c000, 0x50000, 0x54000, 0x58000), "patch size")
+    require(delta in (0x4000, 0x8000, 0xc000, 0x10000, 0x20000, 0x24000, 0x28000, 0x2c000, 0x30000, 0x34000, 0x38000, 0x3c000, 0x40000, 0x44000, 0x48000, 0x4c000, 0x50000, 0x54000, 0x58000, 0x5c000), "patch size")
     require((patch["vm"], patch["off"], patch["vs"], patch["max"], patch["prot"], patch["ns"], patch["flags"]) ==
             (0x14000, 0x14000, delta, 5, 5, 0, 0), "patch permissions/map")
     for i, seg in enumerate(ns):
