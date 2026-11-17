@@ -120,8 +120,29 @@ def exercise(data, labels):
     clear = rt.color("clearColor")
 
     def backing(view):
-        return [child for child in rt.objects[view].state["subviews"]
-                if rt.objects[child].state.get("configuration")]
+        direct = [child for child in rt.objects[view].state["subviews"]
+                  if rt.objects[child].state.get("configuration")]
+        if direct:
+            return direct
+        state = rt.objects[view].state
+        glyph, parent = state.get("imageView", 0), state.get("superview", 0)
+        if not glyph or not parent:
+            return []
+        result = []
+        for child in rt.objects[parent].state["subviews"]:
+            if not rt.objects[child].state.get("configuration"):
+                continue
+            for constraints in rt.activated:
+                owners = []
+                for constraint in constraints:
+                    row = rt.objects[constraint].state
+                    first = rt.objects[row["first"]].state
+                    second = rt.objects[row["second"]].state if "second" in row else None
+                    owners.append((first.get("owner"), second.get("owner") if second else 0))
+                if any(first == child and second == glyph for first, second in owners):
+                    result.append(child)
+                    break
+        return result
 
     # Real screenshot path: native episode view and separate clean-switch view.
     bottom = rt.view(BOTTOM, "actual player bottom", (0, 840, 440, 60), rt.ROOT,
@@ -152,6 +173,10 @@ def exercise(data, labels):
     button = rt.view("UIButton", "zero-bounds native back", (0, 0, 0, 0), nav,
                      native_action="backBtnClicked:", hitInsets=(-10., -10., -10., -10.))
     item_button = rt.view("UIButton", "zero-bounds native more", (0, 0, 0, 0), nav, native_action="moreBtnClicked")
+    back_glyph = rt.view("UIImageView", "native zero-bounds back glyph", (0, 0, 16, 16), button)
+    more_glyph = rt.view("UIImageView", "native zero-bounds more glyph", (0, 0, 16, 16), item_button)
+    rt.objects[button].state["imageView"] = back_glyph
+    rt.objects[item_button].state["imageView"] = more_glyph
     item = rt.obj(MORE, "actual more item", moreBtn=item_button, view=item_button)
     component = rt.obj(NAV, "actual navbar component", navBar=nav, backBtn=button, moreBtn=0,
                         navigationBarRightItems=rt.obj("NSArray", "native items", items=[item]))
@@ -170,8 +195,9 @@ def exercise(data, labels):
             second = rt.objects[row["second"]].state if "second" in row else None
             actual.append((first["attribute"], second["owner"] if second else None,
                            second["attribute"] if second else None, row.get("constant")))
-        require(actual == [("centerXAnchor", native_button, "centerXAnchor", None),
-                           ("centerYAnchor", native_button, "centerYAnchor", None),
+        glyph = rt.objects[native_button].state["imageView"]
+        require(actual == [("centerXAnchor", glyph, "centerXAnchor", None),
+                           ("centerYAnchor", glyph, "centerYAnchor", None),
                            ("widthAnchor", None, None, 36.), ("heightAnchor", None, None, 36.)],
                 "The material is centered on its real target at a fixed 36-point diameter")
     for native_button in (button, item_button):

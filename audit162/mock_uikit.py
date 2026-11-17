@@ -230,7 +230,7 @@ class Runtime:
         return (name in state or name in ('respondsToSelector:','isKindOfClass:','window',
                 'convertRect:toView:','convertRect:fromView:','layer','setHidden:',
                 'setCornerRadius:','setMasksToBounds:','setShadowOpacity:','setShadowRadius:',
-                'setBackgroundColor:','isHidden','alpha','superview','subviews',
+                'setBackgroundColor:','setTranslatesAutoresizingMaskIntoConstraints:','safeAreaInsets','isHidden','alpha','superview','subviews',
                 'frame','bounds','setFrame:','count','objectAtIndex:','lastObject',
                 'bringSubviewToFront:','retain','release','autorelease','setNeedsLayout')
                 or bool(self.get_method(self.objects[receiver].cls, self.sel(name))))
@@ -337,6 +337,16 @@ class Runtime:
                     state['frame'] = rect
                     old_bounds = state['bounds']; state['bounds'] = (*old_bounds[:2], *rect[2:])
                     self.event('setFrame',receiver,value=list(rect))
+                elif name == 'constant':
+                    fp_result = (state.get('constant', 0.0),)
+                elif name == 'safeAreaInsets':
+                    fp_result = state.get('safeAreaInsets', (0.0, 0.0, 0.0, 0.0))
+                elif name == 'setConstant:':
+                    state['constant'] = cpu.fp(0)
+                    self.event('constraint_constant', receiver, value=cpu.fp(0))
+                elif name == 'setTranslatesAutoresizingMaskIntoConstraints:':
+                    state['translatesAutoresizingMaskIntoConstraints'] = bool(a[2])
+                    self.event('translatesAutoresizingMaskIntoConstraints', receiver, value=bool(a[2]))
                 elif name in ('superview','contentView','selectedItem','titleLabel','items'):
                     result = state.get(name,0)
                 elif name == 'window':

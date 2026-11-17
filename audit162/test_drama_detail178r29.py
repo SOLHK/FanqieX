@@ -44,16 +44,37 @@ class Runtime(PageRuntime):
             methods.extend((cls, getter, "@16@0:8") for getter in getters)
         for cls, selector, encoding in methods:
             self._add(self.classes[cls], selector, self.NATIVE, encoding)
+        for name in ("NSLayoutAnchor", "NSLayoutConstraint"):
+            if name not in self.classes:
+                self._class(name, "NSObject")
+        self.anchor_objects = {}
+        self.activated = []
         self.native_calls = []
 
     def responds(self, receiver, name):
         if receiver in self.objects and name == "arrowImageView" and name in self.objects[receiver].state:
             return True
+        if receiver in self.objects and name in ("centerXAnchor", "centerYAnchor", "widthAnchor", "heightAnchor"):
+            return self.is_kind(receiver, self.classes["UIView"]) or self.objects[receiver].name.startswith("allocated_")
         return super().responds(receiver, name)
 
     def handle(self, cpu, pc):
         receiver, selector = cpu.x[:2]
         name = self.selector_names.get(selector)
+        if pc - self.slide == 0xa5d4 and receiver == self.classes["NSLayoutConstraint"] and name == "activateConstraints:":
+            self.activated.append(tuple(self.objects[cpu.x[2]].state["items"]))
+            return self.finish(cpu)
+        if pc - self.slide == 0xa5d4 and receiver in self.objects:
+            if name in ("centerXAnchor", "centerYAnchor", "widthAnchor", "heightAnchor"):
+                key = receiver, name
+                if key not in self.anchor_objects:
+                    self.anchor_objects[key] = self.obj("NSLayoutAnchor", name, owner=receiver, attribute=name)
+                return self.finish(cpu, self.anchor_objects[key])
+            if self.is_kind(receiver, self.classes["NSLayoutAnchor"]):
+                if name == "constraintEqualToAnchor:":
+                    return self.finish(cpu, self.obj("NSLayoutConstraint", "anchor equality", first=receiver, second=cpu.x[2]))
+                if name == "constraintEqualToConstant:":
+                    return self.finish(cpu, self.obj("NSLayoutConstraint", "dimension equality", first=receiver, constant=cpu.fp(0)))
         if pc == self.NATIVE:
             state = self.objects[receiver].state
             self.native_calls.append((receiver, name, cpu.x[2]))
@@ -72,14 +93,35 @@ def exercise(data, labels):
     clear = rt.color("clearColor")
 
     def backing(view):
-        return [child for child in rt.objects[view].state["subviews"]
-                if rt.objects[child].state.get("configuration")]
+        direct = [child for child in rt.objects[view].state["subviews"]
+                  if rt.objects[child].state.get("configuration")]
+        if direct:
+            return direct
+        state = rt.objects[view].state
+        glyph, parent = state.get("imageView", 0), state.get("superview", 0)
+        if not glyph or not parent:
+            return []
+        result = []
+        for child in rt.objects[parent].state["subviews"]:
+            if not rt.objects[child].state.get("configuration"):
+                continue
+            for constraints in rt.activated:
+                owners = []
+                for constraint in constraints:
+                    row = rt.objects[constraint].state
+                    first = rt.objects[row["first"]].state
+                    second = rt.objects[row["second"]].state if "second" in row else None
+                    owners.append((first.get("owner"), second.get("owner") if second else 0))
+                if any(first == child and second == glyph for first, second in owners):
+                    result.append(child)
+                    break
+        return result
 
     def passive_glass(view, frame):
         surfaces = backing(view)
         require(len(surfaces) == 1, "One material is attached to the inspected native target")
         glass = rt.objects[surfaces[0]].state
-        require(glass["frame"] == frame and not glass["userInteractionEnabled"] and
+        require((frame is None or glass["frame"] == frame) and not glass["userInteractionEnabled"] and
                 glass["accessibilityElementsHidden"], "Glass is correctly bounded and never handles native actions")
         return surfaces[0]
 
@@ -145,6 +187,9 @@ def exercise(data, labels):
                for name, frame, action in (("back", (16, 10, 24, 24), "backBtnClicked:"),
                                            ("more", (400, 10, 24, 24), "moreBtnClicked:"),
                                            ("item more", (400, 10, 24, 24), "moreBtnClicked"))]
+    for index, button in enumerate(buttons):
+        glyph = rt.view("UIImageView", "native button glyph %d" % index, (4, 4, 16, 16), button)
+        rt.objects[button].state["imageView"] = glyph
     item = rt.obj(MORE, "native more nav item", moreBtn=buttons[2], view=buttons[2])
     items = rt.obj("NSArray", "right items", items=[item])
     component = rt.obj(NAV, "native navbar component", navBar=nav, backBtn=buttons[0],
@@ -154,7 +199,7 @@ def exercise(data, labels):
               for button in buttons}
     send(cpu, rt, component, "setupLayout:", nav)
     for button in buttons:
-        passive_glass(button, (-6., -6., 36., 36.))
+        passive_glass(button, None)
     send(cpu, rt, component, "updateNavgationBarLeftView")
     send(cpu, rt, component, "updateNavgationBarRightViewWithRightItems:", items)
     send(cpu, rt, item, "setUp")
