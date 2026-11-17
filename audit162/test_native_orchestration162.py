@@ -244,7 +244,7 @@ def send_interaction_pan(cpu, rt, state, x, y=28, translation=0):
 
 def drag_selection_lifecycle(data):
     rows = []
-    spring_tracking = release_version(data) in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35")
+    spring_tracking = release_version(data) in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36")
     for slide in (0, 0x180000000):
         cpu, rt, entries = make(data, slide=slide)
         if spring_tracking:
@@ -391,9 +391,9 @@ def current_uikit_owns_tracking(data):
 def run(data):
     cases = []
     version = release_version(data)
-    if version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35"):
+    if version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36"):
         functions = (drag_selection_lifecycle, drag_selection_diagnostics_and_restore)
-        if version in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35"):
+        if version in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36"):
             functions += (current_uikit_owns_tracking,)
     else:
         functions = (first_mount_and_stability, fallback_to_native_during_fade,
