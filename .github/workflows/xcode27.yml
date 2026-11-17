@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tests/native_settings_backup_smoke.c native/FanqieXSettingsCodec.c -lz -o build/xcode27/settings-backup-smoke
+          xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror -I native tests/native_settings_backup_smoke.c native/FanqieXSettingsCodec.c -lz -o build/xcode27/settings-backup-smoke
           build/xcode27/settings-backup-smoke | tee build/xcode27/settings-backup-run.log
           xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tests/native_video_container_smoke.c -o build/xcode27/video-container-smoke
           build/xcode27/video-container-smoke | tee build/xcode27/video-container-run.log
