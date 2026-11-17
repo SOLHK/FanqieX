@@ -21,7 +21,7 @@ def main():
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35"), default="1.6.2")
+    parser.add_argument("--expected-version", choices=("1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36"), default="1.6.2")
     args = parser.parse_args()
     data, baseline = args.candidate.read_bytes(), args.baseline.read_bytes()
     good = audit(baseline, data, expected_version=args.expected_version)
