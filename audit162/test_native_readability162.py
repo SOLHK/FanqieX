@@ -53,7 +53,7 @@ def hit_test(rt, receiver, point, depth=0):
 
 
 def assert_public_readable_state(rt):
-    if release_version(rt.data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30"):
+    if release_version(rt.data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31"):
         overlay = require_fallback(rt)
         lens = rt.associated(rt.PROXY, 'lens')
         content = rt.objects[lens].state['contentView']
@@ -220,7 +220,7 @@ def existing_visual_content_and_stable_material(candidate):
     assert_public_readable_state(rt)
     initial_effect = rt.objects[rt.PROXY].state['effect']
     initial_writes = len(effect_writes(rt))
-    drag_selection = release_version(candidate) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30")
+    drag_selection = release_version(candidate) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31")
     if drag_selection:
         lens = rt.associated(rt.PROXY, 'lens')
         x, _, width, _ = rt.objects[lens].state['frame']

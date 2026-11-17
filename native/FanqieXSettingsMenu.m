@@ -62,6 +62,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) CGFloat height;
 @property(nonatomic) BOOL requiresCompact;
 @property(nonatomic) BOOL inverted;
+@property(nonatomic) BOOL diagnosticExport;
 @property(nonatomic) NSInteger matchScore;
 @end
 @implementation FQXSettingRow
@@ -77,6 +78,9 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic, strong) id router;
 @property(nonatomic, strong) UIViewController *adsOwner;
 @property(nonatomic, strong) NSArray<UIView *> *legacyPanels;
+@property(nonatomic) BOOL diagnosticExportPending;
+@property(nonatomic, strong) NSURL *diagnosticFile;
+@property(nonatomic, copy) NSString *diagnosticError;
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads;
 + (UIViewController *)controllerForController:(UIViewController *)owner;
 + (UIViewController *)visibleControllerForController:(UIViewController *)owner;
@@ -84,6 +88,9 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 + (BOOL)isInstalledOnController:(UIViewController *)owner;
 - (void)configureSearch;
 - (BOOL)updateRows;
+- (void)beginDiagnosticExport;
+- (void)shareDiagnosticFile;
+- (void)fqab_156_presentDiagnostics:(NSDictionary *)result;
 @end
 
 static FQXSettingsMenu *MenuForController(UIViewController *owner) {
@@ -235,11 +242,19 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     video.destination = @"FQXVideoExport";
     video.height = 52;
     [menu.catalog addObject:video];
+    FQXSettingRow *diagnostics = [FQXSettingRow new];
+    diagnostics.title = @"导出日志";
+    diagnostics.path = @"诊断与其他";
+    diagnostics.keywords = @"导出日志 诊断 保存 分享";
+    diagnostics.height = 58;
+    diagnostics.diagnosticExport = YES;
+    [menu.catalog addObject:diagnostics];
     // The diagnostics card contains separate labels and controls. Give each
     // native action its own row while retaining the installed router.
     UIView *card = legacy.tableFooterView.subviews.firstObject;
     for (UIView *view in card.subviews) {
-        if ([view isKindOfClass:UIButton.class]) AddView(menu, view, @"诊断与其他");
+        if ([view isKindOfClass:UIButton.class] && ![view.accessibilityLabel isEqualToString:diagnostics.title])
+            AddView(menu, view, @"诊断与其他");
         if ([view isKindOfClass:UISwitch.class]) {
             FQXSettingRow *row = [FQXSettingRow new];
             row.title = view.accessibilityLabel;
@@ -431,6 +446,25 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         return row.nativeCell;
     }
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+    if (row.diagnosticExport) {
+        cell.textLabel.text = row.title;
+        cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+        cell.detailTextLabel.numberOfLines = 2;
+        cell.accessibilityTraits |= UIAccessibilityTraitButton;
+        if (self.diagnosticExportPending) {
+            cell.detailTextLabel.text = @"正在生成日志…";
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            UIActivityIndicatorView *progress = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+            [progress startAnimating];
+            cell.accessoryView = progress;
+        } else {
+            if (self.diagnosticFile) cell.detailTextLabel.text = @"已生成，点按分享";
+            else if (self.diagnosticError) cell.detailTextLabel.text = self.diagnosticError;
+            else if (self.search.searchBar.text.length) cell.detailTextLabel.text = row.path;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+        return cell;
+    }
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.textLabel.numberOfLines = 2;
     BOOL unavailable = row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
@@ -534,6 +568,55 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, toggle.accessibilityIdentifier);
 }
 
+- (void)beginDiagnosticExport {
+    if (self.diagnosticExportPending) return;
+    if (self.diagnosticFile) {
+        [self shareDiagnosticFile];
+        return;
+    }
+    SEL enqueue = NSSelectorFromString(@"fqx_enqueueDiagnosticExport:");
+    if (![self respondsToSelector:enqueue]) {
+        [self fqab_156_presentDiagnostics:@{@"error": @"诊断服务未加载，请重新打开设置后重试。"}];
+        return;
+    }
+    self.diagnosticError = nil;
+    self.diagnosticExportPending = YES;
+    [self.tableView reloadData];
+    ((void (*)(id, SEL, id))objc_msgSend)(self, enqueue, self);
+}
+
+- (void)fqab_156_presentDiagnostics:(NSDictionary *)result {
+    self.diagnosticExportPending = NO;
+    self.diagnosticFile = result[@"url"];
+    self.diagnosticError = self.diagnosticFile ? nil : (result[@"error"] ?: @"日志生成失败，请重试。");
+    [self.tableView reloadData];
+    if (self.diagnosticFile) [self shareDiagnosticFile];
+}
+
+- (void)shareDiagnosticFile {
+    if (!self.viewIfLoaded.window || self.navigationController.topViewController != self) return;
+    NSURL *file = self.diagnosticFile;
+    void (^present)(void) = ^{
+        if (!self.viewIfLoaded.window || self.navigationController.topViewController != self ||
+            self.presentedViewController || self.navigationController.presentedViewController ||
+            self.diagnosticFile != file) return;
+        UIActivityViewController *share = [[UIActivityViewController alloc] initWithActivityItems:@[file]
+                                                                              applicationActivities:nil];
+        CGRect bounds = self.view.bounds;
+        share.popoverPresentationController.sourceView = self.view;
+        share.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds), 1, 1);
+        [self presentViewController:share animated:YES completion:^{
+            self.diagnosticFile = nil;
+            [self.tableView reloadData];
+        }];
+    };
+    UIViewController *presenter = self.search.presentingViewController;
+    if (presenter && presenter.presentedViewController == self.search)
+        [presenter dismissViewControllerAnimated:NO completion:present];
+    else
+        present();
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
     [tableView deselectRowAtIndexPath:path animated:YES];
     UIViewController *owner = self;
@@ -549,6 +632,10 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         [owner.navigationController pushViewController:page animated:YES];
     } else {
         FQXSettingRow *row = self.visibleRows[path.row - self.folders.count];
+        if (row.diagnosticExport) {
+            [self beginDiagnosticExport];
+            return;
+        }
         if (row.destination) {
             Class target = NSClassFromString(row.destination);
             SEL action = NSSelectorFromString(@"presentFromController:");

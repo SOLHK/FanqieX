@@ -2,16 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.78R30 本地测试版
+## FanqieX 1.78R31 本地测试版
 
-本版按实际搜索呈现关系修正日志导出，补齐真实详情播放器底栏及原著章节条的玻璃。
-顶部返回、更多的玻璃支持初始零尺寸布局；Telegram 首页入口及已完成的箭头处理保持不变。
+本版将「导出日志」接到诊断页的原生列表行，并显示生成进度、分享状态和失败原因。
 
-- [本版说明、功能入口和安装方式](docs/REPAIR_1.78R30.md)
+- [本版说明和安装方式](docs/REPAIR_1.78R31.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R30。本轮使用 Windows LLVM 与 iOS 27.2 SDK 增量编译；未推送远端或触发 CI，最终显示和触控体验需在 iPhone 上复测。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.78R31。本轮使用 Windows LLVM 与 iOS 27.2 SDK 增量编译，真实 iPhone 触摸和分享面板需在设备上复测。
 
 ## FanqieX 1.76
 
@@ -64,7 +63,7 @@ Mach-O 元数据、Info.plist、Frameworks 和 Swift 元数据列表。缺失项
 已覆盖材质复用、关闭恢复、重复布局、浅/深色语义、目标广告删除、正常内容保留、底栏开关、
 Mach-O 页哈希和 Hook 所有权。
 
-历史 1.76 交付来自 Xcode 27.2；当前 R30 构建方式见上文。真实 UIKit 渲染、GPU 折射、触感和 IPA 注入仍需在 iPhone 上验证。
+历史 1.76 交付来自 Xcode 27.2。真实 UIKit 渲染、GPU 折射、触感和 IPA 注入仍需在 iPhone 上验证。
 
 ## 安装
 
@@ -86,7 +85,7 @@ Mach-O 页哈希和 Hook 所有权。
 Linux 验证：
 
 ```bash
-python3 scripts/verify162.py --version 1.78R30 --output build/ci178r30
+python3 scripts/verify162.py --version 1.78R31 --output build/ci178r31
 ```
 
 macOS / Xcode 27.2 构建：

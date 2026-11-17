@@ -887,6 +887,9 @@ LUIinstall:
     .endif
     .endif
 LUIinstall_done:
+    .if FQ_VERSION >= 0x14e1f
+    bl LUIinstall_export_bridge
+    .endif
     .if FQ_VERSION >= 0x10704
     cbz x19, LUIinstall_return
     mov x0, x19
@@ -1111,7 +1114,9 @@ LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
 LSversion:
-    .if FQ_VERSION == 0x14e1e
+    .if FQ_VERSION == 0x14e1f
+    .asciz "1.78R31"
+    .elseif FQ_VERSION == 0x14e1e
     .asciz "1.78R30"
     .elseif FQ_VERSION == 0x14e1d
     .asciz "1.78R29"
