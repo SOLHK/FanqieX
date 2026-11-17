@@ -55,7 +55,7 @@ static BOOL Void1(const char*c,const char*s,BOOL cm,NSString*k,const char*getter
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
  IMP hook=imp_implementationWithBlock(^(id o,id a){
    if(!On(k)){((void(*)(id,SEL,id))old)(o,x,a);return;}
-   if(getter){id v=Get(o,getter);if([v isKindOfClass:UIView.class])v.hidden=YES;}
+   if(getter){id v=Get(o,getter);if([v isKindOfClass:UIView.class])((UIView *)v).hidden=YES;}
  });
  if(!FQXInstallOwnedHook(cls,x,cm,"v24@0:8@16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
