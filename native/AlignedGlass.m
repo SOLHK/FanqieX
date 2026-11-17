@@ -3218,10 +3218,36 @@ static void DramaDetailNavigationButton(Obj button,Obj nav,B stockBackGlyph) {
         ((double(*)(Obj,Sel))Message)(button,sel_registerName("alpha")));
     DramaClearBackground(button,1);
 }
+static void DramaDetailNavigationTitle(Obj title,Obj back,Obj nav) {
+    if (!Kind(title,"UILabel") || !Belongs(title,nav) || !Belongs(back,nav)) return;
+    Obj glass=objc_getAssociatedObject(back,DramaGlassKey);
+    B active=Enabled() && glass && Belongs(glass,nav) && !Flag(glass,"isHidden");
+    Obj constraints=Get(Get(title,"superview"),"constraints");
+    for (U i=0,count=TabCount(constraints);i<count;++i) {
+        Obj constraint=At(constraints,i);
+        if (Get(constraint,"firstItem")!=title || Get(constraint,"secondItem")!=back) continue;
+        I first=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("firstAttribute"));
+        I second=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("secondAttribute"));
+        if (!((first==1 && second==2) || (first==5 && second==6)) ||
+            ((I(*)(Obj,Sel))Message)(constraint,sel_registerName("relation"))!=0 ||
+            ((double(*)(Obj,Sel))Message)(constraint,sel_registerName("multiplier"))!=1) continue;
+        double value=((double(*)(Obj,Sel))Message)(constraint,sel_registerName("constant"));
+        Obj original=objc_getAssociatedObject(constraint,LandscapeConstraintStock178R12Key);
+        Obj previous=objc_getAssociatedObject(constraint,LandscapeConstraintApplied178R12Key);
+        double stock=original && previous && value==Double(previous) ? Double(original) : value;
+        // The host pins navLeftLabel directly to backBtn.right. Reserve space
+        // in that constraint before Auto Layout resolves the new glass frame.
+        double wanted=active ? __builtin_fmax(stock,12) : stock;
+        objc_setAssociatedObject(constraint,LandscapeConstraintStock178R12Key,active && wanted!=stock ? Number(stock) : (Obj)0,1);
+        objc_setAssociatedObject(constraint,LandscapeConstraintApplied178R12Key,active && wanted!=stock ? Number(wanted) : (Obj)0,1);
+        if (value!=wanted) ((void(*)(Obj,Sel,double))Message)(constraint,sel_registerName("setConstant:"),wanted);
+    }
+}
 static void DramaDetailNavigationApply(Obj component) {
     Obj nav=Get(component,"navBar");
     Obj name=Get(Get(Get(component,"listVCContext"),"config"),"navBackImageName");
     DramaDetailNavigationButton(Get(component,"backBtn"),nav,!name || Equal(name,"short_video_nav_back"));
+    DramaDetailNavigationTitle(Get(component,"navLeftLabel"),Get(component,"backBtn"),nav);
     DramaDetailNavigationButton(Get(component,"moreBtn"),nav,0);
     Obj items=Get(component,"navigationBarRightItems");
     for (U i=0,count=TabCount(items);i<count;++i) {
@@ -3394,7 +3420,7 @@ static B DramaSearchUsesGlass(Obj owner) {
 static B DramaSearchHeaderReady(Obj header,Obj owner) {
     if (!Get(header,"window")) return 0;
     if (objc_getAssociatedObject(header,DramaSearchHeaderReadyKey)) return 1;
-    Obj categories=Get(header,"tabContainer"),pill=objc_getAssociatedObject(categories,DramaGlassKey);
+    Obj categories=Get(header,"tabContainer"),pill=objc_getAssociatedObject(categories,SurfaceKey);
     B categoryReady=pill && Get(pill,"superview")==categories && Belongs(categories,header) && !Flag(categories,"isHidden");
     B searchOnly=!DramaCategoryButtonsVisible(Get(owner,"tabModels")) &&
         objc_getAssociatedObject(owner,DramaSearchFeedAppearedKey);
@@ -3414,7 +3440,7 @@ static B DramaHeaderSearchButton(Obj header,Obj owner,B visible) {
         return 0;
     }
     Obj categories=Get(header,"tabContainer");
-    Obj pill=objc_getAssociatedObject(categories,DramaGlassKey),row=pill ? pill : categories;
+    Obj pill=objc_getAssociatedObject(categories,SurfaceKey),row=pill ? pill : categories;
     Rect aligned=Belongs(row,header) ? Convert(row,Bounds(row),header) : bounds;
     double side=__builtin_fmin(DramaHeaderButtonHeight,pill ? aligned.height : bounds.height);
     double y=__builtin_fmax(bounds.y,__builtin_fmin(bounds.y+bounds.height-side,aligned.y+(aligned.height-side)/2));
@@ -3645,8 +3671,7 @@ static void DramaHeaderSelection(Obj glass,Rect frame) {
         VB(lens,"setUserInteractionEnabled:",0);
         VB(lens,"setAccessibilityElementsHidden:",1);
         VB(lens,"setClipsToBounds:",1);
-        // PlaceDramaGlass uses a noninteractive UIButton glass surface.
-        V1(glass,"addSubview:",lens);
+        V1(Get(glass,"contentView"),"addSubview:",lens);
         objc_setAssociatedObject(glass,DramaHeaderSelectionKey,lens,1);
         V0(lens,"release");
     }
@@ -3734,13 +3759,15 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
             }
         }
     }
-    Obj glass=VisibleRect(capsule) ? PlaceDramaGlass(categories,categories,0,capsule) : (Obj)0;
+    // Match the bottom dock's Regular UIGlassEffect and transparent content,
+    // rather than using a glass button as a multi-title material container.
+    ApplySurface(categories,capsule,1);
+    Obj glass=objc_getAssociatedObject(categories,SurfaceKey);
     DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
     if (glass) {
         DramaHeaderCategoryAppearance(header,glass);
         DramaHeaderSelection(glass,selection);
     }
-    else RemoveDramaGlass(categories);
 }
 
 static void DramaVisibilityApplyHeader(Obj header) {

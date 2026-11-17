@@ -11,7 +11,7 @@ import json
 import struct
 from pathlib import Path
 
-from arm64 import require
+from arm64 import release_version, require
 from test_control_glass166 import send
 from test_controls171 import call
 from test_feed_viewport import labels_for
@@ -84,7 +84,7 @@ class Runtime(VisibilityRuntime):
         return super().handle(cpu, pc)
 
 
-def exercise(data, labels, expect_old=False):
+def exercise(data, labels, expect_old=False, expect_button_material_baseline=False):
     cpu, rt = make(data, Runtime)
     rt.labels = labels
     call(cpu, labels, "LFQH_FQHPageInstall")
@@ -112,14 +112,24 @@ def exercise(data, labels, expect_old=False):
                                        contentView=content, tabBarController=tab_owner)
     rt.next_background = white
     send(cpu, rt, header, "layoutSubviews")
-    glass = next(v for v in rt.objects[categories].state["subviews"] if rt.objects[v].state.get("configuration"))
-    lens, = rt.objects[glass].state["subviews"]
+    glass = next(v for v in rt.objects[categories].state["subviews"]
+                 if rt.objects[v].state.get("configuration") or rt.objects[v].state.get("effect"))
+    regular = rt.is_kind(glass, rt.classes["UIVisualEffectView"])
+    content_parent = rt.objects[glass].state["contentView"] if regular else glass
+    lens, = rt.objects[content_parent].state["subviews"]
     initial = {"lens_frame": rt.objects[lens].state["frame"],
                "glass_style": rt.objects[glass].state.get("overrideUserInterfaceStyle", 0)}
     if expect_old:
         require(initial["lens_frame"][0] == 4. and initial["glass_style"] == 1,
                 "R31 follows the stale recommended model and its white palette despite native comic selection on black")
         return {"expected_r31_mismatch_reproduced": True, **initial}
+    if expect_button_material_baseline:
+        require(release_version(data) == "1.78R33" and not regular and
+                rt.is_kind(glass, rt.classes["UIButton"]) and rt.objects[glass].state.get("configuration"),
+                "R33 reproduces the category-wide glass-button material instead of the dock's Regular effect view")
+        return {"expected_r33_button_material_mismatch_reproduced": True, **initial}
+    if release_version(data) == "1.78R34":
+        require(regular, "R34 uses the same effect-view material family as the bottom dock")
     require(initial["lens_frame"] == (51., 4., 45., 34.) and initial["glass_style"] == 2,
             "The lens follows the actual comic title and dark content even when both cached indices disagree")
     require(rt.old_palette_reads == 0, "Header appearance never consults the stale bottom-model resolver")
@@ -150,22 +160,33 @@ def exercise(data, labels, expect_old=False):
     send(cpu, rt, header, "layoutSubviews")
     require(not rt.objects[lens].state["hidden"] and rt.objects[lens].state["frame"][0] == 51.,
             "A resolved native selection restores its lens")
+    if regular:
+        rt.reparent(glass, 0)
+        send(cpu, rt, header, "layoutSubviews")
+        send(cpu, rt, header, "layoutSubviews")
+        require(rt.objects[categories].state["subviews"] == [glass, tabs] and
+                rt.objects[content_parent].state["subviews"] == [lens] and
+                rt.objects[glass].state["overrideUserInterfaceStyle"] == 2,
+                "Remount and repeated layout reuse one dark material and one selection below the original title strip")
     return {"native_title_state_wins_over_cached_indices": True, "original_selection_calls": rt.selection_calls,
             "original_background_calls": rt.background_calls, "actual_content_palette_checked": True,
-            "no_host_selection_mutation": True, "missing_or_ambiguous_selection_hides_lens": True}
+            "no_host_selection_mutation": True, "missing_or_ambiguous_selection_hides_lens": True,
+            "regular_material_remount_checked": regular}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
-    parser.add_argument("--expect-old", action="store_true")
+    baseline = parser.add_mutually_exclusive_group()
+    baseline.add_argument("--expect-old", action="store_true")
+    baseline.add_argument("--expect-button-material-baseline", action="store_true")
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     result = {"candidate_sha256": hashlib.sha256(data).hexdigest(), "passed": False, "device_tested": False}
     try:
-        result.update(exercise(data, labels, args.expect_old))
+        result.update(exercise(data, labels, args.expect_old, args.expect_button_material_baseline))
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

@@ -107,7 +107,7 @@ class Runtime(PageRuntime):
         self.keep_stale_category_index = False
         self.search_actions = 0
         self.secondary_fill_style = "dark"
-        self.native_title_models = release_version(data) in ("1.78R32", "1.78R33")
+        self.native_title_models = release_version(data) in ("1.78R32", "1.78R33", "1.78R34")
         if self.native_title_models:
             self._class("FQRJXCategoryTitleCellModel", "NSObject")
             self._add(self.classes["FQRJXCategoryTitleCellModel"], "isSelected", self.HOST_GETTER, "B16@0:8")
@@ -313,20 +313,21 @@ def exercise(data, labels):
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), simple_header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
     version = release_version(data)
-    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33")
-    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33")
+    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34")
+    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34")
+    regular_header_material = version == "1.78R34"
     category_regressions = []
-    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33")
-    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}
-    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}
+    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34")
+    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}
+    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}
     search_stock_frame = (402., 8., 26., 26.) if compact_header else (392., 0., 44., 44.)
     slot = rt.view("UIView", "native magnifier slot", search_stock_frame, search)
     image = rt.obj("UIImage", "app magnifier")
     icon = rt.view("UIImageView", "native magnifier", (0., 0., 26., 26.) if compact_header else (9., 9., 26., 26.),
                    slot, image=image, contentMode=0, nativeAction="search")
     bar = rt.view("UIView", "fresh find-drama search background")
-    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}
-    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}
+    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}
+    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}
     if first_frame_checked:
         original = bar
         send(cpu, rt, search, "setSearchBgView:", original)
@@ -348,7 +349,12 @@ def exercise(data, labels):
 
     def material(view):
         return next((child for child in rt.objects[view].state["subviews"]
-                     if rt.objects[child].state.get("configuration")), 0)
+                     if rt.objects[child].state.get("configuration") or
+                     (rt.is_kind(child, rt.classes["UIVisualEffectView"]) and rt.objects[child].state.get("effect"))), 0)
+
+    def selections(group):
+        parent = rt.objects[group].state["contentView"] if regular_header_material else group
+        return rt.objects[parent].state["subviews"]
 
     search_surface = header if anchored_search else slot
 
@@ -398,7 +404,7 @@ def exercise(data, labels):
         require(not search_shown() and hidden(slot) and hidden(icon),
                 "Feed appearance with a pending title row cannot reveal either search surface")
 
-    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}
+    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}
     if glass_checked:
         models = [rt.obj(MODEL, f"category {index}", index=index, tabType=kind)
                   for index, kind in enumerate((7, 11, 103))]
@@ -447,11 +453,27 @@ def exercise(data, labels):
                     icon_state["frame"] == (0., 0., 42., 42.) and icon_state["nativeAction"] == "search" and
                     rt.objects[icon_state["image"]].state["symbolSize"] == 23.,
                     "Both materials share the centerline, and the original full-circle search target displays its larger glyph")
-        lens, = rt.objects[group].state["subviews"]
+        lens, = selections(group)
         if unified_selection:
-            require(rt.is_kind(group, rt.classes["UIButton"]) and
-                    rt.objects[lens].state["superview"] == group,
-                    "The selection is attached to the real glass UIButton, without inventing a contentView API")
+            if regular_header_material:
+                state = rt.objects[group].state
+                effect = rt.objects[state["effect"]]
+                require(rt.is_kind(group, rt.classes["UIVisualEffectView"]) and
+                        effect.cls == rt.classes["UIGlassEffect"] and effect.state["style"] == 0 and
+                        effect.state["interactive"] and not effect.state.get("tintColor"),
+                        "The category uses the dock's untinted Regular UIGlassEffect")
+                require(state["backgroundColor"] == rt.color("clearColor") and
+                        rt.objects[state["contentView"]].state["backgroundColor"] == rt.color("clearColor") and
+                        rt.objects[lens].state["superview"] == state["contentView"],
+                        "The selection sits in the effect contentView with both backdrops clear")
+                require(not state["userInteractionEnabled"] and state["accessibilityElementsHidden"] and
+                        not state["isAccessibilityElement"] and not state["opaque"],
+                        "The material remains transparent and passes native input and accessibility through")
+                category_regressions.append("Regular dock material with clear content and native input preserved")
+            else:
+                require(rt.is_kind(group, rt.classes["UIButton"]) and
+                        rt.objects[lens].state["superview"] == group,
+                        "The historical selection attaches to the real glass UIButton")
             require(not rt.objects[lens].state["userInteractionEnabled"] and
                     rt.objects[lens].state["accessibilityElementsHidden"] and
                     rt.objects[lens].state["clipsToBounds"],
@@ -734,7 +756,7 @@ def exercise(data, labels):
         native_state([source[2], source[1]], 1)
         category_cases.append("native ordering and original selected refresh preserved")
 
-    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"}:
+    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"}:
         titles = ["推荐", "漫剧", "看剧"]
         source = [rt.obj(MODEL, title, tabType=kind, title=rt.text_object(title), index=index)
                   for index, (kind, title) in enumerate(zip((7, 11, 103), titles))]
@@ -759,7 +781,7 @@ def exercise(data, labels):
                 "Only the disabled native label disappears even while its video keeps the native selection")
         group = material(categories)
         require(group and rt.objects[group].state["frame"][0] > 8. and
-                all(hidden(child) for child in rt.objects[group].state["subviews"]),
+                all(hidden(child) for child in selections(group)),
                 "Glass begins at the first visible category and omits the hidden active tab lens")
         category_cases.append("saved hidden button leaves the default playback tab intact")
 
@@ -780,7 +802,7 @@ def exercise(data, labels):
 
         writes = len(rt.category_writes)
         select(1007, True)
-        require(not hidden(cells[0]) and any(not hidden(child) for child in rt.objects[group].state["subviews"]),
+        require(not hidden(cells[0]) and any(not hidden(child) for child in selections(group)),
                 "The live toggle restores the title and the original selected lens")
         select(1007, False)
         require(hidden(cells[0]), "Disabling an individual category hides its already visible cell immediately")
@@ -850,7 +872,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"),
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"),
             "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])

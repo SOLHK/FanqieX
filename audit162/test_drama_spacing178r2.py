@@ -48,7 +48,7 @@ class Runtime(ReaderRuntime):
             ("NativeInsertContainerView", "UIView"),
         ):
             self._class(name, parent)
-        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33") else "FQVShortVideoVPlayerControlView"
+        owner = "UIView" if release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34") else "FQVShortVideoVPlayerControlView"
         self._add(self.classes[owner], "layoutSubviews",
                   self.LAYOUT_IMP, "v16@0:8")
         self._add(self.classes["FQVShortVideoVPlayerControlView"], "controlViewDidDisplay", self.DID_DISPLAY, "v16@0:8")
@@ -207,7 +207,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
     send(cpu, rt, root, "layoutSubviews")
     require(anchor_state["constant"] == stock+2., "Disabling restores the latest stock constraint constant")
-    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
+    if release_version(data) not in ("1.78R8", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"):
         return
 
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = False
@@ -248,7 +248,7 @@ def verify_native_constraint(data, labels, reference_attribute):
     for selector, args, track_y in (("layoutProgressView", (), 871.),
                                      ("updateProgressViewWithPlaying:animate:", (1, 1), 873.)):
         send(cpu, rt, progress, selector, *args)
-        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
+        if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"):
             glass = glass_rect(rt, v["content"])
             require(track_y-glass[1]-glass[3] == 8.,
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
@@ -307,7 +307,7 @@ def logged_geometry(data, labels):
 
 def verify_masonry_reapply(data, labels, related=False):
     """Host wrapper reapply occurs after the correction/logging callback returns."""
-    fixed = release_version(data) in ("1.78R32", "1.78R33")
+    fixed = release_version(data) in ("1.78R32", "1.78R33", "1.78R34")
     cpu, rt, v = fixture(data, labels)
     root, insert, progress, track = (v[key] for key in ("root", "info", "progress", "track"))
     rt.objects[rt.DEFAULTS].state["values"][DISABLED] = True
@@ -420,7 +420,7 @@ def verify_first_progress_style(data, labels):
     glass = glass_rect(rt, views["content"])
     track = global_rect(rt, custom)
     gap = track[1] - glass[1] - glass[3]
-    fixed = release_version(data) == "1.78R33"
+    fixed = release_version(data) in ("1.78R33", "1.78R34")
     require(gap == (8. if fixed else 0.) and rt.objects[anchor].state["constant"] == (2. if fixed else 10.),
             f"First visible rail must resolve spacing in the style callback itself, got {gap:g} pt")
     require(track == (16., 873., 408., 2.) and rt.objects[progress].state["gestureRecognizers"] == ["host seek pan"],
@@ -433,7 +433,7 @@ def verify(data, labels):
     cases = []
     masonry_cases = []
     first_style = None
-    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33")
+    glass_spacing = release_version(data) in ("1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34")
     visible_track_spacing = glass_spacing or release_version(data) in ("1.78R3", "1.78R4", "1.78R5")
     expected_shift = 4. if glass_spacing else 7. if visible_track_spacing else 26.
     for width, height in ((440., 956.), (390., 844.), (375., 812.)):
@@ -493,7 +493,7 @@ def verify(data, labels):
             record["seekOwnerWindowRect"] == [0., 851., 440., 30.],
             "The regression reproduces the R2 log's actual visible track and native owner geometry")
     if glass_spacing:
-        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33") else "episode-glass-178R6"
+        revision = "episode-glass-178R8" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34") else "episode-glass-178R6"
         require(record["revision"] == revision and
                 record["spacingReference"] == "episodeGlassToTrack" and record["trackGap"] == 8. and
                 record["episodeGlassWindowRect"] == list(glass_rect(rt, v["content"])),
@@ -518,14 +518,14 @@ def verify(data, labels):
         for attribute in (4, 10):
             verify_native_constraint(data, labels, attribute)
         cases.append("native bottom and seek-center constraints: geometry persists across host layouts and restores on disable")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34"):
             cases.append("attached offscreen paging, replacement at display, progress-only changes and detach restoration")
         if "LFQH_DramaProgressActivated" in labels:
             cases.append("paused rail, retiring episode and temporarily hidden current insert")
-        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33"):
+        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33", "1.78R34"):
             masonry_cases = [verify_masonry_reapply(data, labels), verify_masonry_reapply(data, labels, related=True)]
             cases.append("Masonry wrapper reapply and independently decorated related-book row")
-        if release_version(data) in ("1.78R32", "1.78R33"):
+        if release_version(data) in ("1.78R32", "1.78R33", "1.78R34"):
             first_style = verify_first_progress_style(data, labels)
             cases.append("First visible custom progress rail, before subsequent layout or playback callbacks")
 
@@ -636,7 +636,7 @@ def main():
     pause = "LFQH_DramaProgressActivated"
     direct_pause = [pause] if f"\n{pause}:" in composed.read_text(encoding="utf-8") else []
     related = ["LFQH_DramaWatchContentKey", "LFQH_DramaDetailRelatedContentKey", "LFQH_DramaGlassKey"] \
-        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33") else []
+        if release_version(data) in ("1.78R31", "1.78R32", "1.78R33", "1.78R34") else []
     labels = labels_for(data, composed, list(dict.fromkeys(LABELS + EXTRA + direct_pause + related)))
     result = verify(data, labels)
     result["candidate_sha256"] = hashlib.sha256(data).hexdigest()
