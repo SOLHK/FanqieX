@@ -47,7 +47,7 @@ NATIVE_INNER_FEED_TYPE = 0x33160800
 
 
 def bottom_labels(data):
-    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25") else LEGACY_PAN]
+    return [*ENTRY_LABELS, PAGE_HOOK if release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26") else LEGACY_PAN]
 
 
 class Runtime(AppearanceRuntime):
@@ -58,8 +58,12 @@ class Runtime(AppearanceRuntime):
         self.symbol_calls = []
         self.content_writes = []
         self.new_labels = {}
+        self.motion_calls = []
         super().__init__(*args, **options)
-        if release_version(self.data) in ("1.78R15", "1.78R16", "1.78R25"):
+        self.motion_bridge = release_version(self.data) == "1.78R26"
+        if self.motion_bridge:
+            self._class("FQXDockMotion", "NSObject")
+        if release_version(self.data) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26"):
             self.objects[self.MAIN_BUNDLE].state["info"] = {
                 "UIDesignRequiresCompatibility": True, "DTSDKName": "iphoneos26.0",
             }
@@ -76,9 +80,9 @@ class Runtime(AppearanceRuntime):
         ):
             if cls not in self.classes:
                 self._class(cls, parent)
-        self.canonical_settle = release_version(self.data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
-        self.native_pan_pages = release_version(self.data) in ("1.78R23", "1.78R24", "1.78R25")
-        real_video_feed = release_version(self.data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25")
+        self.canonical_settle = release_version(self.data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26")
+        self.native_pan_pages = release_version(self.data) in ("1.78R23", "1.78R24", "1.78R25", "1.78R26")
+        real_video_feed = release_version(self.data) in ("1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26")
         self.feed_class = "FQVCollectionView" if real_video_feed else "FQFeedListCollectionView"
         self.feed_owner_class = "FQVShortVideoListVCScrollComponent" if real_video_feed else "FQFeedListView"
         for owner in ("FQFeedListView", "FQVShortVideoListVCScrollComponent"):
@@ -230,6 +234,24 @@ class Runtime(AppearanceRuntime):
         name = self.selector_names.get(args[1])
         if receiver in self.classes.values():
             cls = self.class_names[receiver]
+            if cls == "FQXDockMotion" and name in (
+                    "prepareDock:inBar:", "animateDock:fromFrame:compact:button:"):
+                # Record arguments emitted by the candidate core. The linked
+                # UIKit motion implementation is not executed by this fixture.
+                dock = args[2]
+                row = {"selector": name, "dock": dock,
+                       "dock_frame": self.objects[dock].state["frame"],
+                       "content_hidden": self.objects[self.PROXY_CONTENT].state.get("hidden", False)}
+                if name == "prepareDock:inBar:":
+                    row["bar"] = args[3]
+                else:
+                    button = args[4]
+                    row.update(from_frame=tuple(cpu.fp(i) for i in range(4)),
+                               compact=bool(args[3]), button=button,
+                               button_parent=self.objects[button].state.get("superview", 0) if button else 0,
+                               button_frame=self.objects[button].state.get("frame") if button else None)
+                self.motion_calls.append(row)
+                return self.finish(cpu)
             if cls == "FanqieXCompactBottomButton178R7" and name == "new":
                 button = self.view(cls, "compact bottom expand button", userInteractionEnabled=True)
                 self.retain_balance[button] = 1
@@ -487,7 +509,7 @@ def overlay_image(runtime, button):
 
 
 def dock_renderer(data, fallback):
-    if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
+    if release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26"):
         return "drag"
     return "fallback" if fallback else "native"
 
@@ -496,7 +518,7 @@ def check_input(runtime, cpu, fallback, expected):
     previous_count = len(runtime.route_calls)
     icon_mode = runtime.objects[runtime.DEFAULTS].state["values"].get(ICONS, False)
     effect_style = int(release_version(runtime.data) == "1.78R7" and icon_mode)
-    if fallback or release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
+    if fallback or release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26"):
         require_fallback(runtime, effect_style=effect_style)
         # The unchanged original button IMP maps the current array identity.
         cpu.run(0x56c0, runtime.BAR, runtime.sel("fqab_homeTabPressed:"),
@@ -540,7 +562,7 @@ def default_and_geometry(data, labels):
                             rect[0] + rect[2] <= proxy[2] + 0.5 and
                             rect[1] + rect[3] <= proxy[3] + 0.5,
                             "Buttons stay inside the resized capsule")
-                if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
+                if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26"):
                     lens = runtime.associated(runtime.PROXY, "lens")
                     require(runtime.objects[lens].state["frame"] == runtime.objects[
                         runtime.buttons[runtime.selected_index()]].state["frame"],
@@ -637,7 +659,7 @@ def icon_lifecycle(data, labels):
             check_input(runtime, cpu, fallback, len(titles)-1)
             runtime.defaults(**{ICONS: False})
             repair(cpu, runtime, entries)
-            if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25"):
+            if version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26"):
                 require(runtime.objects[runtime.PROXY].state["effect"] == effect,
                         "Toggling the icon-only preference reuses the existing Regular glass")
             require(all(not overlays(runtime, b) for b in runtime.buttons),
@@ -833,6 +855,8 @@ def settled_scroll_lifecycle(data, labels):
         initial_targets = {key: copy.deepcopy(runtime.objects[pan].state[key]) for key in routing_fields}
         stock = runtime.objects[runtime.PROXY].state["frame"]
         repair(cpu, runtime, entries)
+        if runtime.motion_bridge:
+            require(not runtime.motion_calls, "Initial expanded layout does not start a transition")
         page_drag(cpu, runtime, feed, 1, 2)
         repair(cpu, runtime, entries)
         require(not compact_button(runtime), "Forward playback does not compact with the setting off")
@@ -856,22 +880,39 @@ def settled_scroll_lifecycle(data, labels):
         require(runtime.objects[runtime.BAR].state["subviews"][-1] == button,
                 "The collapsed control owns input above either renderer")
         layer = runtime.objects[runtime.layer(runtime.PROXY)].state
-        animation_keys = [runtime.string_value(key) for _, key in layer.get("animations", [])]
-        require(animation_keys == ["bounds", "position"] and
-                all(runtime.objects[animation].state["duration"] == 0.22
-                    for animation, _ in layer["animations"]),
-                "Compaction animates the actual glass bounds and position")
-        compact_animations = runtime.objects[runtime.layer(button)].state.get("animations", [])
-        require([runtime.string_value(key) for _, key in compact_animations] == ["position"],
-                "The visible compact icon moves with the glass")
-        if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25"):
+        compact_frame = runtime.objects[runtime.PROXY].state["frame"]
+        if runtime.motion_bridge:
+            require(runtime.motion_calls == [
+                {"selector": "prepareDock:inBar:", "dock": runtime.PROXY, "bar": runtime.BAR,
+                 "dock_frame": stock, "content_hidden": False},
+                {"selector": "animateDock:fromFrame:compact:button:", "dock": runtime.PROXY,
+                 "dock_frame": compact_frame, "content_hidden": True, "from_frame": stock,
+                 "compact": True, "button": button, "button_parent": runtime.BAR,
+                 "button_frame": compact_frame},
+            ], "Compiled collapse prepares old content, then passes CGRect/BOOL/button after button mounting")
+            require(not layer.get("animations"), "R26 core delegates motion instead of retaining the old fixed animation")
+            before_layout = copy.deepcopy(runtime.motion_calls)
+            repair(cpu, runtime, entries)
+            repair(cpu, runtime, entries)
+            require(runtime.motion_calls == before_layout, "Repeated compact layout does not restart motion")
+        else:
+            animation_keys = [runtime.string_value(key) for _, key in layer.get("animations", [])]
+            require(animation_keys == ["bounds", "position"] and
+                    all(runtime.objects[animation].state["duration"] == 0.22
+                        for animation, _ in layer["animations"]),
+                    "Compaction animates the actual glass bounds and position")
+            compact_animations = runtime.objects[runtime.layer(button)].state.get("animations", [])
+            require([runtime.string_value(key) for _, key in compact_animations] == ["position"],
+                    "The visible compact icon moves with the glass")
+        if fallback or release_version(data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26"):
             require(runtime.objects[runtime.objects[runtime.buttons[0]].state["superview"]].state["hidden"],
                     "The fallback overlay does not leave hidden tab targets active")
         else:
             require(runtime.control(), "The native selector stays mounted while the dock is compact")
         page_drag(cpu, runtime, feed, 2, 1)
         repair(cpu, runtime, entries)
-        require(compact_button(runtime) == button and len(layer["animations"]) == 2,
+        transition_count = len(runtime.motion_calls) if runtime.motion_bridge else len(layer["animations"])
+        require(compact_button(runtime) == button and transition_count == 2,
                 "Reverse paging preserves the compact button without restarting the transition")
         selected = runtime.objects[runtime.BAR].state["selectedItem"]
         tap_expand(cpu, runtime)
@@ -880,7 +921,20 @@ def settled_scroll_lifecycle(data, labels):
                 runtime.objects[runtime.PROXY].state["frame"] == stock and
                 runtime.objects[runtime.BAR].state["selectedItem"] == selected,
                 "Tapping restores the full dock at the same selected tab")
-        require(len(layer["animations"]) == 4, "Tapping also animates the restored full dock")
+        if runtime.motion_bridge:
+            require(len(runtime.motion_calls) == 4 and runtime.motion_calls[2:] == [
+                {"selector": "prepareDock:inBar:", "dock": runtime.PROXY, "bar": runtime.BAR,
+                 "dock_frame": compact_frame, "content_hidden": True},
+                {"selector": "animateDock:fromFrame:compact:button:", "dock": runtime.PROXY,
+                 "dock_frame": stock, "content_hidden": False, "from_frame": compact_frame,
+                 "compact": False, "button": button, "button_parent": 0,
+                 "button_frame": compact_frame},
+            ], "Compiled expansion prepares the circle, then passes the old frame after restoring tabs and detaching the button")
+            before_layout = copy.deepcopy(runtime.motion_calls)
+            repair(cpu, runtime, entries)
+            require(runtime.motion_calls == before_layout, "Repeated expanded layout does not restart motion")
+        else:
+            require(len(layer["animations"]) == 4, "Tapping also animates the restored full dock")
         page_drag(cpu, runtime, feed, 1, 2)
         repair(cpu, runtime, entries)
         require(compact_button(runtime) == button, "The next forward page can compact again")
@@ -894,7 +948,11 @@ def settled_scroll_lifecycle(data, labels):
         require(any(event["event"] == "host_feed_callback" for event in runtime.events),
                 "The host paging callbacks still execute")
         cases.append({"renderer": dock_renderer(data, fallback),
-                      "forward_only": True, "tap_expands": True, "host_paging_preserved": True})
+                      "missing_native_segment_fixture": fallback,
+                      "forward_only": True, "tap_expands": True, "host_paging_preserved": True,
+                      "motion_bridge_arguments_and_order": runtime.motion_bridge,
+                      "motion_calls": runtime.motion_calls[:4],
+                      "motion_module_executed": False})
     return cases
 
 
@@ -1066,22 +1124,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--only", choices=("compact-roundtrip",))
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), bottom_labels(data))
     report = {
         "passed": True, "sha256": hashlib.sha256(data).hexdigest(),
-        "geometry": default_and_geometry(data, labels),
-        "icons": icon_lifecycle(data, labels),
-        "unknown_tabs": unknown_and_failure(data, labels),
-        "scroll": settled_scroll_lifecycle(data, labels) if PAGE_HOOK in labels else scroll_lifecycle(data, labels),
-        "scroll_rejections": scroll_rejections(data, labels),
-        "preferences_and_reset": bounded_preferences_and_reset(data, labels),
-        "settings_callbacks": setting_callbacks(data, labels),
-        "direction_and_disable": layout_direction_and_disable(data, labels),
         "device_tested": False, "pixel_rendering_tested": False,
-        "boundary": "Candidate ARM64; explicit Foundation/UIKit fixtures",
+        "boundary": "Candidate ARM64; explicit Foundation/UIKit and linked motion-call fixtures",
     }
+    if args.only == "compact-roundtrip":
+        report["compact_roundtrip"] = settled_scroll_lifecycle(data, labels)
+    else:
+        report.update({
+            "geometry": default_and_geometry(data, labels),
+            "icons": icon_lifecycle(data, labels),
+            "unknown_tabs": unknown_and_failure(data, labels),
+            "scroll": settled_scroll_lifecycle(data, labels) if PAGE_HOOK in labels else scroll_lifecycle(data, labels),
+            "scroll_rejections": scroll_rejections(data, labels),
+            "preferences_and_reset": bounded_preferences_and_reset(data, labels),
+            "settings_callbacks": setting_callbacks(data, labels),
+            "direction_and_disable": layout_direction_and_disable(data, labels),
+        })
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(report, ensure_ascii=False, indent=2))

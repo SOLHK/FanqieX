@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 
 static const void *MenuKey = &MenuKey;
+static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 
 static id Invoke(id receiver, NSString *name) {
@@ -16,36 +17,52 @@ static NSString *Fold(NSString *text) {
         locale:[NSLocale localeWithLocaleIdentifier:@"zh_CN"]];
 }
 
-static BOOL Matches(NSString *text, NSString *query) {
-    NSString *folded = Fold(text);
-    NSString *normalized = Fold(query);
-    for (NSString *prefix in @[@"隐藏", @"显示", @"关闭", @"开启", @"去掉"]) {
-        if ([normalized hasPrefix:prefix] && normalized.length > prefix.length) {
-            normalized = [normalized substringFromIndex:prefix.length];
-            break;
-        }
-    }
+static NSString *SearchText(NSString *text) {
+    NSString *normalized = Fold(text);
+    // Normalize wording before matching, including queries without spaces.
+    for (NSArray *pair in @[@[@"看听读时长", @"阅读时长"], @[@"听读时长", @"阅读时长"], @[@"朗读", @"听书"],
+                           @[@"自动翻页", @"自动阅读"], @[@"动态漫", @"漫剧"],
+                           @[@"改编剧场", @"改编剧"], @[@"发布", @"发帖"],
+                           @[@"推荐卡片", @"推荐内容"], @[@"送礼物", @"送礼"],
+                           @[@"折叠", @"收缩"], @[@"收起", @"收缩"],
+                           @[@"保存", @"导出"], @[@"下载", @"导出"]])
+        normalized = [normalized stringByReplacingOccurrencesOfString:pair[0] withString:pair[1]];
+    for (NSString *word in @[@"隐藏", @"显示", @"关闭", @"开启", @"去掉", @"打开", @"按钮", @"入口", @"页面"])
+        normalized = [normalized stringByReplacingOccurrencesOfString:word withString:@""];
+    return normalized;
+}
+
+static NSInteger MatchScore(NSString *folded, NSString *normalized) {
+    NSInteger score = 0;
     for (NSString *word in [normalized componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]) {
-        if (!word.length || [folded containsString:word]) continue;
+        if (!word.length) continue;
+        if ([folded containsString:word]) { score += 100; continue; }
         NSUInteger matched = 0;
         for (NSUInteger i = 0; i < folded.length && matched < word.length; ++i)
             if ([folded characterAtIndex:i] == [word characterAtIndex:matched]) ++matched;
-        if (matched != word.length) return NO;
+        if (matched != word.length) return -1;
+        score += 10;
     }
-    return YES;
+    return score;
 }
 
 @interface FQXSettingRow : NSObject
 @property(nonatomic, copy) NSString *title;
+@property(nonatomic, copy) NSString *originalTitle;
 @property(nonatomic, copy) NSString *path;
 @property(nonatomic, copy) NSString *keywords;
+@property(nonatomic, copy) NSString *searchText;
+@property(nonatomic, copy) NSString *searchTitle;
 @property(nonatomic, strong) UIView *content;
 @property(nonatomic, strong) UITableViewCell *nativeCell;
+@property(nonatomic, strong) UISwitch *originalToggle;
 @property(nonatomic, copy) NSDictionary *option;
 @property(nonatomic, copy) NSString *destination;
 @property(nonatomic, copy) NSArray<NSDictionary *> *actions;
 @property(nonatomic) CGFloat height;
 @property(nonatomic) BOOL requiresCompact;
+@property(nonatomic) BOOL inverted;
+@property(nonatomic) NSInteger matchScore;
 @end
 @implementation FQXSettingRow
 @end
@@ -86,13 +103,14 @@ static NSString *PathForTitle(NSString *group, NSString *title) {
         return @"短剧/播放设置";
     }
     if ([title containsString:@"导出书籍"]) return @"导出与备份";
-    if ([title containsString:@"书架"]) return @"书架净化";
-    if ([title containsString:@"我的"] || [title containsString:@"侧栏"]) return @"我的页面净化";
-    if ([title containsString:@"去赚更多"]) return @"阅读/页面净化";
+    if ([title containsString:@"书架"]) return [title containsString:@"漫剧"] ? @"书架净化/推荐与导入" : @"书架净化/顶部与统计";
+    if ([title containsString:@"侧栏"]) return @"我的页面净化/侧栏";
+    if ([title containsString:@"我的"]) return @"我的页面净化/内容卡片";
+    if ([title containsString:@"去赚更多"]) return @"阅读/阅读页面净化/正文与底栏";
     if ([group isEqualToString:@"阅读与书架"]) return @"阅读/阅读设置";
     if ([title containsString:@"默认启动"] || [title containsString:@"书城顶部"]) return @"页面与导航";
     if ([title containsString:@"备份"]) return @"导出与备份";
-    if ([title containsString:@"外观"] || [title containsString:@"液态玻璃"]) return @"外观";
+    if ([title containsString:@"外观"] || [title containsString:@"液态玻璃"]) return @"外观/玻璃与尺寸";
     return @"诊断与其他";
 }
 
@@ -101,18 +119,26 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     if (!title.length || [title isEqualToString:@"诊断与日志"] || [title isEqualToString:@"广告与福利"]) return;
     FQXSettingRow *row = [FQXSettingRow new];
     row.title = title;
+    row.originalTitle = title;
     row.path = PathForTitle(group, title);
     row.keywords = [NSString stringWithFormat:@"%@ %@ %@", title, row.path, view.accessibilityIdentifier ?: @""];
     for (UIView *child in view.subviews) {
         if ([child isKindOfClass:UISwitch.class]) {
             row.keywords = [row.keywords stringByAppendingString:@" 显示 隐藏 开启 关闭 开关"];
+            if (([row.path hasPrefix:@"书架净化/"] || [row.path hasPrefix:@"我的页面净化/"] ||
+                 [row.path hasPrefix:@"阅读/阅读页面净化/"]) && [title containsString:@"显示"]) {
+                row.originalToggle = (UISwitch *)child;
+                row.inverted = YES;
+                row.title = [title stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"];
+            }
             break;
         }
     }
-    row.content = view;
-    row.height = MAX(52, CGRectGetHeight(view.bounds));
+    row.content = row.originalToggle ? nil : view;
+    row.height = row.originalToggle ? 52 : MAX(52, CGRectGetHeight(view.bounds));
     row.requiresCompact = [title containsString:@"收缩位置"];
     if ([title containsString:@"自动收缩"]) row.keywords = [row.keywords stringByAppendingString:@" 缩小 收起 折叠 底栏"];
+    if ([title containsString:@"时长"]) row.keywords = [row.keywords stringByAppendingString:@" 书架今日听读时长 阅读统计"];
     [menu.catalog addObject:row];
 }
 
@@ -149,7 +175,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                 if (!title.length) continue;
                 FQXSettingRow *row = [FQXSettingRow new];
                 row.title = title;
-                row.path = page == (id)owner ? @"外观" : [@"广告与福利/" stringByAppendingString:group];
+                row.path = page == (id)owner ? @"外观/玻璃效果" : [@"广告与福利/" stringByAppendingString:group];
                 row.keywords = [NSString stringWithFormat:@"%@ %@ 广告 拦截", row.path, title];
                 row.nativeCell = cell;
                 row.height = 52;
@@ -158,14 +184,23 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         }
     }
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
-    NSDictionary *paths = @{@"reader":@"阅读/页面净化", @"mine":@"我的页面净化", @"shelf":@"书架净化",
+    NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读"};
+    NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
+        @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};
     for (NSDictionary *option in options) {
-        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.MineRecommendations.1", @"FanqieX.MineBenefitsCard.1"]
-            containsObject:option[@"key"]]) continue;
-        FQXSettingRow *row = [FQXSettingRow new];
-        row.title = option[@"title"];
+        FQXSettingRow *row = nil;
+        for (FQXSettingRow *existing in menu.catalog)
+            if ([existing.originalTitle isEqualToString:legacyTitles[option[@"key"]]]) { row = existing; break; }
+        BOOL existing = row != nil;
+        if (!row) row = [FQXSettingRow new];
+        row.inverted = [@[@"reader", @"mine", @"shelf"] containsObject:option[@"category"]];
+        row.title = row.inverted ? [option[@"title"] stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"] : option[@"title"];
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
+        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
+            row.path = @"阅读/阅读页面净化/正文与底栏";
+        if ([option[@"key"] isEqualToString:@"FanqieX.MinePublish.1"]) row.path = @"我的页面净化/悬浮入口";
+        if ([option[@"key"] isEqualToString:@"FanqieX.ShelfRecommendationBanner.1"]) row.path = @"书架净化/顶部与统计";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
@@ -173,21 +208,24 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子",
             @"FanqieX.ReaderDoubleTapAutoread.1":@"自动翻页 双击",
             @"FanqieX.ReaderAutoReadDurationLimit.1":@"时间限制 广告时长",
-            @"FanqieX.NotificationsBadge.1":@"红点 数字 角标"
+            @"FanqieX.NotificationsBadge.1":@"红点 数字 角标",
+            @"FanqieX.ReaderChapterEndDrama.1":@"阅读底栏 改编剧场 改编剧入口",
+            @"FanqieX.ReaderChapterEndActions.1":@"最新章节 三个按钮 最新章 章末",
+            @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
+            @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书",
+            @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片",
+            @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币"
         };
         if (aliases[option[@"key"]]) row.keywords = [row.keywords stringByAppendingFormat:@" %@", aliases[option[@"key"]]];
         row.option = option;
         row.height = 52;
-        // Existing settings retain their runtime refresh callbacks.
-        if ([menu.catalog indexesOfObjectsPassingTest:^BOOL(FQXSettingRow *item, NSUInteger index, BOOL *stop) {
-            (void)index; (void)stop;
-            return [item.title isEqualToString:row.title];
-        }].count == 0) [menu.catalog addObject:row];
+        // Reuse the original switch for shared keys so its refresh action runs.
+        if (!existing) [menu.catalog addObject:row];
     }
     FQXSettingRow *video = [FQXSettingRow new];
     video.title = @"导出当前视频";
     video.path = @"导出与备份";
-    video.keywords = @"导出 下载 保存 视频 短剧 漫剧 MP4 MOV M4V 原格式";
+    video.keywords = @"导出当前视频 导出视频 视频导出 保存视频 下载视频 短剧 漫剧 MP4 MOV M4V MKV WebM HLS 原文件 原格式";
     video.destination = @"FQXVideoExport";
     video.height = 52;
     [menu.catalog addObject:video];
@@ -214,6 +252,10 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             row.height = 52;
             [menu.catalog addObject:row];
         }
+    }
+    for (FQXSettingRow *row in menu.catalog) {
+        row.searchText = SearchText(row.keywords);
+        row.searchTitle = SearchText(row.title);
     }
     // The entry is already a UITableViewController. Prepare its rows before
     // replacing the existing data source, independently of child appearances.
@@ -274,14 +316,19 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 
 - (BOOL)updateRows {
     NSString *query = [self.search.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    NSString *terms = SearchText(query);
     NSMutableArray *rows = [NSMutableArray array];
     NSMutableOrderedSet *folders = [NSMutableOrderedSet orderedSet];
     NSString *prefix = self.path.length ? [self.path stringByAppendingString:@"/"] : @"";
     BOOL compact = [NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
     for (FQXSettingRow *row in self.catalog) {
-        if (row.requiresCompact && !compact) continue;
+        if (row.requiresCompact && !compact && !query.length) continue;
         if (query.length) {
-            if (Matches(row.keywords, query)) [rows addObject:row];
+            NSInteger score = MatchScore(row.searchText, terms);
+            if (score >= 0) {
+                row.matchScore = score + MAX(0, MatchScore(row.searchTitle, terms)) * 2;
+                [rows addObject:row];
+            }
         } else if ([row.path isEqualToString:self.path]) {
             [rows addObject:row];
         } else if ([row.path hasPrefix:prefix]) {
@@ -289,8 +336,16 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             if (next.length) [folders addObject:next];
         }
     }
+    if (query.length) [rows sortUsingComparator:^NSComparisonResult(FQXSettingRow *left, FQXSettingRow *right) {
+        if (left.matchScore == right.matchScore) return NSOrderedSame;
+        return left.matchScore > right.matchScore ? NSOrderedAscending : NSOrderedDescending;
+    }];
     self.visibleRows = rows;
-    self.folders = folders.array;
+    NSArray *order = @[@"页面与导航", @"阅读", @"短剧", @"书架净化", @"我的页面净化", @"通知管理", @"导出与备份", @"外观", @"广告与福利", @"诊断与其他"];
+    self.folders = self.path.length ? folders.array : [folders.array sortedArrayUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        NSUInteger a = [order indexOfObject:left], b = [order indexOfObject:right];
+        return a == b ? NSOrderedSame : (a < b ? NSOrderedAscending : NSOrderedDescending);
+    }];
     return query.length > 0;
 }
 
@@ -325,7 +380,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView; (void)section;
     if (self.search.searchBar.text.length) return nil;
-    if ([self.path isEqualToString:@"阅读/页面净化"]) return @"关闭对应开关可隐藏入口。章末内容在重新进入书籍后应用。";
+    if ([self.path hasPrefix:@"阅读/阅读页面净化"]) return @"开启“隐藏”才会移除对应入口，各项独立控制。章末内容在重新进入书籍后应用。";
+    if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
     return nil;
@@ -347,10 +403,18 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         return cell;
     }
     FQXSettingRow *row = self.visibleRows[path.row - self.folders.count];
-    if (row.nativeCell) return row.nativeCell;
+    if (row.nativeCell) {
+        row.nativeCell.accessibilityHint = self.search.searchBar.text.length ? [row.path stringByReplacingOccurrencesOfString:@"/" withString:@"，"] : nil;
+        return row.nativeCell;
+    }
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    if (row.content) {
+    cell.textLabel.numberOfLines = 2;
+    BOOL unavailable = row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
+    if (unavailable) {
+        cell.textLabel.text = row.title;
+        cell.textLabel.textColor = UIColor.secondaryLabelColor;
+    } else if (row.content) {
         row.content.hidden = NO;
         row.content.frame = CGRectMake(0, 0, CGRectGetWidth(cell.contentView.bounds), row.height);
         row.content.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -380,25 +444,27 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         }
     } else {
         cell.textLabel.text = row.title;
-        if (row.option) {
+        if (row.option || row.originalToggle) {
             UISwitch *toggle = [[UISwitch alloc] init];
-            id stored = [NSUserDefaults.standardUserDefaults objectForKey:row.option[@"key"]];
-            toggle.on = stored ? [stored boolValue] : [row.option[@"default"] boolValue];
+            id stored = row.option ? [NSUserDefaults.standardUserDefaults objectForKey:row.option[@"key"]] : nil;
+            BOOL enabled = row.originalToggle ? row.originalToggle.on : (stored ? [stored boolValue] : [row.option[@"default"] boolValue]);
+            toggle.on = row.inverted ? !enabled : enabled;
             toggle.accessibilityIdentifier = row.option[@"key"];
             toggle.accessibilityLabel = row.title;
+            objc_setAssociatedObject(toggle, RowKey, row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [toggle addTarget:self action:@selector(optionChanged:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = toggle;
         } else cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     if (self.search.searchBar.text.length) {
-        if (row.content) {
+        if (row.content && !unavailable) {
             UILabel *pathLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, row.height, CGRectGetWidth(cell.contentView.bounds) - 40, 22)];
             pathLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
             pathLabel.font = [UIFont systemFontOfSize:11];
             pathLabel.textColor = UIColor.secondaryLabelColor;
             pathLabel.text = [row.path stringByReplacingOccurrencesOfString:@"/" withString:@" › "];
             [cell.contentView addSubview:pathLabel];
-        } else cell.detailTextLabel.text = row.path;
+        } else cell.detailTextLabel.text = unavailable ? [@"先开启自动收缩 · " stringByAppendingString:row.path] : row.path;
     }
     return cell;
 }
@@ -430,7 +496,14 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 }
 
 - (void)optionChanged:(UISwitch *)toggle {
-    [NSUserDefaults.standardUserDefaults setBool:toggle.on forKey:toggle.accessibilityIdentifier];
+    FQXSettingRow *row = objc_getAssociatedObject(toggle, RowKey);
+    BOOL enabled = row.inverted ? !toggle.on : toggle.on;
+    if (row.originalToggle) {
+        row.originalToggle.on = enabled;
+        [row.originalToggle sendActionsForControlEvents:UIControlEventValueChanged];
+        return;
+    }
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:toggle.accessibilityIdentifier];
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL selector = NSSelectorFromString(@"refreshForKey:");
     if ([cleanup respondsToSelector:selector])

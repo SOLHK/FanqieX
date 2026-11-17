@@ -17,15 +17,15 @@ from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_NAME = "@rpath/FanqieXExport.dylib"
-INTEGRATED_RELEASES = {0x14E0F: "1.78R15", 0x14E10: "1.78R16", 0x14E13: "1.78R19", 0x14E14: "1.78R20", 0x14E15: "1.78R21", 0x14E16: "1.78R22", 0x14E17: "1.78R23", 0x14E18: "1.78R24", 0x14E19: "1.78R25"}
+INTEGRATED_RELEASES = {0x14E0F: "1.78R15", 0x14E10: "1.78R16", 0x14E13: "1.78R19", 0x14E14: "1.78R20", 0x14E15: "1.78R21", 0x14E16: "1.78R22", 0x14E17: "1.78R23", 0x14E18: "1.78R24", 0x14E19: "1.78R25", 0x14E1A: "1.78R26"}
 SOURCE_FILES = ("native/BookExport.m", "native/BookExportFormats.m", "native/BookExportFormats.h",
                 "native/BookExportSource.m", "native/BookExportSource.h")
 SETTINGS_FILES = ("native/FanqieXSettingsBackup.m", "native/FanqieXSettingsCodec.c", "native/FanqieXSettingsCodec.h",
                   "native/FanqieXNavigationPreferences.m", "native/NavigationPreferenceLogic.h")
 SETTINGS_INSTALL_NAME = "@rpath/FanqieX-1.78R23.dylib"
-VIDEO_EXPORT_INSTALL_NAMES = ("@rpath/FanqieX-1.78R24.dylib", "@rpath/FanqieX-1.78R25.dylib")
+VIDEO_EXPORT_INSTALL_NAMES = ("@rpath/FanqieX-1.78R24.dylib", "@rpath/FanqieX-1.78R25.dylib", "@rpath/FanqieX-1.78R26.dylib")
 VIDEO_EXPORT_FILES = ("native/FanqieXSettingsMenu.m", "native/FanqieXCleanup.m",
-                      "native/FanqieXVideoExport.m", "native/VideoContainer.h")
+                      "native/FanqieXVideoExport.m", "native/VideoContainer.h", "native/FanqieXMotion.m")
 FRAMEWORKS = ("Foundation", "UIKit", "CoreGraphics")
 
 
@@ -154,7 +154,7 @@ def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INS
     if install_name == SETTINGS_INSTALL_NAME or install_name in VIDEO_EXPORT_INSTALL_NAMES:
         arguments.extend(("-framework", "CoreFoundation", "-framework", "UniformTypeIdentifiers", "-lz"))
     if install_name in VIDEO_EXPORT_INSTALL_NAMES:
-        arguments.extend(("-framework", "AVFoundation"))
+        arguments.extend(("-framework", "AVFoundation", "-framework", "QuartzCore"))
     command([*arguments, "-lobjc", "-lSystem"])
     return binary
 

@@ -181,7 +181,7 @@ def check_settings(cpu, runtime, labels, options, titles):
     navigation = runtime.obj("UINavigationItem", "plugin settings navigation",
                              rightBarButtonItem=runtime.obj("UIBarButtonItem", "done"))
     state(options)["navigationItem"] = navigation
-    new_layout = release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25")
+    new_layout = release_version(runtime.data) in ("1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26")
     if new_layout:
         for name, base, selector, imp, signature in (
             ("FanqieAdBlockOptionsController", "UIViewController", "viewDidLayoutSubviews",
@@ -194,7 +194,7 @@ def check_settings(cpu, runtime, labels, options, titles):
         options = runtime.obj("FanqieAdBlockOptionsController", "settings controller", **state(options))
         runtime.settings_layout_calls = 0
         runtime.screenshot_share_calls = []
-        if release_version(runtime.data) in ("1.78R19", "1.78R25"):
+        if release_version(runtime.data) in ("1.78R19", "1.78R25", "1.78R26"):
             for selector, encoding in (
                 ("numberOfSectionsInTableView:", "q24@0:8@16"),
                 ("tableView:numberOfRowsInSection:", "q32@0:8@16q24"),
@@ -206,7 +206,7 @@ def check_settings(cpu, runtime, labels, options, titles):
                              runtime.SETTINGS_DATA_SOURCE, encoding)
         call(cpu, labels, "LFQH_FQHPageInstall")
     runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieX.DiagnosticsEnabled", None)
-    grouped = release_version(runtime.data) in ("1.78R24", "1.78R25")
+    grouped = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26")
     if grouped:
         runtime._class("FQXBookExportPlugin", "NSObject")
     table = state(options)["tableView"]
@@ -263,7 +263,7 @@ def check_settings(cpu, runtime, labels, options, titles):
             require(search_frame[0] == 16. and search_frame[2] == width - 32.,
                     "Search field has symmetric insets")
         require(runtime.settings_layout_calls == 2, "The options layout forwards to the original")
-        if release_version(runtime.data) in ("1.78R19", "1.78R25"):
+        if release_version(runtime.data) in ("1.78R19", "1.78R25", "1.78R26"):
             require(send(cpu, runtime, options, "numberOfSectionsInTableView:", table)["result"] == 1,
                     "The primary settings page keeps only the native appearance section")
             require(send(cpu, runtime, options, "tableView:numberOfRowsInSection:", table, 0)["result"] == 1,
@@ -324,7 +324,7 @@ def check_settings(cpu, runtime, labels, options, titles):
         require(shown(present) and not shown(absent), f"Search filters groups by fuzzy setting title: {query!r}")
     send(cpu, runtime, state(search)["delegate"], "searchBar:textDidChange:", search, runtime.text_object(""))
     require(shown("暂停时显示界面") and shown("短剧右侧互动按钮"), "Clearing search restores groups")
-    if release_version(runtime.data) in ("1.78R23", "1.78R25"):
+    if release_version(runtime.data) in ("1.78R23", "1.78R25", "1.78R26"):
         for title, selector in (("默认启动页", "openStartupFromController:"),
                                 ("书城顶部分类", "openBookstoreFromController:"),
                                 ("设置备份与恢复", "presentFromController:")):
@@ -363,7 +363,7 @@ def check_settings(cpu, runtime, labels, options, titles):
                 runtime.get_method(runtime.classes["FQXSettingsMenu"], runtime.sel("fqab_156_presentDiagnostics:")),
                 "Grouped diagnostic export and its asynchronous completion stay on the visible controller")
         state(options)["navigationController"] = original_navigation
-    if release_version(runtime.data) in ("1.78R22", "1.78R25"):
+    if release_version(runtime.data) in ("1.78R22", "1.78R25", "1.78R26"):
         compact = by_title["短剧滚动自动收缩"]
         position_row = next(v for v in descendants(header)
                             if runtime.string_value(state(v).get("accessibilityLabel", 0)) == "收缩位置")
@@ -421,6 +421,6 @@ def check_settings(cpu, runtime, labels, options, titles):
     names = [f"底栏显示：{title}" for title in titles] + [
         "书架显示今日看听读时长", "我的显示金币与福利卡片", "阅读菜单显示上下栏背景",
         "横屏画面铺满（等比裁切）", "书架显示筛选按钮", "书外主题跟随系统"]
-    if release_version(runtime.data) in ("1.78R20", "1.78R25"):
+    if release_version(runtime.data) in ("1.78R20", "1.78R25", "1.78R26"):
         names.append("我的显示推荐内容")
     return [by_title[title] for title in names]

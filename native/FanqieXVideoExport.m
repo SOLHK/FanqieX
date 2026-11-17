@@ -11,6 +11,8 @@ enum { PlaybackPlaying = 1 };
 static void (*NativePlaybackChanged)(id, SEL, id, NSInteger);
 static __weak UIView *RecentPlayer;
 static __weak id RecentEngine;
+static __weak id RecentVideoInfo;
+static NSString *RecentVideoID;
 static NSURL *RecentSource;
 static NSString *RecentTitle;
 static NSString *RecentFormat;
@@ -72,11 +74,17 @@ static NSString *SafeTitle(id value) {
 static void CaptureSource(UIView *player, id engine) {
     id source = HostObject(engine, @selector(playSource));
     id urlInfo = HostObject(source, NSSelectorFromString(@"usingUrlInfo"));
+    id videoInfo = HostObject(HostObject(player, @selector(model)), NSSelectorFromString(@"videoInfo"));
+    id videoID = HostObject(videoInfo, NSSelectorFromString(@"videoId"));
     RecentPlayer = player;
     RecentEngine = engine;
+    RecentVideoInfo = videoInfo;
+    RecentVideoID = [videoID isKindOfClass:NSString.class] ? [videoID copy] : nil;
     RecentSource = nil;
     RecentFormat = nil;
-    RecentTitle = SafeTitle(HostObject(HostObject(player, @selector(model)), NSSelectorFromString(@"videoTitle")));
+    // FQVPlayerModel has videoInfo, not videoTitle. A video ID also keeps
+    // separate episodes distinguishable when the host supplies no title.
+    RecentTitle = SafeTitle(RecentVideoID.length ? [@"短剧视频-" stringByAppendingString:RecentVideoID] : nil);
     RecentUnavailableReason = nil;
     if (HostFlag(urlInfo, NSSelectorFromString(@"encrypt")) || HasProtectionMarker(HostObject(urlInfo, NSSelectorFromString(@"fps"))) ||
         HasProtectionMarker(HostObject(engine, NSSelectorFromString(@"fpsLicenseUrl"))) ||
@@ -127,6 +135,7 @@ static NSString *ContainerExtension(NSURL *file) {
     NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:file error:NULL];
     NSData *prefix = [handle readDataUpToLength:4096 error:NULL];
     [handle closeAndReturnError:NULL];
+    if (FQXVideoIsHLSPlaylist(prefix.bytes, prefix.length)) return @"m3u8";
     const char *extension = FQXVideoContainerExtension(prefix.bytes, prefix.length);
     return extension ? [NSString stringWithUTF8String:extension] : nil;
 }
@@ -165,8 +174,16 @@ static NSString *ContainerExtension(NSURL *file) {
     UIView *player = RecentPlayer;
     id engine = RecentEngine;
     if (player && engine && HostObject(player, NSSelectorFromString(@"videoEngine")) == engine) {
+        id videoInfo = HostObject(HostObject(player, @selector(model)), NSSelectorFromString(@"videoInfo"));
+        id videoID = HostObject(videoInfo, NSSelectorFromString(@"videoId"));
         NSURL *current = MediaSourceURL(HostObject(HostObject(engine, @selector(playSource)), NSSelectorFromString(@"currentUrl")));
-        if ([current isEqual:RecentSource]) CaptureSource(player, engine);
+        // The CDN URL can become ready after the playing callback or change
+        // with resolution. Refresh only the captured episode, not a reused
+        // player's next preloaded model.
+        BOOL sameVideo = RecentVideoID.length ?
+            ([videoID isKindOfClass:NSString.class] && [RecentVideoID isEqualToString:videoID]) :
+            (videoInfo && videoInfo == RecentVideoInfo);
+        if (sameVideo || [current isEqual:RecentSource]) CaptureSource(player, engine);
     }
     FQXVideoExport *page = [[self alloc] initWithStyle:UITableViewStyleInsetGrouped];
     page.title = @"导出视频";
@@ -205,7 +222,7 @@ static NSString *ContainerExtension(NSURL *file) {
     (void)section;
     if (!self.source) return self.unavailableReason;
     return self.hls ? @"保存系统支持的 HLS 离线包。请保持 App 打开直到完成。"
-                    : @"可保存原文件，或导出当前视频和设备支持的封装格式。";
+                    : @"原文件保留视频本身的格式。MP4、MOV、M4V 转换取决于当前视频与设备支持。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -323,6 +340,13 @@ static NSString *ContainerExtension(NSURL *file) {
 - (void)inspectFile:(NSURL *)input extension:(NSString *)extension directory:(NSURL *)directory {
     NSString *sourceExtension = ContainerExtension(input);
     BOOL original = !extension.length;
+    if ([sourceExtension isEqualToString:@"m3u8"]) {
+        self.hls = YES;
+        [self.tableView reloadData];
+        if (original) [self startHLSPackageInDirectory:directory];
+        else [self finishDirectory:directory file:nil error:@"此来源是 HLS 视频，请选择 HLS 离线包保存。"];
+        return;
+    }
     if (original && !sourceExtension) {
         [self finishDirectory:directory file:nil error:@"无法识别原文件格式。可尝试 MP4、MOV 或 M4V。"];
         return;

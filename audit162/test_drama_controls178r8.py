@@ -137,7 +137,7 @@ def exercise(data, labels, novel_glass):
     publish = rt.view("UIButton", "native publish target", (32., 0., 42., 32.), entrance,
                       originalAction="publish")
     legacy = rt.obj("UIImage", "legacy backed toggle")
-    centered_danmaku = release_version(data) in ("1.78R24", "1.78R25")
+    centered_danmaku = release_version(data) in ("1.78R24", "1.78R25", "1.78R26")
     icon_stock = (1., 3., 24., 24.) if centered_danmaku else (0., 0., 32., 32.)
     icon = rt.view("UIImageView", "native switch glyph", icon_stock, toggle, image=legacy, contentMode=0)
     rt.objects[entrance].state.update(capsuleView=capsule, toggleButton=toggle, iconView=icon, legacyImage=legacy)
@@ -255,11 +255,11 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     version = release_version(data)
-    require(version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R25"),
+    require(version in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R25", "1.78R26"),
             "Use a supported FanqieX candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])
-    report = {"passed": True, **exercise(data, labels, version in ("1.78R17", "1.78R25")), "device_tested": False}
+    report = {"passed": True, **exercise(data, labels, version in ("1.78R17", "1.78R25", "1.78R26")), "device_tested": False}
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 

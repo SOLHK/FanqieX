@@ -153,7 +153,7 @@ def exercise(data,labels):
         r.objects[cell].state[key]=r.label(key,cell,(0,-8,34,34),"圈子",alignment=0)
         r.objects[r.objects[cell].state[key]].state["transform"]=(1.,0.,0.,1.,0.,0.)
     for i,model in enumerate(models): send(c,r,view,"refreshCellModel:index:",model,i)
-    if release_version(data) in ("1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R25"):
+    if release_version(data) in ("1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R25", "1.78R26"):
         collection=r.view("UICollectionView","actual title collection",(0,0,440,34),view)
         r.objects[view].state["collectionView"]=collection
         first=r.view(CELL,"first frame before UIKit layout",(20,0,46,34),collection,cellModel=models[0],layout_passes=0)

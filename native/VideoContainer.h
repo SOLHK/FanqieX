@@ -6,6 +6,16 @@
 #include <stdint.h>
 #include <string.h>
 
+static inline bool FQXVideoIsHLSPlaylist(const uint8_t *bytes, size_t length) {
+    size_t start = length >= 3 && !memcmp(bytes, "\xEF\xBB\xBF", 3) ? 3 : 0;
+    if (length - start < 8 || memcmp(bytes + start, "#EXTM3U", 7) ||
+        (bytes[start + 7] != '\n' && bytes[start + 7] != '\r')) return false;
+    for (size_t cursor = start + 8; cursor + 7 <= length; ++cursor) {
+        if (bytes[cursor - 1] == '\n' && !memcmp(bytes + cursor, "#EXT-X-", 7)) return true;
+    }
+    return false;
+}
+
 static inline uint32_t FQXVideoBE32(const uint8_t *bytes) {
     return (uint32_t)bytes[0] << 24 | (uint32_t)bytes[1] << 16 |
            (uint32_t)bytes[2] << 8 | bytes[3];

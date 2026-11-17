@@ -4,21 +4,21 @@
 
 #define CLEANUP_OPTIONS(X) \
     X(AuthorWords, "ReaderAuthorWords", "显示作者的话", "reader", YES) \
-    X(ChapterDiscussion, "ReaderChapterDiscussion", "显示章末讨论", "reader", YES) \
+    X(ChapterDiscussion, "ReaderChapterDiscussion", "显示章末讨论入口", "reader", YES) \
     X(ChapterCircle, "ReaderChapterCircle", "显示章末圈子", "reader", YES) \
     X(ChapterForum, "ReaderChapterForum", "显示章末论坛入口", "reader", YES) \
-    X(ChapterGift, "ReaderChapterGift", "显示章末送礼", "reader", YES) \
+    X(ChapterGift, "ReaderChapterGift", "显示章末送礼物", "reader", YES) \
     X(ChapterEndActions, "ReaderChapterEndActions", "显示最新章节底部三个按钮", "reader", YES) \
-    X(ReaderComments, "ReaderComments", "显示开启评论按钮", "reader", YES) \
-    X(ReaderEarnMore, "ReaderEarnMore", "显示赚更多", "reader", YES) \
-    X(SpeechFloat, "ReaderSpeechFloat", "显示朗读悬浮按钮", "reader", YES) \
-    X(ChapterEndDrama, "ReaderChapterEndDrama", "显示底部改编剧入口", "reader", YES) \
-    X(MinePublish, "MinePublish", "显示发布悬浮按钮", "mine", YES) \
+    X(ReaderComments, "ReaderComments", "显示章末开启评论", "reader", YES) \
+    X(ReaderEarnMore, "ReaderEarnMore", "显示阅读页去赚更多", "reader", YES) \
+    X(SpeechFloat, "ReaderSpeechFloat", "显示阅读页听书悬浮按钮", "reader", YES) \
+    X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
+    X(MinePublish, "MinePublish", "显示我的页面发帖按钮", "mine", YES) \
     X(MineRecommendations, "MineRecommendations", "显示推荐内容", "mine", YES) \
     X(MineBenefits, "MineBenefitsCard", "显示金币与福利卡片", "mine", YES) \
     X(ShelfBanner, "ShelfRecommendationBanner", "显示书架推荐横幅", "shelf", YES) \
-    X(ShelfImport, "ShelfLocalImport", "显示导入本地图书入口", "shelf", YES) \
-    X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架动态漫推荐", "shelf", YES) \
+    X(ShelfImport, "ShelfLocalImport", "显示书架本地书导入入口", "shelf", YES) \
+    X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架漫剧推荐", "shelf", YES) \
     X(Foreground, "NotificationsForeground", "显示前台通知提醒", "notifications", YES) \
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \

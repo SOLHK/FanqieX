@@ -3367,12 +3367,11 @@ static Size DramaCategoryCellSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj
         "fqx_originalDramaTitleSize:layout:path:"))(self,cmd,collection,layout,path);
     Obj models=Enabled() && FQHGlassAvailable() ? DramaCategoryCellModels(self) : (Obj)0;
     if (models && stock.width>0)
-        stock.width=DramaCategoryCellVisible(models,path) ? stock.width+12 : 0.5;
+        stock.width=DramaCategoryCellVisible(models,path) ? stock.width : 0.5;
     return stock;
 }
 
 static double DramaCategoryCellSpacing(Obj self,Sel cmd) {
-    if (Enabled() && FQHGlassAvailable() && DramaCategoryCellModels(self)) return 0;
     return ((double(*)(Obj,Sel))Original("SSHGBookStoreCategoryTitleView","fqx_originalDramaInnerCellSpacing"))(self,cmd);
 }
 
@@ -3463,12 +3462,19 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
         Rect bounds=Bounds(categories),first=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,firstIndex),categories);
         Rect last=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,lastIndex),categories);
         if (VisibleRect(first) && VisibleRect(last) && VisibleRect(bounds)) {
-            double left=__builtin_fmax(bounds.x-10,first.x-10);
-            double right=__builtin_fmin(bounds.x+bounds.width+10,last.x+last.width+10);
+            // Keep the host's title widths and hit regions. The capsule covers
+            // the realized cells, including the final title during relayout.
+            double left=first.x-10;
+            double right=last.x+last.width+10;
             double height=__builtin_fmin(DramaHeaderButtonHeight,bounds.height);
             capsule=(Rect){left,first.y+(first.height-height)/2,right-left,height};
-            if (InstanceABI(tabs,"selectedIndex","q16@0:8")) {
-                I index=((I(*)(Obj,Sel))Message)(tabs,sel_registerName("selectedIndex"));
+            Obj current=Get(Get(header,"delegate"),"currentTabModel");
+            if (current && models) {
+                I index=-1,type=DramaCategoryType(current);
+                for (U i=0;i<DramaCategoryCount(models);++i) {
+                    Obj model=At(models,i);
+                    if (model==current || (type>=0 && DramaCategoryType(model)==type)) { index=(I)i; break; }
+                }
                 if (index>=0 && (U)index<count && DramaCategoryButtonVisible(models,index)) {
                     Rect selected=Convert(collection,DramaCategoryLayoutFrame(tabs,collection,index),categories);
                     double start=__builtin_fmax(left+3,selected.x+2);
@@ -3577,7 +3583,7 @@ static void DramaVisibilityHeaderAttached(Obj self,Sel cmd) {
 
 static void DramaVisibilityHeaderBounds(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchHeaderBounds"))(self,cmd);
-    DramaVisibilityKeepSearchHidden(self);
+    DramaVisibilityApplyHeader(self);
 }
 
 static void DramaVisibilitySearchTransitionFinished(Obj self,Sel cmd,B visible) {
@@ -7061,6 +7067,9 @@ static B BottomCompactActive178R7(Obj bar) {
 }
 static void BottomSetCompact178(Obj bar,B compact) {
     if (BottomCompactActive178R7(bar)==compact) return;
+    Obj proxy=BottomWeakValue178(bar,BottomProxyBox178Key);
+    ((void(*)(Obj,Sel,Obj,Obj))Message)(Lookup("FQXDockMotion"),
+        sel_registerName("prepareDock:inBar:"),proxy,bar);
     objc_setAssociatedObject(bar,BottomCompact178Key,compact ? BoolBox(1) : (Obj)0,1);
     if (FQDDiagnosticsEnabled()) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
@@ -7644,23 +7653,10 @@ void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
     Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
     B compact=BottomCompactActive178R7(BottomWeakValue178(proxy,BottomBarBox178Key));
     if (lastFrame && lastCompact && BoolProp(lastCompact,"boolValue")!=compact) {
-        Rect from=UnboxRect(lastFrame),bounds=Bounds(proxy);
-        Point center={from.x+from.width*0.5,from.y+from.height*0.5};
-        from=(Rect){bounds.x,bounds.y,from.width,from.height};
-        Obj layer=Get(proxy,"layer"),value=Lookup("NSValue"),animationClass=Lookup("CABasicAnimation");
-        for (U i=0;i<2;++i) {
-            Obj key=Text(i ? "position" : "bounds");
-            Obj animation=O1(animationClass,"animationWithKeyPath:",key);
-            Obj start=i ? ((Obj(*)(Obj,Sel,Point))Message)(value,sel_registerName("valueWithCGPoint:"),center) : RectBox(from);
-            V1(animation,"setFromValue:",start);
-            ((void(*)(Obj,Sel,double))Message)(animation,sel_registerName("setDuration:"),0.22);
-            ((void(*)(Obj,Sel,Obj,Obj))Message)(layer,sel_registerName("addAnimation:forKey:"),animation,key);
-            if (compact && i) {
-                Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
-                Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
-                ((void(*)(Obj,Sel,Obj,Obj))Message)(Get(button,"layer"),sel_registerName("addAnimation:forKey:"),animation,key);
-            }
-        }
+        Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
+        Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+        ((void(*)(Obj,Sel,Obj,Rect,B,Obj))Message)(Lookup("FQXDockMotion"),
+            sel_registerName("animateDock:fromFrame:compact:button:"),proxy,UnboxRect(lastFrame),compact,button);
     }
     if (!lastFrame || !SameRect(UnboxRect(lastFrame),frame))
         objc_setAssociatedObject(proxy,BottomVisualFrame178R7Key,RectBox(frame),1);

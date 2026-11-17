@@ -56,6 +56,16 @@ int main(void) {
     assert(!FQXVideoContainerExtension(html, sizeof(html) - 1));
     assert(!FQXVideoContainerExtension(hls, sizeof(hls) - 1));
     assert(!FQXVideoContainerExtension(NULL, 0));
+    assert(FQXVideoIsHLSPlaylist(hls, sizeof(hls) - 1));
+    const uint8_t hlsMaster[] = "\xEF\xBB\xBF" "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=100000\r\n720p.m3u8\r\n";
+    assert(FQXVideoIsHLSPlaylist(hlsMaster, sizeof(hlsMaster) - 1));
+    const uint8_t musicPlaylist[] = "#EXTM3U\n#EXTINF:3,audio\nsong.mp3\n";
+    const uint8_t invalidPlaylist[] = "#EXTM3UX\n#EXT-X-VERSION:3\n";
+    assert(!FQXVideoIsHLSPlaylist(musicPlaylist, sizeof(musicPlaylist) - 1));
+    assert(!FQXVideoIsHLSPlaylist(invalidPlaylist, sizeof(invalidPlaylist) - 1));
+    assert(!FQXVideoIsHLSPlaylist(html, sizeof(html) - 1));
+    for (size_t length = 0; length < 8; ++length) assert(!FQXVideoIsHLSPlaylist(hls, length));
+    assert(!FQXVideoIsHLSPlaylist(NULL, 0));
     puts("PASS: video container signatures, distinct original formats and invalid input rejection");
     return 0;
 }

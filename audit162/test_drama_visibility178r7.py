@@ -61,6 +61,7 @@ class Runtime(PageRuntime):
             (COORDINATOR, "prepareColdStartSearchButtonIfNeeded", "v16@0:8", self.HOST_GETTER),
             (COORDINATOR, SEARCH_ICON_RETURN, "v16@0:8", self.HOST_GETTER),
             (HEADER, "didMoveToWindow", "v16@0:8", self.LAYOUT_IMP),
+            (HEADER, "layoutSubviews", "v16@0:8", self.LAYOUT_IMP),
             (HEADER, "updateTabViewWithContentSize:", "v32@0:8{CGSize=dd}16", self.LAYOUT_IMP),
             (HEADER, "applySearchBarVisibilityForCurrentLayout", "d16@0:8", self.HOST_GETTER),
             (HEADER, "updateFindDramaSearchAlphaV731:", "v24@0:8d16", self.HOST_GETTER),
@@ -103,6 +104,7 @@ class Runtime(PageRuntime):
         self.category_reenter = False
         self.category_taps = []
         self.category_paths = {}
+        self.keep_stale_category_index = False
         self.search_actions = 0
 
     def responds(self, receiver, name):
@@ -255,7 +257,9 @@ class Runtime(PageRuntime):
                 self.category_taps.append(self.objects[cpu.x[3]].state["item"])
                 return self.finish(cpu)
             if name == HEADER_SELECTED:
-                self.objects[state["simpleTabView"]].state["selectedIndex"] = self.objects[cpu.x[2]].state["index"]
+                state["currentTabModel"] = cpu.x[2]
+                if not self.keep_stale_category_index:
+                    self.objects[state["simpleTabView"]].state["selectedIndex"] = self.objects[cpu.x[2]].state["index"]
                 return self.finish(cpu)
             return self.finish(cpu, int(state.get(name, 0)))
         if pc - self.slide == 0xa5d4 and name in (
@@ -277,17 +281,19 @@ def exercise(data, labels):
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), simple_header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
     version = release_version(data)
-    synchronized_search = version in ("1.78R22", "1.78R25")
-    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25"}
-    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25"}
+    native_category_geometry = version == "1.78R26"
+    category_regressions = []
+    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26")
+    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26"}
+    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
     search_stock_frame = (402., 8., 26., 26.) if compact_header else (392., 0., 44., 44.)
     slot = rt.view("UIView", "native magnifier slot", search_stock_frame, search)
     image = rt.obj("UIImage", "app magnifier")
     icon = rt.view("UIImageView", "native magnifier", (0., 0., 26., 26.) if compact_header else (9., 9., 26., 26.),
                    slot, image=image, contentMode=0, nativeAction="search")
     bar = rt.view("UIView", "fresh find-drama search background")
-    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25"}
-    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25"}
+    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
+    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
     if first_frame_checked:
         original = bar
         send(cpu, rt, search, "setSearchBgView:", original)
@@ -359,7 +365,7 @@ def exercise(data, labels):
         require(not search_shown() and hidden(slot) and hidden(icon),
                 "Feed appearance with a pending title row cannot reveal either search surface")
 
-    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25"}
+    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}
     if glass_checked:
         models = [rt.obj(MODEL, f"category {index}", index=index, tabType=kind)
                   for index, kind in enumerate((7, 11, 103))]
@@ -369,7 +375,7 @@ def exercise(data, labels):
                        (54., 0., 36., 44.), (100., 0., 32., 44.)])
         collection = rt.view("UICollectionView", "native category collection", (0., 0., 140., 44.), tabs)
         rt.objects[tabs].state["collectionView"] = collection
-        rt.objects[controller].state.update(simpleTabView=tabs, tabModels=rows)
+        rt.objects[controller].state.update(simpleTabView=tabs, tabModels=rows, currentTabModel=models[0])
 
         send(cpu, rt, controller, "relayoutHeaderView")
         group, search_glass = material(categories), material(search_surface)
@@ -418,6 +424,61 @@ def exercise(data, labels):
         send(cpu, rt, controller, HEADER_SELECTED, models[2])
         require(rt.objects[lens].state["frame"][0] > first_x and rt.objects[tabs].state["selectedIndex"] == 2,
                 "The selected pill follows the native selection callback")
+        if native_category_geometry:
+            # Playback has committed 推荐 while the separate title strip still
+            # carries its earlier 看剧 index. This is the reported mismatch.
+            rt.keep_stale_category_index = True
+            send(cpu, rt, controller, HEADER_SELECTED, models[0])
+            require(rt.objects[lens].state["frame"][0] == first_x and
+                    rt.objects[tabs].state["selectedIndex"] == 2,
+                    "The pill follows the committed feed model without rewriting a stale title-strip index")
+            category_regressions.append("committed model wins over stale title-strip index")
+
+            # A horizontal page transition may commit its model before another
+            # controller callback; header layout must redraw that same selection.
+            rt.objects[controller].state["currentTabModel"] = models[1]
+            send(cpu, rt, header, "layoutSubviews")
+            middle_x = rt.objects[lens].state["frame"][0]
+            require(first_x < middle_x < 96. and rt.objects[tabs].state["selectedIndex"] == 2,
+                    "Header layout refreshes the current feed selection after paging")
+            replacement = rt.obj(MODEL, "replacement current model", tabType=11, index=1)
+            rt.objects[controller].state["currentTabModel"] = replacement
+            send(cpu, rt, header, "layoutSubviews")
+            require(rt.objects[lens].state["frame"][0] == middle_x,
+                    "A replaced current model resolves the same native tab type")
+            category_regressions.append("layout and replaced models preserve visible-page selection")
+
+            # Reproduce a native container whose bounds still reflect an older
+            # content-size callback. The last item's real layout ends at x=132.
+            category_state = rt.objects[categories].state
+            x, y, _, height = category_state["frame"]
+            category_state.update(frame=(x, y, 96., height), bounds=(0., 0., 96., 44.))
+            rt.objects[controller].state["currentTabModel"] = models[2]
+            send(cpu, rt, header, "layoutSubviews")
+            gx, _, gw, _ = rt.objects[group].state["frame"]
+            lx, _, lw, _ = rt.objects[lens].state["frame"]
+            require(gx == -2. and gx + gw == 142. and gx + lx + lw == 130.,
+                    "The capsule and selection fully cover the last item beyond stale container bounds")
+            require(not rt.objects[group].state["userInteractionEnabled"],
+                    "The category material leaves native touch dispatch in control")
+            x, y, _, height = category_state["frame"]
+            category_state.update(frame=(x, y, 140., height), bounds=(0., 0., 140., 44.))
+            send(cpu, rt, header, "layoutSubviews")
+            category_regressions.append("last item remains fully covered with stale container width")
+
+            paths = [send(cpu, rt, rt.classes["NSIndexPath"], "indexPathForItem:inSection:", index, 0)["result"]
+                     for index in range(3)]
+            native_widths = []
+            for path in paths:
+                send(cpu, rt, tabs, CATEGORY_SIZE, collection, 0, path)
+                native_widths.append(cpu.fp(0))
+                send(cpu, rt, tabs, CATEGORY_TAP, collection, path)
+            send(cpu, rt, tabs, CATEGORY_SPACING)
+            require(native_widths == [36., 36., 32.] and cpu.fp(0) == 10. and rt.category_taps == [0, 1, 2],
+                    "Visible cell widths, spacing and all native click indices are unchanged")
+            rt.category_taps.clear()
+            rt.keep_stale_category_index = False
+            category_regressions.append("native cell sizing spacing and click indices preserved")
         options[SEARCH_KEY] = False
         send(cpu, rt, controller, "relayoutHeaderView")
         x, _, width, _ = rt.objects[group].state["frame"]
@@ -436,21 +497,24 @@ def exercise(data, labels):
             attributes = {}
             x = 8.
             widths = []
+            send(cpu, rt, tabs, CATEGORY_SPACING)
+            spacing = cpu.fp(0)
             for path in paths:
                 send(cpu, rt, tabs, CATEGORY_SIZE, collection, 0, path)
                 width, height = cpu.fp(0), cpu.fp(1)
                 widths.append(width)
                 attributes[path] = rt.obj("UICollectionViewLayoutAttributes", "native flow geometry",
                                           frame=(x, 0., width, height))
-                x += width
+                x += width + spacing
             send(cpu, rt, tabs, CATEGORY_SPACING)
-            require(widths == [48., 0.5, 44.] and cpu.fp(0) == 0.,
-                    "Hiding the middle category collapses its width and removes the extra flow gap")
+            expected_widths = [36., 0.5, 32.] if native_category_geometry else [48., 0.5, 44.]
+            require(widths == expected_widths and cpu.fp(0) == (10. if native_category_geometry else 0.),
+                    "Hiding the middle category collapses its width with the intended flow spacing")
             state = rt.objects[collection].state
             state["attributesByPath"] = attributes
             send(cpu, rt, controller, "relayoutHeaderView")
             x, _, width, _ = rt.objects[group].state["frame"]
-            require(width == sum(widths) + 20. and rt.origin(categories)[0] + x + width / 2 == 220.,
+            require(width == sum(widths) + 2 * spacing + 20. and rt.origin(categories)[0] + x + width / 2 == 220.,
                     "The compact capsule keeps ten points of inset on both ends and stays centered")
             del options["FanqieX.DramaCategory.11.1"]
             del state["attributesByPath"]
@@ -590,7 +654,7 @@ def exercise(data, labels):
         native_state([source[2], source[1]], 1)
         category_cases.append("native ordering and original selected refresh preserved")
 
-    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25"}:
+    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"}:
         titles = ["推荐", "漫剧", "看剧"]
         source = [rt.obj(MODEL, title, tabType=kind, title=rt.text_object(title), index=index)
                   for index, (kind, title) in enumerate(zip((7, 11, 103), titles))]
@@ -687,6 +751,7 @@ def exercise(data, labels):
 
     return {"independent_combinations": 8, "native_hidden_state_unchanged": True,
             "independent_category_cases": category_cases,
+            "category_selection_geometry_regressions": category_regressions,
             "header_glass_and_search_centering_checked": glass_checked,
             "native_search_fade_and_return_checked": always_visible_search,
             "matching_search_and_compact_categories_checked": compact_header,
@@ -704,7 +769,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25"),
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26"),
             "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])

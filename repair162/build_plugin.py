@@ -21,7 +21,7 @@ VERSION, ENCODED = '1.6.2', 0x10602
 RELEASES = {VERSION: ENCODED, '1.6.3': 0x10603, '1.6.4': 0x10604, '1.6.5': 0x10605,
  '1.6.6': 0x10606, '1.6.7': 0x10607, '1.7.1': 0x10701, '1.7.2': 0x10702,
  '1.7.3': 0x10703, '1.7.4': 0x10704, '1.74': 0x14a00, '1.75': 0x14b00, '1.76': 0x14c00,
- '1.78': 0x14e00, '1.78R2': 0x14e02, '1.78R3': 0x14e03, '1.78R4': 0x14e04, '1.78R5': 0x14e05, '1.78R6': 0x14e06, '1.78R7': 0x14e07, '1.78R8': 0x14e08, '1.78R9': 0x14e09, '1.78R10': 0x14e0a, '1.78R11': 0x14e0b, '1.78R12': 0x14e0c, '1.78R13': 0x14e0d, '1.78R14': 0x14e0e, '1.78R15': 0x14e0f, '1.78R16': 0x14e10, '1.78R19': 0x14e13, '1.78R20': 0x14e14, '1.78R21': 0x14e15, '1.78R22': 0x14e16, '1.78R23': 0x14e17, '1.78R24': 0x14e18, '1.78R25': 0x14e19}
+ '1.78': 0x14e00, '1.78R2': 0x14e02, '1.78R3': 0x14e03, '1.78R4': 0x14e04, '1.78R5': 0x14e05, '1.78R6': 0x14e06, '1.78R7': 0x14e07, '1.78R8': 0x14e08, '1.78R9': 0x14e09, '1.78R10': 0x14e0a, '1.78R11': 0x14e0b, '1.78R12': 0x14e0c, '1.78R13': 0x14e0d, '1.78R14': 0x14e0e, '1.78R15': 0x14e0f, '1.78R16': 0x14e10, '1.78R19': 0x14e13, '1.78R20': 0x14e14, '1.78R21': 0x14e15, '1.78R22': 0x14e16, '1.78R23': 0x14e17, '1.78R24': 0x14e18, '1.78R25': 0x14e19, '1.78R26': 0x14e1a}
 PRODUCT_NAME = 'FanqieX'
 BASE, CODE_LIMIT, DATA_BASE, DATA_LIMIT, EXT_BASE = 0x800, 0x4000, 0x11900, 0x14000, 0x14000
 SETTINGS_START, SETTINGS_VERSION, SETTINGS_END = 0xec7a, 0xec84, 0xecbc
@@ -59,9 +59,9 @@ def compose_assembly(path, version=VERSION):
  extension=['native_surface.s','native_guard.s','glass_interaction.s','native_selection.s','interaction_diagnostics.s','control_geometry.s','feed_viewport.s','reader_fastpath.s','reader_diagnostics.s','diagnostic_performance.s']
  if version != VERSION:
   extension.append('hook_ownership.s')
- if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+ if version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
   extension.extend(('startup_popup.s', 'tabbar_spacing.s', 'diagnostic_limits.s', 'ad_decisions.s'))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
   extension.append('home_glass.s')
  for group, files in [('COMPONENT',['material_lifecycle.s','diagnostic_ui.s','diagnostic_store.s']),
                        ('EXTENSION',extension)]:
@@ -70,12 +70,12 @@ def compose_assembly(path, version=VERSION):
    parts=path.with_name(filename).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2, 'Component boundary: '+filename)
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
-   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25') else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
+   parts=(path.parents[1]/'native'/('FanqieXDiagnostics.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26") else 'LegacyDiagnostics168.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Native diagnostic component boundary')
    code.append(parts[0]); data.append(parts[1])
-  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
-   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25') else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
+  if group == 'EXTENSION' and version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
+   parts=(path.parents[1]/'native'/('AlignedGlass.s' if version in ('1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26") else 'AlignedGlass167.s' if version == '1.6.7' else 'ControlGlass.s' if version == '1.6.6' else 'HomeGlass.s')).read_text().split('// @COMPONENT_DATA')
    need(len(parts)==2,'Home glass component boundary')
    code.append(parts[0]); data.append(parts[1])
   for kind, values in [('CODE',code),('DATA',data)]:
@@ -85,7 +85,7 @@ def compose_assembly(path, version=VERSION):
  return text
 
 def extension_limit(version):
- if version in (RELEASES['1.78R19'], RELEASES['1.78R20'], RELEASES['1.78R21'], RELEASES['1.78R22'], RELEASES['1.78R23'], RELEASES['1.78R24'], RELEASES['1.78R25']):
+ if version in (RELEASES['1.78R19'], RELEASES['1.78R20'], RELEASES['1.78R21'], RELEASES['1.78R22'], RELEASES['1.78R23'], RELEASES['1.78R24'], RELEASES['1.78R25'], RELEASES['1.78R26']):
   return 0x58000
  if version in (RELEASES['1.78R15'], RELEASES['1.78R16']):
   return 0x54000
@@ -124,7 +124,7 @@ def build(source_path, output_path, *, version=VERSION):
  source_path=Path(source_path); output_path=Path(output_path)
  encoded=RELEASES[version]
  isolated=version != VERSION
- profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25')
+ profile164=version in ('1.6.4', '1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26")
  need(source_path.resolve()!=output_path.resolve(),'No in-place edit')
  uploaded=source_path.read_bytes()
  need(len(uploaded)==123280 and hashlib.sha256(uploaded).hexdigest()==UPLOADED_SHA,'Exact uploaded 1.5.8 required')
@@ -159,7 +159,7 @@ def build(source_path, output_path, *, version=VERSION):
  if isolated:
   hook=e['reserved24']
   need(off+128<=hook<e['code_end'] and hook%4==0,'Hook ownership entry bounds')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
   marker=payload.index(b'FQ165HOM')
   home_gate,home_check=struct.unpack_from('<II',payload,marker+8)
   need(all(off+128<=entry<e['code_end'] and entry%4==0 for entry in (home_gate,home_check)),'Host compatibility entries in code')
@@ -185,7 +185,7 @@ def build(source_path, output_path, *, version=VERSION):
  for a,n,link in SITES: replace(a,branch(a,BASE+old[n],link),branch(a,BASE+d[n],link),'Redirect '+n)
  if isolated:
   replace(0x4878,bytes.fromhex('a00200b4'),branch(0x4878,BASE+hook),'Localize legacy hook methods')
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
   check='Validate Fanqie bundle identity' if encoded>=0x10704 else 'Validate same-build host'
   route='Enter the runtime capability installers only in Fanqie' if encoded>=0x10704 else 'Accept compatible build or replay the original UUID gate'
   replace(0x4018,bytes.fromhex('00008052'),branch(0x4018,BASE+home_check,True),check+' under the original constructor unwind frame')
@@ -195,7 +195,7 @@ def build(source_path, output_path, *, version=VERSION):
   replace(0x6568,bytes.fromhex('0010651e'),branch(0x6568,BASE+tabbar),'Set symmetric tab bar safe area margins')
   replace(0x46d8,branch(0x46d8,0xa580,True),branch(0x46d8,BASE+ad_install,True),'Record executed ad decisions')
   unwound, unwind_report = add_native_unwind(bytes(data), obj, image_base=BASE,
-                                            allow_compressed=version in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'))
+                                            allow_compressed=version in ('1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"))
   at, size = unwind_report['section_offset'], unwind_report['section_size']
   replace(at,bytes(data[at:at+size]),unwound[at:at+size],
    'Link compiler-generated native exception unwind frames into the existing metadata slot')
@@ -240,7 +240,7 @@ def build(source_path, output_path, *, version=VERSION):
   # Shift the text after the version and update the UTF-16 length in __cfstring.
   footer=source[SETTINGS_VERSION:SETTINGS_END]
   need(footer.startswith(old_version), 'Original settings footer version')
-  if version in ('1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+  if version in ('1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
    new_footer=(version+'。开关自动保存。退出番茄小说再打开生效。').encode('utf-16le')
   elif version in ('1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9'):
    # The R-series needs one extra UTF-16 code unit. Remove the redundant 后 in the
@@ -281,7 +281,7 @@ def build(source_path, output_path, *, version=VERSION):
   original_allowed.update(range(a,a+4))
  for a in (0x7848,0x7ac4,0x5d50,0x5da0,0x5dec,0x5e38,0x649c):
   original_allowed.update(range(a,a+4))
- if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25'):
+ if version in ('1.6.5', '1.6.6', '1.6.7', '1.7.1', '1.7.2', '1.7.3', '1.7.4', '1.74', '1.75', '1.76', '1.78', '1.78R2', '1.78R3', '1.78R4', '1.78R5', '1.78R6', '1.78R7', '1.78R8', '1.78R9', '1.78R10', '1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R19', '1.78R20', '1.78R21', '1.78R22', '1.78R23', '1.78R24', '1.78R25', "1.78R26"):
   original_allowed.update(range(0x4018,0x4020))
  if isolated:
   original_allowed.update(range(0x4878,0x487c))
