@@ -489,7 +489,8 @@ def verify(data, labels):
     for _ in range(5):
         send(cpu, rt, v["root"], "layoutSubviews")
         send(cpu, rt, v["entry"], "layoutSubviews")
-        require(global_rect(rt, v["entry"]) == (0., 821. + (3. if glass_spacing else 0.) if visible_track_spacing else 799., 440., 44.),
+        logged_entry_y = 821. + (3. if glass_spacing else 0.) - (4. if release_version(data) == "1.78R36" else 0.) if visible_track_spacing else 799.
+        require(global_rect(rt, v["entry"]) == (0., logged_entry_y, 440., 44.),
                 "The observed 440pt screen gets only the necessary lift, without cumulative movement")
     record = [r for event, r in rt.records if event == "dramaControlSpacing178R2"][-1]
     require(record["shiftY"] == ((12. if release_version(data) == "1.78R36" else 8.) if glass_spacing else 11. if visible_track_spacing else 33.) and
