@@ -255,7 +255,7 @@ def verify_native_constraint(data, labels, reference_attribute):
                     "A changed track leaves the full gap before the parent constraint layout: "+selector)
         native_layout(rt, root)
         glass = glass_rect(rt, v["content"])
-        require(track_y-glass[1]-glass[3] == 8. and anchor_state["constant"] == stock-target_gap+(track_y-873.),
+        require(track_y-glass[1]-glass[3] == target_gap and anchor_state["constant"] == stock-target_gap+(track_y-873.),
                 "The changed track updates the episode gap without a parent callback: "+selector)
     if "LFQH_DramaProgressActivated" in labels:
         other = rt.view("SSShortVideoAlbumSeriesBottomInsertView", "outgoing episode", (0., 760., 440., 40.), root,
