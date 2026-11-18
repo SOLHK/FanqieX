@@ -183,7 +183,7 @@ def main():
         return 0x10000000 | ((encoded & 3) << 29) | (((encoded >> 2) & 0x7FFFF) << 5) | register
 
     pc, word, _ = references[0]
-    case("adr_to_unmapped_memory", u32(pc, adr_word(pc, 0x70000, word & 31)), "instruction_addresses")
+    case("adr_to_unmapped_memory", u32(pc, adr_word(pc, 0x80000, word & 31)), "instruction_addresses")
     field_writes = {row['pc'] for row in good['checks']['version_consistency']['details']['shared_event_export_writes']}
     shared_refs = [row for row in references if row[2] == runtime_version and row[1] & 31 == 0
                    and row[0] in field_writes]
