@@ -256,11 +256,18 @@ static void TrackAudioSDK(id sdk){
  sLastAudioSDKManager=sdk;
  os_unfair_lock_unlock(&sAudioTrackLock);
 }
-static void TrackWeakObject(NSHashTable **slot,id obj){
+static void TrackTTSManager(id obj){
  if(!obj)return;
  os_unfair_lock_lock(&sAudioTrackLock);
- if(!*slot)*slot=[NSHashTable weakObjectsHashTable];
- [*slot addObject:obj];
+ if(!sTrackedTTSManagers)sTrackedTTSManagers=[NSHashTable weakObjectsHashTable];
+ [sTrackedTTSManagers addObject:obj];
+ os_unfair_lock_unlock(&sAudioTrackLock);
+}
+static void TrackParaManager(id obj){
+ if(!obj)return;
+ os_unfair_lock_lock(&sAudioTrackLock);
+ if(!sTrackedParaManagers)sTrackedParaManagers=[NSHashTable weakObjectsHashTable];
+ [sTrackedParaManagers addObject:obj];
  os_unfair_lock_unlock(&sAudioTrackLock);
 }
 static NSArray *SnapshotTracked(NSHashTable *table){
@@ -369,13 +376,13 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   SEL si=Sel("initWithReaderManager:");__block IMP oi=NULL;
   IMP hi=imp_implementationWithBlock(^id(id o,id rm){
    id res=((id(*)(id,SEL,id))oi)(o,si,rm);
-   TrackWeakObject(&sTrackedTTSManagers,res);
+   TrackTTSManager(res);
    return res;
   });
   if(!FQXInstallOwnedHook(cls,si,NO,"@24@0:8@16",hi,&oi))imp_removeBlock(hi);
   SEL sa=Sel("onReaderDidAppear:");__block IMP oa=NULL;
   IMP ha=imp_implementationWithBlock(^(id o,id rm){
-   TrackWeakObject(&sTrackedTTSManagers,o);
+   TrackTTSManager(o);
    ((void(*)(id,SEL,id))oa)(o,sa,rm);
    if(!BoolMsg0(o,"isSyncing")&&!BoolMsg0(o,"isActiveForCurrentBook")){
     FQXScheduleStaleReaderAudioUIClean();
@@ -388,7 +395,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   SEL si=Sel("initWithReaderManager:");__block IMP oi=NULL;
   IMP hi=imp_implementationWithBlock(^id(id o,id rm){
    id res=((id(*)(id,SEL,id))oi)(o,si,rm);
-   TrackWeakObject(&sTrackedParaManagers,res);
+   TrackParaManager(res);
    return res;
   });
   if(!FQXInstallOwnedHook(cls,si,NO,"@24@0:8@16",hi,&oi))imp_removeBlock(hi);
