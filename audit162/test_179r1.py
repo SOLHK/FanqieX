@@ -248,10 +248,10 @@ def mine_unified_liquid_glass_card(data, labels):
                 f"{row_class}: unified card uses max_radius 18 and adaptive interface style")
 
         for cell, content, _, _ in items:
-            if release_version(data) == "1.79R3":
+            if release_version(data) in ("1.79R3", "1.79R4"):
                 item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
                 require(item_surface and rt.objects[item_surface].state["frame"] == (4., 2., 62., 56.),
-                        f"{row_class}: 1.79R3 shortcut items get coordinated inner liquid glass buttons")
+                        f"{row_class}: 1.79R3+ shortcut items get coordinated inner liquid glass buttons")
             else:
                 require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"],
                         f"{row_class}: individual shortcut items must not create per-item glass capsules")
@@ -291,7 +291,7 @@ def mine_unified_liquid_glass_card(data, labels):
         results[row_class] = {"card_frame": list(card_state["frame"]), "item_count": len(items),
                               "page_control": page_control > 0}
 
-    if release_version(data) in ("1.79R2", "1.79R3"):
+    if release_version(data) in ("1.79R2", "1.79R3", "1.79R4"):
         # Real 7.4.3 VIP card (SSMyUserCollectionView1Cell with lynxVipView) must never be styled as a shortcut card.
         vip_bg = rt.color("vip.bg")
         vip_row = rt.view("SSMyUserCollectionView1Cell", "Mine VIP card", (16., 120., 408., 72.), rt.ROOT,
@@ -315,15 +315,15 @@ def mine_unified_liquid_glass_card(data, labels):
         require(full_surface and rt.objects[full_surface].state["frame"] == (0., 0., 408., 96.) and
                 not rt.objects[full_row].state["clipsToBounds"],
                 "Full-bounds 7.4.3 shortcut cell unclips row bounds so 18pt liquid glass corners are unclipped")
-        if release_version(data) == "1.79R3":
+        if release_version(data) in ("1.79R3", "1.79R4"):
             require(rt.objects[select_dots].state["backgroundColor"] == clear,
-                    "1.79R3 clears full-width bottom page-control strip so outer card bottom is never chopped")
+                    "1.79R3+ clears full-width bottom page-control strip so outer card bottom is never chopped")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 1
         send(cpu, rt, full_row, "layoutSubviews")
         require(not call(cpu, labels, "LFQH_FQHSurface", full_row)["result"] and
                 rt.objects[full_row].state["clipsToBounds"] and
                 rt.objects[func_view].state["backgroundColor"] == func_bg and
-                (release_version(data) != "1.79R3" or rt.objects[select_dots].state["backgroundColor"] == strip_bg),
+                (release_version(data) not in ("1.79R3", "1.79R4") or rt.objects[select_dots].state["backgroundColor"] == strip_bg),
                 "Disabling glass restores 7.4.3 shortcut cell clipsToBounds and funcView background")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 0
         results["host_743_shortcut"] = {"unclipped_active": True, "select_dots": select_dots > 0}
@@ -376,7 +376,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     version = release_version(data)
-    require(version in ("1.79R1", "1.79R2", "1.79R3"), f"Expected 1.79R1/1.79R2/1.79R3 candidate, got {version}")
+    require(version in ("1.79R1", "1.79R2", "1.79R3", "1.79R4"), f"Expected 1.79R1..1.79R4 candidate, got {version}")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {
         "passed": True,
@@ -389,7 +389,7 @@ def main():
         "mine_unified_card": mine_unified_liquid_glass_card(data, labels),
         "device_tested": False,
     }
-    if version == "1.79R3":
+    if version in ("1.79R3", "1.79R4"):
         report["detail_novel_crossfade"] = detail_novel_crossfade_zero_alpha(data, labels)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

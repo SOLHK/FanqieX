@@ -512,9 +512,7 @@ static id CleanupIvarObject(id target, const char *ivarName) {
 static void (*NativeMineWillAppear)(id, SEL, BOOL);
 static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
     if (NativeMineWillAppear) NativeMineWillAppear(owner, cmd, animated);
-    if ([owner isKindOfClass:NSClassFromString(@"SSMyUser621ViewController")]) {
-        LastMine = owner;
-    }
+    LastMine = owner;
     UIView *bar = HostObject(owner, NSSelectorFromString(@"myUserBar")) ?: CleanupIvarObject(owner, "_myUserBar");
     if ([bar isKindOfClass:UIView.class]) {
         [bar setNeedsLayout];
@@ -550,7 +548,9 @@ static void ApplyAudioRecommendVisibility(UIViewController *vc) {
         "_unlimitedView", "_recommendView", "_unlimitedClickTopView", "_refreshFooter", "_comicsBooksCell"
     };
     if (show) {
-        ShelfRecRestoreController(vc);
+        if (objc_getAssociatedObject(vc, &ShelfRecHiddenViewsKey)) {
+            ShelfRecRestoreController(vc);
+        }
         return;
     }
     for (size_t i = 0; i < sizeof(recIvars) / sizeof(recIvars[0]); ++i) {
@@ -629,12 +629,6 @@ static void AudioReloadUnlimitedView(id self, SEL cmd) {
 static void (*NativeAudioLayoutContent)(id, SEL);
 static void AudioLayoutContent(id self, SEL cmd) {
     NativeAudioLayoutContent(self, cmd);
-    ApplyAudioRecommendVisibility(self);
-}
-
-static void (*NativeAudioDidLayout)(id, SEL);
-static void AudioDidLayout(id self, SEL cmd) {
-    NativeAudioDidLayout(self, cmd);
     ApplyAudioRecommendVisibility(self);
 }
 
@@ -719,7 +713,7 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
             REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
         }
-        REPLACE(NativeMineWillAppear, "SSMyUser621BaseViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
+        REPLACE(NativeMineWillAppear, "SSMyUser621ViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
         REPLACE(NativeAudioLoadUnlimited, "SSNewAudioPlayViewController", "loadUnlimitedRecommend", "v16@0:8", AudioLoadUnlimited);
         REPLACE(NativeAudioPreloadUnlimited, "SSNewAudioPlayViewController", "preLoadAudioPlayUnlimitedRecData", "v16@0:8", AudioPreloadUnlimited);
         REPLACE(NativeAudioLoadRecommendBook, "SSNewAudioPlayViewController", "loadRecommendBook", "v16@0:8", AudioLoadRecommendBook);
@@ -727,7 +721,6 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         REPLACE(NativeAudioReloadRecommendForce, "SSNewAudioPlayViewController", "reloadRecommendUIRequestForce:", "v20@0:8B16", AudioReloadRecommendForce);
         REPLACE(NativeAudioReloadUnlimitedView, "SSNewAudioPlayViewController", "reloadUnlimitedView", "v16@0:8", AudioReloadUnlimitedView);
         REPLACE(NativeAudioLayoutContent, "SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", AudioLayoutContent);
-        REPLACE(NativeAudioDidLayout, "SSNewAudioPlayViewController", "viewDidLayoutSubviews", "v16@0:8", AudioDidLayout);
         REPLACE(NativeAudioWillAppear, "SSNewAudioPlayViewController", "viewWillAppear:", "v20@0:8B16", AudioWillAppear);
         REPLACE(NativeSpeechHidden, "FQReaderSaaSReaderSpeechButton", "setHidden:", "v20@0:8B16", SpeechHidden);
         REPLACE(NativePresentation, "BDUGUserNotificationCenter", "userNotificationCenter:willPresentNotification:withCompletionHandler:", "v40@0:8@16@24@?32", PresentNotification);

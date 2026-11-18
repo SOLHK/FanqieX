@@ -1,6 +1,6 @@
 # FanqieX 测试版与正式版发布规范
 
-当前测试候选：**1.79R3**
+当前测试候选：**1.79R4**
 
 测试分支：`test`  
 正式版分支：`main`（保持 1.76，不自动合并测试改动）
@@ -14,7 +14,15 @@
 - 测试代码和后续修复只推送到 `test`；不得因为构建成功就自动更新 `main`。正式发布必须单独明确操作。
 - 每个测试版在修改日志、GitHub 测试说明和后续打包文件名中使用相同的 R 编号；提交前检查版本与实际构建标识的一致性。不得把不同的构建产物仅改名冒充新编译版本。
 
-## 1.79R3 本轮修复
+## 1.79R4 本轮修复
+
+- **紧急修复 1.79R3 启动白屏卡死 / 打不开软件**：移除 `dyld` `__init_offsets` 加载锁期间对 `UIGlassEffect` / `UICornerConfiguration` `+initialize` 与 `NSOperationQueue.mainQueue` 通知观察器的同步调用；移除首帧对底栏 `UIVisualEffectView` `clipsToBounds` 的布局重写、继承链 `didMoveToWindow` 的同步 `layoutIfNeeded` 与听书页 `viewDidLayoutSubviews` 循环重排，改用零引用弱哈希表按需挂载交互水滴层。
+- **彻底修复耳机单击不能播放/恢复小说**：阻断听书期间 `AVAudioSessionCategoryOptionMixWithOthers` 与 `showCommandCenter = NO` 导致的系统耳机路由丢失，清理 `FQVNowPlayingInfoCenter` 在无视频播放时残留的 `MPRemoteCommandCenter` 冲突目标（避免返回 `CommandFailed` 或禁用 `playCommand`），拦截 `SSAudioMutualExclutionManager` 误删远程指令，并在 `BDFQPlayManager` 异步暂停与 `source = @"play"` / `@"toggle"` 恢复链路中保持播放会话与远程命令激活。
+- 完整保留 1.79R3 的「我的」快捷卡片与内部协调放大液态玻璃按钮、短剧原著 12 pt 间距、智能朗读 1~7 号 iOS 26 液态玻璃、5 项页面净化开关及底栏全尺寸 Apple Store 水滴交互动画。
+
+见 [本版说明](docs/REPAIR_1.79R4.md)。
+
+## 1.79R3 历史修复
 
 - 修复「我的」页面快捷功能卡片底部被分页条白底裁切的问题，同时恢复并协调放大内部每个快捷入口的独立液态玻璃按钮与图标。
 - 彻底修复短剧详情页跨层渐隐（`alpha = 0` 初态）、`maskViewContainer` 约束刷新以及从原著阅读页返回后「原著」胶囊贴着进度条的问题。

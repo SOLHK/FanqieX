@@ -570,6 +570,11 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     if (row.originalToggle) {
         row.originalToggle.on = enabled;
         [row.originalToggle sendActionsForControlEvents:UIControlEventValueChanged];
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshSel = NSSelectorFromString(@"refreshAudioGlass");
+        if ([dockMotion respondsToSelector:refreshSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSel);
+        }
         return;
     }
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:toggle.accessibilityIdentifier];

@@ -5339,9 +5339,8 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     DramaVisibilitySet(scan,showScan);
     DramaVisibilitySet(night,showNight);
     DramaVisibilitySet(search,showSearch);
-    if (Responds(self,"searchButtonView")) DramaVisibilitySet(Get(self,"searchButtonView"),showSearch);
-    if (Responds(self,"searchView")) DramaVisibilitySet(Get(self,"searchView"),showSearch);
-    if (Responds(self,"carouseView")) DramaVisibilitySet(Get(self,"carouseView"),showSearch);
+    static const char *const extra[]={"searchButtonView","searchView","carouseView"};
+    for (U i=0;i<3;++i) if (Responds(self,extra[i])) DramaVisibilitySet(Get(self,extra[i]),showSearch);
     // Both native carousel variants place their outgoing and incoming labels
     // inside searchBgView. Keep the animated words clipped to that pill.
     if (!showSearch || Flag(search,"isHidden")) PageRestore(search);
@@ -5509,6 +5508,15 @@ static void ProfileCardRestorePaints(Obj host) {
     for (U i=0,n=TabCount(all);i<n;++i) ProfileCardSetPaint(At(all,i),0);
     objc_setAssociatedObject(host,ProfileCardTrackedKey,0,1);
 }
+static void ApplyMaxCapsuleStyle(Obj surface,Obj existing,double radius) {
+    if (!surface || surface==existing) return;
+    Obj cfgCls=Lookup("UICornerConfiguration");
+    if (Responds(cfgCls,"capsuleConfigurationWithMaximumRadius:")) {
+        Obj cfg=((Obj(*)(Obj,Sel,double))Message)(cfgCls,sel_registerName("capsuleConfigurationWithMaximumRadius:"),radius);
+        if (cfg) V1(surface,"setCornerConfiguration:",cfg);
+    }
+    Q1(surface,"setOverrideUserInterfaceStyle:",0);
+}
 static void ProfileShortcutExtendForIndicator(Rect *bestCard,Rect b,Obj view,Obj owner,Obj host) {
     if ((!Kind(view,"UIPageControl") && !Kind(view,"FQReaderSaaSBookStoreSelectView")) ||
         Flag(view,"isHidden")) return;
@@ -5519,19 +5527,17 @@ static void ProfileShortcutExtendForIndicator(Rect *bestCard,Rect b,Obj view,Obj
         bestCard->height=__builtin_fmin(b.height-bestCard->y,bottom-bestCard->y);
     }
 }
+static B ProfileCardPlainBox(Obj v) {
+    return Kind(v,"UIView") && !Flag(v,"isHidden") && !Kind(v,"UILabel") &&
+           !Kind(v,"UIImageView") && !Kind(v,"UIControl") && !Kind(v,"SSMyUserCollectionViewFunCell");
+}
 static void ProfileShortcutCardGlass(Obj row,B mounted) {
     if (!row || !Kind(row,"UIView")) return;
     Obj cv=Get(row,"contentView");
     Obj host=(Kind(cv,"UIView") && Get(cv,"superview")==row) ? cv : row;
-    if (Kind(row,"SSMyUserCollectionView1Cell") && Responds(row,"lynxVipView")) {
-        PageRestore(host);
-        ProfileCardRestorePaints(host);
-        ProfileCardSetUnclipped(row,0);
-        if (host!=row) ProfileCardSetUnclipped(host,0);
-        return;
-    }
     Rect b=Bounds(host);
-    if (!mounted || !Enabled() || !FQHGlassAvailable() || !VisibleRect(b)) {
+    if ((Kind(row,"SSMyUserCollectionView1Cell") && Responds(row,"lynxVipView")) ||
+        !mounted || !Enabled() || !FQHGlassAvailable() || !VisibleRect(b)) {
         PageRestore(host);
         ProfileCardRestorePaints(host);
         ProfileCardSetUnclipped(row,0);
@@ -5546,9 +5552,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
     B foundCard=0;
     for (U i=0;i<childCount;++i) {
         Obj child=At(children,i);
-        if (child==existingSurface || !Kind(child,"UIView") || Flag(child,"isHidden") ||
-            Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
-            Kind(child,"SSMyUserCollectionViewFunCell")) continue;
+        if (child==existingSurface || !ProfileCardPlainBox(child)) continue;
         Rect r=Frame(child);
         if (VisibleRect(r) && r.width>=b.width*0.5 && r.height*5>=b.height*2 &&
             r.width<b.width-4 && r.x>=4 && r.x+r.width<=b.width-4) {
@@ -5574,9 +5578,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
     if (host!=row) ProfileCardTrackClear(host,host);
     for (U i=0;i<childCount;++i) {
         Obj child=At(children,i);
-        if (child==existingSurface || !Kind(child,"UIView") || Flag(child,"isHidden") ||
-            Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
-            Kind(child,"SSMyUserCollectionViewFunCell")) continue;
+        if (child==existingSurface || !ProfileCardPlainBox(child)) continue;
         Rect r=Frame(child);
         if (r.width*5<cardFrame.width*4) continue;
         ProfileCardTrackClear(host,child);
@@ -5584,24 +5586,14 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         Obj grand=Get(child,"subviews");
         for (U j=0,gn=TabCount(grand);j<gn;++j) {
             Obj gc=At(grand,j);
-            if (!Kind(gc,"UIView") || Flag(gc,"isHidden") || Kind(gc,"UILabel") ||
-                Kind(gc,"UIImageView") || Kind(gc,"UIControl") ||
-                Kind(gc,"SSMyUserCollectionViewFunCell")) continue;
+            if (!ProfileCardPlainBox(gc)) continue;
             Rect gr=Frame(gc);
             if (gr.width*5>=cardFrame.width*4)
                 ProfileCardTrackClear(host,gc);
         }
     }
     ApplySurface(host,cardFrame,1);
-    Obj surface=FQHSurface(host);
-    if (surface && surface!=existingSurface) {
-        Obj cfgCls=Lookup("UICornerConfiguration");
-        if (Responds(cfgCls,"capsuleConfigurationWithMaximumRadius:")) {
-            Obj cfg=((Obj(*)(Obj,Sel,double))Message)(cfgCls,sel_registerName("capsuleConfigurationWithMaximumRadius:"),18);
-            if (cfg) V1(surface,"setCornerConfiguration:",cfg);
-        }
-        Q1(surface,"setOverrideUserInterfaceStyle:",0);
-    }
+    ApplyMaxCapsuleStyle(FQHSurface(host),existingSurface,18);
     V1(ProfileShortcutOwners(),"addObject:",row);
 }
 static void RestoreProfileEntry(Obj content) {
@@ -5685,15 +5677,7 @@ static void ProfileEntryGlass(Obj self,B order) {
     Rect pillRect={b.x+(b.width-pillW)*0.5,b.y+(b.height-pillH)*0.5,pillW,pillH};
     Obj existingItem=FQHSurface(content);
     ApplySurface(content,pillRect,1);
-    Obj itemSurface=FQHSurface(content);
-    if (itemSurface && itemSurface!=existingItem) {
-        Obj cfgCls=Lookup("UICornerConfiguration");
-        if (Responds(cfgCls,"capsuleConfigurationWithMaximumRadius:")) {
-            Obj cfg=((Obj(*)(Obj,Sel,double))Message)(cfgCls,sel_registerName("capsuleConfigurationWithMaximumRadius:"),14);
-            if (cfg) V1(itemSurface,"setCornerConfiguration:",cfg);
-        }
-        Q1(itemSurface,"setOverrideUserInterfaceStyle:",0);
-    }
+    ApplyMaxCapsuleStyle(FQHSurface(content),existingItem,14);
     V1(ProfileShortcutOwners(),"addObject:",self);
     TrackAppearanceLabel(content,caption,13);
     ProfileCaptionInk(caption,iconsOnly);
@@ -8276,10 +8260,15 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
 }
 static void BottomVisualFrame178R7Key(void) {}
 static void BottomVisualCompact178R7Key(void) {}
-static void BottomLensBox178Key(void) {}
+static void BottomSyncMotion178(Obj bar,Obj proxy,Obj buttons,Obj native,Obj lens) {
+    Obj motion=Lookup("FQXDockMotion");
+    if (motion)
+        ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj))Message)(motion,
+            sel_registerName("syncTabBar:proxy:buttons:native:lens:"),bar,proxy,buttons,native,lens);
+}
 
 void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
-    BottomSetWeak178(proxy,BottomLensBox178Key,lens);
+    if (lens) BottomSyncMotion178(0,proxy,0,native,lens);
     Rect frame=Frame(proxy);
     Obj lastFrame=objc_getAssociatedObject(proxy,BottomVisualFrame178R7Key);
     Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
@@ -8474,11 +8463,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         }
     }
     BottomCompactPresentation178R7(bar,proxy,buttons,native);
-    Obj motion=Lookup("FQXDockMotion");
-    if (motion)
-        ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj))Message)(motion,
-            sel_registerName("syncTabBar:proxy:buttons:native:lens:"),
-            bar,proxy,buttons,native,BottomWeakValue178(proxy,BottomLensBox178Key));
+    BottomSyncMotion178(bar,proxy,buttons,native,0);
     if (FQDDiagnosticsEnabled() && (icons || BottomValue178(11)!=100 || BottomValue178(12)!=100 ||
         BottomFlag178(2))) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
@@ -8497,11 +8482,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     }
 }
 void FQHBottomReset178(Obj bar,Obj proxy) {
-    Obj motion=Lookup("FQXDockMotion");
-    if (motion)
-        ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj))Message)(motion,
-            sel_registerName("syncTabBar:proxy:buttons:native:lens:"),bar,proxy,0,0,0);
-    BottomSetWeak178(proxy,BottomLensBox178Key,0);
+    BottomSyncMotion178(bar,proxy,0,0,0);
     BottomSetCompact178(bar,0);
     BottomSetWeak178(bar,BottomSelectedBox178Key,0);
     BottomCompactPresentation178R7(bar,proxy,0,0);
