@@ -4600,14 +4600,14 @@ void FQHDramaSpacing178R2(Obj root) {
             for (Obj parent=Get(target,"superview");parent && parent!=root;parent=Get(parent,"superview")) {
                 Rect p=DramaSpacingMeasure178R2(parent,root);
                 if (!Belongs(parent,root) || Belongs(progress,parent) || !VisibleRect(p) ||
-                    p.height>b.height*0.6 || p.width<row.width*0.75 ||
-                    p.y<b.y+b.height*0.3 || p.y+p.height>row.y+row.height+16) break;
+                    p.height*5>b.height*3 || p.width<row.width*0.75 ||
+                    (p.y-b.y)*10<b.height*3 || p.y+p.height>row.y+row.height+16) break;
                 target=parent;
             }
             for (Obj seek=Get(progress,"superview");seek && seek!=root;seek=Get(seek,"superview")) {
                 Rect r=Convert(seek,Bounds(seek),root);
                 if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
-                    r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) seekOwner=seek;
+                    r.width>=b.width*0.5 && (r.y-b.y)*5>b.height*3) seekOwner=seek;
             }
             if (!seekOwner && progressContainer) seekOwner=progressContainer;
             if (insert && Belongs(entry,insert)) {
@@ -5494,7 +5494,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
             Kind(child,"SSMyUserCollectionViewFunCell")) continue;
         Rect r=Frame(child);
-        if (VisibleRect(r) && r.width>=b.width*0.5 && r.height>=b.height*0.4 &&
+        if (VisibleRect(r) && r.width>=b.width*0.5 && r.height*5>=b.height*2 &&
             r.width<b.width-4 && r.x>=4 && r.x+r.width<=b.width-4) {
             if (!foundCard || r.width*r.height>bestCard.width*bestCard.height) {
                 bestCard=r; foundCard=1;
@@ -5522,7 +5522,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
             Kind(child,"SSMyUserCollectionViewFunCell")) continue;
         Rect r=Frame(child);
-        if (r.width<cardFrame.width*0.8 || r.height<cardFrame.height*0.4) continue;
+        if (r.width*5<cardFrame.width*4 || r.height*5<cardFrame.height*2) continue;
         ProfileCardTrackClear(host,child);
         Obj grand=Get(child,"subviews");
         for (U j=0,gn=TabCount(grand);j<gn;++j) {
@@ -5531,7 +5531,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
                 Kind(gc,"UIImageView") || Kind(gc,"UIControl") ||
                 Kind(gc,"SSMyUserCollectionViewFunCell")) continue;
             Rect gr=Frame(gc);
-            if (gr.width>=cardFrame.width*0.8 && gr.height>=cardFrame.height*0.4)
+            if (gr.width*5>=cardFrame.width*4 && gr.height*5>=cardFrame.height*2)
                 ProfileCardTrackClear(host,gc);
         }
     }
