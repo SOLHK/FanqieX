@@ -32,8 +32,9 @@ static const void *AudioGradientHiddenKey = &AudioGradientHiddenKey;
 static const void *AudioEdgeHiddenKey = &AudioEdgeHiddenKey;
 static const void *AudioShadowOpacityKey = &AudioShadowOpacityKey;
 static const void *AudioLabelColorKey = &AudioLabelColorKey;
-static const void *AudioBackdropFrameKey = &AudioBackdropFrameKey;
-static const void *AudioBackdropAppliedKey = &AudioBackdropAppliedKey;
+static const void *AudioBackdropPinnedKey = &AudioBackdropPinnedKey;
+static const void *AudioBackdropStockConstraintsKey = &AudioBackdropStockConstraintsKey;
+static const void *AudioBackdropStockLayoutKey = &AudioBackdropStockLayoutKey;
 static const void *DramaCanvasStockKey = &DramaCanvasStockKey;
 static const void *DramaCanvasAppliedKey = &DramaCanvasAppliedKey;
 
@@ -1923,7 +1924,8 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
         return nil;
     }
     if (!surface) {
-        surface = FQXNewGlassViewFull(glassStyle, interactive, radius, continuousCard, tintColor);
+        UIColor *glassTint = tintColor ?: [UIColor colorWithWhite:0.08 alpha:0.26];
+        surface = FQXNewGlassViewFull(glassStyle, interactive, radius, continuousCard, glassTint);
         if (!surface) return nil;
         objc_setAssociatedObject(host, AudioGlassSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -1936,7 +1938,7 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
     // The host's controls use white artwork, including in the light app mode.
     // Keep the backing local to each glass shape and limit cover highlights.
     surface.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    CGFloat backingOpacity = UIAccessibilityDarkerSystemColorsEnabled() ? 0.72 : 0.58;
+    CGFloat backingOpacity = UIAccessibilityDarkerSystemColorsEnabled() ? 0.34 : 0.10;
     UIColor *backing = [UIColor colorWithWhite:0.025 alpha:backingOpacity];
     if (![surface.contentView.backgroundColor isEqual:backing])
         surface.contentView.backgroundColor = backing;
@@ -2235,18 +2237,20 @@ static void FQXApplyAudioControlGlass(UIView *control) {
     FQXStyleAudioCircleButton(timingBtn, 54.0, enabled);
 
     const char *bgKeys[] = {"preBtnBgView", "pauseBtnBgView", "nextBtnBgView"};
-    for (size_t i = 0; i < sizeof(bgKeys) / sizeof(bgKeys[0]); ++i) {
-        UIView *bgView = FQXObjGet(control, bgKeys[i]);
-        if (![bgView isKindOfClass:UIView.class]) continue;
-        BOOL active = enabled && !bgView.hidden && CGRectGetWidth(bgView.bounds) > 10.0;
-        FQXAudioSetUnclipped(bgView, active);
-        FQXAudioClearBackground(bgView, active);
-        FQXInstallAudioSurfaceFull(bgView, bgView, nil, bgView.bounds, 0, 0.0, NO, YES, nil, active);
-    }
     const char *btnKeys[] = {"preBtn", "pauseBtn", "nextBtn"};
-    for (size_t i = 0; i < sizeof(btnKeys) / sizeof(btnKeys[0]); ++i) {
-        UIButton *btn = FQXObjGet(control, btnKeys[i]);
-        if (enabled && [btn isKindOfClass:UIButton.class]) [FQXAudioButtonFeedback wireControl:btn];
+    for (size_t i = 0; i < sizeof(bgKeys) / sizeof(bgKeys[0]); ++i) {
+        UIButton *button = FQXObjGet(control, btnKeys[i]);
+        UIView *bgView = FQXObjGet(control, bgKeys[i]);
+        if (![button isKindOfClass:UIButton.class]) continue;
+        BOOL active = enabled && !button.hidden && button.alpha > 0.01 && CGRectGetWidth(button.bounds) > 10.0;
+        CGSize size = bgView.superview ? bgView.bounds.size : button.bounds.size;
+        CGFloat diameter = MIN(size.width, size.height);
+        if (diameter < 10) diameter = MIN(CGRectGetWidth(button.bounds), CGRectGetHeight(button.bounds));
+        FQXStyleAudioCircleButton(button, diameter, active);
+        BOOL installed = objc_getAssociatedObject(button, AudioGlassSurfaceKey) != nil;
+        // The native backplate is separate paint. Keep the host button and its artwork.
+        if (bgView && bgView != button && ![button isDescendantOfView:bgView])
+            FQXAudioSetHiddenTracked(bgView, installed);
     }
 }
 
@@ -2353,6 +2357,41 @@ static void FQXAudioHideGradient(CALayer *layer, BOOL hide) {
 }
 
 // 图七 2号 & 3号: Seamless Audio Background (remove bottom dark shadow bands)
+static void FQXAudioPinBackdrop(UIView *background, UIImageView *art, BOOL fill) {
+    if (art.superview != background) return;
+    NSArray *pinned = objc_getAssociatedObject(art, AudioBackdropPinnedKey);
+    if (fill && !pinned) {
+        NSMutableArray *stock = [NSMutableArray array];
+        for (NSLayoutConstraint *constraint in background.constraints) {
+            if ((constraint.firstItem == art && constraint.secondItem == background) ||
+                (constraint.firstItem == background && constraint.secondItem == art))
+                [stock addObject:constraint];
+        }
+        for (NSLayoutConstraint *constraint in art.constraints) {
+            if (constraint.firstItem == art && !constraint.secondItem) [stock addObject:constraint];
+        }
+        objc_setAssociatedObject(art, AudioBackdropStockLayoutKey, @(art.translatesAutoresizingMaskIntoConstraints),
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        art.translatesAutoresizingMaskIntoConstraints = NO;
+        [NSLayoutConstraint deactivateConstraints:stock];
+        pinned = @[[art.leadingAnchor constraintEqualToAnchor:background.leadingAnchor],
+                   [art.trailingAnchor constraintEqualToAnchor:background.trailingAnchor],
+                   [art.topAnchor constraintEqualToAnchor:background.topAnchor],
+                   [art.bottomAnchor constraintEqualToAnchor:background.bottomAnchor]];
+        [NSLayoutConstraint activateConstraints:pinned];
+        objc_setAssociatedObject(art, AudioBackdropStockConstraintsKey, stock, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(art, AudioBackdropPinnedKey, pinned, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!fill && pinned) {
+        [NSLayoutConstraint deactivateConstraints:pinned];
+        [NSLayoutConstraint activateConstraints:objc_getAssociatedObject(art, AudioBackdropStockConstraintsKey)];
+        NSNumber *layout = objc_getAssociatedObject(art, AudioBackdropStockLayoutKey);
+        art.translatesAutoresizingMaskIntoConstraints = layout.boolValue;
+        objc_setAssociatedObject(art, AudioBackdropStockConstraintsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(art, AudioBackdropStockLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(art, AudioBackdropPinnedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 static void FQXApplyAudioBackgroundSeamless(UIView *bgView) {
     if (![bgView isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(bgView);
@@ -2365,24 +2404,9 @@ static void FQXApplyAudioBackgroundSeamless(UIView *bgView) {
     FQXAudioSetHiddenTracked(bottomBgView, seamless);
 
     UIView *bottomView = FQXObjGet(bgView, "bottomView");
-    UIView *pixelBlur = FQXObjGet(bgView, "pixelBlurBgImageView");
-    BOOL hasBlurArt = [pixelBlur isKindOfClass:UIView.class] && !pixelBlur.hidden && pixelBlur.alpha > 0.05;
-    if (pixelBlur.superview == bgView && !CGRectIsEmpty(bgView.bounds)) {
-        CGRect current = pixelBlur.frame;
-        NSValue *original = objc_getAssociatedObject(pixelBlur, AudioBackdropFrameKey);
-        NSValue *previous = objc_getAssociatedObject(pixelBlur, AudioBackdropAppliedKey);
-        CGRect stock = original && previous && CGRectEqualToRect(current, previous.CGRectValue)
-            ? original.CGRectValue : current;
-        CGRect target = seamless && hasBlurArt ? bgView.bounds : stock;
-        if (!CGRectEqualToRect(current, target)) pixelBlur.frame = target;
-        if (!CGRectEqualToRect(target, stock)) {
-            objc_setAssociatedObject(pixelBlur, AudioBackdropFrameKey, [NSValue valueWithCGRect:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(pixelBlur, AudioBackdropAppliedKey, [NSValue valueWithCGRect:target], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        } else if (previous) {
-            objc_setAssociatedObject(pixelBlur, AudioBackdropFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(pixelBlur, AudioBackdropAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
+    UIImageView *pixelBlur = FQXObjGet(bgView, "pixelBlurBgImageView");
+    BOOL hasBlurArt = [pixelBlur isKindOfClass:UIImageView.class] && !pixelBlur.hidden && pixelBlur.alpha > 0.05;
+    FQXAudioPinBackdrop(bgView, pixelBlur, seamless && hasBlurArt);
     if ([bottomView isKindOfClass:UIView.class]) {
         if (seamless && hasBlurArt) {
             FQXAudioSetHiddenTracked(bottomView, YES);
@@ -2477,8 +2501,13 @@ static void FQXApplyAudioPlayControllerRefractionAndSeamless(UIViewController *v
     FQXAudioHideGradient(FQXObjGet(pinnedContainer, "maskGradientLayer"), active);
     FQXAudioClearCardShadow(slideContainer, active);
     FQXAudioClearCardShadow(pinnedContainer, active);
-    FQXAudioSetBottomEdgeHidden(FQXObjGet(vc, "contentScrollView"), active);
-    FQXAudioSetBottomEdgeHidden(FQXObjGet(vc, "nestedContainerScrollView"), active);
+    UIScrollView *contentScroll = FQXObjGet(vc, "contentScrollView");
+    UIScrollView *nestedScroll = FQXObjGet(vc, "nestedContainerScrollView");
+    FQXAudioSetBottomEdgeHidden(contentScroll, active);
+    FQXAudioSetBottomEdgeHidden(nestedScroll, active);
+    FQXAudioClearBackground(contentScroll, active);
+    FQXAudioClearBackground(nestedScroll, active);
+    FQXAudioClearBackground(FQXObjGet(nestedScroll, "contentView"), active);
 
     UIView *bgView = FQXObjGet(vc, "bgView");
     if ([bgView isKindOfClass:UIView.class]) {

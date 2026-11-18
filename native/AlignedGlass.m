@@ -2077,12 +2077,15 @@ static void ReaderBottomGlass(Obj view,double width) {
 // The legacy reader walker also visits the nested buttons. Only one material
 // owns each target, including when the legacy callback runs before ours.
 B FQHReaderOwnsControl(Obj view) {
+    Obj control=view;
     for (int depth=0;view && depth<4;++depth,view=Get(view,"superview")) {
         if (Kind(view,"FQReaderSaaSBottomToolItemView")) {
             Obj toolbar=Get(view,"superview");
             return Kind(toolbar,"FQReaderSaaSBottomToolView") && ReaderBottomItem(view) && FQHGlassAvailable();
         }
         if (Kind(view,"FQReaderSaaSReaderSpeechButton")) return FQHGlassAvailable();
+        if (Kind(view,"SSNewAudioPlayControlView") && Responds(Lookup("FQXDockMotion"),"refreshAudioGlass"))
+            return control==Get(view,"preBtn") || control==Get(view,"pauseBtn") || control==Get(view,"nextBtn");
     }
     return 0;
 }
@@ -2521,6 +2524,7 @@ static void DramaActionImageChanged(Obj glyph,Sel cmd,Obj image) {
 static void DramaOutlineViewKey(void) {}
 static void DramaOutlineSymbolKey(void) {}
 static void DramaOutlineSizeKey(void) {}
+static double BottomValue178(I tag);
 static void DramaOutlineGlyphKey(void) {}
 static void DramaOutlinePaintKey(void) {}
 static void DramaOutlineStockMaskKey(void) {}
@@ -2533,7 +2537,14 @@ static void DramaOutlineRestoreGlyph(Obj owner) {
     objc_setAssociatedObject(owner,DramaOutlineGlyphKey,0,1);
     objc_setAssociatedObject(owner,DramaOutlineStockMaskKey,0,1);
 }
-static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char *selector,double diameter) {
+static void DramaOutlineUpdateCollectTint(Obj owner,Obj outline) {
+    Obj model=Get(owner,"model");
+    B collected=Responds(model,"isCollected") ? Flag(model,"isCollected") : Flag(owner,"isCollected");
+    Obj tint=O0(Lookup("UIColor"),collected ? "systemYellowColor" : "whiteColor");
+    if (!SameColor(Get(outline,"tintColor"),tint)) V1(outline,"setTintColor:",tint);
+}
+
+static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char *selector,double points) {
     Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
     if (!glyph) {
         DramaOutlineRestoreGlyph(owner);
@@ -2543,15 +2554,15 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
     const char *name="ellipsis.bubble";
     Obj tint=O0(Lookup("UIColor"),"whiteColor");
     Sel icon=sel_registerName(selector);
-    if (icon==sel_registerName("starIcon")) {
+    B star=icon==sel_registerName("starIcon");
+    if (star) {
         name="star";
-        if (Flag(owner,"isCollected")) tint=O0(Lookup("UIColor"),"systemYellowColor");
     } else if (icon==sel_registerName("likeIcon")) {
         name="heart";
         if (BoolProp(Get(owner,"model"),"isLiked")) tint=O0(Lookup("UIColor"),"systemPinkColor");
     } else if (icon==sel_registerName("shareIcon")) name="paperplane";
 
-    double size=__builtin_fmin(30*diameter/50,__builtin_fmin(frame.width,frame.height));
+    double size=points;
     if (!outline || !Equal(objc_getAssociatedObject(outline,DramaOutlineSymbolKey),name) ||
         Double(objc_getAssociatedObject(outline,DramaOutlineSizeKey))!=size) {
         Obj motion=Lookup("FQXDockMotion");
@@ -2567,7 +2578,7 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
                 sel_registerName("systemImageNamed:withConfiguration:"),Text(name),config);
         }
         if (!image) {
-            DramaOutlineApply(owner,0,0,(Rect){0},selector,diameter);
+            DramaOutlineApply(owner,0,0,(Rect){0},selector,points);
             return 0;
         }
         if (!outline) {
@@ -2590,7 +2601,8 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
     if (Get(outline,"superview")!=parent)
         ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:aboveSubview:"),outline,glyph);
     if (!SameRect(Frame(outline),frame)) SetFrame(outline,frame);
-    if (!SameColor(Get(outline,"tintColor"),tint)) V1(outline,"setTintColor:",tint);
+    if (star) DramaOutlineUpdateCollectTint(owner,outline);
+    else if (!SameColor(Get(outline,"tintColor"),tint)) V1(outline,"setTintColor:",tint);
     // Mask the original paint on its layer while the view still receives its
     // native touches and retains the current image supplied by the host.
     Obj layer=Get(glyph,"layer"),mask=objc_getAssociatedObject(owner,DramaOutlinePaintKey);
@@ -2621,16 +2633,16 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     if (VisibleRect(frame)) V1(DramaActionOwners178R11(),"addObject:",owner);
     B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
-    double diameter=DramaActionDiameter178R11();
-    if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,diameter);
+    if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
     if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0); RemoveDramaGlass(owner); return 1; }
     if (outline) {
         DramaActionInk(owner,0,1,0);
-        if (DramaOutlineApply(owner,glyph,parent,frame,selector,diameter)) {
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector,BottomValue178(16))) {
             RemoveDramaGlass(owner);
             return 1;
         }
     }
+    double diameter=DramaActionDiameter178R11();
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
     if (!glass) { DramaActionInk(owner,0,1,0); return 0; }
@@ -2660,6 +2672,17 @@ static void DramaCollectModel(Obj self,Sel cmd,Obj model,B animated) {
     ((void(*)(Obj,Sel,Obj,B))Original("SSShortVideoRightInteractionCollectView",
         "fqx_originalCollectArtModel:animated:"))(self,cmd,model,animated);
     FQHDramaGlyph(self,"starIcon");
+}
+static void DramaCollectStateChanged(Obj model,Sel cmd,B collected) {
+    ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionCollectModel",
+        "fqx_originalSetDramaCollected:"))(model,cmd,collected);
+    Obj owners=Get(DramaActionOwners178R11(),"allObjects");
+    for (U i=0,count=TabCount(owners);i<count;++i) {
+        Obj owner=At(owners,i);
+        if (!Kind(owner,"SSShortVideoRightInteractionCollectView") || Get(owner,"model")!=model) continue;
+        Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
+        if (Get(outline,"superview")) DramaOutlineUpdateCollectTint(owner,outline);
+    }
 }
 static void DramaLikeModel(Obj self,Sel cmd,Obj model) {
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoRightInteractionLikeView",
@@ -4637,7 +4660,7 @@ void FQHDramaSpacing178R2(Obj root) {
                 glass=DramaEpisodeMaterial(entry);
                 seekOwner=progress;
                 anchor=DramaSpacingAnchor(entry,seekOwner,root,1);
-                if (glass && anchor) target=entry;
+                if (glass) target=entry;
             }
         }
     } else if (eligible) {
@@ -4698,8 +4721,9 @@ void FQHDramaSpacing178R2(Obj root) {
         }
     }
     Obj previousAnchor=objc_getAssociatedObject(root,DramaSpacingAnchor178R6Key);
-    if (eligible && !outer && !target && insert && previousAnchor &&
-        Get(previousAnchor,"firstItem")==insert && Flag(previousAnchor,"isActive") &&
+    Obj currentInsert=outer ? entry : insert;
+    if (eligible && !novel && !target && currentInsert && previousAnchor &&
+        Get(previousAnchor,"firstItem")==currentInsert && Flag(previousAnchor,"isActive") &&
         DramaAnchorConstant(previousAnchor)==Double(objc_getAssociatedObject(previousAnchor,DramaSpacingApplied178R2Key))) {
         // A pause or foreground crossfade can briefly hide the painted child.
         // Keep the correction on the current native insert until it is replaced.
@@ -4805,7 +4829,11 @@ void FQHDramaSpacing178R2(Obj root) {
 static void DramaSpacingForView(Obj view) {
     Obj parent=Get(view,"superview");
     for (int depth=0;parent && depth<16;++depth,parent=Get(parent,"superview")) {
-        if (Kind(parent,"FQVShortVideoVPlayerControlView")) { FQHDramaSpacing178R2(parent); return; }
+        if (Kind(parent,"FQVShortVideoVPlayerControlView") ||
+            Kind(parent,"SSShortVideoOutterMultiGenreFeedControlView")) {
+            FQHDramaSpacing178R2(parent);
+            return;
+        }
     }
 }
 static void DramaControlsLayout178R2(Obj self,Sel cmd) {
@@ -7474,6 +7502,8 @@ void FQHPageInstall(void) {
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
     Hook("SSShortVideoRightInteractionCollectView","refreshUIWithModel:animated:",
          "fqx_originalCollectArtModel:animated:","v28@0:8@16B24",(Imp)DramaCollectModel);
+    Hook("SSShortVideoRightInteractionCollectModel","setIsCollected:",
+         "fqx_originalSetDramaCollected:","v20@0:8B16",(Imp)DramaCollectStateChanged);
     Hook("SSShortVideoRightInteractionLikeView","refreshUIWithModel:",
          "fqx_originalLikeArtModel:","v24@0:8@16",(Imp)DramaLikeModel);
     Hook("UIImageView","setImage:","fqx_originalSetDramaActionImage:","v24@0:8@16",(Imp)DramaActionImageChanged);
@@ -7694,6 +7724,7 @@ static Obj BottomPreference178(I tag) {
         case 28: return Text("FanqieX.SidebarGames.1");
         case 29: return Text("FanqieX.ShelfMotionComic.1");
         case 15: return Text("FanqieX.DramaActionDiameter.1");
+        case 16: return Text("FanqieX.DramaOutlinePointSize.1");
         case 30: return Text("FanqieX.DramaDefaultClean.1");
         case 31: return Text("FanqieX.DramaRevealOnPause.1");
         case 32: return Text("FanqieX.DramaHighestQuality.1");
@@ -7713,15 +7744,19 @@ static B BottomFlag178(I tag) {
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
 }
+static inline __attribute__((always_inline)) double BottomClampSlider178(I tag,double value) {
+    if (tag==16) return BottomClamp178(value,26,42);
+    double low=tag==15 ? 36 : tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16;
+    double high=tag==15 ? 54 : tag==12 ? 125 : tag==14 ? 32 : 100;
+    return BottomClamp178(value,low,high);
+}
 static double BottomValue178(I tag) {
-    double fallback=tag==15 ? 50 : tag==14 ? 28 : 100;
+    double fallback=tag==16 ? 36 : tag==15 ? 50 : tag==14 ? 28 : 100;
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
     if (!Responds(value,"doubleValue")) return fallback;
     double number=Double(value);
     if (!__builtin_isfinite(number)) return fallback;
-    double low=tag==15 ? 36 : tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16;
-    double high=tag==15 ? 54 : tag==12 ? 125 : tag==14 ? 32 : 100;
-    return BottomClamp178(number,low,high);
+    return BottomClampSlider178(tag,number);
 }
 static Obj BottomWeak178(Obj object) {
     Obj box=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
@@ -8720,7 +8755,7 @@ static void DramaFollowWidthRefresh178(void) {
 }
 static Obj BottomValueText178(I tag) {
     Obj value=Get(Number(BottomValue178(tag)),"stringValue");
-    return O1(value,"stringByAppendingString:",Text(tag==14 || tag==15 ? " pt" : "%"));
+    return O1(value,"stringByAppendingString:",Text(tag>=14 ? " pt" : "%"));
 }
 static void SettingsUpdateCompactPosition(Obj owner);
 void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
@@ -8751,8 +8786,7 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         double value=(double)(I)(raw+0.5);
         // Persist the clamped canonical value even if an external defaults
         // editor or a future UIKit slider sends a value outside its range.
-        value=BottomClamp178(value,tag==15 ? 36 : tag==11 ? 50 : tag==12 ? 80 : tag==13 ? 70 : 16,
-            tag==15 ? 54 : tag==12 ? 125 : tag==14 ? 32 : 100);
+        value=BottomClampSlider178(tag,value);
         changed=BottomValue178(tag)!=value;
         Obj stored=O1(BottomDefaults178(),"objectForKey:",key);
         // Preserve an explicit choice even if it equals today's fallback, and
@@ -8762,7 +8796,7 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
             sel_registerName("setDouble:forKey:"),value,key);
         Obj label=objc_getAssociatedObject(sender,BottomOptionValue178Key);
         V1(label,"setText:",BottomValueText178(tag));
-        if (tag==15) {
+        if (tag==15 || tag==16) {
             if (changed) FQHRefreshDramaActions178R11();
             return;
         }
@@ -8793,7 +8827,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
             ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),1,1);
             continue;
         }
-        if (tag>=21 || tag==15) continue;
+        if (tag>=21 || tag==15 || tag==16) continue;
         if (tag<10) ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
         else {
             ((void(*)(Obj,Sel,float,B))Message)(control,sel_registerName("setValue:animated:"),(float)BottomValue178(tag),1);
@@ -8854,7 +8888,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
-static const double BottomSettingsHeight178R7=1070;
+static const double BottomSettingsHeight178R7=1156;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -8897,8 +8931,7 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     V1(content,"addSubview:",reset);
     BottomSettingsLabel178(content,(Rect){20,878,frame.width-40,28},"短剧右侧互动区",19,0);
     BottomSettingsSlider178(self,content,920,15,"短剧右侧互动按钮大小",36,54);
-    BottomSettingsLabel178(content,(Rect){20,999,frame.width-40,50},
-        "同步调整收藏、评论、点赞、分享的玻璃底板和图标。",12,1);
+    BottomSettingsSlider178(self,content,1006,16,"短剧空心图标大小",26,42);
     V0(content,"release");
     V0(scroll,"release");
 }
@@ -9461,7 +9494,7 @@ static void SettingsInstall178R13(Obj controller) {
     group=SettingsGroup178R13(header,"更多设置");
     double rowWidth=Bounds(group).width;
     Obj look=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"外观与尺寸  ›","外观","fqx178_openBottom:");
-    V1(look,"setAccessibilityIdentifier:",Text("外观 底栏 尺寸 图标 短剧右侧互动按钮 收藏 评论 点赞 分享 大小 我的快捷入口仅显示图标"));
+    V1(look,"setAccessibilityIdentifier:",Text("外观 底栏 尺寸 图标 短剧右侧互动按钮 空心图标 收藏 评论 点赞 分享 大小 我的快捷入口仅显示图标"));
     Obj ads=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"广告与福利  ›","广告与福利","fqx_openAds:");
     V1(ads,"setAccessibilityIdentifier:",Text("广告 福利 拦截 开屏 阅读底栏 插屏 弹窗 自动签到 金币 福利标签"));
     Obj diagnostic=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"诊断与日志  ›","诊断与日志","fqx178_jump:");

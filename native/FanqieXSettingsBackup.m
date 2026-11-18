@@ -28,6 +28,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomButtonWidthScale.1": @100,
         @"FanqieX.BottomIconPointSize.1": @28,
         @"FanqieX.DramaActionDiameter.1": @50,
+        @"FanqieX.DramaOutlinePointSize.1": @36,
         @"FanqieX.DramaCategories.1": @YES,
         @"FanqieX.DramaSearch.1": @YES,
         @"FanqieX.DramaAuthorDeclaration.1": @YES,
@@ -121,6 +122,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         @"FanqieX.BottomButtonWidthScale.1": @[@70, @100],
         @"FanqieX.BottomIconPointSize.1": @[@16, @32],
         @"FanqieX.DramaActionDiameter.1": @[@36, @54],
+        @"FanqieX.DramaOutlinePointSize.1": @[@26, @42],
     };
     NSArray<NSNumber *> *range = ranges[key];
     return range && number >= range[0].doubleValue && number <= range[1].doubleValue ? @(number) : nil;
