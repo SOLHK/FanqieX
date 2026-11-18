@@ -2383,7 +2383,8 @@ static void ChapterDiscussionKey(void) {}
 static void ChapterCardBackingKey(void) {}
 static void ChapterCardRoundedKey(void) {}
 static I ChapterDiscussionMode(Obj card,Obj entry,Obj background) {
-    if (!Kind(entry,"SSReaderChapterEndDiscussionEntranceView") || Flag(entry,"isHidden") ||
+    if ((!Kind(entry,"SSReaderChapterEndDiscussionEntranceView") &&
+         !Kind(entry,"SSReaderChapterEndForumEntranceView")) || Flag(entry,"isHidden") ||
         Get(background,"superview")!=card || Get(card,"contentBackgroundView")!=background) return 0;
     Obj model=Get(card,"model");
     if (!InstanceABI(model,"displayMode","q16@0:8")) return 0;
@@ -2482,6 +2483,16 @@ static void PageDiscussLayout(Obj self,Sel cmd) {
 static void PageDiscussButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderChapterEndDiscussionEntranceButton","fqx174_originalDiscussButton"))(self,cmd);
     if (HasAncestor(self,"SSReaderChapterEndDiscussionEntranceView")) { PageRestore(self); return; }
+    FQHApply(self);
+}
+static void PageForumEntranceLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSReaderChapterEndForumEntranceView","fqx179r5_originalForumEntrance"))(self,cmd);
+    Obj background=Get(self,"superview"),card=Get(background,"superview");
+    if (Kind(card,"SSReaderChapterEndCommunityCardView") && Get(card,"activeEntranceView")==self &&
+        ChapterDiscussionMode(card,self,background)) {
+        if (FQHSurface(self)) PageRestore(self);
+        return;
+    }
     FQHApply(self);
 }
 static void DramaGlassKey(void) {}
@@ -4521,12 +4532,14 @@ void FQHDramaSpacing178R2(Obj root) {
     if (eligible) {
         Rect placed=Convert(root,b,window);
         // Attached feed cells can move vertically onscreen without laying out
-        // their children again. Keep their installed constraint while paging.
+        // their children again. Keep their installed constraint while paging
+        // and across UINavigationController push/pop parallax (-0.3 * width).
         eligible=VisibleRect(placed) &&
-            __builtin_fabs(placed.x-screen.x)<2 && __builtin_fabs(placed.width-b.width)<0.5 &&
+            placed.x>screen.x-screen.width*0.5 && placed.x<screen.x+2 &&
+            __builtin_fabs(placed.width-b.width)<0.5 &&
             __builtin_fabs(placed.height-b.height)<0.5;
     }
-    Obj dock=eligible ? BottomDramaCapsuleForView(root) : (Obj)0;
+    Obj dock=(eligible && BottomFlag178(37)) ? BottomDramaCapsuleForView(root) : (Obj)0;
     Obj previousRail=objc_getAssociatedObject(root,DramaDockProgressKey),rail=0;
     if (dock) {
         rail=Get(root,outer ? "progressView" : "progressContainer");
@@ -5583,7 +5596,8 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         Rect r=Frame(child);
         if (r.width*5<cardFrame.width*4) continue;
         ProfileCardTrackClear(host,child);
-        if (!Kind(child,"UIScrollView")) ProfileCardSetUnclipped(child,1);
+        if (!Kind(child,"UIScrollView") && !Kind(child,"SSScrollFoldFuncView"))
+            ProfileCardSetUnclipped(child,1);
         Obj grand=Get(child,"subviews");
         for (U j=0,gn=TabCount(grand);j<gn;++j) {
             Obj gc=At(grand,j);
@@ -5594,7 +5608,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         }
     }
     ApplySurface(host,cardFrame,1);
-    ApplyMaxCapsuleStyle(FQHSurface(host),existingSurface,18);
+    ApplyMaxCapsuleStyle(FQHSurface(host),existingSurface,22);
     V1(ProfileShortcutOwners(),"addObject:",row);
 }
 static void RestoreProfileEntry(Obj content) {
@@ -5660,11 +5674,11 @@ static void ProfileEntryGlass(Obj self,B order) {
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
     Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
     B iconsOnly=BoolProp(O1(defaults,"objectForKey:",Text("FanqieX.MineQuickIconsOnly.1")),"boolValue");
-    double padX=b.width>=68 ? 4 : 3;
-    double pillW=__builtin_fmin(b.width-padX*2,68);
-    double pillH=iconsOnly ? __builtin_fmin(__builtin_fmax(b.height-6,42),52) : __builtin_fmin(b.height-2,56);
+    double padX=b.width>=66 ? 2 : 1;
+    double pillW=__builtin_fmin(b.width-padX*2,66);
+    double pillH=iconsOnly ? __builtin_fmin(__builtin_fmax(b.height+4,50),56) : __builtin_fmin(__builtin_fmax(b.height-1,54),58);
     double captionHeight=18,gap=3;
-    double glyphHeight=iconsOnly ? __builtin_fmin(26,pillH-18) : __builtin_fmin(24,pillH-24);
+    double glyphHeight=iconsOnly ? __builtin_fmin(28,pillH-18) : __builtin_fmin(25,pillH-24);
     if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || pillW<32 || pillH<36 ||
         !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
@@ -5678,11 +5692,11 @@ static void ProfileEntryGlass(Obj self,B order) {
     Rect pillRect={b.x+(b.width-pillW)*0.5,b.y+(b.height-pillH)*0.5,pillW,pillH};
     Obj existingItem=FQHSurface(content);
     ApplySurface(content,pillRect,1);
-    ApplyMaxCapsuleStyle(FQHSurface(content),existingItem,14);
+    ApplyMaxCapsuleStyle(FQHSurface(content),existingItem,18);
     V1(ProfileShortcutOwners(),"addObject:",self);
     TrackAppearanceLabel(content,caption,13);
     ProfileCaptionInk(caption,iconsOnly);
-    double scale=__builtin_fmin(1.2,glyphHeight/__builtin_fmax(icon.width,icon.height));
+    double scale=__builtin_fmin(1.3,glyphHeight/__builtin_fmax(icon.width,icon.height));
     double w=icon.width*scale,h=icon.height*scale;
     double top=pillRect.y+(pillRect.height-h-(iconsOnly ? 0 : gap+captionHeight))*0.5;
     Rect adjusted={b.x+(b.width-w)*0.5,top,w,h};
@@ -7319,6 +7333,7 @@ void FQHPageInstall(void) {
     Hook("FQReaderCoverMainContentViewController","viewDidLayoutSubviews","fqx186_originalCoverGuideLayout","v16@0:8",(Imp)PageCoverGuideLayout);
     Hook("SSReaderChapterEndDiscussionEntranceView","layoutSubviews","fqx174_originalDiscuss","v16@0:8",(Imp)PageDiscussLayout);
     Hook("SSReaderChapterEndDiscussionEntranceButton","layoutSubviews","fqx174_originalDiscussButton","v16@0:8",(Imp)PageDiscussButtonLayout);
+    Hook("SSReaderChapterEndForumEntranceView","layoutSubviews","fqx179r5_originalForumEntrance","v16@0:8",(Imp)PageForumEntranceLayout);
     Hook("SSReaderChapterEndCommunityCardView","layoutSubviews","fqx177_originalChapterCard","v16@0:8",(Imp)PageChapterCardLayout);
     Hook("SSReaderChapterEndCommunityCardView","updateWithReaderConfig:","fqx177_originalChapterCardTheme:","v24@0:8@16",(Imp)PageChapterCardTheme);
     Hook("SSReaderChapterEndBaseButton","layoutSubviews","fqx177_originalChapterButton","v16@0:8",(Imp)PageChapterButtonLayout);
@@ -7506,12 +7521,14 @@ static Obj BottomPreference178(I tag) {
         case 34: return Text("FanqieX.MineQuickIconsOnly.1");
         case 35: return Text("FanqieX.LocalRewardTest.1");
         case 36: return Text("FanqieX.ReaderScreenshotQuickShare.1");
+        case 37: return Text("FanqieX.DramaFollowBottomWidth.1");
     }
     return 0;
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
-    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") : (tag>=21 && tag<=29) || tag==36 || tag>=DramaCategoryTagBase;
+    return value ? Responds(value,"boolValue") && Flag(value,"boolValue") :
+        (tag>=21 && tag<=29) || tag==36 || tag==37 || tag>=DramaCategoryTagBase;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
@@ -8014,6 +8031,7 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact) {
             bottom-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
 }
 static Rect BottomDramaEpisodeDockFrame(Obj view) {
+    if (!BottomFlag178(37)) return (Rect){0};
     Obj dock=BottomDramaCapsuleForView(view), parent=Get(view,"superview");
     if (!dock || !parent) return (Rect){0};
     Obj bar=Get(dock,"superview");
@@ -8513,6 +8531,13 @@ static void BottomRefresh178(void) {
         V0(bar,"setNeedsLayout");
     }
 }
+static void DramaFollowWidthRefresh178(void) {
+    BottomRefresh178();
+    Obj roots=Get(DramaPureCleanRoots178R13(0),"allObjects");
+    for (U i=0,n=TabCount(roots);i<n;++i) V0(At(roots,i),"setNeedsLayout");
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"refreshDramaControls")) V0(motion,"refreshDramaControls");
+}
 static Obj BottomValueText178(I tag) {
     Obj value=Get(Number(BottomValue178(tag)),"stringValue");
     return O1(value,"stringByAppendingString:",Text(tag==14 || tag==15 ? " pt" : "%"));
@@ -8535,6 +8560,7 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
                 else if (tag<=29) FeatureVisibilityRefresh178R9(tag);
                 else if (tag==30 || tag==33) DramaPureCleanRefresh178R13();
                 else if (tag==34) FQHRefreshMineQuickAppearance178R13();
+                else if (tag==37) DramaFollowWidthRefresh178();
             }
             return;
         }
@@ -8560,6 +8586,10 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
             if (changed) FQHRefreshDramaActions178R11();
             return;
         }
+        if (tag==11 && changed && BottomFlag178(37)) {
+            DramaFollowWidthRefresh178();
+            return;
+        }
     }
     // Coalesce on the run loop; never force layout from an active slider or
     // scroll recognizer callback, and ignore duplicate rounded slider values.
@@ -8572,12 +8602,17 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
         Obj key=BottomPreference178(tag);
         if (key) V1(defaults,"removeObjectForKey:",key);
     }
+    V1(defaults,"removeObjectForKey:",BottomPreference178(37));
     V1(defaults,"removeObjectForKey:",Text(BottomCompactPositionKey));
     Obj controls=objc_getAssociatedObject(self,BottomSettingViews178Key);
     U count=TabCount(controls);
     for (U i=0;i<count;++i) {
         Obj control=At(controls,i);
         I tag=((I(*)(Obj,Sel))Message)(control,sel_registerName("tag"));
+        if (tag==37) {
+            ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),1,1);
+            continue;
+        }
         if (tag>=21 || tag==15) continue;
         if (tag<10) ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
         else {
@@ -8586,7 +8621,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
         }
     }
     SettingsUpdateCompactPosition(BottomWeakValue178(self,BottomOptionsOwner178Key));
-    BottomRefresh178();
+    DramaFollowWidthRefresh178();
 }
 static Obj BottomSettingsLabel178(Obj parent,Rect frame,const char *text,double point,B secondary) {
     Obj label=O0(Lookup("UILabel"),"new");
@@ -8639,7 +8674,7 @@ static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,con
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",slider);
     V0(slider,"release");
 }
-static const double BottomSettingsHeight178R7=984;
+static const double BottomSettingsHeight178R7=1070;
 static void BottomSettingsLoad178(Obj self,Sel cmd) {
     Method base=class_getInstanceMethod(Lookup("UIViewController"),sel_registerName("viewDidLoad"));
     if (base) ((void(*)(Obj,Sel))method_getImplementation(base))(self,cmd);
@@ -8666,22 +8701,23 @@ static void BottomSettingsLoad178(Obj self,Sel cmd) {
     BottomSettingsSwitch178(self,content,66,1,"底栏仅显示图标","开启后隐藏文字，保留原入口和朗读名称。");
     BottomSettingsSwitch178(self,content,152,34,"我的快捷入口仅显示图标","订单、历史、消息等入口使用居中的图标。");
     BottomSettingsLabel178(content,(Rect){20,252,frame.width-40,28},"悬浮底栏尺寸",19,0);
-    BottomSettingsSlider178(self,content,296,11,"胶囊长度",50,100);
-    BottomSettingsSlider178(self,content,382,12,"胶囊高度",80,125);
-    BottomSettingsSlider178(self,content,468,13,"按钮宽度",70,100);
-    BottomSettingsSlider178(self,content,554,14,"图标大小",16,32);
-    BottomSettingsLabel178(content,(Rect){20,638,frame.width-40,60},
+    BottomSettingsSwitch178(self,content,294,37,"查看全集与进度条跟随底栏长度","开启后查看全集与进度条宽度自动对齐底栏长度。");
+    BottomSettingsSlider178(self,content,382,11,"胶囊长度",50,100);
+    BottomSettingsSlider178(self,content,468,12,"胶囊高度",80,125);
+    BottomSettingsSlider178(self,content,554,13,"按钮宽度",70,100);
+    BottomSettingsSlider178(self,content,640,14,"图标大小",16,32);
+    BottomSettingsLabel178(content,(Rect){20,724,frame.width-40,60},
         "按钮宽度调整胶囊内的按钮区域。过小的尺寸会自动保留点击空间；尺寸即时生效。",12,1);
     Obj reset=((Obj(*)(Obj,Sel,I))Message)(Lookup("UIButton"),sel_registerName("buttonWithType:"),1);
-    SetFrame(reset,(Rect){20,714,frame.width-40,48});
+    SetFrame(reset,(Rect){20,800,frame.width-40,48});
     Q1(reset,"setAutoresizingMask:",2);
     ((void(*)(Obj,Sel,Obj,U))Message)(reset,sel_registerName("setTitle:forState:"),Text("恢复底栏默认设置"),0);
     ((void(*)(Obj,Sel,Obj,Sel,U))Message)(reset,sel_registerName("addTarget:action:forControlEvents:"),
         self,sel_registerName("fqx178_resetBottom:"),64);
     V1(content,"addSubview:",reset);
-    BottomSettingsLabel178(content,(Rect){20,792,frame.width-40,28},"短剧右侧互动区",19,0);
-    BottomSettingsSlider178(self,content,834,15,"短剧右侧互动按钮大小",36,54);
-    BottomSettingsLabel178(content,(Rect){20,913,frame.width-40,50},
+    BottomSettingsLabel178(content,(Rect){20,878,frame.width-40,28},"短剧右侧互动区",19,0);
+    BottomSettingsSlider178(self,content,920,15,"短剧右侧互动按钮大小",36,54);
+    BottomSettingsLabel178(content,(Rect){20,999,frame.width-40,50},
         "同步调整收藏、评论、点赞、分享的玻璃底板和图标。",12,1);
     V0(content,"release");
     V0(scroll,"release");
@@ -9189,6 +9225,7 @@ static void SettingsInstall178R13(Obj controller) {
         "收缩位置  ›","收缩位置","fqx_openCompactPosition:");
     V1(position,"setAccessibilityIdentifier:",Text("短剧滚动自动收缩位置 左侧 居中 右侧"));
     objc_setAssociatedObject(controller,SettingsCompactPositionRowKey,position,1);
+    SettingsToggle178R13(group,controller,router,37,0,"查看全集与进度条跟随底栏长度","开启后查看全集与进度条宽度自动对齐底栏长度。");
     SettingsToggle178R13(group,controller,router,30,0,"默认清屏播放",0);
     SettingsToggle178R13(group,controller,router,33,0,"纯净清屏","默认清屏时隐藏进度、合集、互动和底栏。");
     SettingsToggle178R13(group,controller,router,31,0,"暂停时显示界面",0);

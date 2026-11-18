@@ -32,6 +32,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
     X(DurationLimit, "ReaderAutoReadDurationLimit", "关闭自动阅读广告时长限制", "gestures", NO) \
+    X(DramaPinchPureClean, "DramaPinchPureClean", "双指缩放切换纯净清屏", "drama", NO) \
     X(DramaAutoplay, "DramaAutoplay", "关闭短剧进入自动播放", "drama", NO) \
     X(ReaderRatingInvite, "ReaderRatingInvite", "关闭阅读评价邀请", "readerFeatures", NO) \
     X(ExcerptWidgetGuide, "ExcerptWidgetGuide", "隐藏书摘小组件提醒", "readerFeatures", NO) \
@@ -783,6 +784,17 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
                 ((void (*)(id, SEL))objc_msgSend)(vc, layoutSel);
             }
             [vc.view setNeedsLayout];
+        }
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshAudioSel = NSSelectorFromString(@"refreshAudioGlass");
+        if ([dockMotion respondsToSelector:refreshAudioSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshAudioSel);
+        }
+    } else if ([key isEqualToString:DramaPinchPureCleanKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshPinchSel = NSSelectorFromString(@"refreshDramaPinchClean");
+        if ([dockMotion respondsToSelector:refreshPinchSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
     } else if ([key isEqualToString:SpeechFloatKey]) {
         UIView *button = LastSpeechButton;

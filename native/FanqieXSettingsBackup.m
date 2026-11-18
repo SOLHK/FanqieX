@@ -37,6 +37,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaRevealOnPause.1": @NO,
         @"FanqieX.DramaHighestQuality.1": @NO,
         @"FanqieX.DramaPureClean.1": @NO,
+        @"FanqieX.DramaFollowBottomWidth.1": @YES,
         @"FanqieX.FullscreenFill.1": @NO,
         @"FanqieX.MineBenefitsCard.1": @YES,
         @"FanqieX.MineRecommendations.1": @YES,

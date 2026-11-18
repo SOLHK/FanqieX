@@ -5,6 +5,7 @@
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
+static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
 
 static id Invoke(id receiver, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -111,7 +112,7 @@ static NSString *PathForTitle(NSString *group, NSString *title) {
     if ([group isEqualToString:@"底栏入口"]) return @"页面与导航/底栏入口";
     if ([group isEqualToString:@"短剧播放"]) {
         if ([title containsString:@"分类"]) return @"短剧/顶部分类";
-        if ([title containsString:@"收缩"]) return @"短剧/底栏收缩";
+        if ([title containsString:@"收缩"] || [title containsString:@"跟随底栏长度"]) return @"短剧/底栏收缩";
         if ([title containsString:@"显示作者"] || [title containsString:@"显示阅读原著"] ||
             [title containsString:@"兴趣推荐"] || [title containsString:@"搜索按钮"]) return @"短剧/页面内容";
         return @"短剧/播放设置";
@@ -152,6 +153,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     row.height = row.originalToggle ? 52 : MAX(52, CGRectGetHeight(view.bounds));
     row.requiresCompact = [title containsString:@"收缩位置"];
     if ([title containsString:@"自动收缩"]) row.keywords = [row.keywords stringByAppendingString:@" 缩小 收起 折叠 底栏"];
+    if ([title containsString:@"跟随底栏长度"]) row.keywords = [row.keywords stringByAppendingString:@" 查看全集 观看完整漫剧 进度条 底栏长度 胶囊长度 自动跟随 宽度"];
     if ([title containsString:@"时长"]) row.keywords = [row.keywords stringByAppendingString:@" 书架今日听读时长 阅读统计"];
     [menu.catalog addObject:row];
 }
@@ -225,6 +227,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.MineSearchBar.1":@"搜索框 搜索栏 我的顶部 搜索 移除",
             @"FanqieX.MineNightButton.1":@"夜间 月亮 深色模式 日夜间 我的顶部 右上角 移除",
             @"FanqieX.MineShortcutCard.1":@"快捷功能 订单 历史 消息 创作 签到 快捷入口 卡片 移除",
+            @"FanqieX.DramaPinchPureClean.1":@"双指 双指张开 双指收缩 双指捏合 双指缩放 自动清屏 纯净清屏 手势 tiktok 抖音",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮",
             @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子",
@@ -329,9 +332,15 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     FQXSettingsMenu *menu = MenuForController(owner);
     if (!menu) return NO;
     for (FQXSettingRow *row in menu.catalog) {
-        if (![row.title isEqualToString:@"短剧滚动自动收缩"]) continue;
-        for (UIView *control in row.content.subviews)
-            if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:[NSUserDefaults.standardUserDefaults boolForKey:CompactKey]];
+        if ([row.title isEqualToString:@"短剧滚动自动收缩"]) {
+            for (UIView *control in row.content.subviews)
+                if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:[NSUserDefaults.standardUserDefaults boolForKey:CompactKey]];
+        } else if ([row.title isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
+            id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
+            BOOL follow = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : YES;
+            for (UIView *control in row.content.subviews)
+                if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:follow];
+        }
     }
     [menu rebuild];
     return YES;
@@ -389,10 +398,14 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         return left.matchScore > right.matchScore ? NSOrderedAscending : NSOrderedDescending;
     }];
     self.visibleRows = rows;
-    NSArray *order = @[@"页面与导航", @"阅读", @"短剧", @"书架净化", @"我的页面净化", @"通知管理", @"导出与备份", @"外观", @"广告与福利", @"诊断与其他"];
+    NSArray *order = @[@"页面与导航", @"阅读", @"短剧", @"书架净化", @"我的页面净化", @"通知管理", @"外观", @"广告与福利", @"书城", @"导出与备份", @"诊断与其他"];
+    NSUInteger fallback = [order indexOfObject:@"导出与备份"];
     self.folders = self.path.length ? folders.array : [folders.array sortedArrayUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
         NSUInteger a = [order indexOfObject:left], b = [order indexOfObject:right];
-        return a == b ? NSOrderedSame : (a < b ? NSOrderedAscending : NSOrderedDescending);
+        NSUInteger ra = a == NSNotFound ? fallback : a;
+        NSUInteger rb = b == NSNotFound ? fallback : b;
+        if (ra == rb) return [left localizedCompare:right];
+        return ra < rb ? NSOrderedAscending : NSOrderedDescending;
     }];
     return query.length > 0;
 }
@@ -501,13 +514,25 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                 }
                 row.actions = actions;
             }
-            [button removeTarget:nil action:@selector(performStoredAction:) forControlEvents:UIControlEventTouchUpInside];
+            for (id target in button.allTargets.allObjects) {
+                [button removeTarget:target action:@selector(performStoredAction:) forControlEvents:UIControlEventTouchUpInside];
+            }
             [button addTarget:self action:@selector(performStoredAction:) forControlEvents:UIControlEventTouchUpInside];
         }
         for (UIView *control in row.content.subviews) {
-            if ([control isKindOfClass:UISwitch.class] && [control.accessibilityLabel isEqualToString:@"短剧滚动自动收缩"]) {
-                [(UISwitch *)control removeTarget:nil action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
-                [(UISwitch *)control addTarget:self action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
+            if (![control isKindOfClass:UISwitch.class]) continue;
+            UISwitch *sw = (UISwitch *)control;
+            if ([sw.accessibilityLabel isEqualToString:@"短剧滚动自动收缩"]) {
+                sw.on = [NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
+                // Never pass nil target to removeTarget:action:forControlEvents: — UIKit treats nil
+                // target as a wildcard that removes the settingsOwner's persistence action too!
+                for (id target in sw.allTargets.allObjects) {
+                    [sw removeTarget:target action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
+                }
+                [sw addTarget:self action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
+            } else if ([sw.accessibilityLabel isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
+                id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
+                sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : YES;
             }
         }
     } else {
@@ -538,7 +563,13 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 }
 
 - (void)nativeToggleChanged:(UISwitch *)toggle {
-    (void)toggle;
+    BOOL isOn = toggle.isOn;
+    [NSUserDefaults.standardUserDefaults setBool:isOn forKey:CompactKey];
+    UIViewController *owner = self.settingsOwner;
+    SEL optionSel = NSSelectorFromString(@"fqx178_bottomOptionChanged:");
+    if (owner && [owner respondsToSelector:optionSel]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(owner, optionSel, toggle);
+    }
     dispatch_async(dispatch_get_main_queue(), ^{ [self rebuild]; });
 }
 
