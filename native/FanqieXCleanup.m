@@ -81,6 +81,29 @@ static void HideWhen(NSString *className, SEL selector, NSString *key, BOOL defa
     Install(cls, selector, method, replacement);
 }
 
+static void HideClassWhen(NSString *className, SEL selector, NSString *key, BOOL defaultValue) {
+    Class cls = NSClassFromString(className);
+    Method method = class_getClassMethod(cls, selector);
+    if (!method || strcmp(method_getTypeEncoding(method), "B16@0:8") != 0) return;
+    __block IMP original = NULL;
+    IMP replacement = imp_implementationWithBlock(^BOOL(id owner) {
+        return Option(key, defaultValue) == defaultValue && ((BOOL (*)(id, SEL))original)(owner, selector);
+    });
+    if (!FQXInstallOwnedHook(cls, selector, YES, "B16@0:8", replacement, &original)) {
+        imp_removeBlock(replacement);
+    }
+}
+
+static BOOL (*NativeHideDoubleColumnRecommend)(id, SEL);
+static BOOL HideDoubleColumnRecommend(id owner, SEL cmd) {
+    return !Option(ShelfRecommendationsKey, YES) || NativeHideDoubleColumnRecommend(owner, cmd);
+}
+
+static void (*NativeDoubleColumnRequestData)(id, SEL);
+static void DoubleColumnRequestData(id owner, SEL cmd) {
+    if (Option(ShelfRecommendationsKey, YES)) NativeDoubleColumnRequestData(owner, cmd);
+}
+
 static BOOL (*NativeImportCell)(id, SEL, NSInteger);
 static BOOL ImportCell(id owner, SEL cmd, NSInteger card) {
     return Option(ShelfImportKey, YES) && NativeImportCell(owner, cmd, card);
@@ -143,7 +166,7 @@ static BOOL ShelfRecIsProtectedName(NSString *lowerName) {
 static BOOL ShelfRecIsRecommendName(NSString *lowerName) {
     if (!lowerName.length) return NO;
     BOOL rec = ShelfRecStringContainsAny(lowerName, @[
-        @"recommend", @"rcmd", @"guess", @"waterfall", @"bookstore", @"relatedbook", @"discover", @"bottomfeed"
+        @"recommend", @"rcmd", @"guess", @"waterfall", @"bookstore", @"relatedbook", @"discover", @"bottomfeed", @"doublecolumn"
     ]);
     return rec && !ShelfRecIsProtectedName(lowerName);
 }
@@ -511,6 +534,15 @@ static void PauseForTime(id owner, SEL cmd) {
         SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "showDivertEntranceInToolBar", ChapterEndDrama);
         SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "hasMoreAdaptionBottomEntrance", ChapterEndDrama);
         SHOW_RULE("SSBookShelfViewModel", "isHotBannerSectionActive", ShelfBanner);
+        SHOW_RULE("SSBookShelfViewModel", "isHotBookCellActive", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumn", "isFeatureEnabled", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumn", "recommendEnabled", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumn", "enable", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumn", "hasCollapseBooks", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumn", "isDoubleColumnAllInBookShelf", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumnConfig", "enable", ShelfRecommendations);
+        SHOW_RULE("SSBookShelfDoubleColumnConfig", "recommend_feed_enabled", ShelfRecommendations);
+        HideClassWhen(@"SSBookShelfDoubleColumn", NSSelectorFromString(@"isFeatureEnabled"), ShelfRecommendationsKey, YES);
 #undef SHOW_RULE
 
 #define REPLACE(fn, cls, selector, encoding, impl) \
@@ -519,6 +551,8 @@ static void PauseForTime(id owner, SEL cmd) {
         REPLACE(NativeImportMenu, "SSBookShelfLocalBookHandler", "moreMenuItems", "@16@0:8", ImportMenu);
         REPLACE(NativeRelatedBanner, "SSBookShelfChaseBookModel", "bookEndRelateVideoBanner", "@16@0:8", RelatedBanner);
         REPLACE(NativeHasUnconsumedBanner, "SSBookShelfChaseBookModel", "hasUnconsumedVideoBanner", "B16@0:8", HasUnconsumedBanner);
+        REPLACE(NativeHideDoubleColumnRecommend, "SSBookShelfSubVCOpenParams", "hideDoubleColumnRecommend", "B16@0:8", HideDoubleColumnRecommend);
+        REPLACE(NativeDoubleColumnRequestData, "SSBookShelfDoubleColumn", "requestDataIfEnabled", "v16@0:8", DoubleColumnRequestData);
         REPLACE(NativeShelfAppeared, "SSBookShelfSubViewController", "viewDidAppear:", "v20@0:8B16", ShelfAppeared);
         REPLACE(NativeShelfNumberOfSections, "SSBookShelfSubViewController", "numberOfSectionsInCollectionView:", "q24@0:8@16", ShelfRecNumberOfSections);
         REPLACE(NativeShelfNumberOfItems, "SSBookShelfSubViewController", "collectionView:numberOfItemsInSection:", "q32@0:8@16q24", ShelfRecNumberOfItems);
@@ -564,8 +598,30 @@ static void PauseForTime(id owner, SEL cmd) {
     } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfImportKey] ||
                [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfRecommendationsKey]) {
         UIViewController *shelf = LastShelf;
-        if ([key isEqualToString:ShelfRecommendationsKey] && Option(ShelfRecommendationsKey, YES)) {
-            ShelfRecRestoreController(shelf);
+        if ([key isEqualToString:ShelfRecommendationsKey]) {
+            BOOL show = Option(ShelfRecommendationsKey, YES);
+            if (show) ShelfRecRestoreController(shelf);
+            id vm = HostObject(shelf, NSSelectorFromString(@"viewModel"));
+            id dc = HostObject(vm, NSSelectorFromString(@"doubleColumn"));
+            if (!show) {
+                SEL setCollapse = NSSelectorFromString(@"setHasCollapseBooks:");
+                if (HostMethod(object_getClass(dc), setCollapse, "v20@0:8B16")) {
+                    ((void (*)(id, SEL, BOOL))objc_msgSend)(dc, setCollapse, NO);
+                }
+            } else {
+                SEL updateDC = NSSelectorFromString(@"updateDoubleColumnRecommend");
+                if (HostMethod(object_getClass(vm), updateDC, "v16@0:8")) {
+                    ((void (*)(id, SEL))objc_msgSend)(vm, updateDC);
+                }
+                SEL reqDC = NSSelectorFromString(@"requestDataIfEnabled");
+                if (HostMethod(object_getClass(dc), reqDC, "v16@0:8")) {
+                    ((void (*)(id, SEL))objc_msgSend)(dc, reqDC);
+                }
+            }
+            SEL rebuild = NSSelectorFromString(@"rebuildShelfPipeline:");
+            if (HostMethod(object_getClass(vm), rebuild, "v24@0:8@16")) {
+                ((void (*)(id, SEL, id))objc_msgSend)(vm, rebuild, @"FanqieXCleanup");
+            }
         }
         SEL reload = NSSelectorFromString(@"reloadData:");
         if (HostMethod(object_getClass(shelf), reload, "v24@0:8@16")) {

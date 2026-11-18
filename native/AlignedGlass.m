@@ -4336,7 +4336,7 @@ static Obj DramaEpisodeNovelContent(Obj entry) {
         return DramaSpacingVisible178R2(entry) ? entry : (Obj)0;
     if (!Kind(entry,"SSShortVideoBottomDistributionView") || DramaEpisodePrimaryContent(entry)) return 0;
     Obj related=objc_getAssociatedObject(entry,DramaDetailRelatedContentKey);
-    return Get(related,"superview")==entry && objc_getAssociatedObject(related,DramaGlassKey) ? related : (Obj)0;
+    return Belongs(related,entry) && objc_getAssociatedObject(related,DramaGlassKey) ? related : (Obj)0;
 }
 static Obj DramaEpisodeContent(Obj entry) {
     Obj primary=DramaEpisodePrimaryContent(entry);
@@ -4354,7 +4354,7 @@ static Obj DramaEpisodeMaterial(Obj entry) {
         return entry;
     }
     Obj content=DramaEpisodeContent(entry);
-    if (Get(content,"superview")!=entry || !DramaSpacingVisible178R2(content)) return 0;
+    if (!Belongs(content,entry) || !DramaSpacingVisible178R2(content)) return 0;
     Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
     if (Get(glass,"superview")==content) return DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
     // After a native insert swap the visible pill can precede glass installation.
@@ -4664,6 +4664,7 @@ void FQHDramaSpacing178R2(Obj root) {
                 objc_setAssociatedObject(anchor,DramaSpacingApplied178R2Key,Number(wantedConstant),1);
                 objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,anchor,1);
                 DramaSetAnchorConstant(anchor,wantedConstant);
+                V0(root,"setNeedsLayout");
             }
             // The rail can change during a child callback, after the parent
             // has solved constraints. Commit the same resolved frame now.
@@ -5430,10 +5431,26 @@ static void RestoreProfileEntryFrame(Obj content,const void *key) {
 static void ProfileCardClearKey(void) {}
 static void ProfileCardSavedBgKey(void) {}
 static void ProfileCardTrackedKey(void) {}
+static void ProfileCardClipsKey(void) {}
+static void ProfileCardSetUnclipped(Obj view,B unclip) {
+    if (!view) return;
+    Obj saved=objc_getAssociatedObject(view,ProfileCardClipsKey);
+    if (unclip) {
+        if (Flag(view,"clipsToBounds")) {
+            objc_setAssociatedObject(view,ProfileCardClipsKey,BoolBox(1),1);
+            VB(view,"setClipsToBounds:",0);
+        }
+    } else if (saved) {
+        if (!Flag(view,"clipsToBounds")) VB(view,"setClipsToBounds:",Flag(saved,"boolValue"));
+        objc_setAssociatedObject(view,ProfileCardClipsKey,0,1);
+    }
+}
 static Obj ProfileRowAncestor(Obj view) {
     Obj parent=Get(view,"superview");
     for (int depth=0;parent && depth<8;++depth,parent=Get(parent,"superview"))
-        if (Kind(parent,"SSMyUserShortcutCell") || Kind(parent,"SSMyUserCollectionView1Cell")) return parent;
+        if (Kind(parent,"SSMyUserShortcutCell") ||
+            (Kind(parent,"SSMyUserCollectionView1Cell") && !Responds(parent,"lynxVipView")))
+            return parent;
     return 0;
 }
 static void ProfileCardSetPaint(Obj view,B clear) {
@@ -5476,10 +5493,19 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
     if (!row || !Kind(row,"UIView")) return;
     Obj cv=Get(row,"contentView");
     Obj host=(Kind(cv,"UIView") && Get(cv,"superview")==row) ? cv : row;
+    if (Kind(row,"SSMyUserCollectionView1Cell") && Responds(row,"lynxVipView")) {
+        PageRestore(host);
+        ProfileCardRestorePaints(host);
+        ProfileCardSetUnclipped(row,0);
+        if (host!=row) ProfileCardSetUnclipped(host,0);
+        return;
+    }
     Rect b=Bounds(host);
     if (!mounted || !Enabled() || !FQHGlassAvailable() || !VisibleRect(b)) {
         PageRestore(host);
         ProfileCardRestorePaints(host);
+        ProfileCardSetUnclipped(row,0);
+        if (host!=row) ProfileCardSetUnclipped(host,0);
         return;
     }
     Rect cardFrame=b;
@@ -5502,9 +5528,12 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         }
     }
     if (foundCard) {
+        ProfileCardSetUnclipped(row,0);
+        if (host!=row) ProfileCardSetUnclipped(host,0);
         for (U i=0;i<childCount;++i) {
             Obj child=At(children,i);
-            if (!Kind(child,"UIPageControl") || Flag(child,"isHidden")) continue;
+            if ((!Kind(child,"UIPageControl") && !Kind(child,"FQReaderSaaSBookStoreSelectView")) ||
+                Flag(child,"isHidden")) continue;
             Rect r=Frame(child);
             if (VisibleRect(r) && r.x>=bestCard.x-1 && r.x+r.width<=bestCard.x+bestCard.width+1 &&
                 r.y>=bestCard.y && r.y+r.height<=b.height) {
@@ -5513,6 +5542,9 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             }
         }
         cardFrame=bestCard;
+    } else {
+        ProfileCardSetUnclipped(row,1);
+        if (host!=row) ProfileCardSetUnclipped(host,1);
     }
     ProfileCardTrackClear(host,row);
     if (host!=row) ProfileCardTrackClear(host,host);

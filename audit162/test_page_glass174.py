@@ -879,13 +879,13 @@ def static_checks():
 
 
 def exercise(data, labels):
-    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
-    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
-    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
+    aligned_shelf = release_version(data) in ("1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
+    stable_shelf = release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
+    uniform_glass = release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
     runtime = Runtime(data)
     runtime.labels = labels
-    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
-    equal_reader_tools = release_version(data) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") and "LFQH_ReaderToolbarGlass" in labels
+    compact_reader = release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
+    equal_reader_tools = release_version(data) in ("1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") and "LFQH_ReaderToolbarGlass" in labels
     tool_width, tool_height = (60., 44.) if compact_reader else (64., 48.)
     tool_y = (40.-tool_height)*0.5
     words = struct.unpack_from("<64I", data, 0x800)
@@ -1132,7 +1132,7 @@ def exercise(data, labels):
             runtime.objects[filter_button].state["frame"] == ((313., 2., 58., 30.) if aligned_shelf else (324., 2., 58., 30.)),
             "the filter capsule preserves native size and tap, with R12's 20pt page edge")
     fade_x = 290. if aligned_shelf else 301.
-    if release_version(data) in ("1.78R18", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
+    if release_version(data) in ("1.78R18", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
         fade_x -= 2.
     require(runtime.objects[filter_fade].state["frame"] == (fade_x, 0., 24., 44.),
             "the overlapping native fade stops before the capsule's left edge")
@@ -1854,7 +1854,7 @@ def exercise(data, labels):
 
     shortcut_count = 0
     shortcut_background = runtime.color("original shortcut content")
-    unified_card = release_version(data) in ("1.79R1",)
+    unified_card = release_version(data) in ("1.79R1", "1.79R2")
     for row_class, item_class in (
         ("SSMyUserShortcutCell", "SSMyUser621FunctionEntryItemCell"),
         ("SSMyUserCollectionView1Cell", "SSMyUserCollectionViewFunCell"),
@@ -1883,7 +1883,7 @@ def exercise(data, labels):
             else:
                 caption_frame = (0, 35, 70, 18)
                 material_frame = (0, 0, 70, 58)
-                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") else (23, 3, 24, 24)
+                adjusted_glyph = (25, 5, 20, 20) if release_version(data) in ("1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else (23, 3, 24, 24)
             if compact_reader:
                 material_frame = (3, 0, material_frame[2]-6, material_frame[3])
                 if not compact and index != 4:
@@ -1895,7 +1895,7 @@ def exercise(data, labels):
                 glyph_size = 19 if compact else 20
                 adjusted_glyph = ((width-glyph_size)/2, 6, glyph_size, glyph_size)
                 adjusted_caption = (x, material_frame[3] - label_height - 6, label_width, label_height)
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
                 material_frame=(-6.,-4.,72.,55.) if compact else (-1.,0.,72.,60.)
                 top=1.5 if compact else 8.
                 adjusted_glyph=((width-20)/2,top,20.,20.)
@@ -1941,7 +1941,7 @@ def exercise(data, labels):
             effect = runtime.objects[runtime.objects[surface].state["effect"]].state
             require(effect["style"] == 0 and not effect.get("tintColor"),
                     "shortcut material has no forced gray tint")
-            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
+            if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
                 corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
                 full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36")
                 require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
@@ -2107,7 +2107,7 @@ def exercise(data, labels):
     options = runtime.obj("UIViewController", "dynamic options", tableView=table)
     runtime.tab_app = runtime.obj("UIApplication", "plugin settings app", opened_urls=[])
     version = release_version(data)
-    if version in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
+    if version in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
         switches = exercise_settings(cpu, runtime, labels, options, titles)
     else:
         call(cpu, labels, "LFQH_FQHInstallOptionsToggles", options)
@@ -2441,7 +2441,7 @@ def exercise(data, labels):
         require(mine_prefs[mine_benefits_key] is on, "the benefits switch persists its setting")
     require(runtime.mine_reloads == [(legacy_owner, "FanqieXMineBenefits")] * 2 and not runtime.tab_refreshes,
             "each benefits change refreshes the mounted native Mine list without rebuilding tabs")
-    mine_recommendations_checked = release_version(data) in ("1.78R20", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
+    mine_recommendations_checked = release_version(data) in ("1.78R20", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
     if mine_recommendations_checked:
         runtime._class("SSMyUserUnlimitedCellModel", "NSObject")
         waterfall = runtime.obj("SSMyUserUnlimitedCellModel", "native recommendation waterfall")
@@ -2551,7 +2551,7 @@ def exercise_fullscreen_fill(cpu, runtime, switch, prefs):
     toggle = runtime.objects[switch].state
     observer, action, _ = toggle["control_targets"][0]
     selector = runtime.selector_names[action]
-    bottom_align = release_version(runtime.data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
+    bottom_align = release_version(runtime.data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
     active_align = 5 if bottom_align else 0
     for width, height in ((956, 440), (812, 375)):
         canvas = (0., 0., float(width), float(height))
@@ -2780,9 +2780,9 @@ def exercise_drama_glass(data, labels):
         require(state["frame"] == expected_frame and not state["userInteractionEnabled"],
                 "clear glass is correctly inset and passes touches through")
         require(runtime.objects[state["configuration"]].state["style"] ==
-                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") else "clearGlass"),
+                ("glass" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else "clearGlass"),
                 "The backing uses the release's native button glass configuration")
-        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
+        if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
             require(state["overrideUserInterfaceStyle"] == 2,
                     "White-ink video controls consistently use the dark player palette")
 
@@ -2808,7 +2808,7 @@ def exercise_drama_glass(data, labels):
 
         update()
         glass, = backing(owner)
-        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") else (6, 0, 48, 48))
+        check_glass(glass, (5, -1, 50, 50) if release_version(data) in ("1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else (6, 0, 48, 48))
         require(state["subviews"] == [glass, glyph, count], "one backing behind the original glyph and counter")
         update()
         require(backing(owner) == [glass], "repeat layout reuses the same glass")
@@ -2953,7 +2953,7 @@ def make_drama_dock_runtime(data, labels, before_install=None):
 
 def exercise_drama_dock_backdrop(data, labels):
     native_video_geometry = release_version(data) in ("1.78", "1.78R2", "1.78R3")
-    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
+    transparent_dock = release_version(data) in ("1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
     config_class = "FQVShortVideoListConfig"
     color_selector = "listVCBackgroundColor"
     rgb_selector = "getRed:green:blue:alpha:"
@@ -3105,14 +3105,14 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") else []
+    settings_labels = EXTRA_SETTINGS_LABELS if release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else []
     composed = args.candidate.with_suffix(".composed.s")
     toolbar = "LFQH_ReaderToolbarGlass"
     toolbar_labels = [toolbar] if f"\n{toolbar}:" in composed.read_text(encoding="utf-8") else []
     labels = labels_for(data, composed, LABELS + EXTRA + settings_labels + toolbar_labels)
     runtime = exercise(data, labels)
     runtime["incompatible_shelf_compaction_skipped"] = incompatible_shelf_compaction(data, labels)
-    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1") else "clear"
+    drama_palette = "regular" if release_version(data) in ("1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else "clear"
     runtime[f"short_drama_{drama_palette}_glass_and_reuse"] = exercise_drama_glass(data, labels)
     runtime["short_drama_dock_canvas_and_corners"] = exercise_drama_dock_backdrop(data, labels)
     runtime["reader_glass_tracks_local_palette"] = exercise_reader_glass_appearance(data, labels)

@@ -27,6 +27,7 @@ class Runtime(SpacingRuntime):
             (CONTENT_BASE, "UIView"),
             (NOVEL_ENTRANCE, "UIView"),
             ("UIPageControl", "UIView"),
+            ("FQReaderSaaSBookStoreSelectView", "UIView"),
         ):
             if name not in self.classes:
                 self._class(name, parent)
@@ -280,6 +281,37 @@ def mine_unified_liquid_glass_card(data, labels):
                 f"{row_class}: detaching row removes unified glass and restores card backgrounds")
         results[row_class] = {"card_frame": list(card_state["frame"]), "item_count": len(items),
                               "page_control": page_control > 0}
+
+    if release_version(data) == "1.79R2":
+        # Real 7.4.3 VIP card (SSMyUserCollectionView1Cell with lynxVipView) must never be styled as a shortcut card.
+        vip_bg = rt.color("vip.bg")
+        vip_row = rt.view("SSMyUserCollectionView1Cell", "Mine VIP card", (16., 120., 408., 72.), rt.ROOT,
+                          backgroundColor=vip_bg, lynxVipView=rt.obj("UIView", "lynx vip"))
+        send(cpu, rt, vip_row, "layoutSubviews")
+        require(not call(cpu, labels, "LFQH_FQHSurface", vip_row)["result"] and
+                rt.objects[vip_row].state["backgroundColor"] == vip_bg,
+                "Real 7.4.3 VIP card with lynxVipView is excluded from shortcut liquid glass")
+
+        # Real 7.4.3 SSMyUserShortcutCell is already inset to 408pt with clipsToBounds=True and full-bounds funcView.
+        full_bg = rt.color("full.rowBg")
+        func_bg = rt.color("full.funcBg")
+        full_row = rt.view("SSMyUserShortcutCell", "7.4.3 shortcut cell", (16., 220., 408., 96.), rt.ROOT,
+                           backgroundColor=full_bg, clipsToBounds=True)
+        func_view = rt.view("UIView", "SSScrollFoldFuncView", (0., 0., 408., 96.), full_row, backgroundColor=func_bg)
+        select_dots = rt.view("FQReaderSaaSBookStoreSelectView", "7.4.3 page dots", (184., 84., 40., 6.), func_view)
+        send(cpu, rt, full_row, "layoutSubviews")
+        full_surface = call(cpu, labels, "LFQH_FQHSurface", full_row)["result"]
+        require(full_surface and rt.objects[full_surface].state["frame"] == (0., 0., 408., 96.) and
+                not rt.objects[full_row].state["clipsToBounds"],
+                "Full-bounds 7.4.3 shortcut cell unclips row bounds so 18pt liquid glass corners are unclipped")
+        rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 1
+        send(cpu, rt, full_row, "layoutSubviews")
+        require(not call(cpu, labels, "LFQH_FQHSurface", full_row)["result"] and
+                rt.objects[full_row].state["clipsToBounds"] and
+                rt.objects[func_view].state["backgroundColor"] == func_bg,
+                "Disabling glass restores 7.4.3 shortcut cell clipsToBounds and funcView background")
+        rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 0
+        results["host_743_shortcut"] = {"unclipped_active": True, "select_dots": select_dots > 0}
     return results
 
 
@@ -290,7 +322,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     version = release_version(data)
-    require(version == "1.79R1", f"Expected 1.79R1 candidate, got {version}")
+    require(version in ("1.79R1", "1.79R2"), f"Expected 1.79R1/1.79R2 candidate, got {version}")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {
         "passed": True,
