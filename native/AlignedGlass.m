@@ -771,8 +771,6 @@ static void BookshelfRestingTint(Obj tab,Obj scroll) {
     Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
     Obj canvasRow=objc_getAssociatedObject(root,ShelfChromeCanvasRowKey);
     if (canvasRow) {
-        // A clipped collection cannot host both rows' blur. Match the color
-        // of its visible, opaque filter backing while that row is pinned.
         Obj canvas=Get(canvasRow,"backgroundColor");
         tint=canvas && !SameColor(canvas,O0(Lookup("UIColor"),"clearColor")) ? canvas : BookshelfCanvas(tab);
     } else if (blend>0) {
@@ -784,6 +782,9 @@ static void BookshelfRestingTint(Obj tab,Obj scroll) {
 }
 static void ShelfChromeHolderKey(void) {}
 static void ShelfChromeFilterKey(void) {}
+static void ShelfChromeClipKey(void) {}
+static void ShelfChromeLayoutKey(void) {}
+static void BookshelfHeaderActions(Obj controller);
 static Rect BookshelfChromeFrame(Obj root,Obj header,Obj viewport) {
     Rect frame=Frame(header),bounds=Bounds(root);
     Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
@@ -835,6 +836,10 @@ static void BookshelfChromeFills(Obj root,Obj tab,Obj holder) {
     if (filter && !Belongs(filter,holder)) filter=0;
     Obj oldHolder=objc_getAssociatedObject(root,ShelfChromeHolderKey);
     Obj oldFilter=objc_getAssociatedObject(root,ShelfChromeFilterKey);
+    Obj cell=Get(tab,"functionCell");
+    Obj layout=Get(cell,"layoutContainerView"),clip=Get(cell,"filterClipView");
+    if (!holder || !Belongs(layout,holder)) layout=0;
+    if (!holder || !Belongs(clip,holder)) clip=0;
     if (oldHolder!=holder) {
         TopChromeFill(oldHolder,0);
         objc_setAssociatedObject(root,ShelfChromeHolderKey,holder,1);
@@ -843,8 +848,20 @@ static void BookshelfChromeFills(Obj root,Obj tab,Obj holder) {
         TopChromeFill(oldFilter,0);
         objc_setAssociatedObject(root,ShelfChromeFilterKey,filter,1);
     }
+    Obj oldClip=objc_getAssociatedObject(root,ShelfChromeClipKey);
+    if (oldClip!=clip) {
+        TopChromeFill(oldClip,0);
+        objc_setAssociatedObject(root,ShelfChromeClipKey,clip,1);
+    }
+    Obj oldLayout=objc_getAssociatedObject(root,ShelfChromeLayoutKey);
+    if (oldLayout!=layout) {
+        TopChromeFill(oldLayout,0);
+        objc_setAssociatedObject(root,ShelfChromeLayoutKey,layout,1);
+    }
     TopChromeFill(holder,1);
     TopChromeFill(filter,1);
+    TopChromeFill(clip,1);
+    TopChromeFill(layout,1);
 }
 static void BookshelfUpdateChrome(Obj controller,Obj root,Obj header,Obj viewport,Obj tab,Obj scroll,Rect material,B installed) {
     Obj row=installed ? BookshelfChromeRow(root,tab,scroll,material) : (Obj)0;
@@ -879,13 +896,13 @@ static void BookshelfTopChrome(Obj controller) {
         Responds(tab,"fqx186_originalShelfFloating:"))
         V1(tab,"updateFullGenreFloatingViewWithScrollView:",scroll);
     BookshelfUpdateChrome(controller,root,header,viewport,tab,scroll,base,installed);
+    BookshelfHeaderActions(controller);
     TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
 }
 void FQHShelf(Obj self);
 static void BookshelfTopLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx186_originalShelfTopLayout"))(self,cmd);
     BookshelfTopChrome(self);
-    FQHShelf(Get(self,"currentTabVC"));
 }
 static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
@@ -1282,7 +1299,7 @@ static Rect ReaderShelfMaterial(Obj label,Obj holder,Rect bounds) {
 }
 typedef enum { IconNone, IconGeneric, IconReaderBack, IconReaderMore, IconReaderSearch,
     IconReaderDownload, IconReaderCommunity, IconReaderChapter, IconReaderShelf, IconShelfSearch, IconShelfMore,
-    IconReaderShare } IconRole;
+    IconReaderShare, IconShelfStandaloneSearch } IconRole;
 static const char *IconRoleName(IconRole role) {
     switch (role) {
         case IconReaderBack: return "readerBack";
@@ -1294,6 +1311,7 @@ static const char *IconRoleName(IconRole role) {
         case IconReaderChapter: return "readerChapter";
         case IconReaderShelf: return "readerShelf";
         case IconShelfSearch: return "shelfSearch";
+        case IconShelfStandaloneSearch: return "shelfSearch";
         case IconShelfMore: return "shelfMore";
         default: return "icon";
     }
@@ -1325,7 +1343,7 @@ static void Icon(Obj view,IconRole role) {
         if (VisibleRect(measured)) image=measured;
     }
     B back=role==IconReaderBack;
-    B shelf=role==IconShelfSearch || role==IconShelfMore;
+    B shelf=role==IconShelfSearch || role==IconShelfStandaloneSearch || role==IconShelfMore;
     B readerIcon=back || role==IconReaderMore || role==IconReaderSearch || role==IconReaderDownload ||
                  role==IconReaderCommunity || role==IconReaderShare;
     if ((readerIcon || shelf) && glyph && Belongs(glyph,view)) {
@@ -1759,6 +1777,25 @@ void FQHShelf(Obj self) {
     if (Kind(parent,"UIView")) ShelfTopHit(parent,search,more,ShelfEditPlacement(self,parent));
     objc_setAssociatedObject(self,OwnerBusyKey,0,0);
 }
+static void BookshelfHeaderActions(Obj controller) {
+    Obj tab=Get(controller,"currentTabVC");
+    if (Kind(tab,"SSBookShelfSubViewController")) {
+        FQHShelf(tab);
+        return;
+    }
+    Obj holder=Get(controller,"headerRightView"), header=Get(controller,"headerView");
+    Obj button=Get(tab,"searchButton");
+    if (!Kind(button,"UIButton") || !Belongs(holder,header) || (button!=holder && !Belongs(button,holder))) return;
+    Obj prior=objc_getAssociatedObject(button,ShelfRoleKey);
+    if (Double(prior)!=2) objc_setAssociatedObject(button,ShelfRoleKey,Number(2),1);
+    Icon(button,IconShelfStandaloneSearch);
+    ShelfRightEdge(holder,FQHIconGlass(button),Enabled());
+    if (holder!=button) ShelfTopHit(holder,button,0,0);
+}
+static void BookshelfHeaderRightMounted(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx_originalShelfHeaderRight"))(self,cmd);
+    BookshelfHeaderActions(self);
+}
 static void TopChromeRefreshHiddenKey(void) {}
 static void TopChromeRefreshVisibility(Obj scroll) {
     Obj header=Get(scroll,"mj_header");
@@ -1830,7 +1867,8 @@ static void ShelfLayout(Obj self,Sel cmd) {
 static void ShelfButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
     Obj role=objc_getAssociatedObject(self,ShelfRoleKey);
-    if (role) Icon(self,Flag(role,"boolValue") ? IconShelfSearch : IconShelfMore);
+    if (role) Icon(self,Double(role)==2 ? IconShelfStandaloneSearch :
+        Flag(role,"boolValue") ? IconShelfSearch : IconShelfMore);
 }
 static void ListenLabelKey(void) {}
 static void ListenColorKey(void) {}
@@ -5201,6 +5239,7 @@ static void ShelfActionGlass(Obj button,B filter) {
     }
 }
 static void ShelfFilterHiddenKey(void) {}
+static void ShelfFilterFadeHiddenKey(void) {}
 static void ShelfFilterHeadersKey(void) {}
 static Obj ShelfFilterHeaders(void) {
     Obj cls=Lookup("NSHashTable");
@@ -5230,6 +5269,61 @@ static void ApplyShelfFilterButton(Obj button,B visible) {
     }
     ShelfActionGlass(button,1);
 }
+static void ShelfFilterFade(Obj view,B hide) {
+    if (!Kind(view,"UIView")) return;
+    Obj old=objc_getAssociatedObject(view,ShelfFilterFadeHiddenKey);
+    if (hide && !Flag(view,"isHidden")) {
+        objc_setAssociatedObject(view,ShelfFilterFadeHiddenKey,view,0);
+        VB(view,"setHidden:",1);
+    } else if (!hide && old) {
+        objc_setAssociatedObject(view,ShelfFilterFadeHiddenKey,0,0);
+        VB(view,"setHidden:",0);
+    }
+}
+static B ShelfQuickFilterGrid(Obj row,Obj collection,double *width,double *gap,double *left) {
+    if (!Enabled() || !FQHGlassAvailable() || Get(row,"collectionView")!=collection) return 0;
+    Obj tab=0;
+    for (Obj node=Get(row,"nextResponder");node && !Kind(node,"UIWindow");node=Get(node,"nextResponder")) {
+        if (Kind(node,"SSBookShelfSubViewController")) { tab=node; break; }
+    }
+    Obj owner=Get(tab,"delegate");
+    if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab) return 0;
+    Obj upper=Get(Get(owner,"tabSelectView"),"collectionView"),layout=Get(upper,"collectionViewLayout");
+    if (!upper || !layout || !Get(collection,"window") || Get(upper,"window")!=Get(collection,"window")) return 0;
+    I (*count)(Obj,Sel,I)=(I(*)(Obj,Sel,I))Message;
+    Sel sections=sel_registerName("numberOfItemsInSection:");
+    if (count(upper,sections,0)!=4 || count(collection,sections,0)!=4) return 0;
+    Obj pathClass=Lookup("NSIndexPath");
+    Obj (*path)(Obj,Sel,I,I)=(Obj(*)(Obj,Sel,I,I))Message;
+    Sel at=sel_registerName("indexPathForItem:inSection:");
+    Rect first=Frame(O1(layout,"layoutAttributesForItemAtIndexPath:",path(pathClass,at,0,0)));
+    Rect last=Frame(O1(layout,"layoutAttributesForItemAtIndexPath:",path(pathClass,at,3,0)));
+    if (!VisibleRect(first) || !VisibleRect(last)) return 0;
+    first=Convert(upper,first,collection);
+    last=Convert(upper,last,collection);
+    double pitch=(last.x+last.width*0.5-first.x-first.width*0.5)/3;
+    Rect bounds=Bounds(collection);
+    Insets inset=((Insets(*)(Obj,Sel))Message)(collection,sel_registerName("contentInset"));
+    *width=first.width+2;
+    *gap=pitch-*width;
+    *left=first.x-1-bounds.x-inset.left;
+    return *left>=0 && *gap>=3 && *left+3*pitch+*width<=bounds.width+1;
+}
+static Size ShelfQuickFilterSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj index) {
+    Size size=((Size(*)(Obj,Sel,Obj,Obj,Obj))Original("SSBookShelfFilterMixRowCollectionView",
+        "fqx_originalQuickFilterSize:layout:index:"))(self,cmd,collection,layout,index);
+    double width,gap,left;
+    if (ShelfQuickFilterGrid(self,collection,&width,&gap,&left)) size.width=width;
+    return size;
+}
+static double ShelfQuickFilterGap(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
+    double width,gap,left;
+    if (section==0 && ShelfQuickFilterGrid(self,collection,&width,&gap,&left)) return gap;
+    if (cmd==sel_registerName("collectionView:layout:minimumLineSpacingForSectionAtIndex:"))
+        return ((double(*)(Obj,Sel))Message)(layout,sel_registerName("minimumLineSpacing"));
+    return ((double(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
+        "fqx_originalQuickFilterGap:layout:section:"))(self,cmd,collection,layout,section);
+}
 B FQHShelfOwnsAction(Obj button,Obj header) {
     // The inherited recursive material pass reaches these same controls first.
     // The page hook alone owns their glass, including before Edit moves upward.
@@ -5246,18 +5340,14 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     if (!Belongs(button,self)) return;
     ShelfRememberFilterHeader(self);
     ApplyShelfFilterButton(button,ShelfFilterVisible());
-    Obj material=FQHSurface(button);
-    if (!material) return;
-    Obj gradient=Get(self,"filterGradientView");
-    if (Get(gradient,"superview")!=self) return;
-    // The host puts the fade above the filter button. Clear the glass rim
-    // as well as its nominal frame so the left curve stays continuous.
-    Rect fade=Frame(gradient),capsule=Convert(button,Frame(material),self);
-    double fadeLimit=capsule.x-2;
-    if (VisibleRect(fade) && fade.x<capsule.x+capsule.width && fade.x+fade.width>fadeLimit &&
-        fade.y<capsule.y+capsule.height && fade.y+fade.height>capsule.y) {
-        fade.x=fadeLimit-fade.width;
-        SetFrame(gradient,fade);
+    B glass=Enabled() && FQHGlassAvailable();
+    Obj options=Get(self,"optionsView");
+    ShelfFilterFade(Get(self,"gradienttLeftView"),glass);
+    ShelfFilterFade(Get(self,"filterGradientView"),glass);
+    if (Kind(options,"SSBookShelf541FilterView")) {
+        TopChromeFill(options,glass);
+        ShelfFilterFade(Get(options,"leftGradientView"),glass);
+        ShelfFilterFade(Get(options,"rightGradientView"),glass);
     }
 }
 static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj option) {
@@ -5273,13 +5363,17 @@ static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj option) {
         ApplyShelfFilterButton(button,ShelfFilterVisible());
     }
 }
-static Rect ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
-    Rect insets=((Rect(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
+static Insets ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
+    Insets insets=((Insets(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
         "fqx185_originalInlineFilterInsets:layout:section:"))(self,cmd,collection,layout,section);
-    Obj header=Get(self,"superview");
-    // The native inline row starts at 20pt. Align its cells with the upper title row.
-    if (Enabled() && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==self)
-        insets.y-=1;
+    double width,gap,left;
+    if (section==0 && ShelfQuickFilterGrid(self,collection,&width,&gap,&left)) {
+        insets.left=left;
+    } else {
+        Obj header=Get(self,"superview");
+        if (Enabled() && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==self)
+            insets.left-=1;
+    }
     return insets;
 }
 static void ProfileScanKey(void) {}
@@ -7500,6 +7594,16 @@ void FQHInstall(void) {
     Hook("SSBookStoreCategorySignView","resetColorWithRatio:fromTab:toTab:fromTabTemplate:toTabTemplate:","fqx173_originalColor:from:to:fromTemplate:toTemplate:","v40@0:8d16i24i28i32i36",(Imp)CategoryColor);
     Hook("FQReaderSaaSBaseButton","layoutSubviews","fqx170_originalLayout","v16@0:8",(Imp)ShelfButtonLayout);
     Hook("SSBookShelf525ViewController","viewLayout","fqx186_originalShelfTopLayout","v16@0:8",(Imp)BookshelfTopLayout);
+    Hook("SSBookShelf525ViewController","tryAddSelectRightView","fqx_originalShelfHeaderRight","v16@0:8",(Imp)BookshelfHeaderRightMounted);
+    const char *quick="SSBookShelfFilterMixRowCollectionView";
+    Hook(quick,"collectionView:layout:sizeForItemAtIndexPath:","fqx_originalQuickFilterSize:layout:index:",
+         "{CGSize=dd}40@0:8@16@24@32",(Imp)ShelfQuickFilterSize);
+    Hook(quick,"collectionView:layout:minimumInteritemSpacingForSectionAtIndex:","fqx_originalQuickFilterGap:layout:section:",
+         "d40@0:8@16@24q32",(Imp)ShelfQuickFilterGap);
+    Obj quickClass=Lookup(quick);
+    if (quickClass && !class_getInstanceMethod(quickClass,sel_registerName("collectionView:layout:minimumLineSpacingForSectionAtIndex:")))
+        class_addMethod(quickClass,sel_registerName("collectionView:layout:minimumLineSpacingForSectionAtIndex:"),
+                        (Imp)ShelfQuickFilterGap,"d40@0:8@16@24q32");
     Hook("SSBookShelf525ViewController","categoryView:didSelectedItemAtIndex:",
          "fqx_originalShelfCommitted:index:","v32@0:8@16q24",(Imp)BookshelfTabCommitted);
     if (Signature("FQRJXCategoryListContainerView","didClickSelectedItemAtIndex:","v24@0:8q16") &&

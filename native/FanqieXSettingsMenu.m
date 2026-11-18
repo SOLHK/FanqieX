@@ -200,7 +200,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     }
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
-        @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读"};
+        @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
         @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};
     for (NSDictionary *option in options) {
@@ -229,6 +229,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.MineShortcutCard.1":@"快捷功能 订单 历史 消息 创作 签到 快捷入口 卡片 移除",
             @"FanqieX.DramaPinchPureClean.1":@"双指 双指张开 双指收缩 双指捏合 双指缩放 自动清屏 纯净清屏 手势 tiktok 抖音",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
+            @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 语速 下载 章评 目录 定时",
             @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮",
             @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子",
             @"FanqieX.ReaderDoubleTapAutoread.1":@"自动翻页 双击",

@@ -17,6 +17,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(SpeechFloat, "ReaderSpeechFloat", "显示阅读页听书悬浮按钮", "reader", YES) \
     X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
     X(AudioRecommendations, "AudioRecommendations", "显示听书页推荐内容", "reader", YES) \
+    X(AudioControlIconsOnly, "AudioControlIconsOnly", "朗读按钮仅显示图标", "audio", NO) \
     X(MineScanButton, "MineScanButton", "显示我的顶部扫一扫", "mine", YES) \
     X(MineSearchBar, "MineSearchBar", "显示我的顶部搜索框", "mine", YES) \
     X(MineNightButton, "MineNightButton", "显示我的顶部夜间按钮", "mine", YES) \
@@ -770,6 +771,10 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
                 if ([cv isKindOfClass:UICollectionView.class]) [(UICollectionView *)cv reloadData];
             }
         }
+    } else if ([key isEqualToString:AudioControlIconsOnlyKey]) {
+        Class motion = NSClassFromString(@"FQXDockMotion");
+        SEL refresh = NSSelectorFromString(@"refreshAudioGlass");
+        if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:AudioRecommendationsKey]) {
         BOOL show = Option(AudioRecommendationsKey, YES);
         for (UIViewController *vc in [AudioPlayControllers() allObjects]) {
