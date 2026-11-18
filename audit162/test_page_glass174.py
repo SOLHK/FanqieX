@@ -1943,7 +1943,7 @@ def exercise(data, labels):
                     "shortcut material has no forced gray tint")
             if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1"):
                 corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
-                full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1")
+                full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36")
                 require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
                         runtime.objects[label].state["textAlignment"] == 1,
                         "the configured corner shape keeps the caption centered above the native tap area")
