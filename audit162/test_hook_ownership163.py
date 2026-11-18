@@ -18,6 +18,9 @@ class HookRuntime(Runtime):
         self._class('SSBizAdConfigHelper', 'CommentConfigBase')
         self._class('SSAdCommonConfigAdapter', 'CommentConfigBase')
         self._class('ParagraphCommentConfig', 'CommentConfigBase')
+        # The settings bridge has already been registered. This audit
+        # exercises comment hooks and does not own independent class setup.
+        self._class('FQXDramaActionStyle', 'NSObject')
         self.failed_adds = set()
         self.unknown_superclasses = set()
         self.boundary_results = {}
