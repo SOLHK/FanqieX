@@ -5339,8 +5339,9 @@ static void PageProfileBarLayout(Obj self,Sel cmd) {
     DramaVisibilitySet(scan,showScan);
     DramaVisibilitySet(night,showNight);
     DramaVisibilitySet(search,showSearch);
-    static const char *const extra[]={"searchButtonView","searchView","carouseView"};
-    for (U i=0;i<3;++i) if (Responds(self,extra[i])) DramaVisibilitySet(Get(self,extra[i]),showSearch);
+    if (Responds(self,"searchButtonView")) DramaVisibilitySet(Get(self,"searchButtonView"),showSearch);
+    if (Responds(self,"searchView")) DramaVisibilitySet(Get(self,"searchView"),showSearch);
+    if (Responds(self,"carouseView")) DramaVisibilitySet(Get(self,"carouseView"),showSearch);
     // Both native carousel variants place their outgoing and incoming labels
     // inside searchBgView. Keep the animated words clipped to that pill.
     if (!showSearch || Flag(search,"isHidden")) PageRestore(search);
