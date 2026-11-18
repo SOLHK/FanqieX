@@ -151,10 +151,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         Method m = class_getInstanceMethod(object_getClass(target), sel);
         if (m) {
             const char *enc = method_getTypeEncoding(m);
-            if (enc && (strcmp(enc, "q16@0:8") == 0 || strcmp(enc, "Q16@0:8"))) {
+            if (enc && (strcmp(enc, "q16@0:8") == 0 || strcmp(enc, "Q16@0:8") == 0)) {
                 return ((NSInteger (*)(id, SEL))objc_msgSend)(target, sel);
             }
-            if (enc && (strcmp(enc, "i16@0:8") == 0 || strcmp(enc, "I16@0:8"))) {
+            if (enc && (strcmp(enc, "i16@0:8") == 0 || strcmp(enc, "I16@0:8") == 0)) {
                 return (NSInteger)((int (*)(id, SEL))objc_msgSend)(target, sel);
             }
         }

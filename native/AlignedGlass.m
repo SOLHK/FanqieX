@@ -3994,6 +3994,7 @@ static B DramaPlaybackPreference178R11(const char *key) {
     return Flag(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),"objectForKey:",Text(key)),"boolValue");
 }
 static Obj BottomWeak178(Obj object);
+static B BottomFlag178(I tag);
 static Obj DramaPureCleanDock178R13(Obj view);
 static B BottomDramaOwnsView178R13(Obj page,Obj view);
 static void DramaPureCleanViews178R13Key(void) {}
