@@ -87,6 +87,10 @@ HOOKS = [
     ("SSMyUser621BaseViewController", "updateCollectionLayout"),
     ("SSMyUserCollectionViewFunCell", "layoutSubviews"),
     ("SSMyUserCollectionViewOrderFunCell", "layoutSubviews"),
+    ("SSMyUserShortcutCell", "layoutSubviews"),
+    ("SSMyUserShortcutCell", "willMoveToSuperview:"),
+    ("SSMyUserCollectionView1Cell", "layoutSubviews"),
+    ("SSMyUserCollectionView1Cell", "willMoveToSuperview:"),
     ("SSMyUser621BaseViewController", "setupCellMiniGameEntranceData"),
     ("SSMyUserCell2Model", "applyConfiguredMineEcomEntranceData:mineMonetizationStyle:"),
     ("SSMyUser621ViewController", "objectsForListAdapter:"),
@@ -242,6 +246,7 @@ class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
         self.tab_settings_presenters = []
         self.colors["systemOrangeColor"] = self.color("systemOrangeColor")
         for cls, selector, encoding in (
+                ("UIView", "willMoveToSuperview:", "v24@0:8@16"),
                 ("UIViewController", "overrideUserInterfaceStyle", "q16@0:8"),
                 ("UIViewController", "setOverrideUserInterfaceStyle:", "v24@0:8q16"),
                 ("BDReaderViewController", "viewWillAppear:", "v20@0:8B16"),

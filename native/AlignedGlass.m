@@ -5648,18 +5648,6 @@ static void ProfileCard1Move(Obj self,Sel cmd,Obj parent) {
     if (!parent) ProfileShortcutCardGlass(self,0);
     ((void(*)(Obj,Sel,Obj))Original("SSMyUserCollectionView1Cell","fqx179r1_originalCard1Move:"))(self,cmd,parent);
 }
-static void InstallProfileCardHook(const char *name,const char *selector,const char *alias,const char *type,Imp imp) {
-    Obj cls=Lookup(name);
-    if (!cls || !ClassABI(cls,selector,type) || class_getInstanceMethod(cls,sel_registerName(alias))) return;
-    Sel sel=sel_registerName(selector),saved=sel_registerName(alias);
-    if (FQDResolveOwned(cls,sel,0,type)) {
-        Hook(name,selector,alias,type,imp);
-        return;
-    }
-    Method base=class_getInstanceMethod(cls,sel);
-    if (base && class_addMethod(cls,saved,method_getImplementation(base),type))
-        class_addMethod(cls,sel,imp,type);
-}
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
     // The native order subclass copies this glyph frame to its product overlay.
@@ -7303,10 +7291,10 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621ViewController","scrollViewDidScroll:","fqx178r9_originalProfileScroll:","v24@0:8@16",(Imp)ProfileScroll);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
-    InstallProfileCardHook("SSMyUserShortcutCell","layoutSubviews","fqx179r1_originalShortcutCardLayout","v16@0:8",(Imp)ProfileShortcutCardLayout);
-    InstallProfileCardHook("SSMyUserShortcutCell","willMoveToSuperview:","fqx179r1_originalShortcutCardMove:","v24@0:8@16",(Imp)ProfileShortcutCardMove);
-    InstallProfileCardHook("SSMyUserCollectionView1Cell","layoutSubviews","fqx179r1_originalCard1Layout","v16@0:8",(Imp)ProfileCard1Layout);
-    InstallProfileCardHook("SSMyUserCollectionView1Cell","willMoveToSuperview:","fqx179r1_originalCard1Move:","v24@0:8@16",(Imp)ProfileCard1Move);
+    Hook("SSMyUserShortcutCell","layoutSubviews","fqx179r1_originalShortcutCardLayout","v16@0:8",(Imp)ProfileShortcutCardLayout);
+    Hook("SSMyUserShortcutCell","willMoveToSuperview:","fqx179r1_originalShortcutCardMove:","v24@0:8@16",(Imp)ProfileShortcutCardMove);
+    Hook("SSMyUserCollectionView1Cell","layoutSubviews","fqx179r1_originalCard1Layout","v16@0:8",(Imp)ProfileCard1Layout);
+    Hook("SSMyUserCollectionView1Cell","willMoveToSuperview:","fqx179r1_originalCard1Move:","v24@0:8@16",(Imp)ProfileCard1Move);
     if (Signature("SSAudioPlayIndicatorView","contentView","@16@0:8") &&
         Signature("SSAudioPlayIndicatorView","backgroundView","@16@0:8") &&
         Signature("SSAudioPlayIndicatorView","backgroundEffectView","@16@0:8")) {
