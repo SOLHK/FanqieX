@@ -31,6 +31,9 @@ static const void *AudioMenuStockFrameKey = &AudioMenuStockFrameKey;
 static const void *AudioMenuAppliedFrameKey = &AudioMenuAppliedFrameKey;
 static const void *AudioBackGlyphKey = &AudioBackGlyphKey;
 static const void *AudioGradientHiddenKey = &AudioGradientHiddenKey;
+static const void *AudioPlayerStyleKey = &AudioPlayerStyleKey;
+static const void *AudioBackdropFrameKey = &AudioBackdropFrameKey;
+static const void *AudioBackdropAppliedKey = &AudioBackdropAppliedKey;
 static const void *DramaCanvasStockKey = &DramaCanvasStockKey;
 static const void *DramaCanvasAppliedKey = &DramaCanvasAppliedKey;
 
@@ -366,9 +369,17 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.liftedButton = nil;
 }
 
-- (UIView *)startDropletFrom:(UIButton *)origin {
+- (UIView *)startDropletFrom:(UIButton *)origin profile:(BOOL)profile {
     UIView *host = [self ensureDropletMounted];
     if (!host) return nil;
+    // On the flat profile page clear glass blooms much brighter than the
+    // settled selection. Carry the same fill through the whole spring.
+    [UIView performWithoutAnimation:^{
+        if (profile && self.dropletView.effect) self.dropletView.effect = nil;
+        else if (!profile && !self.dropletView.effect) self.dropletView.effect = FQXMakeGlassEffect(1, NO, nil);
+        UIColor *fill = [UIColor.secondarySystemFillColor resolvedColorWithTraitCollection:self.proxy.traitCollection];
+        self.dropletView.backgroundColor = profile ? fill : UIColor.clearColor;
+    }];
     if (!self.dropletActive) {
         CGRect start = [self restingRectForButton:origin inHost:host];
         if (CGRectIsEmpty(start)) return nil;
@@ -420,11 +431,15 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
     UIButton *previous = self.lastSelectedButton ?: [self currentSelectedButton] ?: sender;
     self.pressedButton = nil;
-    UIView *host = [self startDropletFrom:previous];
+    NSString *title = sender.accessibilityLabel ?: sender.currentTitle;
+    BOOL profile = [title isEqualToString:@"我的"];
+    UIView *host = [self startDropletFrom:previous profile:profile];
     if (!host) return;
     NSUInteger generation = self.generation;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.generation != generation || self.panning) return;
+        if (profile) self.dropletView.backgroundColor =
+            [UIColor.secondarySystemFillColor resolvedColorWithTraitCollection:self.proxy.traitCollection];
         CGRect rest = [self restingRectForButton:sender inHost:host];
         if (CGRectIsEmpty(rest)) {
             [self cancelDropletImmediately];
@@ -470,7 +485,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (!self.overlay || !FQXGlassEnabled() || UIAccessibilityIsReduceMotionEnabled()) return;
     if (pan.state == UIGestureRecognizerStateBegan || pan.state == UIGestureRecognizerStateChanged) {
         BOOL began = !self.panning;
-        UIView *host = began ? [self startDropletFrom:[self currentSelectedButton]] : self.dropletView.superview;
+        UIView *host = began ? [self startDropletFrom:[self currentSelectedButton] profile:NO] : self.dropletView.superview;
         if (!host) return;
         self.panning = YES;
         self.pressedButton = nil;
@@ -1614,7 +1629,6 @@ static void HookReaderNavLayoutMotion(UIView *self, SEL _cmd) {
     }
 }
 
-static UIUserInterfaceStyle FQXAudioInterfaceStyleForColor(UIColor *sampleTextOrIconColor, BOOL isTrueTone);
 static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
                                                       UIView *mountParent,
                                                       UIView *belowSibling,
@@ -1645,23 +1659,32 @@ static void FQXSetParagraphOutlineSuppressed(UIView *imgView, BOOL suppress) {
 static void FQXAudioPlaceView(UIView *view, CGPoint target, BOOL active);
 
 static UIBezierPath *FQXParagraphBubblePath(CGSize size) {
-    CGFloat left = 0.6, top = 0.6, right = size.width - 0.6;
-    CGFloat tip = size.height - 0.6;
-    CGFloat bottom = tip - MIN(3.8, size.height * 0.22);
-    CGFloat radius = MIN(6.0, MIN((right - left) * 0.34, (bottom - top) * 0.42));
-    CGFloat tailBase = left + (right - left) * 0.43;
+    CGFloat x = size.width * 0.5;
+    CGFloat y = (size.height - MIN(3.4, size.height * 0.21)) * 0.5;
+    CGFloat rx = x - 1.0;
+    CGFloat ry = y - 1.0;
+    CGFloat lower = y + ry;
+    CGFloat tailJoin = x - rx * 0.32;
+    CGFloat tailTip = MAX(1.3, x - rx * 0.73);
     UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(left + radius, top)];
-    [path addLineToPoint:CGPointMake(right - radius, top)];
-    [path addQuadCurveToPoint:CGPointMake(right, top + radius) controlPoint:CGPointMake(right, top)];
-    [path addLineToPoint:CGPointMake(right, bottom - radius)];
-    [path addQuadCurveToPoint:CGPointMake(right - radius, bottom) controlPoint:CGPointMake(right, bottom)];
-    [path addLineToPoint:CGPointMake(tailBase, bottom)];
-    [path addQuadCurveToPoint:CGPointMake(left + 4.0, tip) controlPoint:CGPointMake(tailBase - 2.0, tip - 0.3)];
-    [path addQuadCurveToPoint:CGPointMake(left + radius, bottom) controlPoint:CGPointMake(left + 5.7, tip - 1.5)];
-    [path addQuadCurveToPoint:CGPointMake(left, bottom - radius) controlPoint:CGPointMake(left, bottom)];
-    [path addLineToPoint:CGPointMake(left, top + radius)];
-    [path addQuadCurveToPoint:CGPointMake(left + radius, top) controlPoint:CGPointMake(left, top)];
+    [path moveToPoint:CGPointMake(x, 1.0)];
+    [path addCurveToPoint:CGPointMake(x + rx, y)
+            controlPoint1:CGPointMake(x + rx * 0.56, 1.0)
+            controlPoint2:CGPointMake(x + rx, y - ry * 0.56)];
+    [path addCurveToPoint:CGPointMake(x, lower)
+            controlPoint1:CGPointMake(x + rx, y + ry * 0.56)
+            controlPoint2:CGPointMake(x + rx * 0.56, lower)];
+    [path addQuadCurveToPoint:CGPointMake(tailJoin, lower - 0.25)
+                 controlPoint:CGPointMake(x - rx * 0.15, lower)];
+    [path addQuadCurveToPoint:CGPointMake(tailTip, size.height - 1.0)
+                 controlPoint:CGPointMake(tailJoin - 2.0, size.height - 1.2)];
+    [path addQuadCurveToPoint:CGPointMake(x - rx * 0.62, y + ry * 0.74)
+                 controlPoint:CGPointMake(tailTip + 0.9, size.height - 2.5)];
+    [path addQuadCurveToPoint:CGPointMake(1.0, y)
+                 controlPoint:CGPointMake(1.0, y + ry * 0.47)];
+    [path addCurveToPoint:CGPointMake(x, 1.0)
+            controlPoint1:CGPointMake(1.0, y - ry * 0.56)
+            controlPoint2:CGPointMake(x - rx * 0.56, 1.0)];
     [path closePath];
     return path;
 }
@@ -1681,7 +1704,8 @@ static void FQXApplyReaderParagraphBubbleGlass(UIView *view) {
                     CGRectGetWidth(view.bounds) > 6.0 && CGRectGetHeight(view.bounds) > 6.0;
     BOOL active = FQXGlassEnabled() && hasCount && !specialBadge && !view.hidden;
 
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(label.textColor, NO);
+    UIUserInterfaceStyle style = view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
+        ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
     CGRect frame = CGRectInset(view.bounds, 0.0, 0.5);
     active = active && CGRectGetWidth(frame) >= 14.0 && CGRectGetHeight(frame) >= 12.0;
     UIVisualEffectView *surface = FQXInstallAudioSurfaceFull(view, view, label, frame, 0, 0.5, YES, NO,
@@ -1689,23 +1713,27 @@ static void FQXApplyReaderParagraphBubbleGlass(UIView *view) {
     FQXSetParagraphOutlineSuppressed(bubbleImg, surface != nil);
     FQXSetParagraphOutlineSuppressed(commentedImg, surface != nil);
     FQXSetParagraphOutlineSuppressed(notchImg, surface != nil);
-    CGFloat tailHeight = MIN(3.8, CGRectGetHeight(frame) * 0.22);
+    CGFloat tailHeight = MIN(3.4, CGRectGetHeight(frame) * 0.21);
     CGPoint textCenter = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame) - tailHeight * 0.5);
     if (label.superview)
         FQXAudioPlaceView(label, [view convertPoint:textCenter toView:label.superview], surface != nil);
-    if (!surface) return;
-
-    CAShapeLayer *rim = objc_getAssociatedObject(surface, FQXParagraphRimKey);
+    CAShapeLayer *rim = objc_getAssociatedObject(view, FQXParagraphRimKey);
+    if (!surface) {
+        [rim removeFromSuperlayer];
+        objc_setAssociatedObject(view, FQXParagraphRimKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
     if (!rim) {
         rim = [CAShapeLayer layer];
         rim.fillColor = nil;
-        rim.lineWidth = 0.8;
+        rim.lineWidth = 1.15;
         rim.lineJoin = kCALineJoinRound;
-        [surface.contentView.layer addSublayer:rim];
-        objc_setAssociatedObject(surface, FQXParagraphRimKey, rim, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [view.layer addSublayer:rim];
+        objc_setAssociatedObject(view, FQXParagraphRimKey, rim, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    rim.frame = frame;
     if (!surface.maskView || !CGRectEqualToRect(surface.maskView.frame, surface.bounds)) {
         UIBezierPath *outline = FQXParagraphBubblePath(surface.bounds.size);
         UIView *mask = [[UIView alloc] initWithFrame:surface.bounds];
@@ -1715,10 +1743,10 @@ static void FQXApplyReaderParagraphBubbleGlass(UIView *view) {
         shape.fillColor = UIColor.blackColor.CGColor;
         [mask.layer addSublayer:shape];
         surface.maskView = mask;
-        rim.frame = surface.bounds;
         rim.path = outline.CGPath;
     }
-    rim.strokeColor = [label.textColor colorWithAlphaComponent:0.55].CGColor;
+    UIColor *outlineColor = style == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
+    rim.strokeColor = [outlineColor colorWithAlphaComponent:style == UIUserInterfaceStyleDark ? 0.71 : 0.47].CGColor;
     [CATransaction commit];
 }
 
@@ -1890,7 +1918,10 @@ static void FQXAudioCenterBackGlyph(UIButton *button) {
     glyph.hidden = surface == nil;
     if (surface) {
         glyph.frame = CGRectMake(CGRectGetMidX(surface.frame) - 9.0, CGRectGetMidY(surface.frame) - 8.75, 18.0, 18.0);
-        glyph.strokeColor = (button.imageView.tintColor ?: button.tintColor).CGColor;
+        UIView *nav = button.superview;
+        if ([nav isKindOfClass:NSClassFromString(@"SSAudioPageBackView")]) nav = nav.superview;
+        UIColor *ink = FQXObjGet(nav, "themeTintColor");
+        glyph.strokeColor = (ink ?: UIColor.whiteColor).CGColor;
     }
     [CATransaction commit];
 }
@@ -1908,20 +1939,15 @@ static void FQXAudioMenuCellIcons(UICollectionViewCell *cell) {
     }
 }
 
-static UIUserInterfaceStyle FQXAudioInterfaceStyleForColor(UIColor *sampleTextOrIconColor, BOOL isTrueTone) {
-    if (isTrueTone) return UIUserInterfaceStyleLight;
-    if ([sampleTextOrIconColor isKindOfClass:UIColor.class]) {
-        CGFloat r = 1.0, g = 1.0, b = 1.0, a = 1.0;
-        if ([sampleTextOrIconColor getRed:&r green:&g blue:&b alpha:&a]) {
-            CGFloat lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            return lum < 0.45 ? UIUserInterfaceStyleLight : UIUserInterfaceStyleDark;
-        }
-        CGFloat w = 1.0;
-        if ([sampleTextOrIconColor getWhite:&w alpha:&a]) {
-            return w < 0.45 ? UIUserInterfaceStyleLight : UIUserInterfaceStyleDark;
-        }
+static UIUserInterfaceStyle FQXAudioPlayerStyle(UIView *view) {
+    Class playerClass = NSClassFromString(@"SSNewAudioPlayViewController");
+    for (UIResponder *owner = view.nextResponder; owner; owner = owner.nextResponder) {
+        if (![owner isKindOfClass:playerClass]) continue;
+        NSNumber *style = objc_getAssociatedObject(owner, AudioPlayerStyleKey);
+        UITraitCollection *traits = ((UIViewController *)owner).traitCollection;
+        return style ? style.integerValue : traits.userInterfaceStyle;
     }
-    return UIUserInterfaceStyleDark;
+    return view.traitCollection.userInterfaceStyle;
 }
 
 static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
@@ -2050,8 +2076,7 @@ static void FQXApplyAudioNavigationGlass(UIView *nav) {
     if (![nav isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(nav);
     BOOL enabled = FQXGlassEnabled();
-    UIColor *tint = FQXObjGet(nav, "themeTintColor");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(tint, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(nav);
     FQXAudioSetUnclipped(nav, enabled);
 
     UIButton *backBtn = FQXObjGet(nav, "backBtn");
@@ -2100,7 +2125,7 @@ static void FQXApplyAudioBackViewGlass(UIView *backView) {
     UIButton *closeBtn = FQXObjGet(backView, "closeButton");
     UIButton *backLastBtn = FQXObjGet(backView, "backLastButton");
     UIView *splitLine = FQXObjGet(backView, "splitLineView");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(closeBtn.tintColor ?: backLastBtn.currentTitleColor, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(backView);
 
     BOOL dualButtons = [backLastBtn isKindOfClass:UIButton.class] && !backLastBtn.hidden &&
                        backLastBtn.superview == backView && CGRectGetWidth(backLastBtn.bounds) > 8.0;
@@ -2130,8 +2155,7 @@ static void FQXApplyAudioBookGlass(UIView *bookView) {
     FQXTrackAudioView(bookView);
     UIImageView *arrow = FQXObjGet(bookView, "bookNameArrowView");
     if (![arrow isKindOfClass:UIView.class]) return;
-    UILabel *chapterLabel = FQXObjGet(bookView, "chapterLabel");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(chapterLabel.textColor, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(bookView);
     UIView *parent = arrow.superview;
     BOOL showEntrance = FQXBoolGet(bookView, "shouldShowDetailEntrance", YES);
     BOOL active = FQXGlassEnabled() && showEntrance && parent != nil && !arrow.hidden &&
@@ -2166,18 +2190,12 @@ static void FQXApplyAudioMenuGlass(UIView *menuView) {
             break;
         }
     }
-    UIColor *sampleColor = nil;
     if (cv) {
         FQXAudioSetUnclipped(cv, enabled);
         FQXAudioClearBackground(cv, enabled);
-        for (UICollectionViewCell *cell in cv.visibleCells) {
-            FQXAudioMenuCellIcons(cell);
-            if (sampleColor) continue;
-            UILabel *lbl = FQXObjGet(cell, "nameLabel");
-            if ([lbl isKindOfClass:UILabel.class]) sampleColor = lbl.textColor;
-        }
+        for (UICollectionViewCell *cell in cv.visibleCells) FQXAudioMenuCellIcons(cell);
     }
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(sampleColor, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(menuView);
     CGRect b = menuView.bounds;
     CGFloat insetX = (menuView.frame.origin.x <= 2.0 && menuView.superview &&
                       CGRectGetWidth(b) >= CGRectGetWidth(menuView.superview.bounds) - 4.0) ? 12.0 : 0.0;
@@ -2210,10 +2228,7 @@ static void FQXApplyAudioMenuGlass(UIView *menuView) {
             objc_setAssociatedObject(cv, AudioMenuAppliedFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    // Use UIGlassEffectStyleClear (style = 1) with UIUserInterfaceStyleUnspecified (0) when dark
-    // so scrolling novel lyrics directly behind 1号 refract visibly through the glass!
-    UIUserInterfaceStyle menuGlassStyle = (style == UIUserInterfaceStyleLight) ? UIUserInterfaceStyleLight : UIUserInterfaceStyleUnspecified;
-    FQXInstallAudioSurfaceFull(menuView, menuView, cv, barRect, 1, 22.0, YES, YES, menuGlassStyle, nil, enabled);
+    FQXInstallAudioSurfaceFull(menuView, menuView, cv, barRect, 0, 22.0, YES, YES, style, nil, enabled);
 }
 
 static void FQXApplyAudioMenuCellPress(UICollectionViewCell *cell, BOOL pressed) {
@@ -2222,8 +2237,7 @@ static void FQXApplyAudioMenuCellPress(UICollectionViewCell *cell, BOOL pressed)
     BOOL enabled = FQXGlassEnabled();
     FQXAudioSetUnclipped(cell, enabled);
     FQXAudioSetUnclipped(cell.contentView, enabled);
-    UILabel *lbl = FQXObjGet(cell, "nameLabel");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(lbl.textColor, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(cell);
     CGRect pill = CGRectInset(cell.contentView.bounds, 4.0, 0.0);
     UIColor *pressTint = [UIColor colorWithWhite:1.0 alpha:(style == UIUserInterfaceStyleDark ? 0.14 : 0.35)];
     UIVisualEffectView *surface = FQXInstallAudioSurfaceFull(cell, cell.contentView, nil, pill, 1, 16.0, YES, YES, style, pressTint, enabled && pressed);
@@ -2249,8 +2263,7 @@ static void FQXApplyAudioControlGlass(UIView *control) {
     BOOL enabled = FQXGlassEnabled() && !control.hidden;
     FQXAudioSetUnclipped(control, enabled);
     FQXAudioClearBackground(control, enabled);
-    UIColor *iconTint = FQXObjGet(control, "iconTintColor");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(iconTint, NO);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(control);
 
     UIButton *menuBtn = FQXObjGet(control, "menuBtn");
     UIButton *timingBtn = FQXObjGet(control, "timingBtnBtn");
@@ -2306,25 +2319,19 @@ static void FQXApplyAudioToneCellGlass(UICollectionViewCell *cell) {
     UIView *edgeShadow = FQXObjGet(cell, "edgeShadowView");
     FQXAudioSetHiddenTracked(edgeShadow, enabled);
 
-    UILabel *titleLabel = FQXObjGet(cell, "titleLabel");
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(titleLabel.textColor, NO);
-    BOOL selected = cell.isSelected || FQXBoolGet(cell, "blurSelected", NO);
-    BOOL dark = (style != UIUserInterfaceStyleLight);
-    UIColor *tint = selected
-        ? [UIColor colorWithWhite:1.0 alpha:(dark ? 0.22 : 0.50)]
-        : [UIColor colorWithWhite:1.0 alpha:(dark ? 0.06 : 0.16)];
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(cell);
     CGRect pill = CGRectInset(cell.contentView.bounds, 1.0, 1.0);
-    FQXInstallAudioSurfaceFull(cell, cell.contentView, nil, pill, 0, 18.0, YES, YES, style, tint, enabled);
+    FQXInstallAudioSurfaceFull(cell, cell.contentView, nil, pill, 0, 18.0, YES, YES, style, nil, enabled);
 }
 
-static void FQXApplyAudioOuterCardGlass(UIView *card, UIColor *textSample, BOOL isTrueTone) {
+static void FQXApplyAudioOuterCardGlass(UIView *card) {
     if (![card isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(card);
     BOOL enabled = FQXGlassEnabled() && !card.hidden &&
                    CGRectGetWidth(card.bounds) > 24.0 && CGRectGetHeight(card.bounds) > 24.0;
     FQXAudioSetUnclipped(card, enabled);
     FQXAudioClearBackground(card, enabled);
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(textSample, isTrueTone);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(card);
     UIVisualEffectView *surface = FQXInstallAudioSurfaceFull(card, card, nil, card.bounds, 0, 24.0, YES, YES, style, nil, enabled);
     surface.clipsToBounds = YES;
     surface.layer.cornerCurve = kCACornerCurveContinuous;
@@ -2333,10 +2340,8 @@ static void FQXApplyAudioOuterCardGlass(UIView *card, UIColor *textSample, BOOL 
 
 static void FQXApplyAudioToneListGlass(UIView *toneList) {
     if (![toneList isKindOfClass:UIView.class]) return;
-    UILabel *title = FQXObjGet(toneList, "titleLabel");
-    BOOL trueTone = FQXBoolGet(toneList, "isTrueTone", NO);
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(title.textColor, trueTone);
-    FQXApplyAudioOuterCardGlass(toneList, title.textColor, trueTone);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(toneList);
+    FQXApplyAudioOuterCardGlass(toneList);
 
     // Circular Liquid Glass button on `音色设置 >` arrow (`moreButton`)
     UIButton *moreBtn = FQXObjGet(toneList, "moreButton");
@@ -2355,11 +2360,8 @@ static void FQXApplyAudioToneListGlass(UIView *toneList) {
 
 static void FQXApplyAudioReadingGuideGlass(UIView *guide) {
     if (![guide isKindOfClass:UIView.class]) return;
-    UILabel *title = FQXObjGet(guide, "titleLabel");
-    UIColor *tint = FQXObjGet(guide, "textTintColor") ?: title.textColor;
-    BOOL trueTone = FQXBoolGet(guide, "isTrueTone", NO);
-    UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(tint, trueTone);
-    FQXApplyAudioOuterCardGlass(guide, tint, trueTone);
+    UIUserInterfaceStyle style = FQXAudioPlayerStyle(guide);
+    FQXApplyAudioOuterCardGlass(guide);
 
     // Circular Liquid Glass pill behind `边听边读 >` arrow (`indicatorImageView`)
     UIView *arrow = FQXObjGet(guide, "indicatorImageView");
@@ -2415,14 +2417,28 @@ static void FQXApplyAudioBackgroundSeamless(UIView *bgView) {
     UIView *bottomView = FQXObjGet(bgView, "bottomView");
     UIView *pixelBlur = FQXObjGet(bgView, "pixelBlurBgImageView");
     BOOL hasBlurArt = [pixelBlur isKindOfClass:UIView.class] && !pixelBlur.hidden && pixelBlur.alpha > 0.05;
+    if (pixelBlur.superview == bgView && !CGRectIsEmpty(bgView.bounds)) {
+        CGRect current = pixelBlur.frame;
+        NSValue *original = objc_getAssociatedObject(pixelBlur, AudioBackdropFrameKey);
+        NSValue *previous = objc_getAssociatedObject(pixelBlur, AudioBackdropAppliedKey);
+        CGRect stock = original && previous && CGRectEqualToRect(current, previous.CGRectValue)
+            ? original.CGRectValue : current;
+        CGRect target = seamless && hasBlurArt ? bgView.bounds : stock;
+        if (!CGRectEqualToRect(current, target)) pixelBlur.frame = target;
+        if (!CGRectEqualToRect(target, stock)) {
+            objc_setAssociatedObject(pixelBlur, AudioBackdropFrameKey, [NSValue valueWithCGRect:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(pixelBlur, AudioBackdropAppliedKey, [NSValue valueWithCGRect:target], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        } else if (previous) {
+            objc_setAssociatedObject(pixelBlur, AudioBackdropFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(pixelBlur, AudioBackdropAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
     if ([bottomView isKindOfClass:UIView.class]) {
         if (seamless && hasBlurArt) {
             FQXAudioSetHiddenTracked(bottomView, YES);
         } else {
             FQXAudioSetHiddenTracked(bottomView, NO);
-            if (seamless && bgView.backgroundColor) {
-                bottomView.backgroundColor = bgView.backgroundColor;
-            }
+            FQXAudioClearBackground(bottomView, seamless);
         }
     }
 }
@@ -2487,6 +2503,7 @@ static void FQXApplyAudioPlayControllerRefractionAndSeamless(UIViewController *v
     UIView *bottomHalfMask = FQXObjGet(vc, "bottomMaskViewHalfBgView");
     FQXAudioSetHiddenTracked(bottomMask, active);
     FQXAudioSetHiddenTracked(bottomHalfMask, active);
+    FQXAudioHideGradient(FQXObjGet(vc, "bottomMaskGradientLayer"), active);
 
     UIView *slideContainer = FQXObjGet(vc, "bottomSlideContainerView");
     UIView *pinnedContainer = FQXObjGet(vc, "pinnedControlContainerView");
@@ -2494,7 +2511,7 @@ static void FQXApplyAudioPlayControllerRefractionAndSeamless(UIViewController *v
     FQXAudioClearBackground(pinnedContainer, glassOn);
     FQXAudioHideGradient(FQXObjGet(pinnedContainer, "maskGradientLayer"), active);
 
-    UIView *bgView = FQXObjGet(vc, "backgroundView");
+    UIView *bgView = FQXObjGet(vc, "bgView");
     if ([bgView isKindOfClass:UIView.class]) {
         FQXApplyAudioBackgroundSeamless(bgView);
     }
@@ -2756,6 +2773,11 @@ static void HookAudioBgUpdateTheme(UIView *self, SEL _cmd, id color) {
     if (OrigAudioBgUpdateTheme) OrigAudioBgUpdateTheme(self, _cmd, color);
     FQXApplyAudioBackgroundSeamless(self);
 }
+static void (*OrigAudioBgBlurHidden)(id, SEL, BOOL);
+static void HookAudioBgBlurHidden(UIView *self, SEL cmd, BOOL hidden) {
+    OrigAudioBgBlurHidden(self, cmd, hidden);
+    FQXApplyAudioBackgroundSeamless(self);
+}
 
 static void (*OrigAudioVCLayoutContent)(id, SEL);
 static void HookAudioVCLayoutContent(UIViewController *self, SEL _cmd) {
@@ -2785,6 +2807,15 @@ static void (*OrigAudioVCSlideMaskTheme)(id, SEL, id);
 static void HookAudioVCSlideMaskTheme(UIViewController *self, SEL _cmd, id color) {
     if (OrigAudioVCSlideMaskTheme) OrigAudioVCSlideMaskTheme(self, _cmd, color);
     FQXApplyAudioPlayControllerRefractionAndSeamless(self);
+}
+
+static void (*OrigAudioVCThemeMode)(id, SEL, NSUInteger, BOOL);
+static void HookAudioVCThemeMode(UIViewController *self, SEL cmd, NSUInteger appearance, BOOL dark) {
+    NSNumber *style = @(dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
+    BOOL changed = ![style isEqual:objc_getAssociatedObject(self, AudioPlayerStyleKey)];
+    objc_setAssociatedObject(self, AudioPlayerStyleKey, style, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    OrigAudioVCThemeMode(self, cmd, appearance, dark);
+    if (changed && self.isViewLoaded && self.view.window) FQXRefreshAllAudioGlass();
 }
 
 static void (*OrigTTSReaderLayout)(id, SEL);
@@ -2889,11 +2920,13 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSAudioPlayToneCell", "setBlurSelected:", "v20@0:8B16", OrigToneCellSetBlurSelected, HookToneCellSetBlurSelected);
         HOOK_INST("SSNewAudioPlayBackgroundView", "setupLayout", "v16@0:8", OrigAudioBgSetupLayout, HookAudioBgSetupLayout);
         HOOK_INST("SSNewAudioPlayBackgroundView", "updateThemeColor:", "v24@0:8@16", OrigAudioBgUpdateTheme, HookAudioBgUpdateTheme);
+        HOOK_INST("SSNewAudioPlayBackgroundView", "setPixelBlurBackgroundHidden:", "v20@0:8B16", OrigAudioBgBlurHidden, HookAudioBgBlurHidden);
         HOOK_INST("SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", OrigAudioVCLayoutContent, HookAudioVCLayoutContent);
         HOOK_INST("SSNewAudioPlayViewController", "rd_layoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCLayoutMasks, HookAudioVCLayoutMasks);
         HOOK_INST("SSNewAudioPlayViewController", "sliderProgresslayoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCSliderMasks, HookAudioVCSliderMasks);
         HOOK_INST("SSNewAudioPlayViewController", "updateBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCBottomMaskTheme, HookAudioVCBottomMaskTheme);
         HOOK_INST("SSNewAudioPlayViewController", "updateSlideBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCSlideMaskTheme, HookAudioVCSlideMaskTheme);
+        HOOK_INST("SSNewAudioPlayViewController", "audioAppearenceStyleDidChangedTo:isDarkMode:", "v28@0:8Q16B24", OrigAudioVCThemeMode, HookAudioVCThemeMode);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
 

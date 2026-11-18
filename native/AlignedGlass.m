@@ -2491,6 +2491,84 @@ static void DramaActionInk(Obj owner,Obj glyph,double factor) {
     V1(glyph,"setImage:",scaled);
 }
 
+static void DramaOutlineViewKey(void) {}
+static void DramaOutlineSymbolKey(void) {}
+static void DramaOutlineGlyphKey(void) {}
+static void DramaOutlinePaintKey(void) {}
+static void DramaOutlineStockMaskKey(void) {}
+static void DramaOutlineRestoreGlyph(Obj owner) {
+    Obj glyph=objc_getAssociatedObject(owner,DramaOutlineGlyphKey);
+    if (!glyph) return;
+    Obj layer=Get(glyph,"layer");
+    if (Get(layer,"mask")==objc_getAssociatedObject(owner,DramaOutlinePaintKey))
+        V1(layer,"setMask:",objc_getAssociatedObject(owner,DramaOutlineStockMaskKey));
+    objc_setAssociatedObject(owner,DramaOutlineGlyphKey,0,1);
+    objc_setAssociatedObject(owner,DramaOutlineStockMaskKey,0,1);
+}
+static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char *selector) {
+    Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
+    if (!glyph) {
+        DramaOutlineRestoreGlyph(owner);
+        if (outline) V0(outline,"removeFromSuperview");
+        return 0;
+    }
+    const char *name="ellipsis.bubble";
+    Obj tint=O0(Lookup("UIColor"),"whiteColor");
+    Sel icon=sel_registerName(selector);
+    if (icon==sel_registerName("starIcon")) {
+        name="star";
+        if (Flag(owner,"isCollected")) tint=O0(Lookup("UIColor"),"systemYellowColor");
+    } else if (icon==sel_registerName("likeIcon")) {
+        name="heart";
+        if (BoolProp(Get(owner,"model"),"isLiked")) tint=O0(Lookup("UIColor"),"systemPinkColor");
+    } else if (icon==sel_registerName("shareIcon")) name="paperplane";
+
+    if (!outline || !Equal(objc_getAssociatedObject(outline,DramaOutlineSymbolKey),name)) {
+        double size=__builtin_fmin(30,__builtin_fmin(frame.width,frame.height));
+        Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
+            sel_registerName("configurationWithPointSize:weight:scale:"),size,5,2);
+        Obj image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
+            sel_registerName("systemImageNamed:withConfiguration:"),Text(name),config);
+        if (!image) {
+            DramaOutlineApply(owner,0,0,(Rect){0},selector);
+            return 0;
+        }
+        if (!outline) {
+            outline=O0(Lookup("UIImageView"),"new");
+            VB(outline,"setUserInteractionEnabled:",0);
+            VB(outline,"setIsAccessibilityElement:",0);
+            Q1(outline,"setContentMode:",1);
+            objc_setAssociatedObject(owner,DramaOutlineViewKey,outline,1);
+            V0(outline,"release");
+        }
+        image=((Obj(*)(Obj,Sel,I))Message)(image,sel_registerName("imageWithRenderingMode:"),2);
+        V1(outline,"setImage:",image);
+        objc_setAssociatedObject(outline,DramaOutlineSymbolKey,Text(name),1);
+    }
+    if (objc_getAssociatedObject(owner,DramaOutlineGlyphKey)!=glyph) {
+        DramaOutlineRestoreGlyph(owner);
+        objc_setAssociatedObject(owner,DramaOutlineGlyphKey,glyph,1);
+    }
+    if (Get(outline,"superview")!=parent)
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:aboveSubview:"),outline,glyph);
+    if (!SameRect(Frame(outline),frame)) SetFrame(outline,frame);
+    if (!SameColor(Get(outline,"tintColor"),tint)) V1(outline,"setTintColor:",tint);
+    // Mask the original paint on its layer while the view still receives its
+    // native touches and retains the current image supplied by the host.
+    Obj layer=Get(glyph,"layer"),mask=objc_getAssociatedObject(owner,DramaOutlinePaintKey);
+    if (!mask) {
+        mask=O0(Lookup("CALayer"),"layer");
+        objc_setAssociatedObject(owner,DramaOutlinePaintKey,mask,1);
+    }
+    Obj current=Get(layer,"mask");
+    if (current!=mask) {
+        objc_setAssociatedObject(owner,DramaOutlineStockMaskKey,current,1);
+        V1(layer,"setMask:",mask);
+    }
+    VB(outline,"setHidden:",Flag(glyph,"isHidden"));
+    return 1;
+}
+
 B FQHDramaGlyph(Obj owner,const char *selector) {
     Sel glyphSelector=sel_registerName(selector);
     if (!((glyphSelector==sel_registerName("starIcon") && Kind(owner,"SSShortVideoRightInteractionCollectView")) ||
@@ -2502,13 +2580,23 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     Obj glyph=Get(owner,selector);
     Obj parent=Enabled() && Kind(glyph,"UIImageView") ? O0(glyph,"superview") : (Obj)0;
     Rect frame=parent ? Frame(glyph) : (Rect){0};
+    if (VisibleRect(frame)) V1(DramaActionOwners178R11(),"addObject:",owner);
+    B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
+        "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
+    if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector);
     if (!VisibleRect(frame)) { DramaActionInk(owner,0,1); RemoveDramaGlass(owner); return 1; }
+    if (outline) {
+        DramaActionInk(owner,0,1);
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector)) {
+            RemoveDramaGlass(owner);
+            return 1;
+        }
+    }
     double diameter=DramaActionDiameter178R11();
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
     if (!glass) { DramaActionInk(owner,0,1); return 0; }
     DramaActionInk(owner,glyph,diameter/50);
-    V1(DramaActionOwners178R11(),"addObject:",owner);
     B hidden=Flag(glyph,"isHidden");
     if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
     return 1;
@@ -2525,6 +2613,20 @@ void FQHRefreshDramaActions178R11(void) {
     }
 }
 
+static void DramaRefreshStyle(Obj self,Sel cmd) {
+    (void)self; (void)cmd;
+    FQHRefreshDramaActions178R11();
+}
+static void DramaCollectModel(Obj self,Sel cmd,Obj model,B animated) {
+    ((void(*)(Obj,Sel,Obj,B))Original("SSShortVideoRightInteractionCollectView",
+        "fqx_originalCollectArtModel:animated:"))(self,cmd,model,animated);
+    FQHDramaGlyph(self,"starIcon");
+}
+static void DramaLikeModel(Obj self,Sel cmd,Obj model) {
+    ((void(*)(Obj,Sel,Obj))Original("SSShortVideoRightInteractionLikeView",
+        "fqx_originalLikeArtModel:"))(self,cmd,model);
+    FQHDramaGlyph(self,"likeIcon");
+}
 static void DramaCommentLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoHostRightInteractionCommentView","fqx190_originalDramaCommentLayout"))(self,cmd);
     FQHDramaGlyph(self,"commentIcon");
@@ -2534,6 +2636,8 @@ static void DramaLikeVisibility(Obj self,Sel cmd,B hidden) {
     ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionLikeView","fqx190_originalDramaLikeVisibility:"))(self,cmd,hidden);
     Obj glass=objc_getAssociatedObject(self,DramaGlassKey);
     if (glass) VB(glass,"setHidden:",hidden);
+    Obj outline=objc_getAssociatedObject(self,DramaOutlineViewKey);
+    if (outline) VB(outline,"setHidden:",hidden);
 }
 
 static void DramaClearBackground(Obj view,B clear) {
@@ -5077,7 +5181,7 @@ static void ApplyShelfFilterButton(Obj button,B visible) {
     ShelfActionGlass(button,1);
 }
 static void ShelfFilterFade(Obj view,B hide) {
-    if (!Kind(view,"UIView")) return;
+    if (!Kind(view,"UIView") && !Kind(view,"CAGradientLayer")) return;
     Obj old=objc_getAssociatedObject(view,ShelfFilterFadeHiddenKey);
     if (hide && !Flag(view,"isHidden")) {
         objc_setAssociatedObject(view,ShelfFilterFadeHiddenKey,view,0);
@@ -5141,8 +5245,7 @@ B FQHShelfOwnsAction(Obj button,Obj header) {
     return Kind(header,"SSBookShelfFilterHeaderView") && Responds(header,"fqx179_originalShelfFilterHeader") &&
         Get(header,"filterButton")==button;
 }
-static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSBookShelfFilterHeaderView","fqx179_originalShelfFilterHeader"))(self,cmd);
+static void ShelfFilterPresent(Obj self) {
     Obj button=Get(self,"filterButton");
     if (!Belongs(button,self)) return;
     ShelfRememberFilterHeader(self);
@@ -5151,10 +5254,20 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     Obj options=Get(self,"optionsView");
     ShelfFilterFade(Get(self,"gradienttLeftView"),glass);
     ShelfFilterFade(Get(self,"filterGradientView"),glass);
+    ShelfFilterFade(Get(self,"filterGraidentLayer"),glass);
     if (Kind(options,"SSBookShelf541FilterView")) {
         ShelfFilterFade(Get(options,"leftGradientView"),glass);
         ShelfFilterFade(Get(options,"rightGradientView"),glass);
     }
+    // The host positions the options row before the filter's final right inset.
+    // Keep the button above that row where the two frames can now intersect.
+    if (FQHSurface(button) && Get(button,"superview")==self && Get(options,"superview")==self &&
+        Get(Get(self,"subviews"),"lastObject")!=button)
+        V1(self,"bringSubviewToFront:",button);
+}
+static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSBookShelfFilterHeaderView","fqx179_originalShelfFilterHeader"))(self,cmd);
+    ShelfFilterPresent(self);
 }
 static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj option) {
     // Genre selection hides the action; option-model refresh shows it again.
@@ -5163,11 +5276,7 @@ static void ShelfFilterHeaderConfigure(Obj self,Sel cmd,Obj model,Obj option) {
         "fqx192_originalShelfFilterOption:filter:" : "fqx191_originalShelfFilterConfig:order:";
     RestoreShelfFilterButton(Get(self,"filterButton"));
     ((void(*)(Obj,Sel,Obj,Obj))Original("SSBookShelfFilterHeaderView",original))(self,cmd,model,option);
-    Obj button=Get(self,"filterButton");
-    if (Belongs(button,self)) {
-        ShelfRememberFilterHeader(self);
-        ApplyShelfFilterButton(button,ShelfFilterVisible());
-    }
+    ShelfFilterPresent(self);
 }
 static Insets ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
     Insets insets=((Insets(*)(Obj,Sel,Obj,Obj,I))Original("SSBookShelfFilterMixRowCollectionView",
@@ -7296,6 +7405,18 @@ void FQHPageInstall(void) {
     DramaDetailGlassInstall();
     FeatureVisibilityInstall178R9();
     Hook("SSShortVideoHostRightInteractionCommentView","layoutSubviews","fqx190_originalDramaCommentLayout","v16@0:8",(Imp)DramaCommentLayout);
+    Hook("SSShortVideoRightInteractionCollectView","refreshUIWithModel:animated:",
+         "fqx_originalCollectArtModel:animated:","v28@0:8@16B24",(Imp)DramaCollectModel);
+    Hook("SSShortVideoRightInteractionLikeView","refreshUIWithModel:",
+         "fqx_originalLikeArtModel:","v24@0:8@16",(Imp)DramaLikeModel);
+    Obj actionStyle=Lookup("FQXDramaActionStyle");
+    if (!actionStyle) {
+        actionStyle=AllocateClass(Lookup("NSObject"),"FQXDramaActionStyle",0);
+        if (actionStyle) {
+            class_addMethod(object_getClass(actionStyle),sel_registerName("refresh"),(Imp)DramaRefreshStyle,"v16@0:8");
+            RegisterClass(actionStyle);
+        }
+    }
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
     Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
