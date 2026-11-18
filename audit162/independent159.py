@@ -245,6 +245,8 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
         capacities += (0x58000,)
     if version in ("1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3"):
         capacities += (0x5c000,)
+    if version in ("1.79R3",):
+        capacities += (0x60000,)
     require(patch["vmsize"] == patch["filesize"] and patch["vmsize"] in capacities,
             "Unsupported reviewed extension capacity")
     require((patch["maxprot"], patch["initprot"], patch["nsects"], patch["flags"]) == (5, 5, 0, 0),
