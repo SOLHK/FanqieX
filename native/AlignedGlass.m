@@ -3493,6 +3493,16 @@ static B DramaSearchHeaderReady(Obj header,Obj owner) {
     return 1;
 }
 
+static double DramaHeaderSafeTop(Obj header) {
+    Obj window=Get(header,"window");
+    if (!window) return Bounds(header).y;
+    Rect screen=Bounds(window);
+    if (screen.height<=screen.width) return Bounds(header).y;
+    Insets safe=((Insets(*)(Obj,Sel))Message)(window,sel_registerName("safeAreaInsets"));
+    Rect top=Convert(window,(Rect){screen.x,screen.y+safe.top,1,1},header);
+    return __builtin_fmax(Bounds(header).y,top.y);
+}
+
 static B DramaHeaderSearchButton(Obj header,Obj owner,B visible) {
     Obj button=objc_getAssociatedObject(header,DramaSearchButtonKey);
     Rect bounds=Bounds(header);
@@ -3507,7 +3517,8 @@ static B DramaHeaderSearchButton(Obj header,Obj owner,B visible) {
     Obj pill=objc_getAssociatedObject(categories,SurfaceKey),row=pill ? pill : categories;
     Rect aligned=Belongs(row,header) ? Convert(row,Bounds(row),header) : bounds;
     double side=__builtin_fmin(DramaHeaderButtonHeight,pill ? aligned.height : bounds.height);
-    double y=__builtin_fmax(bounds.y,__builtin_fmin(bounds.y+bounds.height-side,aligned.y+(aligned.height-side)/2));
+    double y=__builtin_fmax(bounds.y,__builtin_fmin(bounds.y+bounds.height-side,
+        pill ? aligned.y+(aligned.height-side)/2 : DramaHeaderSafeTop(header)+4));
     Rect frame={bounds.x+bounds.width-12-side,y,side,side};
     if (!VisibleRect(frame)) return 0;
     if (!button) {
@@ -3701,6 +3712,33 @@ static Rect DramaCategoryLayoutFrame(Obj tabs,Obj collection,I index) {
 static void DramaHeaderStockXKey(void) {}
 static void DramaHeaderCenteredXKey(void) {}
 static void DramaHeaderSelectionKey(void) {}
+static void DramaHeaderStockYKey(void) {}
+static void DramaHeaderAppliedYKey(void) {}
+
+static void DramaHeaderPositionCategories(Obj header,Obj categories,Rect capsule,B active) {
+    Rect frame=Frame(categories);
+    Obj applied=objc_getAssociatedObject(categories,DramaHeaderAppliedYKey);
+    double stock=applied && __builtin_fabs(frame.y-Double(applied))<0.25
+        ? Double(objc_getAssociatedObject(categories,DramaHeaderStockYKey)) : frame.y;
+    double y=stock;
+    Obj parent=Get(categories,"superview");
+    if (active && parent && Get(header,"window")) {
+        Rect placed=Convert(categories,capsule,header);
+        double desired=DramaHeaderSafeTop(header)+4;
+        if (desired+capsule.height<=Bounds(header).y+Bounds(header).height) {
+            Rect origin=Convert(header,(Rect){placed.x,placed.y,1,1},parent);
+            Rect aligned=Convert(header,(Rect){placed.x,desired,1,1},parent);
+            y=frame.y+aligned.y-origin.y;
+        }
+    }
+    if (__builtin_fabs(frame.y-y)>=0.25) {
+        frame.y=y;
+        SetFrame(categories,frame);
+    }
+    B moved=active && __builtin_fabs(y-stock)>=0.25;
+    objc_setAssociatedObject(categories,DramaHeaderStockYKey,moved ? Number(stock) : (Obj)0,1);
+    objc_setAssociatedObject(categories,DramaHeaderAppliedYKey,moved ? Number(y) : (Obj)0,1);
+}
 
 static void DramaHeaderCenterCategories(Obj header,Obj categories,Rect capsule,B center) {
     Rect frame=Frame(categories);
@@ -3834,6 +3872,7 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
     ApplySurface(categories,capsule,1);
     Obj glass=objc_getAssociatedObject(categories,SurfaceKey);
     DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
+    DramaHeaderPositionCategories(header,categories,capsule,glass!=0);
     if (glass) {
         DramaHeaderCategoryAppearance(header,glass);
         DramaHeaderSelection(glass,selection);
@@ -4321,6 +4360,8 @@ static void DramaSpacingApplied178R2Key(void) {}
 static void DramaSpacingLog178R2Key(void) {}
 static void DramaSpacingAnchor178R6Key(void) {}
 static void DramaDockProgressKey(void) {}
+static void DramaNovelStockFrameKey(void) {}
+static void DramaNovelAppliedFrameKey(void) {}
 static void DramaDockFeatherBottomGradient178R6(Obj root);
 
 static B DramaSpacingVisible178R2(Obj view) {
@@ -4515,6 +4556,35 @@ static void DramaSpacingRestoreAnchor(Obj root,Obj keep) {
     objc_setAssociatedObject(previous,DramaSpacingApplied178R2Key,0,1);
     objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,0,1);
 }
+static void DramaNovelAvoidDock(Obj root,Obj dock) {
+    Obj entry=Get(root,"aboveProgressView");
+    Obj views[]={entry,Get(root,"baseInfoView"),Get(root,"bookCardView"),Get(root,"rightInteractionView")};
+    double shift=0;
+    if (dock && Get(entry,"superview")==root && DramaSpacingVisible178R2(entry)) {
+        Rect current=Frame(entry);
+        Obj previous=objc_getAssociatedObject(entry,DramaNovelAppliedFrameKey);
+        Rect stock=previous && SameRect(current,UnboxRect(previous))
+            ? UnboxRect(objc_getAssociatedObject(entry,DramaNovelStockFrameKey)) : current;
+        Rect dockRect=Convert(dock,Bounds(dock),root);
+        if (VisibleRect(dockRect))
+            shift=__builtin_fmax(0,stock.y+stock.height-dockRect.y+8);
+    }
+    for (U i=0;i<sizeof(views)/sizeof(views[0]);++i) {
+        Obj view=views[i];
+        if (Get(view,"superview")!=root) continue;
+        Rect current=Frame(view);
+        Obj previous=objc_getAssociatedObject(view,DramaNovelAppliedFrameKey);
+        Rect stock=previous && SameRect(current,UnboxRect(previous))
+            ? UnboxRect(objc_getAssociatedObject(view,DramaNovelStockFrameKey)) : current;
+        if (shift>0.5 && VisibleRect(stock) && !Flag(view,"isHidden")) {
+            Rect target=stock;
+            target.y-=shift;
+            BottomApplyFrame178(view,target,DramaNovelStockFrameKey,DramaNovelAppliedFrameKey);
+        } else {
+            BottomRestoreFrame178(view,DramaNovelStockFrameKey,DramaNovelAppliedFrameKey);
+        }
+    }
+}
 void FQHDramaSpacing178R2(Obj root) {
     B outer=Kind(root,"SSShortVideoOutterMultiGenreFeedControlView");
     if ((!outer && !Kind(root,"FQVShortVideoVPlayerControlView")) ||
@@ -4540,7 +4610,9 @@ void FQHDramaSpacing178R2(Obj root) {
             __builtin_fabs(placed.width-b.width)<0.5 &&
             __builtin_fabs(placed.height-b.height)<0.5;
     }
-    Obj dock=(eligible && BottomFlag178(37)) ? BottomDramaCapsuleForView(root) : (Obj)0;
+    B novel=outer && Get(Get(root,"leftModuleCoordinator"),"pushTextContentData") &&
+        !Flag(root,"shouldShowProgressView");
+    Obj dock=(eligible && !novel && BottomFlag178(37)) ? BottomDramaCapsuleForView(root) : (Obj)0;
     Obj previousRail=objc_getAssociatedObject(root,DramaDockProgressKey),rail=0;
     if (dock) {
         rail=Get(root,outer ? "progressView" : "progressContainer");
@@ -4556,7 +4628,9 @@ void FQHDramaSpacing178R2(Obj root) {
         V0(rail,"setNeedsLayout");
         V0(rail,"layoutIfNeeded");
     }
-    if (eligible && outer) {
+    if (eligible && novel) {
+        status="novelDockClearance";
+    } else if (eligible && outer) {
         entry=Get(root,"aboveProgressView");
         progress=Get(root,"progressView");
         status="outerControlsUnresolved";
@@ -4710,6 +4784,7 @@ void FQHDramaSpacing178R2(Obj root) {
             shift=0;
         }
     }
+    if (outer) DramaNovelAvoidDock(root,eligible && novel ? BottomDramaCapsuleForView(root) : (Obj)0);
     if (FQDDiagnosticsEnabled() && (eligible || previous || previousAnchor)) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"status",Text(status)); Put(record,"shiftY",Number(shift));
@@ -5675,12 +5750,20 @@ static void ProfileEntryGlass(Obj self,B order) {
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
     Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
     B iconsOnly=BoolProp(O1(defaults,"objectForKey:",Text("FanqieX.MineQuickIconsOnly.1")),"boolValue");
-    double padX=b.width>=66 ? 2 : 1;
-    double pillW=__builtin_fmin(b.width-padX*2,66);
-    double pillH=iconsOnly ? __builtin_fmin(__builtin_fmax(b.height+4,50),56) : __builtin_fmin(__builtin_fmax(b.height-1,54),58);
+    double pillSide=__builtin_fmin(50,__builtin_fmin(b.width-8,b.height-8));
+    double centerY=b.y+b.height*0.5;
+    for (Obj parent=Get(self,"superview");parent && parent!=row;parent=Get(parent,"superview")) {
+        if (!Kind(parent,"UIScrollView") && !Kind(parent,"SSScrollFoldFuncView")) continue;
+        Rect clip=Convert(parent,Bounds(parent),content);
+        double top=__builtin_fmax(b.y,clip.y)+3;
+        double bottom=__builtin_fmin(b.y+b.height,clip.y+clip.height)-3;
+        if (!VisibleRect(clip) || bottom-top<36) continue;
+        pillSide=__builtin_fmin(pillSide,bottom-top);
+        centerY=__builtin_fmax(top+pillSide*0.5,__builtin_fmin(bottom-pillSide*0.5,centerY));
+    }
     double captionHeight=18,gap=3;
-    double glyphHeight=iconsOnly ? __builtin_fmin(28,pillH-18) : __builtin_fmin(25,pillH-24);
-    if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || pillW<32 || pillH<36 ||
+    double glyphHeight=iconsOnly ? __builtin_fmin(24,pillSide-14) : __builtin_fmin(21,pillSide-23);
+    if (!VisibleRect(b) || glyphHeight<12 || pillSide<36 ||
         !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
         return;
@@ -5690,10 +5773,10 @@ static void ProfileEntryGlass(Obj self,B order) {
     ProfileCardSetUnclipped(self,1);
     ProfileCardSetUnclipped(content,1);
     ProfileShortcutCardGlass(row,1);
-    Rect pillRect={b.x+(b.width-pillW)*0.5,b.y+(b.height-pillH)*0.5,pillW,pillH};
+    Rect pillRect={b.x+(b.width-pillSide)*0.5,centerY-pillSide*0.5,pillSide,pillSide};
     Obj existingItem=FQHSurface(content);
     ApplySurface(content,pillRect,1);
-    ApplyMaxCapsuleStyle(FQHSurface(content),existingItem,18);
+    ApplyMaxCapsuleStyle(FQHSurface(content),existingItem,25);
     V1(ProfileShortcutOwners(),"addObject:",self);
     TrackAppearanceLabel(content,caption,13);
     ProfileCaptionInk(caption,iconsOnly);

@@ -15,12 +15,22 @@ static const void *AudioPressWiredKey = &AudioPressWiredKey;
 static const void *AudioSavedHiddenKey = &AudioSavedHiddenKey;
 static const void *DramaSpacingPendingKey = &DramaSpacingPendingKey;
 static const void *FQXManualResItemKey = &FQXManualResItemKey;
+static const void *FQXQualityModelKey = &FQXQualityModelKey;
+static const void *FQXQualityAttemptKey = &FQXQualityAttemptKey;
+static const void *FQXLandscapeQualityChoiceKey = &FQXLandscapeQualityChoiceKey;
 static const void *FQXPinchRecognizerKey = &FQXPinchRecognizerKey;
 static const void *FQXPinchPureCleanActiveKey = &FQXPinchPureCleanActiveKey;
 static const void *FQXPinchHiddenViewsKey = &FQXPinchHiddenViewsKey;
 static const void *FQXPinchTriggeredInGestureKey = &FQXPinchTriggeredInGestureKey;
 static const void *FQXDramaFeatheredGradKey = &FQXDramaFeatheredGradKey;
 static const void *FQXParagraphSavedAlphaKey = &FQXParagraphSavedAlphaKey;
+static const void *FQXParagraphGlyphKey = &FQXParagraphGlyphKey;
+static const void *FQXParagraphLabelFrameKey = &FQXParagraphLabelFrameKey;
+static const void *FQXParagraphLabelAppliedKey = &FQXParagraphLabelAppliedKey;
+static const void *AudioStockPositionKey = &AudioStockPositionKey;
+static const void *AudioAppliedPositionKey = &AudioAppliedPositionKey;
+static const void *AudioMenuStockFrameKey = &AudioMenuStockFrameKey;
+static const void *AudioMenuAppliedFrameKey = &AudioMenuAppliedFrameKey;
 
 static NSString *const DockContentAnimation = @"FanqieX.dock.content";
 static NSString *const GlassDisabledPrefKey = @"FanqieAdBlock.GlassDisabled.1";
@@ -178,9 +188,8 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 @property(nonatomic) BOOL dropletActive;
 @property(nonatomic) BOOL panning;
 @property(nonatomic) NSUInteger generation;
-@property(nonatomic) CFTimeInterval touchDownTimestamp;
-@property(nonatomic, weak) UIButton *touchDownTargetButton;
 @property(nonatomic, weak) UIButton *lastSelectedButton;
+@property(nonatomic, weak) UIButton *liftedButton;
 - (void)syncWithBar:(UIView *)bar
               proxy:(UIVisualEffectView *)proxy
             buttons:(NSArray<UIButton *> *)buttons
@@ -255,16 +264,12 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGRect btnRect = [button.superview convertRect:button.frame toView:host];
     CGFloat barH = CGRectGetHeight(track);
     if (barH <= 1.0 || CGRectGetWidth(btnRect) <= 1.0) return btnRect;
+    if (button == [self currentSelectedButton] && self.restingLens.superview) {
+        CGRect lens = [self.restingLens convertRect:self.restingLens.bounds toView:host];
+        if (CGRectGetHeight(lens) >= 24.0 && CGRectGetWidth(lens) >= 28.0) return lens;
+    }
     CGFloat pillH = MAX(28.0, barH - 8.0);
-    if (self.restingLens && self.restingLens.superview &&
-        CGRectGetHeight(self.restingLens.bounds) >= 24.0 && !self.dropletActive) {
-        pillH = MIN(barH - 4.0, CGRectGetHeight(self.restingLens.bounds));
-    }
-    CGFloat pillW = MAX(36.0, CGRectGetWidth(btnRect) - 4.0);
-    if (self.restingLens && button == [self currentSelectedButton] &&
-        CGRectGetWidth(self.restingLens.bounds) >= 28.0 && !self.dropletActive) {
-        pillW = CGRectGetWidth(self.restingLens.bounds);
-    }
+    CGFloat pillW = MAX(28.0, CGRectGetWidth(btnRect) - 4.0);
     return CGRectMake(CGRectGetMidX(btnRect) - pillW * 0.5,
                       CGRectGetMidY(track) - pillH * 0.5,
                       pillW,
@@ -280,15 +285,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat W = CGRectGetWidth(track);
     CGFloat H = CGRectGetHeight(track);
     if (W <= 1.0 || H <= 1.0) return CGRectZero;
-    // Volume-conserving Apple Store horizontal refractive lens (~1.54:1 at rest, gently elongating with velocity).
     CGFloat speedRatio = MIN(1.0, fabs(velocityX) / 1350.0);
-    CGFloat stretchW = round(speedRatio * 16.0);
-    CGFloat squishV = round(speedRatio * 1.8);
-    CGFloat vOut = 5.0 - squishV * 0.5;
+    CGFloat vOut = 1.5 - speedRatio * 0.5;
     CGFloat bloomH = H + vOut * 2.0;
-    CGFloat desiredW = MAX(baseWidth + 20.0, round(H * 1.56)) + stretchW;
-    CGFloat maxAllowedW = MAX(baseWidth, MIN(W - 4.0, MAX(baseWidth * 1.80, H * 1.78)));
-    CGFloat bloomW = MIN(desiredW, maxAllowedW);
+    CGFloat bloomW = MIN(W, baseWidth + 8.0 + speedRatio * 10.0);
     CGFloat minX = CGRectGetMinX(track) - 4.0;
     CGFloat maxX = CGRectGetMaxX(track) - bloomW + 4.0;
     CGFloat rawX = centerX - bloomW * 0.5;
@@ -305,7 +305,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (!host || !FQXGlassEnabled()) return nil;
     if (!self.dropletView) {
         // Style 1 = UIGlassEffectStyleClear: pure crystal-clear optical refraction lens.
-        UIVisualEffectView *droplet = FQXNewGlassViewFull(1, YES, 0.0, NO, nil);
+        UIVisualEffectView *droplet = FQXNewGlassViewFull(1, NO, 0.0, NO, nil);
         if (!droplet) return nil;
         droplet.hidden = YES;
         droplet.alpha = 0.0;
@@ -317,8 +317,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.dropletView.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
         self.dropletView.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
     }
-    // Mount IN FRONT of tab icons so Clear glass refracts and warps the underlying
-    // tab icons, labels, and dock edge exactly like Apple Store's Liquid Glass tab bar.
     if (self.dropletView.superview != host) {
         [host addSubview:self.dropletView];
     }
@@ -326,53 +324,15 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     return host;
 }
 
-- (void)setRestingLensSuppressed:(BOOL)suppressed animated:(BOOL)animated {
-    if (!self.restingLens) return;
-    if (suppressed) {
-        if (animated && !self.restingLens.hidden && self.restingLens.alpha > 0.01) {
-            UIVisualEffectView *lens = self.restingLens;
-            [UIView animateWithDuration:0.14
-                                  delay:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseOut
-                             animations:^{
-                lens.alpha = 0.0;
-            } completion:^(BOOL finished) {
-                if (finished && self.dropletActive) lens.hidden = YES;
-            }];
-        } else {
-            self.restingLens.alpha = 0.0;
-            self.restingLens.hidden = YES;
-        }
-    } else {
-        self.restingLens.hidden = NO;
-        if (animated) {
-            UIVisualEffectView *lens = self.restingLens;
-            [UIView animateWithDuration:0.24
-                                  delay:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseInOut
-                             animations:^{
-                lens.alpha = 1.0;
-            } completion:nil];
-        } else {
-            self.restingLens.alpha = 1.0;
-        }
-    }
-}
-
-- (void)animateButtonScalesHighlighting:(UIButton *)activeButton scale:(CGFloat)scale {
-    if (UIAccessibilityIsReduceMotionEnabled()) return;
-    [UIView animateWithDuration:0.34
-                          delay:0.0
-         usingSpringWithDamping:0.82
-          initialSpringVelocity:0.0
+- (void)highlightButton:(UIButton *)button {
+    if (self.liftedButton == button) return;
+    UIButton *previous = self.liftedButton;
+    self.liftedButton = button;
+    [UIView animateWithDuration:0.24 delay:0.0 usingSpringWithDamping:0.86 initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
-        for (UIButton *btn in self.buttons) {
-            if (![btn isKindOfClass:UIButton.class]) continue;
-            btn.transform = (btn == activeButton && scale != 1.0)
-                ? CGAffineTransformMakeScale(scale, scale)
-                : CGAffineTransformIdentity;
-        }
+        previous.transform = CGAffineTransformIdentity;
+        button.transform = CGAffineTransformMakeScale(1.045, 1.045);
     } completion:nil];
 }
 
@@ -380,182 +340,89 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.generation += 1;
     self.dropletActive = NO;
     self.panning = NO;
-    self.touchDownTargetButton = nil;
-    if (self.dropletView) {
-        [self.dropletView.layer removeAllAnimations];
-        self.dropletView.alpha = 0.0;
-        self.dropletView.hidden = YES;
-    }
-    [self setRestingLensSuppressed:NO animated:NO];
-    for (UIButton *btn in self.buttons) {
-        if ([btn isKindOfClass:UIButton.class] && !CGAffineTransformIsIdentity(btn.transform)) {
-            btn.transform = CGAffineTransformIdentity;
-        }
-    }
+    [self.dropletView.layer removeAllAnimations];
+    self.dropletView.alpha = 0.0;
+    self.dropletView.hidden = YES;
+    [self.restingLens.layer removeAllAnimations];
+    self.restingLens.alpha = 1.0;
+    self.liftedButton.transform = CGAffineTransformIdentity;
+    self.liftedButton = nil;
 }
 
-- (void)settleDropletToButton:(UIButton *)targetButton afterDelay:(NSTimeInterval)delay generation:(NSUInteger)gen {
-    __weak typeof(self) weakSelf = self;
-    dispatch_block_t runSettle = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.generation != gen || strongSelf.panning) return;
-        UIView *host = strongSelf.dropletView.superview ?: [strongSelf mountHostView];
-        UIButton *dest = targetButton ?: [strongSelf currentSelectedButton];
-        CGRect rest = [strongSelf restingRectForButton:dest inHost:host];
-        if (CGRectIsEmpty(rest) || !strongSelf.dropletView) {
-            [strongSelf cancelDropletImmediately];
-            return;
-        }
-        [strongSelf animateButtonScalesHighlighting:nil scale:1.0];
-        // Unhurried, viscous Apple Store liquid settle into the resting capsule.
-        [UIView animateWithDuration:0.46
-                              delay:0.0
-             usingSpringWithDamping:0.86
-              initialSpringVelocity:0.0
-                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                         animations:^{
-            strongSelf.dropletView.frame = rest;
-        } completion:nil];
-
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) innerSelf = weakSelf;
-            if (!innerSelf || innerSelf.generation != gen || innerSelf.panning) return;
-            if (innerSelf.restingLens) innerSelf.restingLens.hidden = NO;
-            [UIView animateWithDuration:0.26
-                                  delay:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseInOut
-                             animations:^{
-                if (innerSelf.restingLens) innerSelf.restingLens.alpha = 1.0;
-                innerSelf.dropletView.alpha = 0.0;
-            } completion:^(BOOL finished) {
-                (void)finished;
-                if (innerSelf.generation == gen && !innerSelf.panning) {
-                    innerSelf.dropletActive = NO;
-                    innerSelf.touchDownTargetButton = nil;
-                    innerSelf.dropletView.hidden = YES;
-                    [innerSelf setRestingLensSuppressed:NO animated:NO];
-                }
-            }];
-        });
-    };
-    if (delay <= 0.001) {
-        runSettle();
-    } else {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), runSettle);
+- (UIView *)startDropletFrom:(UIButton *)origin {
+    UIView *host = [self ensureDropletMounted];
+    if (!host) return nil;
+    if (!self.dropletActive) {
+        CGRect start = [self restingRectForButton:origin inHost:host];
+        if (CGRectIsEmpty(start)) return nil;
+        [UIView performWithoutAnimation:^{
+            self.dropletView.frame = start;
+            self.dropletView.alpha = 0.0;
+            self.dropletView.hidden = NO;
+        }];
     }
+    self.generation += 1;
+    self.dropletActive = YES;
+    return host;
+}
+
+- (void)settleDropletToButton:(UIButton *)button velocity:(CGFloat)velocity {
+    UIView *host = self.dropletView.superview;
+    CGRect rest = [self restingRectForButton:button inHost:host];
+    if (!self.dropletActive || CGRectIsEmpty(rest)) {
+        [self cancelDropletImmediately];
+        return;
+    }
+    NSUInteger generation = ++self.generation;
+    self.lastSelectedButton = button;
+    [self highlightButton:nil];
+
+    CALayer *presentation = self.dropletView.layer.presentationLayer;
+    CGFloat distance = CGRectGetMidX(rest) - CGRectGetMidX(presentation ? presentation.frame : self.dropletView.frame);
+    CGFloat springVelocity = fabs(distance) > 2.0 ? MAX(-2.0, MIN(2.0, velocity / distance)) : 0.0;
+    [UIView animateWithDuration:0.30 delay:0.0 usingSpringWithDamping:0.90 initialSpringVelocity:springVelocity
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        self.dropletView.frame = rest;
+        self.dropletView.alpha = 0.0;
+        self.restingLens.alpha = 1.0;
+    } completion:^(BOOL finished) {
+        (void)finished;
+        if (self.generation != generation) return;
+        self.dropletView.hidden = YES;
+        self.dropletActive = NO;
+        }];
 }
 
 - (void)onButtonTouchDown:(UIButton *)sender {
-    if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled()) return;
-    if (!self.bar || self.proxy.hidden || (self.overlay && self.overlay.hidden)) return;
-    if (!FQXGlassEnabled()) return;
-    self.touchDownTimestamp = CACurrentMediaTime();
-    self.touchDownTargetButton = sender;
-    self.generation += 1;
-
-    UIButton *originBtn = [self currentSelectedButton] ?: sender;
-    self.lastSelectedButton = originBtn;
-    UIView *host = [self ensureDropletMounted];
-    if (!host || !self.dropletView) return;
-
-    BOOL wasActive = self.dropletActive && !self.dropletView.hidden && self.dropletView.alpha > 0.05;
-    CGRect originRect = [self restingRectForButton:originBtn inHost:host];
-    if (!wasActive && !CGRectIsEmpty(originRect)) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        self.dropletView.frame = originRect;
-        self.dropletView.alpha = 0.0;
-        self.dropletView.hidden = NO;
-        [CATransaction commit];
-    } else {
-        self.dropletView.hidden = NO;
-    }
-    self.dropletActive = YES;
-    [self setRestingLensSuppressed:YES animated:!wasActive];
-
-    CGRect restTarget = [self restingRectForButton:sender inHost:host];
-    CGFloat travelDist = fabs(CGRectGetMidX(restTarget) - CGRectGetMidX(originRect));
-    CGRect bloom = [self bloomRectAtCenterX:CGRectGetMidX(restTarget)
-                                  baseWidth:CGRectGetWidth(restTarget)
-                                   velocity:travelDist * 4.5
-                                     inHost:host];
-    [self animateButtonScalesHighlighting:sender scale:1.06];
-
-    // Smoothly emerge Clear glass without any 0ms flash.
-    [UIView animateWithDuration:0.16
-                          delay:0.0
-                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-        self.dropletView.alpha = 1.0;
-    } completion:nil];
-
-    // Glide gracefully from origin tab across the dock to destination tab with Apple Store viscous spring.
-    NSTimeInterval glideDuration = (originBtn != sender) ? 0.48 : 0.40;
-    [UIView animateWithDuration:glideDuration
-                          delay:0.0
-         usingSpringWithDamping:0.82
-          initialSpringVelocity:0.0
+    if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled() ||
+        !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
+    UIButton *origin = [self currentSelectedButton] ?: sender;
+    UIView *host = [self startDropletFrom:origin];
+    if (!host) return;
+    CGRect destination = [self restingRectForButton:sender inHost:host];
+    CGRect bloom = [self bloomRectAtCenterX:CGRectGetMidX(destination) baseWidth:CGRectGetWidth(destination)
+                                   velocity:0.0 inHost:host];
+    [self highlightButton:sender];
+    [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.88 initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
+        self.restingLens.alpha = 0.0;
+        self.dropletView.alpha = 0.86;
         self.dropletView.frame = bloom;
     } completion:nil];
 }
 
 - (void)onButtonTap:(UIButton *)sender {
-    if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled()) return;
-    if (!self.bar || self.proxy.hidden || (self.overlay && self.overlay.hidden)) return;
-    if (!FQXGlassEnabled()) return;
-    NSUInteger gen = ++self.generation;
-
-    UIView *host = [self ensureDropletMounted];
-    if (!host || !self.dropletView) return;
-
-    BOOL alreadyGlidingToSender = self.dropletActive && !self.dropletView.hidden && (self.touchDownTargetButton == sender);
-    if (!alreadyGlidingToSender) {
-        UIButton *startBtn = self.lastSelectedButton ?: [self currentSelectedButton] ?: sender;
-        CGRect startRect = [self restingRectForButton:startBtn inHost:host];
-        if (!self.dropletActive && !CGRectIsEmpty(startRect)) {
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            self.dropletView.frame = startRect;
-            self.dropletView.alpha = 0.0;
-            self.dropletView.hidden = NO;
-            [CATransaction commit];
-        } else {
-            self.dropletView.hidden = NO;
-        }
-        self.dropletActive = YES;
-        [self setRestingLensSuppressed:YES animated:YES];
-
-        CGRect restTarget = [self restingRectForButton:sender inHost:host];
-        CGFloat travelDist = fabs(CGRectGetMidX(restTarget) - CGRectGetMidX(startRect));
-        CGRect bloom = [self bloomRectAtCenterX:CGRectGetMidX(restTarget)
-                                      baseWidth:CGRectGetWidth(restTarget)
-                                       velocity:travelDist * 4.5
-                                         inHost:host];
-        [self animateButtonScalesHighlighting:sender scale:1.06];
-        [UIView animateWithDuration:0.16
-                              delay:0.0
-                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-            self.dropletView.alpha = 1.0;
-        } completion:nil];
-        [UIView animateWithDuration:0.48
-                              delay:0.0
-             usingSpringWithDamping:0.82
-              initialSpringVelocity:0.0
-                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                         animations:^{
-            self.dropletView.frame = bloom;
-        } completion:nil];
-        self.touchDownTimestamp = CACurrentMediaTime();
-    }
-
-    self.lastSelectedButton = sender;
-    // Allow the glide + refractive swell to arrive gracefully over the target tab before settling!
-    CFTimeInterval elapsed = CACurrentMediaTime() - self.touchDownTimestamp;
-    NSTimeInterval hold = MAX(0.28, 0.40 - MAX(0.0, elapsed));
-    [self settleDropletToButton:sender afterDelay:hold generation:gen];
+    if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled() ||
+        !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
+    if (!self.dropletActive && ![self startDropletFrom:self.lastSelectedButton ?: sender]) return;
+    // The host's selection action and resulting layout can run after touch-up.
+    NSUInteger generation = self.generation;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.generation == generation && !self.panning)
+            [self settleDropletToButton:sender velocity:0.0];
+    });
 }
 
 - (void)onNativeValueChanged:(UIControl *)sender {
@@ -575,92 +442,50 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
             return;
         }
     }
-    NSUInteger gen = ++self.generation;
-    if (self.dropletActive) {
-        [self settleDropletToButton:[self currentSelectedButton] afterDelay:0.08 generation:gen];
-    } else {
-        [self animateButtonScalesHighlighting:nil scale:1.0];
-    }
+    if (self.dropletActive) [self settleDropletToButton:[self currentSelectedButton] velocity:0.0];
 }
 
 - (void)handleOverlayPan:(UIPanGestureRecognizer *)pan {
     if (!self.overlay || !FQXGlassEnabled() || UIAccessibilityIsReduceMotionEnabled()) return;
-    UIGestureRecognizerState state = pan.state;
-    if (state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateChanged) {
-        BOOL justBegan = !self.panning || state == UIGestureRecognizerStateBegan;
+    if (pan.state == UIGestureRecognizerStateBegan || pan.state == UIGestureRecognizerStateChanged) {
+        BOOL began = !self.panning;
+        UIView *host = began ? [self startDropletFrom:[self currentSelectedButton]] : self.dropletView.superview;
+        if (!host) return;
         self.panning = YES;
-        self.generation += 1;
-        UIView *host = [self ensureDropletMounted];
-        if (!host || !self.dropletView) return;
-
-        if (!self.dropletActive) {
-            UIButton *curBtn = [self currentSelectedButton];
-            CGRect startRect = [self restingRectForButton:curBtn inHost:host];
-            if (!CGRectIsEmpty(startRect)) {
-                [CATransaction begin];
-                [CATransaction setDisableActions:YES];
-                self.dropletView.frame = startRect;
-                self.dropletView.alpha = 0.0;
-                [CATransaction commit];
+        CGPoint location = [pan locationInView:host];
+        UIButton *nearest = nil;
+        CGFloat bestDistance = CGFLOAT_MAX;
+        CGFloat width = 0;
+        for (UIButton *button in self.buttons) {
+            if (!button.superview) continue;
+            CGRect frame = [button convertRect:button.bounds toView:host];
+            CGFloat distance = fabs(CGRectGetMidX(frame) - location.x);
+            if (distance < bestDistance) {
+                nearest = button;
+                bestDistance = distance;
+                width = CGRectGetWidth(frame) - 4.0;
             }
         }
-        self.dropletActive = YES;
-        self.dropletView.hidden = NO;
-        [self setRestingLensSuppressed:YES animated:justBegan];
-
-        CGPoint loc = [pan locationInView:host];
-        CGPoint vel = [pan velocityInView:host];
-        UIButton *hovered = nil;
-        CGFloat bestDist = CGFLOAT_MAX;
-        for (UIButton *btn in self.buttons) {
-            if (![btn isKindOfClass:UIButton.class] || !btn.superview) continue;
-            CGRect bf = [btn.superview convertRect:btn.frame toView:host];
-            CGFloat dist = fabs(CGRectGetMidX(bf) - loc.x);
-            if (dist < bestDist) {
-                bestDist = dist;
-                hovered = btn;
-            }
-        }
-        CGFloat baseW = hovered && hovered.superview
-            ? MAX(36.0, CGRectGetWidth([hovered.superview convertRect:hovered.frame toView:host]) - 4.0)
-            : 60.0;
-        CGRect bloom = [self bloomRectAtCenterX:loc.x baseWidth:baseW velocity:vel.x inHost:host];
-        [self animateButtonScalesHighlighting:hovered scale:1.06];
-        if (justBegan) {
-            [UIView animateWithDuration:0.14
-                                  delay:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseOut
-                             animations:^{
-                self.dropletView.alpha = 1.0;
-            } completion:nil];
-            [UIView animateWithDuration:0.36
-                                  delay:0.0
-                 usingSpringWithDamping:0.82
-                  initialSpringVelocity:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{
-                self.dropletView.frame = bloom;
-            } completion:nil];
-        } else {
-            self.dropletView.alpha = 1.0;
-            [UIView animateWithDuration:0.11
-                                  delay:0.0
-                 usingSpringWithDamping:0.92
-                  initialSpringVelocity:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{
-                self.dropletView.frame = bloom;
-            } completion:nil];
-        }
-    } else if (self.panning &&
-               (state == UIGestureRecognizerStateEnded ||
-                state == UIGestureRecognizerStateCancelled ||
-                state == UIGestureRecognizerStateFailed)) {
+        if (!nearest) return;
+        CGRect bloom = [self bloomRectAtCenterX:location.x baseWidth:width
+                                        velocity:[pan velocityInView:host].x inHost:host];
+        [self highlightButton:nearest];
+        [UIView animateWithDuration:began ? 0.18 : 0.07 delay:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction |
+                                    UIViewAnimationOptionCurveEaseOut
+                         animations:^{
+            self.restingLens.alpha = 0.0;
+            self.dropletView.alpha = 0.86;
+            self.dropletView.frame = bloom;
+        } completion:nil];
+    } else if (self.panning) {
         self.panning = NO;
-        NSUInteger gen = ++self.generation;
-        UIButton *selected = [self currentSelectedButton];
-        self.lastSelectedButton = selected;
-        [self settleDropletToButton:selected afterDelay:0.06 generation:gen];
+        CGFloat velocity = pan.state == UIGestureRecognizerStateEnded ? [pan velocityInView:self.dropletView.superview].x : 0.0;
+        NSUInteger generation = self.generation;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.generation == generation && !self.panning)
+                [self settleDropletToButton:[self currentSelectedButton] velocity:velocity];
+        });
     }
 }
 
@@ -677,7 +502,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
             }
         }
         if (self.dropletActive) {
-            [self setRestingLensSuppressed:YES animated:NO];
             if (self.dropletView.superview) {
                 [self.dropletView.superview bringSubviewToFront:self.dropletView];
             }
@@ -741,12 +565,11 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     }
 
     if (self.dropletActive && self.dropletView) {
-        [self setRestingLensSuppressed:YES animated:NO];
         if (self.dropletView.superview) {
             [self.dropletView.superview bringSubviewToFront:self.dropletView];
         }
     } else {
-        [self setRestingLensSuppressed:NO animated:NO];
+        self.restingLens.alpha = 1.0;
         self.lastSelectedButton = [self currentSelectedButton];
     }
 }
@@ -1020,219 +843,145 @@ static void HookDistCrossfade(UIView *self, SEL _cmd, dispatch_block_t renderBlo
     if (control) FQXTriggerDramaSpacingForControl(control, NO);
 }
 
-#pragma mark - Force Highest Available Drama Resolution (1080P+) Across All Scenes
-
-static BOOL sFQXAutoUpdatingResolution = NO;
+#pragma mark - Highest available drama resolution
 
 static BOOL FQXHighestQualityEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:HighestQualityPrefKey];
 }
 
-static NSMutableSet<NSString *> *FQXManualResolutionVideoIDs(void) {
-    static NSMutableSet<NSString *> *set;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        set = [NSMutableSet set];
-    });
-    return set;
+static NSString *FQXVideoID(id model) {
+    id value = FQXObjGet(model, "videoId");
+    return [value isKindOfClass:NSString.class] && [value length] ? value : nil;
 }
 
-static NSString *FQXExtractVideoIdentifier(id model) {
-    if (!model) return nil;
-    id shortModel = FQXObjGet(model, "shortVideoModel");
-    id videoInfo = FQXObjGet(model, "videoInfo");
-    const char *keys[] = {"videoId", "vid", "itemId"};
-    id targets[] = {model, shortModel, videoInfo};
-    for (size_t t = 0; t < sizeof(targets) / sizeof(targets[0]); ++t) {
-        if (!targets[t]) continue;
-        for (size_t k = 0; k < sizeof(keys) / sizeof(keys[0]); ++k) {
-            id val = FQXObjGet(targets[t], keys[k]);
-            if ([val isKindOfClass:NSString.class] && [(NSString *)val length] > 0) {
-                return (NSString *)val;
-            }
-        }
-    }
-    return nil;
+static BOOL FQXUsesAutomaticHighest(id model) {
+    if (!FQXHighestQualityEnabled() || ![model isKindOfClass:NSClassFromString(@"FQVShortVideoDataModel")]) return NO;
+    NSString *videoID = FQXVideoID(model);
+    return videoID && ![videoID isEqual:objc_getAssociatedObject(model, FQXManualResItemKey)] &&
+           !FQXBoolGet(model, "isVideoLocked", NO) &&
+           !FQXBoolGet(model, "useDownloadedEngineData", NO);
 }
 
-static BOOL FQXIsVideoLockedOrOffline(id model) {
-    if (!model) return NO;
-    id shortModel = FQXObjGet(model, "shortVideoModel");
-    if (FQXBoolGet(shortModel, "isVideoLocked", NO) || FQXBoolGet(shortModel, "videoModelDisabled", NO)) {
-        return YES;
-    }
-    return FQXBoolGet(model, "useDownloadedEngineData", NO);
-}
-
-static NSNumber *FQXBestResolutionNumber(id videoModel, NSArray *supportResolutions) {
-    NSArray *candidates = nil;
-    if (videoModel) {
-        id supported = FQXObjGet(videoModel, "supportedResolutionTypes");
-        if ([supported isKindOfClass:NSArray.class] && [(NSArray *)supported count] > 0) {
-            candidates = (NSArray *)supported;
-        }
-    }
-    if (!candidates.count && [supportResolutions isKindOfClass:NSArray.class]) {
-        candidates = supportResolutions;
-    }
-    if (!candidates.count) return nil;
-
-    SEL infoSel = NSSelectorFromString(@"videoInfoForType:");
-    BOOL canInspectInfo = videoModel && [videoModel respondsToSelector:infoSel];
-    Method infoMethod = canInspectInfo ? class_getInstanceMethod(object_getClass(videoModel), infoSel) : NULL;
-    if (!infoMethod || strcmp(method_getTypeEncoding(infoMethod), "@24@0:8Q16") != 0) {
-        canInspectInfo = NO;
-    }
-
+static NSNumber *FQXBestResolutionNumber(id videoModel, NSArray *playable) {
+    id variants = FQXObjGet(videoModel, "supportedResolutionTypes");
+    SEL selector = sel_registerName("videoInfoForType:");
+    Method method = videoModel ? class_getInstanceMethod(object_getClass(videoModel), selector) : NULL;
+    if (![variants isKindOfClass:NSArray.class] || !method ||
+        strcmp(method_getTypeEncoding(method), "@24@0:8Q16") != 0) return nil;
+    BOOL hasPlayableList = [playable isKindOfClass:NSArray.class] && playable.count > 0;
     NSNumber *best = nil;
-    NSInteger bestPixels = -1;
-    NSInteger bestBitrate = -1;
-    NSUInteger bestType = 0;
-
-    for (id item in candidates) {
-        if (![item isKindOfClass:NSNumber.class]) continue;
-        NSUInteger resType = [(NSNumber *)item unsignedIntegerValue];
-        // Skip TTVideoEngineResolutionTypeAuto (4 or 0 depending on table) only if real tiers exist;
-        // note in BDFQ/TTVideoEngine: 0=360P(SD), 1=480P(HQ), 2=720P(HD), 3=1080P(FullHD), 5=540P, 6+=2K/4K, 4=Auto.
-        if (resType == 4 || resType > 32) continue;
-        NSInteger pixels = 0;
-        NSInteger bitrate = 0;
-        if (canInspectInfo) {
-            id urlInfo = ((id (*)(id, SEL, NSUInteger))objc_msgSend)(videoModel, infoSel, resType);
-            if (!urlInfo) continue;
-            NSInteger w = FQXIntGet(urlInfo, "vWidth", 0);
-            NSInteger h = FQXIntGet(urlInfo, "vHeight", 0);
-            if (w > 0 && h > 0) pixels = w * h;
-            bitrate = FQXIntGet(urlInfo, "bitrate", 0);
-        }
-        // Rank standard resolution enum order accurately when pixel metadata is absent:
-        // 360P(0)->360, 480P(1)->480, 540P(5)->540, 720P(2)->720, 1080P(3)->1080, >=6 -> 1440+resType.
-        if (pixels <= 0) {
-            switch (resType) {
-                case 0: pixels = 640 * 360; break;
-                case 1: pixels = 854 * 480; break;
-                case 5: pixels = 960 * 540; break;
-                case 2: pixels = 1280 * 720; break;
-                case 3: pixels = 1920 * 1080; break;
-                default: pixels = (NSInteger)(2560 * 1440 + resType * 1000); break;
-            }
-        }
-        if (!best || pixels > bestPixels ||
-            (pixels == bestPixels && bitrate > bestBitrate) ||
-            (pixels == bestPixels && bitrate == bestBitrate && resType > bestType)) {
-            best = (NSNumber *)item;
+    double bestPixels = 0;
+    NSInteger bestBitrate = 0;
+    for (id value in variants) {
+        if (![value isKindOfClass:NSNumber.class] || (hasPlayableList && ![playable containsObject:value])) continue;
+        id info = ((id (*)(id, SEL, NSUInteger))objc_msgSend)(videoModel, selector, [value unsignedIntegerValue]);
+        if (![info isKindOfClass:NSClassFromString(@"TTVideoEngineURLInfo")]) continue;
+        id width = FQXObjGet(info, "vWidth");
+        id height = FQXObjGet(info, "vHeight");
+        if (![width respondsToSelector:@selector(doubleValue)] || ![height respondsToSelector:@selector(doubleValue)]) continue;
+        double w = [width doubleValue], h = [height doubleValue];
+        double pixels = w * h;
+        if (w <= 0 || h <= 0 || !isfinite(pixels)) continue;
+        NSInteger bitrate = FQXIntGet(info, "bitrate", 0);
+        if (pixels > bestPixels || (pixels == bestPixels && bitrate > bestBitrate)) {
+            best = value;
             bestPixels = pixels;
             bestBitrate = bitrate;
-            bestType = resType;
         }
     }
     return best;
 }
 
-static void FQXUpgradePlayerToHighestIfNeeded(id component, id player, id model) {
-    if (!FQXHighestQualityEnabled() || !player || FQXIsVideoLockedOrOffline(model)) return;
-    NSString *vid = FQXExtractVideoIdentifier(model);
-    if (vid.length && [FQXManualResolutionVideoIDs() containsObject:vid]) return;
-
-    id engine = FQXObjGet(player, "videoEngine");
-    id videoModel = FQXObjGet(FQXObjGet(model, "videoInfo"), "videoModel") ?: FQXObjGet(engine, "videoModel");
-    NSArray *supported = engine ? FQXObjGet(engine, "supportedResolutionTypes") : nil;
-    NSNumber *best = FQXBestResolutionNumber(videoModel, supported);
-    if (!best) return;
-
-    NSUInteger bestType = best.unsignedIntegerValue;
-    NSInteger currentType = engine ? FQXIntGet(engine, "currentResolution", -1) : -1;
-    if (currentType >= 0 && (NSUInteger)currentType == bestType) return;
-
-    SEL updateSel = NSSelectorFromString(@"updatePlayer:resolution:model:finish:");
-    if (component && model && [component respondsToSelector:updateSel]) {
-        Method m = class_getInstanceMethod(object_getClass(component), updateSel);
-        if (m && strcmp(method_getTypeEncoding(m), "v48@0:8@16@24@32@?40") == 0) {
-            sFQXAutoUpdatingResolution = YES;
-            ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(component, updateSel, player, best, model, nil);
-            sFQXAutoUpdatingResolution = NO;
-            return;
-        }
+static id (*OrigResolutionWithModel)(id, SEL, id);
+static id HookResolutionWithModel(id self, SEL cmd, id model) {
+    if (FQXUsesAutomaticHighest(model)) {
+        NSNumber *best = FQXBestResolutionNumber(FQXObjGet(FQXObjGet(model, "videoInfo"), "videoModel"), nil);
+        if (best) return best;
     }
-    SEL configSel = NSSelectorFromString(@"configResolution:");
-    if (engine && [engine respondsToSelector:configSel]) {
-        Method cm = class_getInstanceMethod(object_getClass(engine), configSel);
-        if (cm) {
-            const char *enc = method_getTypeEncoding(cm);
-            if (enc && strcmp(enc, "B24@0:8Q16") == 0) {
-                (void)((BOOL (*)(id, SEL, NSUInteger))objc_msgSend)(engine, configSel, bestType);
-            } else if (enc && strcmp(enc, "v24@0:8Q16") == 0) {
-                ((void (*)(id, SEL, NSUInteger))objc_msgSend)(engine, configSel, bestType);
-            }
-        }
+    return OrigResolutionWithModel(self, cmd, model);
+}
+
+static id (*OrigResolutionItemWithModel)(id, SEL, id);
+static id HookResolutionItemWithModel(id self, SEL cmd, id model) {
+    id item = OrigResolutionItemWithModel(self, cmd, model);
+    if (item) {
+        NSHashTable *reference = [NSHashTable weakObjectsHashTable];
+        if (model) [reference addObject:model];
+        objc_setAssociatedObject(item, FQXQualityModelKey, reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    return item;
 }
 
 static NSUInteger (*OrigFinalResolutionType)(id, SEL, id, id);
-static NSUInteger HookFinalResolutionType(id self, SEL _cmd, NSArray *supportResolutions, id videoModel) {
-    NSUInteger orig = OrigFinalResolutionType ? OrigFinalResolutionType(self, _cmd, supportResolutions, videoModel) : 0;
-    if (!FQXHighestQualityEnabled()) return orig;
-    if ([objc_getAssociatedObject(self, FQXManualResItemKey) boolValue]) return orig;
-    id modelObj = videoModel ?: FQXObjGet(self, "videoModel");
-    NSNumber *best = FQXBestResolutionNumber(modelObj, supportResolutions);
-    if (!best) return orig;
-    SEL setForceSel = NSSelectorFromString(@"setForceResolutionTypeNumber:");
-    if ([self respondsToSelector:setForceSel]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(self, setForceSel, best);
+static NSUInteger HookFinalResolutionType(id self, SEL cmd, NSArray *supported, id videoModel) {
+    id model = [objc_getAssociatedObject(self, FQXQualityModelKey) anyObject];
+    id currentVideoModel = FQXObjGet(FQXObjGet(model, "videoInfo"), "videoModel");
+    if (FQXUsesAutomaticHighest(model) && currentVideoModel && (!videoModel || currentVideoModel == videoModel)) {
+        NSNumber *best = FQXBestResolutionNumber(currentVideoModel, supported);
+        if (best) return best.unsignedIntegerValue;
     }
-    return best.unsignedIntegerValue;
+    return OrigFinalResolutionType(self, cmd, supported, videoModel);
 }
 
 static void (*OrigControlUpdateResolution)(id, SEL, id, id, id);
-static void HookControlUpdateResolution(id self, SEL _cmd, id model, id resolution, id finishBlock) {
-    if (!sFQXAutoUpdatingResolution) {
-        NSString *vid = FQXExtractVideoIdentifier(model);
-        if (vid.length) {
-            NSMutableSet<NSString *> *manual = FQXManualResolutionVideoIDs();
-            if (manual.count >= 256) [manual removeAllObjects];
-            [manual addObject:vid];
-        }
+static void HookControlUpdateResolution(id self, SEL cmd, id model, id resolution, id finishBlock) {
+    if (model && resolution)
+        objc_setAssociatedObject(model, FQXManualResItemKey, FQXVideoID(model), OBJC_ASSOCIATION_COPY_NONATOMIC);
+    OrigControlUpdateResolution(self, cmd, model, resolution, finishBlock);
+}
+
+static void (*OrigUpdatePlayerResolution)(id, SEL, id, id, id, id);
+static void HookUpdatePlayerResolution(id self, SEL cmd, id player, id resolution, id model, id finish) {
+    if (model && resolution && [objc_getAssociatedObject(self, FQXLandscapeQualityChoiceKey) boolValue])
+        objc_setAssociatedObject(model, FQXManualResItemKey, FQXVideoID(model), OBJC_ASSOCIATION_COPY_NONATOMIC);
+    OrigUpdatePlayerResolution(self, cmd, player, resolution, model, finish);
+}
+
+static void (*OrigLandscapeSelectResolution)(id, SEL, id);
+static void HookLandscapeSelectResolution(id self, SEL cmd, id resolution) {
+    id playerComponent = FQXObjGet(FQXObjGet(self, "listVCContext"), "playerComponent");
+    if (!playerComponent) {
+        OrigLandscapeSelectResolution(self, cmd, resolution);
+        return;
     }
-    if (OrigControlUpdateResolution) OrigControlUpdateResolution(self, _cmd, model, resolution, finishBlock);
+    id previous = objc_getAssociatedObject(playerComponent, FQXLandscapeQualityChoiceKey);
+    objc_setAssociatedObject(playerComponent, FQXLandscapeQualityChoiceKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    OrigLandscapeSelectResolution(self, cmd, resolution);
+    objc_setAssociatedObject(playerComponent, FQXLandscapeQualityChoiceKey, previous, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void (*OrigPreparePlayerAsync)(id, SEL, id, id, BOOL);
-static void HookPreparePlayerAsync(id self, SEL _cmd, id player, id model, BOOL asyncFlag) {
-    NSString *vid = FQXExtractVideoIdentifier(model);
-    BOOL isManual = (vid.length && [FQXManualResolutionVideoIDs() containsObject:vid]) || FQXIsVideoLockedOrOffline(model);
-    if (OrigPreparePlayerAsync) OrigPreparePlayerAsync(self, _cmd, player, model, asyncFlag);
-    id engineData = player ? FQXObjGet(player, "engineData") : nil;
-    id resItem = engineData ? FQXObjGet(engineData, "resolutionItem") : nil;
-    if (resItem) {
-        objc_setAssociatedObject(resItem, FQXManualResItemKey, isManual ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+static void HookPreparePlayerAsync(id self, SEL cmd, id player, id model, BOOL asyncFlag) {
+    if (player) {
+        NSHashTable *reference = [NSHashTable weakObjectsHashTable];
+        if (model) [reference addObject:model];
+        objc_setAssociatedObject(player, FQXQualityModelKey, reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(player, FQXQualityAttemptKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (!isManual && FQXHighestQualityEnabled()) {
-        FQXUpgradePlayerToHighestIfNeeded(self, player, model);
-    }
+    OrigPreparePlayerAsync(self, cmd, player, model, asyncFlag);
 }
 
-static void (*OrigUpdateResolutionIfNeed)(id, SEL, id, id);
-static void HookUpdateResolutionIfNeed(id self, SEL _cmd, id player, id model) {
-    if (OrigUpdateResolutionIfNeed) OrigUpdateResolutionIfNeed(self, _cmd, player, model);
-    if (FQXHighestQualityEnabled()) {
-        FQXUpgradePlayerToHighestIfNeeded(self, player, model);
-    }
-}
-
-static void (*OrigSeriesDidPreparedVideoInfo)(id, SEL, id);
-static void HookSeriesDidPreparedVideoInfo(UIView *self, SEL _cmd, id player) {
-    if (OrigSeriesDidPreparedVideoInfo) OrigSeriesDidPreparedVideoInfo(self, _cmd, player);
-    if (!FQXHighestQualityEnabled()) return;
-    id model = FQXObjGet(self, "videoDataModel");
-    id ctx = FQXObjGet(self, "listVCContext");
-    id playerComp = ctx ? FQXObjGet(ctx, "playerContext") : nil;
-    FQXUpgradePlayerToHighestIfNeeded(playerComp, player ?: FQXObjGet(self, "vPlayer"), model);
-    id engine = FQXObjGet(player ?: FQXObjGet(self, "vPlayer"), "videoEngine");
-    NSInteger curRes = engine ? FQXIntGet(engine, "currentResolution", -1) : -1;
-    SEL updateTextSel = NSSelectorFromString(@"updateResolutionText:");
-    if (curRes >= 0 && [self respondsToSelector:updateTextSel]) {
-        ((void (*)(id, SEL, NSUInteger))objc_msgSend)(self, updateTextSel, (NSUInteger)curRes);
-    }
+static void (*OrigPlayerReadyToPlay)(id, SEL, id);
+static void HookPlayerReadyToPlay(id player, SEL cmd, id engine) {
+    OrigPlayerReadyToPlay(player, cmd, engine);
+    dispatch_block_t upgrade = ^{
+        id model = [objc_getAssociatedObject(player, FQXQualityModelKey) anyObject];
+        if (!FQXUsesAutomaticHighest(model) || engine != FQXObjGet(player, "videoEngine") ||
+            ![FQXVideoID(model) isEqual:FQXObjGet(engine, "getVideoID")]) return;
+        NSArray *supported = FQXObjGet(engine, "supportedResolutionTypes");
+        if (![supported isKindOfClass:NSArray.class] || !supported.count) return;
+        id videoModel = FQXObjGet(FQXObjGet(model, "videoInfo"), "videoModel");
+        NSNumber *best = FQXBestResolutionNumber(videoModel, supported);
+        if (!best || FQXIntGet(engine, "currentResolution", -1) == best.integerValue ||
+            [best isEqual:objc_getAssociatedObject(player, FQXQualityAttemptKey)]) return;
+        SEL selector = sel_registerName("configResolution:");
+        Method method = class_getInstanceMethod(object_getClass(engine), selector);
+        if (!method || strcmp(method_getTypeEncoding(method), "B24@0:8Q16") != 0) return;
+        objc_setAssociatedObject(player, FQXQualityAttemptKey, best, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        ((BOOL (*)(id, SEL, NSUInteger))objc_msgSend)(engine, selector, best.unsignedIntegerValue);
+    };
+    if (NSThread.isMainThread) upgrade();
+    else dispatch_async(dispatch_get_main_queue(), upgrade);
 }
 
 #pragma mark - Inner Drama Episode 2 Bottom Black Mask Removal & Portrait Full-Canvas
@@ -1370,7 +1119,7 @@ static NSHashTable<UIView *> *FQXPinchCleanControls(void) {
 
 static void FQXHideViewForPinchClean(UIView *target, NSHashTable<UIView *> *hiddenSet) {
     if (![target isKindOfClass:UIView.class]) return;
-    if (!target.hidden || [hiddenSet containsObject:target]) {
+    if (!target.hidden) {
         [hiddenSet addObject:target];
         target.hidden = YES;
     }
@@ -1398,22 +1147,15 @@ static UIView *FQXFindDramaDockForControl(UIView *control) {
     return nil;
 }
 
-static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean, BOOL animated) {
+static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
     if (![control isKindOfClass:UIView.class]) return;
     [FQXPinchCleanControls() addObject:control];
 
-    id context = FQXObjGet(control, "listVCContext");
-    id controlComp = context ? FQXObjGet(context, "controlContext") : nil;
+    id hostContext = FQXObjGet(control, "hostContext");
+    id context = FQXObjGet(control, "listVCContext") ?: FQXObjGet(hostContext, "listVCContext");
 
     if (enterClean) {
         objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        SEL enterSel = NSSelectorFromString(@"enterCleanMode");
-        if (controlComp && [controlComp respondsToSelector:enterSel]) {
-            Method m = class_getInstanceMethod(object_getClass(controlComp), enterSel);
-            if (m && strcmp(method_getTypeEncoding(m), "v16@0:8") == 0) {
-                ((void (*)(id, SEL))objc_msgSend)(controlComp, enterSel);
-            }
-        }
         NSHashTable<UIView *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
         if (!hiddenSet) {
             hiddenSet = [NSHashTable weakObjectsHashTable];
@@ -1424,16 +1166,11 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean, BOOL a
         if (outerCls && [control isKindOfClass:outerCls]) {
             const char *outerKeys[] = {
                 "aboveProgressView", "progressView", "rightInteractionView",
-                "leftContainerView", "topGradientView", "bottomGradientView"
+                "baseInfoView", "bookCardView", "progressFloatView", "playBtn",
+                "topGradientView", "bottomGradientView"
             };
             for (size_t i = 0; i < sizeof(outerKeys) / sizeof(outerKeys[0]); ++i) {
                 FQXHideViewForPinchClean(FQXObjGet(control, outerKeys[i]), hiddenSet);
-            }
-            for (UIView *sub in control.subviews) {
-                NSString *subCls = NSStringFromClass(sub.class);
-                if (![subCls containsString:@"Player"] && ![subCls containsString:@"VideoEngine"]) {
-                    FQXHideViewForPinchClean(sub, hiddenSet);
-                }
             }
         } else {
             const char *vPlayerKeys[] = {
@@ -1454,6 +1191,7 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean, BOOL a
 
         id navBarComp = context ? FQXObjGet(context, "navBarComponent") : nil;
         FQXHideViewForPinchClean(navBarComp ? FQXObjGet(navBarComp, "navBar") : nil, hiddenSet);
+        FQXHideViewForPinchClean(FQXObjGet(hostContext, "currentTabHeaderView"), hiddenSet);
 
         Class seriesFeedCls = NSClassFromString(@"SSVideoSeriesFeedViewController");
         for (UIResponder *resp = control.nextResponder; resp; resp = resp.nextResponder) {
@@ -1464,37 +1202,10 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean, BOOL a
         }
         FQXHideViewForPinchClean(FQXFindDramaDockForControl(control), hiddenSet);
     } else {
-        BOOL wasActive = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
         objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         NSHashTable<UIView *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
         objc_setAssociatedObject(control, FQXPinchHiddenViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        if (wasActive) {
-            SEL exitSel = NSSelectorFromString(@"exitCleanMode");
-            if (controlComp && [controlComp respondsToSelector:exitSel]) {
-                Method m = class_getInstanceMethod(object_getClass(controlComp), exitSel);
-                if (m && strcmp(method_getTypeEncoding(m), "v16@0:8") == 0) {
-                    ((void (*)(id, SEL))objc_msgSend)(controlComp, exitSel);
-                }
-            }
-        }
-        NSArray<UIView *> *restored = [hiddenSet allObjects];
-        for (UIView *v in restored) {
-            v.hidden = NO;
-            if (animated && !UIAccessibilityIsReduceMotionEnabled()) {
-                v.alpha = 0.0;
-            } else {
-                v.alpha = 1.0;
-            }
-        }
-        if (animated && restored.count > 0 && !UIAccessibilityIsReduceMotionEnabled()) {
-            [UIView animateWithDuration:0.20
-                                  delay:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionCurveEaseOut
-                             animations:^{
-                for (UIView *v in restored) v.alpha = 1.0;
-            } completion:nil];
-        }
+        for (UIView *view in hiddenSet.allObjects) view.hidden = NO;
         [control setNeedsLayout];
     }
 }
@@ -1503,7 +1214,7 @@ static void FQXRefreshAllPinchCleanStates(void) {
     if (!FQXPinchPureCleanEnabled()) {
         for (UIView *control in [FQXPinchCleanControls() allObjects]) {
             if ([objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) {
-                FQXApplyPinchPureCleanState(control, NO, YES);
+                FQXApplyPinchPureCleanState(control, NO);
             }
         }
     }
@@ -1512,7 +1223,27 @@ static void FQXRefreshAllPinchCleanStates(void) {
 @interface FQXDramaPinchGestureRecognizer : UIPinchGestureRecognizer
 @end
 @implementation FQXDramaPinchGestureRecognizer
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)other {
+    if ([other isKindOfClass:UIPanGestureRecognizer.class] ||
+        [other isKindOfClass:UILongPressGestureRecognizer.class]) return NO;
+    return [super canBePreventedByGestureRecognizer:other];
+}
 @end
+
+static BOOL FQXDramaPinchConflicts(UIGestureRecognizer *gesture) {
+    if (!FQXPinchPureCleanEnabled()) return NO;
+    UIWindow *window = gesture.view.window;
+    if (!window || CGRectGetHeight(window.bounds) <= CGRectGetWidth(window.bounds)) return NO;
+    if (gesture.numberOfTouches >= 2) return YES;
+    for (UIView *control in FQXPinchCleanControls()) {
+        if (control.window != window ||
+            (![control isDescendantOfView:gesture.view] && ![gesture.view isDescendantOfView:control])) continue;
+        UIGestureRecognizer *pinch = objc_getAssociatedObject(control, FQXPinchRecognizerKey);
+        if (pinch.numberOfTouches >= 2 || pinch.state == UIGestureRecognizerStateBegan ||
+            pinch.state == UIGestureRecognizerStateChanged) return YES;
+    }
+    return NO;
+}
 
 @interface FQXDramaPinchHandler : NSObject <UIGestureRecognizerDelegate>
 + (instancetype)shared;
@@ -1543,8 +1274,8 @@ static void FQXRefreshAllPinchCleanStates(void) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
 shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
     (void)gestureRecognizer;
-    if ([otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class]) return NO;
-    return YES;
+    (void)otherGestureRecognizer;
+    return NO;
 }
 
 - (void)triggerHaptic {
@@ -1558,29 +1289,34 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     UIGestureRecognizerState state = pinch.state;
     if (state == UIGestureRecognizerStateBegan) {
         objc_setAssociatedObject(pinch, FQXPinchTriggeredInGestureKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (FQXBoolGet(control, "isDraggingProgress", NO) || FQXBoolGet(control, "isSeekingProgress", NO)) {
+            SEL reset = sel_registerName("resetProgressInteractionForInterruption");
+            if ([control respondsToSelector:reset]) ((void (*)(id, SEL))objc_msgSend)(control, reset);
+        } else if (FQXBoolGet(control, "isDragingProgress", NO)) {
+            UIGestureRecognizer *seek = FQXObjGet(control, "progressPanGesture");
+            if (seek.enabled) {
+                seek.enabled = NO;
+                seek.enabled = YES;
+            }
+        }
         return;
     }
     BOOL alreadyTriggered = [objc_getAssociatedObject(pinch, FQXPinchTriggeredInGestureKey) boolValue];
-    BOOL isClean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue] ||
-                   FQXBoolGet(control, "isCleanMode", NO);
+    BOOL isClean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
 
     if (state == UIGestureRecognizerStateChanged && !alreadyTriggered) {
         if (pinch.scale >= 1.15 && !isClean) {
             objc_setAssociatedObject(pinch, FQXPinchTriggeredInGestureKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [self triggerHaptic];
-            FQXApplyPinchPureCleanState(control, YES, YES);
-        } else if (pinch.scale <= 0.86 && isClean) {
-            objc_setAssociatedObject(pinch, FQXPinchTriggeredInGestureKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            [self triggerHaptic];
-            FQXApplyPinchPureCleanState(control, NO, YES);
+            FQXApplyPinchPureCleanState(control, YES);
         }
     } else if (state == UIGestureRecognizerStateEnded && !alreadyTriggered) {
         if ((pinch.scale >= 1.10 || (pinch.scale > 1.03 && pinch.velocity > 0.35)) && !isClean) {
             [self triggerHaptic];
-            FQXApplyPinchPureCleanState(control, YES, YES);
+            FQXApplyPinchPureCleanState(control, YES);
         } else if ((pinch.scale <= 0.90 || (pinch.scale < 0.97 && pinch.velocity < -0.35)) && isClean) {
             [self triggerHaptic];
-            FQXApplyPinchPureCleanState(control, NO, YES);
+            FQXApplyPinchPureCleanState(control, NO);
         }
     }
 }
@@ -1593,11 +1329,12 @@ static void FQXAttachDramaPinchIfNeeded(UIView *control) {
     FQXDramaPinchGestureRecognizer *pinch = [[FQXDramaPinchGestureRecognizer alloc]
         initWithTarget:[FQXDramaPinchHandler shared]
                 action:@selector(handlePinch:)];
-    pinch.cancelsTouchesInView = NO;
+    pinch.cancelsTouchesInView = YES;
     pinch.delaysTouchesBegan = NO;
     pinch.delaysTouchesEnded = NO;
     pinch.delegate = [FQXDramaPinchHandler shared];
     [control addGestureRecognizer:pinch];
+    [FQXPinchCleanControls() addObject:control];
     objc_setAssociatedObject(control, FQXPinchRecognizerKey, pinch, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
@@ -1617,7 +1354,7 @@ static void HookVPlayerWillDisplay(UIView *self, SEL _cmd) {
 static void (*OrigVPlayerWillEndDisplay)(id, SEL);
 static void HookVPlayerWillEndDisplay(UIView *self, SEL _cmd) {
     if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(self, NO, NO);
+        FQXApplyPinchPureCleanState(self, NO);
     }
     if (OrigVPlayerWillEndDisplay) OrigVPlayerWillEndDisplay(self, _cmd);
 }
@@ -1626,7 +1363,7 @@ static void (*OrigVPlayerUpdateControlState)(id, SEL);
 static void HookVPlayerUpdateControlState(UIView *self, SEL _cmd) {
     if (OrigVPlayerUpdateControlState) OrigVPlayerUpdateControlState(self, _cmd);
     if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(self, YES, NO);
+        FQXApplyPinchPureCleanState(self, YES);
     }
 }
 
@@ -1635,8 +1372,17 @@ static void HookOuterControlLayout(UIView *self, SEL _cmd) {
     if (OrigOuterControlLayout) OrigOuterControlLayout(self, _cmd);
     FQXAttachDramaPinchIfNeeded(self);
     if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(self, YES, NO);
+        FQXApplyPinchPureCleanState(self, YES);
     }
+}
+
+static void (*OrigOuterBindContent)(id, SEL, id);
+static void HookOuterBindContent(UIView *self, SEL cmd, id model) {
+    if (FQXObjGet(self, "contentModel") != model &&
+        [objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
+        FQXApplyPinchPureCleanState(self, NO);
+    }
+    OrigOuterBindContent(self, cmd, model);
 }
 
 static void (*OrigGestureCompPinch)(id, SEL, id);
@@ -1659,7 +1405,20 @@ static BOOL HookGestureCompShouldBegin(id self, SEL _cmd, UIGestureRecognizer *g
             return NO;
         }
     }
+    if ([gesture isKindOfClass:UILongPressGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
     return OrigGestureCompShouldBegin ? OrigGestureCompShouldBegin(self, _cmd, gesture) : YES;
+}
+
+static BOOL (*OrigInnerPinchSeekShouldBegin)(id, SEL, id);
+static BOOL HookInnerPinchSeekShouldBegin(id self, SEL cmd, UIGestureRecognizer *gesture) {
+    if ([gesture isKindOfClass:UIPanGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
+    return OrigInnerPinchSeekShouldBegin(self, cmd, gesture);
+}
+
+static BOOL (*OrigOuterPinchSeekShouldBegin)(id, SEL, id);
+static BOOL HookOuterPinchSeekShouldBegin(id self, SEL cmd, UIGestureRecognizer *gesture) {
+    if ([gesture isKindOfClass:UIPanGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
+    return OrigOuterPinchSeekShouldBegin(self, cmd, gesture);
 }
 
 static void FQXExitPinchCleanInViewController(UIViewController *vc) {
@@ -1668,7 +1427,7 @@ static void FQXExitPinchCleanInViewController(UIViewController *vc) {
         if (![objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) continue;
         for (UIView *cur = control; cur; cur = cur.superview) {
             if (cur == vc.view) {
-                FQXApplyPinchPureCleanState(control, NO, NO);
+                FQXApplyPinchPureCleanState(control, NO);
                 break;
             }
         }
@@ -1803,23 +1562,48 @@ static void FQXApplyReaderParagraphBubbleGlass(UIView *view) {
                     CGRectGetWidth(view.bounds) > 6.0 && CGRectGetHeight(view.bounds) > 6.0;
     BOOL active = FQXGlassEnabled() && hasCount && !specialBadge && !view.hidden;
 
-    FQXAudioSetUnclipped(view, active);
     FQXSetParagraphOutlineSuppressed(bubbleImg, active);
     FQXSetParagraphOutlineSuppressed(commentedImg, active);
     FQXSetParagraphOutlineSuppressed(notchImg, active);
 
     UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(label.textColor, NO);
-    CGRect b = view.bounds;
-    CGFloat pillH = MAX(18.0, b.size.height + 2.0);
-    CGFloat pillW = MAX(pillH + 4.0, b.size.width + 5.0);
-    CGRect pill = CGRectMake(CGRectGetMidX(b) - pillW * 0.5,
-                             CGRectGetMidY(b) - pillH * 0.5,
-                             pillW,
-                             pillH);
-    FQXInstallAudioSurfaceFull(view, view, label, pill, 0, 0.0, NO, NO, style, nil, active);
-    if (active && [label isKindOfClass:UILabel.class]) {
-        label.textAlignment = NSTextAlignmentCenter;
-        label.frame = b;
+    CGRect b = CGRectInset(view.bounds, 0.0, 1.0);
+    FQXInstallAudioSurfaceFull(view, view, label, b, 0, 0.0, NO, NO, style, nil, active);
+    UIImageView *glyph = objc_getAssociatedObject(view, FQXParagraphGlyphKey);
+    NSValue *applied = objc_getAssociatedObject(label, FQXParagraphLabelAppliedKey);
+    NSValue *saved = objc_getAssociatedObject(label, FQXParagraphLabelFrameKey);
+    CGRect stock = applied && saved && CGRectEqualToRect(applied.CGRectValue, label.frame)
+        ? saved.CGRectValue : label.frame;
+    CGFloat width = ceil([label sizeThatFits:b.size].width);
+    CGFloat glyphSize = MIN(11.0, CGRectGetHeight(b) - 4.0);
+    BOOL fits = active && glyphSize >= 7.0 && width + glyphSize + 4.0 <= CGRectGetWidth(b);
+    if (!fits) {
+        glyph.hidden = YES;
+        if (applied && saved) label.frame = stock;
+        if (applied) {
+            objc_setAssociatedObject(label, FQXParagraphLabelFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(label, FQXParagraphLabelAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (active) FQXSetParagraphOutlineSuppressed(notchImg, NO);
+        return;
+    }
+    if (!glyph) {
+        glyph = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"bubble.left"]];
+        glyph.contentMode = UIViewContentModeScaleAspectFit;
+        glyph.userInteractionEnabled = NO;
+        glyph.accessibilityElementsHidden = YES;
+        [view addSubview:glyph];
+        objc_setAssociatedObject(view, FQXParagraphGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    CGFloat left = CGRectGetMidX(b) - (width + glyphSize + 2.0) * 0.5;
+    glyph.frame = CGRectMake(left, CGRectGetMidY(b) - glyphSize * 0.5, glyphSize, glyphSize);
+    glyph.tintColor = label.textColor;
+    glyph.hidden = NO;
+    CGRect aligned = CGRectMake(left + glyphSize + 2.0, stock.origin.y, width, stock.size.height);
+    if (!CGRectEqualToRect(label.frame, aligned)) {
+        objc_setAssociatedObject(label, FQXParagraphLabelFrameKey, [NSValue valueWithCGRect:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(label, FQXParagraphLabelAppliedKey, [NSValue valueWithCGRect:aligned], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        label.frame = aligned;
     }
 }
 
@@ -1930,6 +1714,42 @@ static void FQXAudioSetHiddenTracked(UIView *view, BOOL hide) {
     }
 }
 
+static CGPoint FQXAudioStockCenter(UIView *view) {
+    CGPoint current = view.center;
+    NSValue *applied = objc_getAssociatedObject(view, AudioAppliedPositionKey);
+    NSValue *saved = objc_getAssociatedObject(view, AudioStockPositionKey);
+    return applied && saved && CGPointEqualToPoint(current, applied.CGPointValue)
+        ? saved.CGPointValue : current;
+}
+
+static void FQXAudioPlaceView(UIView *view, CGPoint target, BOOL active) {
+    if (!view.superview) return;
+    CGPoint current = view.center;
+    CGPoint stock = FQXAudioStockCenter(view);
+    NSValue *applied = objc_getAssociatedObject(view, AudioAppliedPositionKey);
+    NSValue *saved = objc_getAssociatedObject(view, AudioStockPositionKey);
+    CGPoint desired = active ? target : stock;
+    if (!CGPointEqualToPoint(current, desired)) view.center = desired;
+    if (active && !CGPointEqualToPoint(desired, stock)) {
+        if (!saved || !CGPointEqualToPoint(stock, saved.CGPointValue))
+            objc_setAssociatedObject(view, AudioStockPositionKey, [NSValue valueWithCGPoint:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!applied || !CGPointEqualToPoint(desired, applied.CGPointValue))
+            objc_setAssociatedObject(view, AudioAppliedPositionKey, [NSValue valueWithCGPoint:desired], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (applied) {
+        objc_setAssociatedObject(view, AudioStockPositionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, AudioAppliedPositionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void FQXAudioCenterButtonArt(UIButton *button, BOOL active) {
+    if (!button) return;
+    UIImageView *art = button.imageView;
+    UILabel *title = button.titleLabel;
+    CGFloat center = CGRectGetMidX(button.bounds);
+    FQXAudioPlaceView(art, CGPointMake(center, art.center.y), active && art.superview == button);
+    FQXAudioPlaceView(title, CGPointMake(center, title.center.y), active && title.superview == button);
+}
+
 static UIUserInterfaceStyle FQXAudioInterfaceStyleForColor(UIColor *sampleTextOrIconColor, BOOL isTrueTone) {
     if (isTrueTone) return UIUserInterfaceStyleLight;
     if ([sampleTextOrIconColor isKindOfClass:UIColor.class]) {
@@ -2037,7 +1857,6 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
 
 static void FQXStyleAudioCircleButton(UIButton *btn,
                                       CGFloat diameter,
-                                      UIView *clampContainer,
                                       UIUserInterfaceStyle style,
                                       BOOL enabled) {
     if (![btn isKindOfClass:UIButton.class]) return;
@@ -2046,23 +1865,29 @@ static void FQXStyleAudioCircleButton(UIButton *btn,
     FQXAudioSetUnclipped(btn, visible);
     FQXAudioClearBackground(btn, visible);
     CGRect b = btn.bounds;
-    CGFloat x = (b.size.width - diameter) * 0.5;
-    CGFloat y = (b.size.height - diameter) * 0.5;
-    if (clampContainer && btn.superview == clampContainer) {
-        CGFloat minInOwner = 12.0 - btn.frame.origin.x;
-        CGFloat maxInOwner = (CGRectGetWidth(clampContainer.bounds) - 12.0) - btn.frame.origin.x - diameter;
-        if (btn.frame.origin.x < CGRectGetWidth(clampContainer.bounds) * 0.5 && x < minInOwner) {
-            x = minInOwner;
-        } else if (btn.frame.origin.x >= CGRectGetWidth(clampContainer.bounds) * 0.5 && x > maxInOwner) {
-            x = maxInOwner;
-        }
-    }
-    CGRect frame = CGRectMake(x, y, diameter, diameter);
+    CGRect frame = CGRectMake(CGRectGetMidX(b) - diameter * 0.5, CGRectGetMidY(b) - diameter * 0.5,
+                              diameter, diameter);
     FQXInstallAudioSurfaceFull(btn, btn, nil, frame, 0, 0.0, NO, YES, style, nil, visible);
     if (visible) [FQXAudioButtonFeedback wireControl:btn];
 }
 
-// Top Nav: SSNewAudioPlayNavigationView & SSAudioPageBackView (38x38 circles)
+static CGRect FQXAudioCardColumnBounds(UIView *view) {
+    for (UIResponder *owner = view.nextResponder; owner; owner = owner.nextResponder) {
+        if (![owner isKindOfClass:NSClassFromString(@"SSNewAudioPlayViewController")]) continue;
+        UIView *container = FQXObjGet(owner, "toneView611");
+        UIView *left = FQXObjGet(container, "toneListView");
+        UIView *right = FQXObjGet(container, "readingView");
+        if (left.window && left.window == view.window && right.window == view.window &&
+            !left.hidden && !right.hidden) {
+            CGRect columns = CGRectUnion([left convertRect:left.bounds toView:view],
+                                        [right convertRect:right.bounds toView:view]);
+            if (CGRectGetWidth(columns) > CGRectGetWidth(view.bounds) * 0.75) return columns;
+        }
+        break;
+    }
+    return CGRectInset(view.bounds, 12.0, 0.0);
+}
+
 static void FQXApplyAudioNavigationGlass(UIView *nav) {
     if (![nav isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(nav);
@@ -2078,10 +1903,37 @@ static void FQXApplyAudioNavigationGlass(UIView *nav) {
     UIButton *shopBtn = FQXObjGet(nav, "shopEntranceBtn");
 
     BOOL backViewVisible = [backView isKindOfClass:UIView.class] && backView.superview == nav && !backView.hidden;
-    FQXStyleAudioCircleButton(backBtn, 38.0, nil, style, enabled && !backViewVisible);
-    FQXStyleAudioCircleButton(moreBtn, 38.0, nil, style, enabled);
-    FQXStyleAudioCircleButton(gameBtn, 36.0, nil, style, enabled);
-    FQXStyleAudioCircleButton(shopBtn, 36.0, nil, style, enabled);
+    CGRect columns = FQXAudioCardColumnBounds(nav);
+    CGFloat left = CGRectGetMinX(columns), right = CGRectGetMaxX(columns);
+    UIButton *close = FQXObjGet(backView, "closeButton");
+    UIButton *backLast = FQXObjGet(backView, "backLastButton");
+    BOOL dual = backLast.superview == backView && !backLast.hidden && CGRectGetWidth(backLast.bounds) > 8.0;
+    if (backViewVisible && close.superview == backView) {
+        CGFloat currentEdge = dual ? CGRectGetMinX(backView.frame)
+            : [backView convertPoint:close.center toView:nav].x - 19.0;
+        FQXAudioPlaceView(backView, CGPointMake(backView.center.x + left - currentEdge, backView.center.y), enabled);
+        FQXAudioCenterButtonArt(close, enabled && !dual);
+    } else {
+        FQXAudioPlaceView(backView, CGPointZero, NO);
+    }
+    FQXAudioPlaceView(backBtn, CGPointMake(left + 19., backBtn.center.y), enabled && !backViewVisible && backBtn.superview == nav);
+    BOOL alignMore = enabled && moreBtn.superview == nav && !moreBtn.hidden;
+    CGFloat trailingShift = alignMore ? right - 19.0 - FQXAudioStockCenter(moreBtn).x : 0.0;
+    UIButton *trailingButtons[] = {gameBtn, shopBtn};
+    for (size_t i = 0; i < sizeof(trailingButtons) / sizeof(trailingButtons[0]); ++i) {
+        UIButton *button = trailingButtons[i];
+        if (!button) continue;
+        CGPoint center = FQXAudioStockCenter(button);
+        center.x += trailingShift;
+        FQXAudioPlaceView(button, center, alignMore && button.superview == nav && !button.hidden);
+    }
+    FQXAudioPlaceView(moreBtn, CGPointMake(right - 19., moreBtn.center.y), alignMore);
+    FQXAudioCenterButtonArt(backBtn, enabled && !backViewVisible);
+    FQXAudioCenterButtonArt(moreBtn, enabled);
+    FQXStyleAudioCircleButton(backBtn, 38.0, style, enabled && !backViewVisible);
+    FQXStyleAudioCircleButton(moreBtn, 38.0, style, enabled);
+    FQXStyleAudioCircleButton(gameBtn, 36.0, style, enabled);
+    FQXStyleAudioCircleButton(shopBtn, 36.0, style, enabled);
 }
 
 static void FQXApplyAudioBackViewGlass(UIView *backView) {
@@ -2101,7 +1953,8 @@ static void FQXApplyAudioBackViewGlass(UIView *backView) {
         splitLine.alpha = (enabled && dualButtons) ? 0.25 : (enabled ? 0.0 : 1.0);
     }
     if (dualButtons) {
-        FQXStyleAudioCircleButton(closeBtn, 38.0, nil, style, NO);
+        FQXAudioCenterButtonArt(closeBtn, NO);
+        FQXStyleAudioCircleButton(closeBtn, 38.0, style, NO);
         CGRect pill = CGRectInset(backView.bounds, 0.0, MAX(0.0, (CGRectGetHeight(backView.bounds) - 38.0) * 0.5));
         FQXInstallAudioSurfaceFull(backView, backView, nil, pill, 0, 0.0, NO, YES, style, nil, enabled);
         if (enabled) {
@@ -2110,7 +1963,8 @@ static void FQXApplyAudioBackViewGlass(UIView *backView) {
         }
     } else {
         FQXInstallAudioSurfaceFull(backView, backView, nil, CGRectZero, 0, 0.0, NO, YES, style, nil, NO);
-        FQXStyleAudioCircleButton(closeBtn, 38.0, nil, style, enabled);
+        FQXAudioCenterButtonArt(closeBtn, enabled);
+        FQXStyleAudioCircleButton(closeBtn, 38.0, style, enabled);
     }
 }
 
@@ -2176,6 +2030,31 @@ static void FQXApplyAudioMenuGlass(UIView *menuView) {
                                 b.origin.y - 4.0,
                                 MAX(0.0, b.size.width - insetX * 2.0),
                                 b.size.height + 8.0);
+    if (cv.superview == menuView) {
+        CGRect frame = cv.frame;
+        NSValue *applied = objc_getAssociatedObject(cv, AudioMenuAppliedFrameKey);
+        NSValue *saved = objc_getAssociatedObject(cv, AudioMenuStockFrameKey);
+        CGRect stock = applied && saved && CGRectEqualToRect(frame, applied.CGRectValue)
+            ? saved.CGRectValue : frame;
+        CGRect desired = stock;
+        if (enabled && CGRectGetWidth(barRect) > 100.0) {
+            desired.origin.x = CGRectGetMinX(barRect) + 10.0;
+            desired.size.width = CGRectGetWidth(barRect) - 20.0;
+        }
+        if (!CGRectEqualToRect(frame, desired)) {
+            cv.frame = desired;
+            [cv.collectionViewLayout invalidateLayout];
+        }
+        if (!CGRectEqualToRect(desired, stock)) {
+            if (!saved || !CGRectEqualToRect(stock, saved.CGRectValue))
+                objc_setAssociatedObject(cv, AudioMenuStockFrameKey, [NSValue valueWithCGRect:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (!applied || !CGRectEqualToRect(desired, applied.CGRectValue))
+                objc_setAssociatedObject(cv, AudioMenuAppliedFrameKey, [NSValue valueWithCGRect:desired], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        } else if (applied) {
+            objc_setAssociatedObject(cv, AudioMenuStockFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(cv, AudioMenuAppliedFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
     // Use UIGlassEffectStyleClear (style = 1) with UIUserInterfaceStyleUnspecified (0) when dark
     // so scrolling novel lyrics directly behind 1号 refract visibly through the glass!
     UIUserInterfaceStyle menuGlassStyle = (style == UIUserInterfaceStyleLight) ? UIUserInterfaceStyleLight : UIUserInterfaceStyleUnspecified;
@@ -2220,8 +2099,17 @@ static void FQXApplyAudioControlGlass(UIView *control) {
 
     UIButton *menuBtn = FQXObjGet(control, "menuBtn");
     UIButton *timingBtn = FQXObjGet(control, "timingBtnBtn");
-    FQXStyleAudioCircleButton(menuBtn, 54.0, control, style, enabled);
-    FQXStyleAudioCircleButton(timingBtn, 54.0, control, style, enabled);
+    UIView *pauseBg = FQXObjGet(control, "pauseBtnBgView");
+    CGRect columns = FQXAudioCardColumnBounds(control);
+    CGFloat centerY = pauseBg.superview == control ? pauseBg.center.y : CGRectGetMidY(control.bounds);
+    FQXAudioPlaceView(menuBtn, CGPointMake(CGRectGetMinX(columns) + 27.0, centerY),
+                      enabled && menuBtn.superview == control && !menuBtn.hidden);
+    FQXAudioPlaceView(timingBtn, CGPointMake(CGRectGetMaxX(columns) - 27.0, centerY),
+                      enabled && timingBtn.superview == control && !timingBtn.hidden);
+    FQXAudioCenterButtonArt(menuBtn, enabled);
+    FQXAudioCenterButtonArt(timingBtn, enabled);
+    FQXStyleAudioCircleButton(menuBtn, 54.0, style, enabled);
+    FQXStyleAudioCircleButton(timingBtn, 54.0, style, enabled);
 
     const char *bgKeys[] = {"preBtnBgView", "pauseBtnBgView", "nextBtnBgView"};
     for (size_t i = 0; i < sizeof(bgKeys) / sizeof(bgKeys[0]); ++i) {
@@ -2249,13 +2137,10 @@ static void FQXApplyAudioToneCellGlass(UICollectionViewCell *cell) {
     FQXAudioSetUnclipped(cell.contentView, enabled);
     FQXAudioClearBackground(cell, enabled);
     FQXAudioClearBackground(cell.contentView, enabled);
-    if (cell.backgroundView) {
-        cell.backgroundView.hidden = enabled;
-    }
+    FQXAudioSetHiddenTracked(cell.backgroundView, enabled);
+    FQXAudioSetHiddenTracked(cell.selectedBackgroundView, enabled);
     UIView *edgeShadow = FQXObjGet(cell, "edgeShadowView");
-    if ([edgeShadow isKindOfClass:UIView.class]) {
-        edgeShadow.hidden = enabled;
-    }
+    FQXAudioSetHiddenTracked(edgeShadow, enabled);
 
     UILabel *titleLabel = FQXObjGet(cell, "titleLabel");
     UIUserInterfaceStyle style = FQXAudioInterfaceStyleForColor(titleLabel.textColor, NO);
@@ -2289,7 +2174,7 @@ static void FQXApplyAudioToneListGlass(UIView *toneList) {
     // Circular Liquid Glass button on `音色设置 >` arrow (`moreButton`)
     UIButton *moreBtn = FQXObjGet(toneList, "moreButton");
     if ([moreBtn isKindOfClass:UIButton.class]) {
-        FQXStyleAudioCircleButton(moreBtn, 28.0, nil, style, FQXGlassEnabled());
+        FQXStyleAudioCircleButton(moreBtn, 28.0, style, FQXGlassEnabled());
     }
 
     UICollectionView *cv = FQXObjGet(toneList, "toneListView");
@@ -2697,6 +2582,10 @@ static void (*OrigAudioVCLayoutContent)(id, SEL);
 static void HookAudioVCLayoutContent(UIViewController *self, SEL _cmd) {
     if (OrigAudioVCLayoutContent) OrigAudioVCLayoutContent(self, _cmd);
     FQXApplyAudioPlayControllerRefractionAndSeamless(self);
+    UIView *nav = FQXObjGet(self, "navigationView");
+    if ([nav isKindOfClass:NSClassFromString(@"SSNewAudioPlayNavigationView")]) {
+        FQXApplyAudioNavigationGlass(nav);
+    }
 }
 static void (*OrigAudioVCLayoutMasks)(id, SEL);
 static void HookAudioVCLayoutMasks(UIViewController *self, SEL _cmd) {
@@ -2750,12 +2639,15 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSVideoFeedContainerViewController", "viewDidAppear:", "v20@0:8B16", OrigFeedContainerDidAppear, HookFeedContainerDidAppear);
         HOOK_INST("SSShortVideoBottomDistributionView", "performForegroundCrossfadeWithRenderBlock:", "v24@0:8@?16", OrigDistCrossfade, HookDistCrossfade);
 
-        // 2. Drama highest available resolution (1080P+) across all scenes
+        // 2. Highest available drama resolution.
+        HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionWithModel:", "@24@0:8@16", OrigResolutionWithModel, HookResolutionWithModel);
+        HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionItemWithModel:", "@24@0:8@16", OrigResolutionItemWithModel, HookResolutionItemWithModel);
         HOOK_INST("FQVPlayerEngineDataResolutionItem", "finalResolutionTypeWithSupportResolutions:videoModel:", "Q32@0:8@16@24", OrigFinalResolutionType, HookFinalResolutionType);
         HOOK_INST("FQVShortVideoListVCControlComponent", "updateCurrentPlayResolutionWithVideoDataModel:resolution:finishBlock:", "v40@0:8@16@24@?32", OrigControlUpdateResolution, HookControlUpdateResolution);
+        HOOK_INST("FQVShortVideoListVCLandscapeSettingComponent", "didSelectResolution:", "v24@0:8@16", OrigLandscapeSelectResolution, HookLandscapeSelectResolution);
+        HOOK_INST("FQVShortVideoListVCPlayerComponent", "updatePlayer:resolution:model:finish:", "v48@0:8@16@24@32@?40", OrigUpdatePlayerResolution, HookUpdatePlayerResolution);
         HOOK_INST("FQVShortVideoListVCPlayerComponent", "preparePlayer:model:async:", "v36@0:8@16@24B32", OrigPreparePlayerAsync, HookPreparePlayerAsync);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "updateResolutionIfNeedWithPlayer:model:", "v32@0:8@16@24", OrigUpdateResolutionIfNeed, HookUpdateResolutionIfNeed);
-        HOOK_INST("FQVShortVideoVPlayerSeriesControlView", "vPlayerDidPreparedVideoInfo:", "v24@0:8@16", OrigSeriesDidPreparedVideoInfo, HookSeriesDidPreparedVideoInfo);
+        HOOK_INST("FQVPlayer", "videoEngineReadyToPlay:", "v24@0:8@16", OrigPlayerReadyToPlay, HookPlayerReadyToPlay);
 
         // 3. Inner drama Episode 2 bottom black mask removal & full-height portrait canvas
         HOOK_INST("FQVShortVideoListVCPlayerComponent", "playerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigPlayerViewSizeWithModel, HookPlayerViewSizeWithModel);
@@ -2772,8 +2664,12 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillEndDisplay", "v16@0:8", OrigVPlayerWillEndDisplay, HookVPlayerWillEndDisplay);
         HOOK_INST("FQVShortVideoVPlayerControlView", "updateControlState", "v16@0:8", OrigVPlayerUpdateControlState, HookVPlayerUpdateControlState);
         HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "layoutSubviews", "v16@0:8", OrigOuterControlLayout, HookOuterControlLayout);
+        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "bindContentModel:", "v24@0:8@16", OrigOuterBindContent, HookOuterBindContent);
         HOOK_INST("FQVShortVideoListVCGestureComponent", "pinchGesture:", "v24@0:8@16", OrigGestureCompPinch, HookGestureCompPinch);
         HOOK_INST("FQVShortVideoListVCGestureComponent", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigGestureCompShouldBegin, HookGestureCompShouldBegin);
+
+        HOOK_INST("FQVShortVideoVPlayerControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigInnerPinchSeekShouldBegin, HookInnerPinchSeekShouldBegin);
+        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigOuterPinchSeekShouldBegin, HookOuterPinchSeekShouldBegin);
 
         // 5. Reader back button centering, inline paragraph comment glass & Mine fold clipping
         HOOK_INST("FQReaderSaasNavigationView", "layoutSubviews", "v16@0:8", OrigReaderNavLayoutMotion, HookReaderNavLayoutMotion);

@@ -55,6 +55,9 @@ class Runtime(SpacingRuntime):
                 return self.finish(cpu, fp=state[name])
             if name in ("viewIfLoaded", "selectedViewController", "presentedViewController", "progressContainer", "progressView") and name in state:
                 return self.finish(cpu, state[name])
+            if name in ("leftModuleCoordinator", "pushTextContentData", "aboveProgressView",
+                        "baseInfoView", "shouldShowProgressView") and name in state:
+                return self.finish(cpu, state[name])
             if name in ("setNeedsLayout", "layoutIfNeeded") and "nativeTrack" in state:
                 if name == "layoutIfNeeded":
                     track = self.objects[state["nativeTrack"]].state
@@ -83,7 +86,7 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
         send(cpu, runtime, entry, "renderWithModel:", model)
 
     proxy_state = runtime.objects[proxy].state
-    r24 = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5")
+    r24 = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1")
     bar = proxy_state["superview"]
     for dock_x, dock_width, expected_x, expected_width in ((20., 400., 20., 400.),
                                                            (34., 372., 34., 372.),
@@ -112,6 +115,23 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
         runtime.associations.pop((proxy, labels[BUTTONS]), None)
         runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieX.BottomLengthScale.1")
     proxy_state.update(frame=(20., 0., 400., 62.), bounds=(0., 0., 400., 62.))
+
+def verify_novel_clearance(cpu, runtime, labels, controls, proxy):
+    entry = runtime.view("UIView", "native novel CTA", (0., 897., 440., 44.), controls)
+    info = runtime.view("UIView", "text and book metadata", (16., 802., 358., 89.), controls)
+    coordinator = runtime.obj("NSObject", "content coordinator",
+                              pushTextContentData=runtime.obj("NSObject", "text data"))
+    runtime.objects[controls].state.update(leftModuleCoordinator=coordinator, aboveProgressView=entry,
+                                           baseInfoView=info, shouldShowProgressView=False)
+    for _ in range(2):
+        call(cpu, labels, "LFQH_FQHDramaSpacing178R2", controls)
+        require(runtime.origin(entry)[1] + 44. + 8. == runtime.origin(proxy)[1] and
+                runtime.origin(info)[1] + 95. == runtime.origin(entry)[1],
+                "Novel text and CTA move together above the dock across repeated layout")
+    runtime.objects[coordinator].state["pushTextContentData"] = 0
+    call(cpu, labels, "LFQH_FQHDramaSpacing178R2", controls)
+    require(runtime.origin(entry)[1] == 897. and runtime.origin(info)[1] == 802.,
+            "Cell reuse for non-text content restores both native positions")
 
 
 def verify(data, labels):
@@ -161,9 +181,12 @@ def verify(data, labels):
             pan.update({"locationInView:": (48., 2.), "translationInView:": (8., 11.)})
             require(send(cpu, runtime, controls, BEGIN, gesture)["result"] == 1,
                     "A track-origin pan keeps the native delegate after moving down")
-        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5"):
+        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1"):
             verify_alignment(cpu, runtime, labels, controls, kind, proxy)
             cases.append(f"{kind} rail and available episode CTA align to native dock edges")
+        if kind == OUTER and release_version(data) == "1.8R1":
+            verify_novel_clearance(cpu, runtime, labels, controls, proxy)
+            cases.append("Novel CTA and metadata stay above the dock and restore on reuse")
         cases.append(f"{kind} initial dock and track separation")
     for property_name, value in (("hidden", True), ("alpha", 0.0)):
         stock = runtime.objects[proxy].state[property_name]
@@ -189,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     binary = args.candidate.read_bytes()
-    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5") else []
+    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1") else []
     symbols = labels_for(binary, args.candidate.with_suffix(".composed.s"), list(dict.fromkeys(LABELS + EXTRA + extra)))
     report = {"passed": True, "candidate_sha256": hashlib.sha256(binary).hexdigest(),
               "cases": verify(binary, symbols), "device_tested": False}
