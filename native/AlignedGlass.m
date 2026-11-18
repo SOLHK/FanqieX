@@ -2798,8 +2798,11 @@ static void DramaDetailRelatedContent(Obj self,Sel cmd,Obj content,Obj text,Obj 
     // This exact host path constructs "原著 · 第N章" and the chapter title.
     // Capture its content after native painting; the outer render/layout hook
     // adds glass after episode decoration has completed, keeping its arrow.
-    if (Kind(content,"SSShortVideoDistributionContentBaseView") && Belongs(content,self))
+    if (Kind(content,"SSShortVideoDistributionContentBaseView") && Belongs(content,self)) {
         objc_setAssociatedObject(self,DramaDetailRelatedContentKey,content,1);
+        DramaDetailRelatedGlass(self,0);
+        DramaSpacingForView(self);
+    }
 }
 
 static void DramaWatchLayout(Obj self,Sel cmd) {
@@ -3289,6 +3292,7 @@ static void DramaDetailOriginalLayout(Obj self,Sel cmd) {
     if (Enabled() && FQHGlassAvailable() && VisibleRect(frame) && PlaceDramaGlass(self,self,0,frame))
         DramaClearBackground(self,1);
     else { RemoveDramaGlass(self); DramaClearBackground(self,0); }
+    DramaSpacingForView(self);
 }
 static void DramaDetailBottomSpacing(Obj view,Obj episode,Obj novel) {
     // R36: keep the native detail stack clear of the home-indicator and floating-dock edge.
@@ -4319,20 +4323,35 @@ static B DramaProgressName178R2(Obj view) {
     return ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("progress")) ||
            ((B(*)(Obj,Sel,Obj))Message)(name,sel_registerName("containsString:"),Text("slider"));
 }
-static Obj DramaEpisodeContent(Obj entry) {
+static Obj DramaEpisodePrimaryContent(Obj entry) {
     if (Kind(entry,"SSShortVideoAlbumSeriesBottomInsertView"))
         return Get(entry,"albumDetailInfo") ? Get(entry,"containerView") : (Obj)0;
     if (!Kind(entry,"SSShortVideoBottomDistributionView")) return 0;
     Obj owned=objc_getAssociatedObject(entry,DramaWatchContentKey);
     if (owned) return owned;
-    if (DramaWatchIsEpisode(Get(entry,"lastRenderModel"))) return Get(entry,"defaultContentView");
+    return DramaWatchIsEpisode(Get(entry,"lastRenderModel")) ? Get(entry,"defaultContentView") : (Obj)0;
+}
+static Obj DramaEpisodeNovelContent(Obj entry) {
+    if (Kind(entry,"SSShortVideoOriginalNovelEntranceView"))
+        return DramaSpacingVisible178R2(entry) ? entry : (Obj)0;
+    if (!Kind(entry,"SSShortVideoBottomDistributionView") || DramaEpisodePrimaryContent(entry)) return 0;
     Obj related=objc_getAssociatedObject(entry,DramaDetailRelatedContentKey);
     return Get(related,"superview")==entry && objc_getAssociatedObject(related,DramaGlassKey) ? related : (Obj)0;
+}
+static Obj DramaEpisodeContent(Obj entry) {
+    Obj primary=DramaEpisodePrimaryContent(entry);
+    return primary ? primary : DramaEpisodeNovelContent(entry);
 }
 static Obj DramaEpisodeMaterial(Obj entry) {
     if (Kind(entry,"SSShortVideoOutterMultiGenreFeedAboveProgressView")) {
         Obj background=Get(entry,"backgroundView");
         return Get(background,"superview")==entry && DramaSpacingVisible178R2(background) ? background : (Obj)0;
+    }
+    if (Kind(entry,"SSShortVideoOriginalNovelEntranceView")) {
+        if (!DramaSpacingVisible178R2(entry)) return 0;
+        Obj glass=objc_getAssociatedObject(entry,DramaGlassKey);
+        if (Get(glass,"superview")==entry) return DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
+        return entry;
     }
     Obj content=DramaEpisodeContent(entry);
     if (Get(content,"superview")!=entry || !DramaSpacingVisible178R2(content)) return 0;
@@ -4353,16 +4372,19 @@ static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
     return result;
 }
 static void DramaSpacingScan178R2(Obj view,Obj root,Obj insert,int depth,int *budget,B progressBranch,
-                                 Obj *entry,U *entries,Obj *progress,Rect *track) {
+                                 Obj *primaryEntry,U *primaryCount,Obj *novelEntry,U *novelCount,
+                                 Obj *progress,Rect *track) {
     if (!depth || *budget<=0 || !DramaSpacingVisible178R2(view)) return;
     --*budget;
     Rect bounds=Bounds(root),r=DramaSpacingMeasure178R2(view,root);
     if (!VisibleRect(r) || r.y>=bounds.y+bounds.height || r.y+r.height<=bounds.y) return;
-    if (DramaEpisodeContent(view) ||
-        (Kind(view,"SSShortVideoAlbumSeriesBottomInsertView") && Get(view,"albumDetailInfo"))) {
+    B primaryMatch=DramaEpisodePrimaryContent(view) ||
+        (Kind(view,"SSShortVideoAlbumSeriesBottomInsertView") && Get(view,"albumDetailInfo"));
+    if (primaryMatch || DramaEpisodeNovelContent(view)) {
         if ((!insert || Belongs(view,insert)) && r.width>=bounds.width*0.5 && r.height>=24 &&
             r.height<=100 && r.y>bounds.y+bounds.height*0.5) {
-            *entry=view; ++*entries;
+            if (primaryMatch) { *primaryEntry=view; ++*primaryCount; }
+            else { *novelEntry=view; ++*novelCount; }
         }
         return;
     }
@@ -4390,10 +4412,13 @@ static void DramaSpacingScan178R2(Obj view,Obj root,Obj insert,int depth,int *bu
         (!*progress || r.height<track->height || (r.height==track->height && r.y>track->y))) {
         *progress=view; *track=r;
     }
+    if (!progressBranch && (Kind(view,"UILabel") || Kind(view,"UIImageView") || Kind(view,"UIVisualEffectView")))
+        return;
     Obj children=Get(view,"subviews");
     U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
     for (U i=0;i<count && *budget>0;++i)
-        DramaSpacingScan178R2(At(children,i),root,insert,depth-1,budget,progressBranch,entry,entries,progress,track);
+        DramaSpacingScan178R2(At(children,i),root,insert,depth-1,budget,progressBranch,
+                              primaryEntry,primaryCount,novelEntry,novelCount,progress,track);
 }
 static void DramaSpacingRestore178R2(Obj root) {
     Obj target=Get(objc_getAssociatedObject(root,DramaSpacingTarget178R2Key),"anyObject");
@@ -4420,7 +4445,7 @@ static B DramaSpacingContained178R2(Obj target,Rect wanted,Obj root) {
 static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root,B outer) {
     if (!Belongs(insert,root) || !Belongs(seek,root)) return 0;
     // The outer feed anchors the insert to the control bottom. Series players
-    // can replace the base constraint with one anchored to the seek center.
+    // can replace the base constraint with one anchored to the seek edges or center.
     Obj match=0;
     for (Obj parent=Get(insert,"superview");parent;parent=Get(parent,"superview")) {
         Obj constraints=Get(parent,"constraints");
@@ -4431,7 +4456,8 @@ static Obj DramaSpacingAnchor(Obj insert,Obj seek,Obj root,B outer) {
             Obj reference=Get(constraint,"secondItem");
             I attribute=((I(*)(Obj,Sel))Message)(constraint,sel_registerName("secondAttribute"));
             if (outer ? (reference!=seek || attribute!=4) :
-                !((reference==root && attribute==4) || (reference==seek && attribute==10))) continue;
+                !((reference==root && attribute==4) ||
+                  (reference==seek && (attribute==3 || attribute==4 || attribute==10)))) continue;
             if (((I(*)(Obj,Sel))Message)(constraint,sel_registerName("firstAttribute"))!=4 ||
                 ((I(*)(Obj,Sel))Message)(constraint,sel_registerName("relation"))!=0 ||
                 ((double(*)(Obj,Sel))Message)(constraint,sel_registerName("multiplier"))!=1) continue;
@@ -4534,10 +4560,29 @@ void FQHDramaSpacing178R2(Obj root) {
             }
         }
     } else if (eligible) {
-        U entries=0; int budget=128;
+        Obj primaryEntry=0,novelEntry=0;
+        U entries=0,primaryCount=0,novelCount=0; int budget=128;
         insert=Get(root,"insertAboveProgressView");
         if (!Belongs(insert,root)) insert=0;
-        DramaSpacingScan178R2(root,root,insert,8,&budget,0,&entry,&entries,&progress,&track);
+        Obj progressContainer=Get(root,"progressContainer");
+        if (!Kind(progressContainer,"FQVShortVideoProgressView") ||
+            !DramaSpacingVisible178R2(progressContainer) || !Belongs(progressContainer,root))
+            progressContainer=0;
+        if (insert && progressContainer) {
+            int insertBudget=256,trackBudget=16;
+            DramaSpacingScan178R2(insert,root,insert,8,&insertBudget,0,
+                                  &primaryEntry,&primaryCount,&novelEntry,&novelCount,&progress,&track);
+            DramaSpacingScan178R2(progressContainer,root,0,4,&trackBudget,0,
+                                  &primaryEntry,&primaryCount,&novelEntry,&novelCount,&progress,&track);
+            if (insertBudget<=0 || trackBudget<=0) budget=0;
+        } else {
+            DramaSpacingScan178R2(root,root,insert,8,&budget,0,
+                                  &primaryEntry,&primaryCount,&novelEntry,&novelCount,&progress,&track);
+        }
+        if (primaryCount==1) { entry=primaryEntry; entries=1; }
+        else if (primaryCount>1) entries=primaryCount;
+        else if (novelCount==1) { entry=novelEntry; entries=1; }
+        else entries=novelCount;
         // A broad progress container is not evidence of the visible track's
         // position. If the thin track is hidden or absent, keep the host layout.
         B visibleTrack=progress && track.height<=8;
@@ -4564,6 +4609,7 @@ void FQHDramaSpacing178R2(Obj root) {
                 if (DramaProgressName178R2(seek) && VisibleRect(r) && r.height<=64 &&
                     r.width>=b.width*0.5 && r.y>b.y+b.height*0.6) seekOwner=seek;
             }
+            if (!seekOwner && progressContainer) seekOwner=progressContainer;
             if (insert && Belongs(entry,insert)) {
                 anchor=DramaSpacingAnchor(insert,seekOwner,root,0);
                 if (anchor) target=insert;
@@ -4597,7 +4643,8 @@ void FQHDramaSpacing178R2(Obj root) {
             double referenceY=b.y+b.height;
             if (Get(anchor,"secondItem")==seekOwner) {
                 Rect seek=Convert(seekOwner,Bounds(seekOwner),root);
-                referenceY=seek.y+seek.height*(outer ? 1 : 0.5);
+                I attr=outer ? 4 : ((I(*)(Obj,Sel))Message)(anchor,sel_registerName("secondAttribute"));
+                referenceY=seek.y+(attr==3 ? 0 : attr==4 ? seek.height : seek.height*0.5);
             }
             // Calculate the host baseline even before UIKit applies a new
             // constraint constant to the frames in this pass.
@@ -4672,7 +4719,7 @@ void FQHDramaSpacing178R2(Obj root) {
 }
 static void DramaSpacingForView(Obj view) {
     Obj parent=Get(view,"superview");
-    for (int depth=0;parent && depth<8;++depth,parent=Get(parent,"superview")) {
+    for (int depth=0;parent && depth<16;++depth,parent=Get(parent,"superview")) {
         if (Kind(parent,"FQVShortVideoVPlayerControlView")) { FQHDramaSpacing178R2(parent); return; }
     }
 }
@@ -5380,11 +5427,133 @@ static void RestoreProfileEntryFrame(Obj content,const void *key) {
     objc_setAssociatedObject(view,GlyphAppliedKey,0,1);
     objc_setAssociatedObject(content,key,0,1);
 }
+static void ProfileCardClearKey(void) {}
+static void ProfileCardSavedBgKey(void) {}
+static void ProfileCardTrackedKey(void) {}
+static Obj ProfileRowAncestor(Obj view) {
+    Obj parent=Get(view,"superview");
+    for (int depth=0;parent && depth<8;++depth,parent=Get(parent,"superview"))
+        if (Kind(parent,"SSMyUserShortcutCell") || Kind(parent,"SSMyUserCollectionView1Cell")) return parent;
+    return 0;
+}
+static void ProfileCardSetPaint(Obj view,B clear) {
+    if (!view) return;
+    Obj current=Get(view,"backgroundColor");
+    Obj transparent=O0(Lookup("UIColor"),"clearColor");
+    Obj saved=objc_getAssociatedObject(view,ProfileCardSavedBgKey);
+    if (clear) {
+        if (current && !SameColor(current,transparent)) {
+            objc_setAssociatedObject(view,ProfileCardSavedBgKey,current,1);
+            objc_setAssociatedObject(view,ProfileCardClearKey,transparent,1);
+            V1(view,"setBackgroundColor:",transparent);
+        }
+    } else if (objc_getAssociatedObject(view,ProfileCardClearKey)) {
+        Obj applied=objc_getAssociatedObject(view,ProfileCardClearKey);
+        if (saved && SameColor(current,applied)) V1(view,"setBackgroundColor:",saved);
+        objc_setAssociatedObject(view,ProfileCardSavedBgKey,0,1);
+        objc_setAssociatedObject(view,ProfileCardClearKey,0,1);
+    }
+}
+static void ProfileCardTrackClear(Obj host,Obj view) {
+    if (!view) return;
+    ProfileCardSetPaint(view,1);
+    if (!objc_getAssociatedObject(view,ProfileCardClearKey)) return;
+    Obj tracked=objc_getAssociatedObject(host,ProfileCardTrackedKey);
+    if (!tracked) {
+        tracked=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(host,ProfileCardTrackedKey,tracked,1);
+    }
+    V1(tracked,"addObject:",view);
+}
+static void ProfileCardRestorePaints(Obj host) {
+    Obj tracked=objc_getAssociatedObject(host,ProfileCardTrackedKey);
+    if (!tracked) return;
+    Obj all=O0(tracked,"allObjects");
+    for (U i=0,n=TabCount(all);i<n;++i) ProfileCardSetPaint(At(all,i),0);
+    objc_setAssociatedObject(host,ProfileCardTrackedKey,0,1);
+}
+static void ProfileShortcutCardGlass(Obj row,B mounted) {
+    if (!row || !Kind(row,"UIView")) return;
+    Obj cv=Get(row,"contentView");
+    Obj host=(Kind(cv,"UIView") && Get(cv,"superview")==row) ? cv : row;
+    Rect b=Bounds(host);
+    if (!mounted || !Enabled() || !FQHGlassAvailable() || !VisibleRect(b)) {
+        PageRestore(host);
+        ProfileCardRestorePaints(host);
+        return;
+    }
+    Rect cardFrame=b;
+    Obj children=Get(host,"subviews");
+    U childCount=TabCount(children);
+    Obj existingSurface=FQHSurface(host);
+    Rect bestCard={0};
+    B foundCard=0;
+    for (U i=0;i<childCount;++i) {
+        Obj child=At(children,i);
+        if (child==existingSurface || !Kind(child,"UIView") || Flag(child,"isHidden") ||
+            Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
+            Kind(child,"SSMyUserCollectionViewFunCell")) continue;
+        Rect r=Frame(child);
+        if (VisibleRect(r) && r.width>=b.width*0.5 && r.height>=b.height*0.4 &&
+            r.width<b.width-4 && r.x>=4 && r.x+r.width<=b.width-4) {
+            if (!foundCard || r.width*r.height>bestCard.width*bestCard.height) {
+                bestCard=r; foundCard=1;
+            }
+        }
+    }
+    if (foundCard) {
+        for (U i=0;i<childCount;++i) {
+            Obj child=At(children,i);
+            if (!Kind(child,"UIPageControl") || Flag(child,"isHidden")) continue;
+            Rect r=Frame(child);
+            if (VisibleRect(r) && r.x>=bestCard.x-1 && r.x+r.width<=bestCard.x+bestCard.width+1 &&
+                r.y>=bestCard.y && r.y+r.height<=b.height) {
+                double bottom=__builtin_fmax(bestCard.y+bestCard.height,r.y+r.height);
+                bestCard.height=__builtin_fmin(b.height-bestCard.y,bottom-bestCard.y);
+            }
+        }
+        cardFrame=bestCard;
+    }
+    ProfileCardTrackClear(host,row);
+    if (host!=row) ProfileCardTrackClear(host,host);
+    for (U i=0;i<childCount;++i) {
+        Obj child=At(children,i);
+        if (child==existingSurface || !Kind(child,"UIView") || Flag(child,"isHidden") ||
+            Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
+            Kind(child,"SSMyUserCollectionViewFunCell")) continue;
+        Rect r=Frame(child);
+        if (r.width<cardFrame.width*0.8 || r.height<cardFrame.height*0.4) continue;
+        ProfileCardTrackClear(host,child);
+        Obj grand=Get(child,"subviews");
+        for (U j=0,gn=TabCount(grand);j<gn;++j) {
+            Obj gc=At(grand,j);
+            if (!Kind(gc,"UIView") || Flag(gc,"isHidden") || Kind(gc,"UILabel") ||
+                Kind(gc,"UIImageView") || Kind(gc,"UIControl") ||
+                Kind(gc,"SSMyUserCollectionViewFunCell")) continue;
+            Rect gr=Frame(gc);
+            if (gr.width>=cardFrame.width*0.8 && gr.height>=cardFrame.height*0.4)
+                ProfileCardTrackClear(host,gc);
+        }
+    }
+    ApplySurface(host,cardFrame,1);
+    Obj surface=FQHSurface(host);
+    if (surface && surface!=existingSurface) {
+        Obj cfgCls=Lookup("UICornerConfiguration");
+        if (Responds(cfgCls,"capsuleConfigurationWithMaximumRadius:")) {
+            Obj cfg=((Obj(*)(Obj,Sel,double))Message)(cfgCls,sel_registerName("capsuleConfigurationWithMaximumRadius:"),18);
+            if (cfg) V1(surface,"setCornerConfiguration:",cfg);
+        }
+        Q1(surface,"setOverrideUserInterfaceStyle:",0);
+    }
+    V1(ProfileShortcutOwners(),"addObject:",row);
+}
 static void RestoreProfileEntry(Obj content) {
     TrackAppearanceLabel(content,0,0);
     RestoreProfileEntryFrame(content,GlyphViewKey);
     RestoreProfileEntryFrame(content,ProfileCaptionKey);
     RestoreHit(Get(content,"superview"));
+    ProfileCardSetPaint(content,0);
+    ProfileCardSetPaint(Get(content,"superview"),0);
     PageRestore(content);
 }
 
@@ -5421,12 +5590,15 @@ static void ReaderAudioIndicatorMove(Obj self,Sel cmd,Obj parent) {
 static void ProfileEntryGlass(Obj self,B order) {
     Obj content=Get(self,"contentView");
     if (!content) return;
-    B shortcut=HasAncestor(self,"SSMyUserShortcutCell") || HasAncestor(self,"SSMyUserCollectionView1Cell");
-    Obj glyph=shortcut && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
+    PageRestore(content);
+    RestoreHit(self);
+    Obj row=ProfileRowAncestor(self);
+    Obj glyph=row && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
     Obj caption=glyph ? Get(self,order ? "functionType" : "label") : (Obj)0;
     if (!Kind(glyph,"UIImageView") || Get(glyph,"superview")!=content || Flag(glyph,"isHidden") ||
         !Kind(caption,"UILabel") || Get(caption,"superview")!=content) {
         RestoreProfileEntry(content);
+        if (row && (!Enabled() || !FQHGlassAvailable())) ProfileShortcutCardGlass(row,0);
         return;
     }
     Obj oldGlyph=objc_getAssociatedObject(content,GlyphViewKey);
@@ -5441,46 +5613,52 @@ static void ProfileEntryGlass(Obj self,B order) {
         RestoreProfileEntry(content);
         return;
     }
-    // Use the real inter-item gap, leaving at least 4pt between neighboring
-    // glass surfaces. The cell itself retains its original layout and action.
-    double grow=__builtin_fmin(6,__builtin_fmax(0,(72-b.width)*0.5));
-    Rect cellFrame=Frame(self);
-    Obj siblings=Get(Get(self,"superview"),"subviews");
-    U count=((U(*)(Obj,Sel))Message)(siblings,sel_registerName("count"));
-    for (U i=0;i<count;++i) {
-        Obj sibling=At(siblings,i);
-        if (sibling==self || !Kind(sibling,"SSMyUserCollectionViewFunCell") || Flag(sibling,"isHidden")) continue;
-        Rect other=Frame(sibling);
-        if (other.y+other.height<=cellFrame.y || other.y>=cellFrame.y+cellFrame.height) continue;
-        double gap=other.x>=cellFrame.x+cellFrame.width ? other.x-cellFrame.x-cellFrame.width :
-            (cellFrame.x>=other.x+other.width ? cellFrame.x-other.x-other.width : 0);
-        grow=__builtin_fmin(grow,__builtin_fmax(0,(gap-4)*0.5));
-    }
-    Rect material={b.x-grow,b.y+(b.height-height)*0.5,b.width+grow*2,height};
-    Obj previousSurface=FQHSurface(content);
-    ApplySurface(content,material,1);
-    Obj surface=FQHSurface(content);
-    if (!surface) {
-        RestoreProfileEntry(content);
-        return;
-    }
-    if (surface!=previousSurface)
-        V1(surface,"setCornerConfiguration:",O0(Lookup("UICornerConfiguration"),"capsuleConfiguration"));
+    ProfileCardSetPaint(self,1);
+    ProfileCardSetPaint(content,1);
+    ProfileShortcutCardGlass(row,1);
     V1(ProfileShortcutOwners(),"addObject:",self);
     Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
     B iconsOnly=BoolProp(O1(defaults,"objectForKey:",Text("FanqieX.MineQuickIconsOnly.1")),"boolValue");
     TrackAppearanceLabel(content,caption,13);
     ProfileCaptionInk(caption,iconsOnly);
-    EnsureHit(self,Convert(content,material,self));
-    // Never enlarge the host's original bitmap canvas just to fill the pill.
+    // Never enlarge the host's original bitmap canvas just to fill the cell.
     double scale=__builtin_fmin(1,glyphHeight/__builtin_fmax(icon.width,icon.height));
-    double top=material.y+(height-glyphHeight-(iconsOnly?0:4+captionHeight))*0.5;
+    double top=b.y+(b.height-glyphHeight-(iconsOnly?0:4+captionHeight))*0.5;
     Rect adjusted={b.x+(b.width-icon.width*scale)*0.5,top+(glyphHeight-icon.height*scale)*0.5,
                    icon.width*scale,icon.height*scale};
     if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
     if (oldCaption!=caption) objc_setAssociatedObject(content,ProfileCaptionKey,caption,1);
     ProfileSetFrame(glyph,iconFrame,icon,adjusted);
-    CenterCaption(caption,content,(Rect){material.x+8,top+glyphHeight+4,material.width-16,captionHeight},!iconsOnly,1);
+    double textWidth=__builtin_fmax(b.width-4,56);
+    CenterCaption(caption,content,(Rect){b.x+(b.width-textWidth)*0.5,top+glyphHeight+4,textWidth,captionHeight},!iconsOnly,1);
+}
+static void ProfileShortcutCardLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserShortcutCell","fqx179r1_originalShortcutCardLayout"))(self,cmd);
+    ProfileShortcutCardGlass(self,1);
+}
+static void ProfileShortcutCardMove(Obj self,Sel cmd,Obj parent) {
+    if (!parent) ProfileShortcutCardGlass(self,0);
+    ((void(*)(Obj,Sel,Obj))Original("SSMyUserShortcutCell","fqx179r1_originalShortcutCardMove:"))(self,cmd,parent);
+}
+static void ProfileCard1Layout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserCollectionView1Cell","fqx179r1_originalCard1Layout"))(self,cmd);
+    ProfileShortcutCardGlass(self,1);
+}
+static void ProfileCard1Move(Obj self,Sel cmd,Obj parent) {
+    if (!parent) ProfileShortcutCardGlass(self,0);
+    ((void(*)(Obj,Sel,Obj))Original("SSMyUserCollectionView1Cell","fqx179r1_originalCard1Move:"))(self,cmd,parent);
+}
+static void InstallProfileCardHook(const char *name,const char *selector,const char *alias,const char *type,Imp imp) {
+    Obj cls=Lookup(name);
+    if (!cls || !ClassABI(cls,selector,type) || class_getInstanceMethod(cls,sel_registerName(alias))) return;
+    Sel sel=sel_registerName(selector),saved=sel_registerName(alias);
+    if (FQDResolveOwned(cls,sel,0,type)) {
+        Hook(name,selector,alias,type,imp);
+        return;
+    }
+    Method base=class_getInstanceMethod(cls,sel);
+    if (base && class_addMethod(cls,saved,method_getImplementation(base),type))
+        class_addMethod(cls,sel,imp,type);
 }
 static void PageProfileEntryLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionViewFunCell","fqx174_originalProfileEntry"))(self,cmd);
@@ -7125,6 +7303,10 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621ViewController","scrollViewDidScroll:","fqx178r9_originalProfileScroll:","v24@0:8@16",(Imp)ProfileScroll);
     Hook("SSMyUserCollectionViewFunCell","layoutSubviews","fqx174_originalProfileEntry","v16@0:8",(Imp)PageProfileEntryLayout);
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
+    InstallProfileCardHook("SSMyUserShortcutCell","layoutSubviews","fqx179r1_originalShortcutCardLayout","v16@0:8",(Imp)ProfileShortcutCardLayout);
+    InstallProfileCardHook("SSMyUserShortcutCell","willMoveToSuperview:","fqx179r1_originalShortcutCardMove:","v24@0:8@16",(Imp)ProfileShortcutCardMove);
+    InstallProfileCardHook("SSMyUserCollectionView1Cell","layoutSubviews","fqx179r1_originalCard1Layout","v16@0:8",(Imp)ProfileCard1Layout);
+    InstallProfileCardHook("SSMyUserCollectionView1Cell","willMoveToSuperview:","fqx179r1_originalCard1Move:","v24@0:8@16",(Imp)ProfileCard1Move);
     if (Signature("SSAudioPlayIndicatorView","contentView","@16@0:8") &&
         Signature("SSAudioPlayIndicatorView","backgroundView","@16@0:8") &&
         Signature("SSAudioPlayIndicatorView","backgroundEffectView","@16@0:8")) {

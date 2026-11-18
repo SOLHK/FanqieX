@@ -225,6 +225,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.ReaderChapterEndDrama.1":@"阅读底栏 改编剧场 改编剧入口",
             @"FanqieX.ReaderChapterEndActions.1":@"最新章节 三个按钮 最新章 章末",
             @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
+            @"FanqieX.ShelfRecommendations.1":@"书架 推荐内容 展开全部 猜你喜欢 为你推荐 书架底部推荐 榜单推荐",
             @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书",
             @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片",
             @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币"
