@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import "FQXHookInstaller.h"
 extern void FQXInstallContentCleanupHooks(void);
+extern void FQXInstallMotionAndAudioHooks(void);
 
 #define CLEANUP_OPTIONS(X) \
     X(AuthorWords, "ReaderAuthorWords", "显示作者的话", "reader", YES) \
@@ -15,6 +16,11 @@ extern void FQXInstallContentCleanupHooks(void);
     X(ReaderEarnMore, "ReaderEarnMore", "显示阅读页去赚更多", "reader", YES) \
     X(SpeechFloat, "ReaderSpeechFloat", "显示阅读页听书悬浮按钮", "reader", YES) \
     X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
+    X(AudioRecommendations, "AudioRecommendations", "显示听书页推荐内容", "reader", YES) \
+    X(MineScanButton, "MineScanButton", "显示我的顶部扫一扫", "mine", YES) \
+    X(MineSearchBar, "MineSearchBar", "显示我的顶部搜索框", "mine", YES) \
+    X(MineNightButton, "MineNightButton", "显示我的顶部夜间按钮", "mine", YES) \
+    X(MineShortcutCard, "MineShortcutCard", "显示我的快捷功能卡片", "mine", YES) \
     X(MinePublish, "MinePublish", "显示我的页面发帖按钮", "mine", YES) \
     X(MineRecommendations, "MineRecommendations", "显示推荐内容", "mine", YES) \
     X(MineBenefits, "MineBenefitsCard", "显示金币与福利卡片", "mine", YES) \
@@ -495,6 +501,149 @@ static void PauseForTime(id owner, SEL cmd) {
     if (!Option(DurationLimitKey, NO)) NativePauseForTime(owner, cmd);
 }
 
+static id CleanupIvarObject(id target, const char *ivarName) {
+    if (!target || !ivarName) return nil;
+    Ivar ivar = class_getInstanceVariable(object_getClass(target), ivarName);
+    if (!ivar) return nil;
+    const char *enc = ivar_getTypeEncoding(ivar);
+    return (enc && enc[0] == '@') ? object_getIvar(target, ivar) : nil;
+}
+
+static void (*NativeMineWillAppear)(id, SEL, BOOL);
+static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
+    if (NativeMineWillAppear) NativeMineWillAppear(owner, cmd, animated);
+    if ([owner isKindOfClass:NSClassFromString(@"SSMyUser621ViewController")]) {
+        LastMine = owner;
+    }
+    UIView *bar = HostObject(owner, NSSelectorFromString(@"myUserBar")) ?: CleanupIvarObject(owner, "_myUserBar");
+    if ([bar isKindOfClass:UIView.class]) {
+        [bar setNeedsLayout];
+    }
+}
+
+static void RefreshMineViewsInSubtree(UIView *view) {
+    if (![view isKindOfClass:UIView.class]) return;
+    Class barCls = NSClassFromString(@"SSMyUserBar");
+    if (barCls && [view isKindOfClass:barCls]) {
+        [view setNeedsLayout];
+        [view layoutIfNeeded];
+    }
+    for (UIView *sub in view.subviews) {
+        RefreshMineViewsInSubtree(sub);
+    }
+}
+
+static NSHashTable<UIViewController *> *AudioPlayControllers(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        table = [NSHashTable weakObjectsHashTable];
+    });
+    return table;
+}
+
+static void ApplyAudioRecommendVisibility(UIViewController *vc) {
+    if (![vc isKindOfClass:UIViewController.class]) return;
+    [AudioPlayControllers() addObject:vc];
+    BOOL show = Option(AudioRecommendationsKey, YES);
+    const char *recIvars[] = {
+        "_unlimitedView", "_recommendView", "_unlimitedClickTopView", "_refreshFooter", "_comicsBooksCell"
+    };
+    if (show) {
+        ShelfRecRestoreController(vc);
+        return;
+    }
+    for (size_t i = 0; i < sizeof(recIvars) / sizeof(recIvars[0]); ++i) {
+        UIView *v = CleanupIvarObject(vc, recIvars[i]);
+        if (v) ShelfRecHideView(vc, v, YES);
+    }
+    const char *scrollIvars[] = {"_contentScrollView", "_nestedContainerScrollView"};
+    const char *anchorIvars[] = {
+        "_toneView611", "_listenReadButtonBelowView", "_listenReadButtonWithPreUnlockView", "_controlView"
+    };
+    for (size_t s = 0; s < sizeof(scrollIvars) / sizeof(scrollIvars[0]); ++s) {
+        UIScrollView *sv = CleanupIvarObject(vc, scrollIvars[s]);
+        if (![sv isKindOfClass:UIScrollView.class] || CGRectGetHeight(sv.bounds) <= 1.0) continue;
+        CGFloat maxBottom = 0.0;
+        for (size_t a = 0; a < sizeof(anchorIvars) / sizeof(anchorIvars[0]); ++a) {
+            UIView *anchor = CleanupIvarObject(vc, anchorIvars[a]);
+            if (![anchor isKindOfClass:UIView.class] || anchor.hidden || !anchor.superview) continue;
+            if (![anchor isDescendantOfView:sv]) continue;
+            CGRect r = [anchor convertRect:anchor.bounds toView:sv];
+            if (CGRectGetMaxY(r) > maxBottom) maxBottom = CGRectGetMaxY(r);
+        }
+        if (maxBottom > 40.0) {
+            CGFloat clampedH = MAX(CGRectGetHeight(sv.bounds), ceil(maxBottom + 20.0));
+            if (sv.contentSize.height > clampedH + 1.0) {
+                sv.contentSize = CGSizeMake(sv.contentSize.width, clampedH);
+                CGFloat maxOffsetY = MAX(-sv.adjustedContentInset.top, clampedH - CGRectGetHeight(sv.bounds));
+                if (sv.contentOffset.y > maxOffsetY) {
+                    [sv setContentOffset:CGPointMake(sv.contentOffset.x, maxOffsetY) animated:NO];
+                }
+            }
+        }
+    }
+}
+
+static void (*NativeAudioLoadUnlimited)(id, SEL);
+static void AudioLoadUnlimited(id self, SEL cmd) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioLoadUnlimited(self, cmd);
+    else ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioPreloadUnlimited)(id, SEL);
+static void AudioPreloadUnlimited(id self, SEL cmd) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioPreloadUnlimited(self, cmd);
+}
+
+static void (*NativeAudioLoadRecommendBook)(id, SEL);
+static void AudioLoadRecommendBook(id self, SEL cmd) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioLoadRecommendBook(self, cmd);
+    else ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioLoadComics)(id, SEL);
+static void AudioLoadComics(id self, SEL cmd) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioLoadComics(self, cmd);
+    else ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioReloadRecommendForce)(id, SEL, BOOL);
+static void AudioReloadRecommendForce(id self, SEL cmd, BOOL force) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioReloadRecommendForce(self, cmd, force);
+    ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioReloadUnlimitedView)(id, SEL);
+static void AudioReloadUnlimitedView(id self, SEL cmd) {
+    [AudioPlayControllers() addObject:self];
+    if (Option(AudioRecommendationsKey, YES)) NativeAudioReloadUnlimitedView(self, cmd);
+    ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioLayoutContent)(id, SEL);
+static void AudioLayoutContent(id self, SEL cmd) {
+    NativeAudioLayoutContent(self, cmd);
+    ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioDidLayout)(id, SEL);
+static void AudioDidLayout(id self, SEL cmd) {
+    NativeAudioDidLayout(self, cmd);
+    ApplyAudioRecommendVisibility(self);
+}
+
+static void (*NativeAudioWillAppear)(id, SEL, BOOL);
+static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
+    NativeAudioWillAppear(self, cmd, animated);
+    ApplyAudioRecommendVisibility(self);
+}
+
 @interface FQXCleanup : NSObject
 + (void)install;
 + (NSArray<NSDictionary *> *)optionRows;
@@ -542,6 +691,10 @@ static void PauseForTime(id owner, SEL cmd) {
         SHOW_RULE("SSBookShelfDoubleColumn", "isDoubleColumnAllInBookShelf", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "enable", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "recommend_feed_enabled", ShelfRecommendations);
+        SHOW_RULE("SSMyUser621BaseViewController", "showShortcut", MineShortcutCard);
+        SHOW_RULE("SSNewAudioPlayViewController", "isUnlimitedRecommendNotEmpty", AudioRecommendations);
+        SHOW_RULE("SSNewAudioPlayViewController", "shouldShowSlideGuide", AudioRecommendations);
+        SHOW_RULE("SSNewAudioPlayViewController", "canReportRecommendItems", AudioRecommendations);
         HideClassWhen(@"SSBookShelfDoubleColumn", NSSelectorFromString(@"isFeatureEnabled"), ShelfRecommendationsKey, YES);
 #undef SHOW_RULE
 
@@ -566,6 +719,16 @@ static void PauseForTime(id owner, SEL cmd) {
         if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
             REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
         }
+        REPLACE(NativeMineWillAppear, "SSMyUser621BaseViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
+        REPLACE(NativeAudioLoadUnlimited, "SSNewAudioPlayViewController", "loadUnlimitedRecommend", "v16@0:8", AudioLoadUnlimited);
+        REPLACE(NativeAudioPreloadUnlimited, "SSNewAudioPlayViewController", "preLoadAudioPlayUnlimitedRecData", "v16@0:8", AudioPreloadUnlimited);
+        REPLACE(NativeAudioLoadRecommendBook, "SSNewAudioPlayViewController", "loadRecommendBook", "v16@0:8", AudioLoadRecommendBook);
+        REPLACE(NativeAudioLoadComics, "SSNewAudioPlayViewController", "loadComicsBooks", "v16@0:8", AudioLoadComics);
+        REPLACE(NativeAudioReloadRecommendForce, "SSNewAudioPlayViewController", "reloadRecommendUIRequestForce:", "v20@0:8B16", AudioReloadRecommendForce);
+        REPLACE(NativeAudioReloadUnlimitedView, "SSNewAudioPlayViewController", "reloadUnlimitedView", "v16@0:8", AudioReloadUnlimitedView);
+        REPLACE(NativeAudioLayoutContent, "SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", AudioLayoutContent);
+        REPLACE(NativeAudioDidLayout, "SSNewAudioPlayViewController", "viewDidLayoutSubviews", "v16@0:8", AudioDidLayout);
+        REPLACE(NativeAudioWillAppear, "SSNewAudioPlayViewController", "viewWillAppear:", "v20@0:8B16", AudioWillAppear);
         REPLACE(NativeSpeechHidden, "FQReaderSaaSReaderSpeechButton", "setHidden:", "v20@0:8B16", SpeechHidden);
         REPLACE(NativePresentation, "BDUGUserNotificationCenter", "userNotificationCenter:willPresentNotification:withCompletionHandler:", "v40@0:8@16@24@?32", PresentNotification);
         REPLACE(NativeBadge, "UIApplication", "setApplicationIconBadgeNumber:", "v24@0:8q16", SetBadge);
@@ -582,6 +745,7 @@ static void PauseForTime(id owner, SEL cmd) {
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
         FQXInstallContentCleanupHooks();
+        FQXInstallMotionAndAudioHooks();
     });
 }
 
@@ -589,6 +753,44 @@ static void PauseForTime(id owner, SEL cmd) {
     if ([key isEqualToString:MinePublishKey]) {
         SEL selector = NSSelectorFromString(@"updatePublishBtnIfNeed");
         if (NativeUpdatePublish && LastMine) UpdatePublish(LastMine, selector);
+    } else if ([key isEqualToString:MineScanButtonKey] || [key isEqualToString:MineSearchBarKey] ||
+               [key isEqualToString:MineNightButtonKey] || [key isEqualToString:MineShortcutCardKey]) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                RefreshMineViewsInSubtree(window);
+            }
+        }
+        UIViewController *mine = LastMine;
+        UIView *bar = HostObject(mine, NSSelectorFromString(@"myUserBar")) ?: CleanupIvarObject(mine, "_myUserBar");
+        if ([bar isKindOfClass:UIView.class]) {
+            [bar setNeedsLayout];
+            [bar layoutIfNeeded];
+        }
+        if ([key isEqualToString:MineShortcutCardKey] && mine) {
+            SEL reload = NSSelectorFromString(@"reloadData:");
+            if (HostMethod(object_getClass(mine), reload, "v24@0:8@16")) {
+                ((void (*)(id, SEL, id))objc_msgSend)(mine, reload, @"FanqieXCleanup");
+            } else {
+                id cv = HostObject(mine, NSSelectorFromString(@"collectionView"));
+                if ([cv isKindOfClass:UICollectionView.class]) [(UICollectionView *)cv reloadData];
+            }
+        }
+    } else if ([key isEqualToString:AudioRecommendationsKey]) {
+        BOOL show = Option(AudioRecommendationsKey, YES);
+        for (UIViewController *vc in [AudioPlayControllers() allObjects]) {
+            ApplyAudioRecommendVisibility(vc);
+            if (show) {
+                if (NativeAudioLoadUnlimited) NativeAudioLoadUnlimited(vc, NSSelectorFromString(@"loadUnlimitedRecommend"));
+                if (NativeAudioLoadRecommendBook) NativeAudioLoadRecommendBook(vc, NSSelectorFromString(@"loadRecommendBook"));
+                if (NativeAudioReloadRecommendForce) NativeAudioReloadRecommendForce(vc, NSSelectorFromString(@"reloadRecommendUIRequestForce:"), YES);
+            }
+            SEL layoutSel = NSSelectorFromString(@"layoutContentView");
+            if (HostMethod(object_getClass(vc), layoutSel, "v16@0:8")) {
+                ((void (*)(id, SEL))objc_msgSend)(vc, layoutSel);
+            }
+            [vc.view setNeedsLayout];
+        }
     } else if ([key isEqualToString:SpeechFloatKey]) {
         UIView *button = LastSpeechButton;
         NSNumber *wasHidden = objc_getAssociatedObject(button, &SpeechRequestedHidden);

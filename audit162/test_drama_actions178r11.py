@@ -111,7 +111,7 @@ def right_column(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")
+    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3")
     rows = []
     for index, (cls, selector) in enumerate(ROLES):
         owner = rt.view(cls, selector, (372., 500. + 76 * index, 60., 66.), rt.ROOT,
@@ -261,7 +261,7 @@ def mine_shortcuts(data, labels):
     rt.objects[label].state.update(textColor=color, isAccessibilityElement=True)
     rt.objects[cell].state.update(contentView=content, productImage=image, functionType=label)
 
-    unified_card = release_version(data) in ('1.79R1', '1.79R2')
+    unified_card = release_version(data) in ('1.79R1', '1.79R2', '1.79R3')
 
     def layout():
         send(cpu, rt, cell, 'layoutSubviews')
@@ -306,16 +306,16 @@ def main():
     data = args.candidate.read_bytes()
     entries = EXTRA + ['LFQH_FQHDramaGlyph']
     version = release_version(data)
-    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
+    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3"):
         entries.append('LFQH_FQHRefreshDramaActions178R11')
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3"):
         entries.append('LFQH_FQHBottomOptionChanged178')
     labels = labels_for(data, args.candidate.with_suffix('.composed.s'), entries)
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'fullscreen': fullscreen(data, labels), 'right_column': right_column(data, labels),
               'device_tested': False, 'pixel_rendering_tested': False}
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2"):
-        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2")),
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3"):
+        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3")),
                       mine_shortcuts=mine_shortcuts(data, labels))
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(json.dumps(report, indent=2))

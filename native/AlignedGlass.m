@@ -4315,6 +4315,9 @@ static B DramaSpacingVisible178R2(Obj view) {
     return Kind(view,"UIView") && !Flag(view,"isHidden") &&
         ((double(*)(Obj,Sel))Message)(view,sel_registerName("alpha"))>0.01 && VisibleRect(Bounds(view));
 }
+static B DramaSpacingCrossfadeVisible(Obj view) {
+    return Kind(view,"UIView") && !Flag(view,"isHidden") && VisibleRect(Bounds(view));
+}
 static B DramaProgressName178R2(Obj view) {
     if (Kind(view,"UISlider")) return 1;
     Obj name=Get(object_getClass(view),"description");
@@ -4353,10 +4356,11 @@ static Obj DramaEpisodeMaterial(Obj entry) {
         if (Get(glass,"superview")==entry) return DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
         return entry;
     }
+    B allowCrossfade=Kind(entry,"SSShortVideoBottomDistributionView");
     Obj content=DramaEpisodeContent(entry);
-    if (!Belongs(content,entry) || !DramaSpacingVisible178R2(content)) return 0;
+    if (!Belongs(content,entry) || !(allowCrossfade ? DramaSpacingCrossfadeVisible(content) : DramaSpacingVisible178R2(content))) return 0;
     Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
-    if (Get(glass,"superview")==content) return DramaSpacingVisible178R2(glass) ? glass : (Obj)0;
+    if (Get(glass,"superview")==content) return (allowCrossfade ? DramaSpacingCrossfadeVisible(glass) : DramaSpacingVisible178R2(glass)) ? glass : (Obj)0;
     // After a native insert swap the visible pill can precede glass installation.
     return content;
 }
@@ -4374,7 +4378,8 @@ static Rect DramaSpacingMeasure178R2(Obj view,Obj root) {
 static void DramaSpacingScan178R2(Obj view,Obj root,Obj insert,int depth,int *budget,B progressBranch,
                                  Obj *primaryEntry,U *primaryCount,Obj *novelEntry,U *novelCount,
                                  Obj *progress,Rect *track) {
-    if (!depth || *budget<=0 || !DramaSpacingVisible178R2(view)) return;
+    B allowCrossfade=Kind(view,"SSShortVideoBottomDistributionView");
+    if (!depth || *budget<=0 || !(allowCrossfade ? DramaSpacingCrossfadeVisible(view) : DramaSpacingVisible178R2(view))) return;
     --*budget;
     Rect bounds=Bounds(root),r=DramaSpacingMeasure178R2(view,root);
     if (!VisibleRect(r) || r.y>=bounds.y+bounds.height || r.y+r.height<=bounds.y) return;
@@ -4665,6 +4670,8 @@ void FQHDramaSpacing178R2(Obj root) {
                 objc_setAssociatedObject(root,DramaSpacingAnchor178R6Key,anchor,1);
                 DramaSetAnchorConstant(anchor,wantedConstant);
                 V0(root,"setNeedsLayout");
+                Obj targetParent=Get(target,"superview");
+                if (targetParent && targetParent!=root) V0(targetParent,"setNeedsLayout");
             }
             // The rail can change during a child callback, after the parent
             // has solved constraints. Commit the same resolved frame now.
@@ -5325,12 +5332,23 @@ static void ProfileIconGlass(Obj bar,Obj icon,const void *key) {
 }
 static void PageProfileBarLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserBar","fqx174_originalProfileBar"))(self,cmd);
+    Obj scan=Get(self,"scanQRCodeView"),night=Get(self,"darkModeImageView"),search=Get(self,"searchBgView");
+    B showScan=DefaultEnabled(Text("FanqieX.MineScanButton.1"));
+    B showSearch=DefaultEnabled(Text("FanqieX.MineSearchBar.1"));
+    B showNight=DefaultEnabled(Text("FanqieX.MineNightButton.1"));
+    DramaVisibilitySet(scan,showScan);
+    DramaVisibilitySet(night,showNight);
+    DramaVisibilitySet(search,showSearch);
+    if (Responds(self,"searchButtonView")) DramaVisibilitySet(Get(self,"searchButtonView"),showSearch);
+    if (Responds(self,"searchView")) DramaVisibilitySet(Get(self,"searchView"),showSearch);
+    if (Responds(self,"carouseView")) DramaVisibilitySet(Get(self,"carouseView"),showSearch);
     // Both native carousel variants place their outgoing and incoming labels
     // inside searchBgView. Keep the animated words clipped to that pill.
-    FQHHeader(Get(self,"searchBgView"));
+    if (!showSearch || Flag(search,"isHidden")) PageRestore(search);
+    else FQHHeader(search);
     B enabled=Enabled() && FQHGlassAvailable();
-    ProfileIconGlass(self,enabled ? Get(self,"scanQRCodeView") : (Obj)0,ProfileScanKey);
-    ProfileIconGlass(self,enabled ? Get(self,"darkModeImageView") : (Obj)0,ProfileNightKey);
+    ProfileIconGlass(self,enabled && showScan ? scan : (Obj)0,ProfileScanKey);
+    ProfileIconGlass(self,enabled && showNight ? night : (Obj)0,ProfileNightKey);
     ProfileIconGlass(self,enabled ? Get(self,"sideBarButtonView") : (Obj)0,ProfileMenuKey);
 }
 static void ProfileRestingTint(Obj controller,Obj scroll) {
@@ -5483,11 +5501,23 @@ static void ProfileCardTrackClear(Obj host,Obj view) {
     V1(tracked,"addObject:",view);
 }
 static void ProfileCardRestorePaints(Obj host) {
+    Obj sub=Get(host,"subviews");
+    for (U i=0,n=TabCount(sub);i<n;++i) ProfileCardSetUnclipped(At(sub,i),0);
     Obj tracked=objc_getAssociatedObject(host,ProfileCardTrackedKey);
     if (!tracked) return;
     Obj all=O0(tracked,"allObjects");
     for (U i=0,n=TabCount(all);i<n;++i) ProfileCardSetPaint(At(all,i),0);
     objc_setAssociatedObject(host,ProfileCardTrackedKey,0,1);
+}
+static void ProfileShortcutExtendForIndicator(Rect *bestCard,Rect b,Obj view,Obj owner,Obj host) {
+    if ((!Kind(view,"UIPageControl") && !Kind(view,"FQReaderSaaSBookStoreSelectView")) ||
+        Flag(view,"isHidden")) return;
+    Rect r=owner==host ? Frame(view) : Convert(owner,Frame(view),host);
+    if (VisibleRect(r) && r.x>=bestCard->x-2 && r.x+r.width<=bestCard->x+bestCard->width+2 &&
+        r.y>=bestCard->y && r.y+r.height<=b.height+2) {
+        double bottom=__builtin_fmax(bestCard->y+bestCard->height,r.y+r.height);
+        bestCard->height=__builtin_fmin(b.height-bestCard->y,bottom-bestCard->y);
+    }
 }
 static void ProfileShortcutCardGlass(Obj row,B mounted) {
     if (!row || !Kind(row,"UIView")) return;
@@ -5527,24 +5557,18 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             }
         }
     }
+    ProfileCardSetUnclipped(row,1);
+    if (host!=row) ProfileCardSetUnclipped(host,1);
     if (foundCard) {
-        ProfileCardSetUnclipped(row,0);
-        if (host!=row) ProfileCardSetUnclipped(host,0);
         for (U i=0;i<childCount;++i) {
             Obj child=At(children,i);
-            if ((!Kind(child,"UIPageControl") && !Kind(child,"FQReaderSaaSBookStoreSelectView")) ||
-                Flag(child,"isHidden")) continue;
-            Rect r=Frame(child);
-            if (VisibleRect(r) && r.x>=bestCard.x-1 && r.x+r.width<=bestCard.x+bestCard.width+1 &&
-                r.y>=bestCard.y && r.y+r.height<=b.height) {
-                double bottom=__builtin_fmax(bestCard.y+bestCard.height,r.y+r.height);
-                bestCard.height=__builtin_fmin(b.height-bestCard.y,bottom-bestCard.y);
-            }
+            if (!Kind(child,"UIView") || Flag(child,"isHidden")) continue;
+            ProfileShortcutExtendForIndicator(&bestCard,b,child,host,host);
+            Obj grand=Get(child,"subviews");
+            for (U j=0,gn=TabCount(grand);j<gn;++j)
+                ProfileShortcutExtendForIndicator(&bestCard,b,At(grand,j),child,host);
         }
         cardFrame=bestCard;
-    } else {
-        ProfileCardSetUnclipped(row,1);
-        if (host!=row) ProfileCardSetUnclipped(host,1);
     }
     ProfileCardTrackClear(host,row);
     if (host!=row) ProfileCardTrackClear(host,host);
@@ -5554,8 +5578,9 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             Kind(child,"UILabel") || Kind(child,"UIImageView") || Kind(child,"UIControl") ||
             Kind(child,"SSMyUserCollectionViewFunCell")) continue;
         Rect r=Frame(child);
-        if (r.width*5<cardFrame.width*4 || r.height*5<cardFrame.height*2) continue;
+        if (r.width*5<cardFrame.width*4) continue;
         ProfileCardTrackClear(host,child);
+        if (!Kind(child,"UIScrollView")) ProfileCardSetUnclipped(child,1);
         Obj grand=Get(child,"subviews");
         for (U j=0,gn=TabCount(grand);j<gn;++j) {
             Obj gc=At(grand,j);
@@ -5563,7 +5588,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
                 Kind(gc,"UIImageView") || Kind(gc,"UIControl") ||
                 Kind(gc,"SSMyUserCollectionViewFunCell")) continue;
             Rect gr=Frame(gc);
-            if (gr.width*5>=cardFrame.width*4 && gr.height*5>=cardFrame.height*2)
+            if (gr.width*5>=cardFrame.width*4)
                 ProfileCardTrackClear(host,gc);
         }
     }
@@ -5586,6 +5611,8 @@ static void RestoreProfileEntry(Obj content) {
     RestoreHit(Get(content,"superview"));
     ProfileCardSetPaint(content,0);
     ProfileCardSetPaint(Get(content,"superview"),0);
+    ProfileCardSetUnclipped(content,0);
+    ProfileCardSetUnclipped(Get(content,"superview"),0);
     PageRestore(content);
 }
 
@@ -5622,7 +5649,6 @@ static void ReaderAudioIndicatorMove(Obj self,Sel cmd,Obj parent) {
 static void ProfileEntryGlass(Obj self,B order) {
     Obj content=Get(self,"contentView");
     if (!content) return;
-    PageRestore(content);
     RestoreHit(self);
     Obj row=ProfileRowAncestor(self);
     Obj glyph=row && Enabled() && FQHGlassAvailable() ? Get(self,order ? "productImage" : "image") : (Obj)0;
@@ -5639,30 +5665,47 @@ static void ProfileEntryGlass(Obj self,B order) {
     if (oldCaption!=caption) RestoreProfileEntryFrame(content,ProfileCaptionKey);
     Rect b=Bounds(content),labelFrame=Frame(caption),iconFrame=Frame(glyph);
     Rect label=ProfileStockFrame(caption,labelFrame),icon=ProfileStockFrame(glyph,iconFrame);
-    double height=__builtin_fmin(b.height+8,60);
-    double glyphHeight=__builtin_fmin(20,height-32),captionHeight=20;
-    if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || !VisibleRect(icon) || !VisibleRect(label)) {
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    B iconsOnly=BoolProp(O1(defaults,"objectForKey:",Text("FanqieX.MineQuickIconsOnly.1")),"boolValue");
+    double padX=b.width>=68 ? 4 : 3;
+    double pillW=__builtin_fmin(b.width-padX*2,68);
+    double pillH=iconsOnly ? __builtin_fmin(__builtin_fmax(b.height-6,42),52) : __builtin_fmin(b.height-2,56);
+    double captionHeight=18,gap=3;
+    double glyphHeight=iconsOnly ? __builtin_fmin(26,pillH-18) : __builtin_fmin(24,pillH-24);
+    if (!VisibleRect(b) || glyphHeight<12 || b.width<40 || pillW<32 || pillH<36 ||
+        !VisibleRect(icon) || !VisibleRect(label)) {
         RestoreProfileEntry(content);
         return;
     }
     ProfileCardSetPaint(self,1);
     ProfileCardSetPaint(content,1);
+    ProfileCardSetUnclipped(self,1);
+    ProfileCardSetUnclipped(content,1);
     ProfileShortcutCardGlass(row,1);
+    Rect pillRect={b.x+(b.width-pillW)*0.5,b.y+(b.height-pillH)*0.5,pillW,pillH};
+    Obj existingItem=FQHSurface(content);
+    ApplySurface(content,pillRect,1);
+    Obj itemSurface=FQHSurface(content);
+    if (itemSurface && itemSurface!=existingItem) {
+        Obj cfgCls=Lookup("UICornerConfiguration");
+        if (Responds(cfgCls,"capsuleConfigurationWithMaximumRadius:")) {
+            Obj cfg=((Obj(*)(Obj,Sel,double))Message)(cfgCls,sel_registerName("capsuleConfigurationWithMaximumRadius:"),14);
+            if (cfg) V1(itemSurface,"setCornerConfiguration:",cfg);
+        }
+        Q1(itemSurface,"setOverrideUserInterfaceStyle:",0);
+    }
     V1(ProfileShortcutOwners(),"addObject:",self);
-    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
-    B iconsOnly=BoolProp(O1(defaults,"objectForKey:",Text("FanqieX.MineQuickIconsOnly.1")),"boolValue");
     TrackAppearanceLabel(content,caption,13);
     ProfileCaptionInk(caption,iconsOnly);
-    // Never enlarge the host's original bitmap canvas just to fill the cell.
-    double scale=__builtin_fmin(1,glyphHeight/__builtin_fmax(icon.width,icon.height));
-    double top=b.y+(b.height-glyphHeight-(iconsOnly?0:4+captionHeight))*0.5;
-    Rect adjusted={b.x+(b.width-icon.width*scale)*0.5,top+(glyphHeight-icon.height*scale)*0.5,
-                   icon.width*scale,icon.height*scale};
+    double scale=__builtin_fmin(1.2,glyphHeight/__builtin_fmax(icon.width,icon.height));
+    double w=icon.width*scale,h=icon.height*scale;
+    double top=pillRect.y+(pillRect.height-h-(iconsOnly ? 0 : gap+captionHeight))*0.5;
+    Rect adjusted={b.x+(b.width-w)*0.5,top,w,h};
     if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
     if (oldCaption!=caption) objc_setAssociatedObject(content,ProfileCaptionKey,caption,1);
     ProfileSetFrame(glyph,iconFrame,icon,adjusted);
-    double textWidth=56;
-    CenterCaption(caption,content,(Rect){b.x+(b.width-textWidth)*0.5,top+glyphHeight+4,textWidth,captionHeight},!iconsOnly,1);
+    double textWidth=__builtin_fmin(58,pillRect.width-4);
+    CenterCaption(caption,content,(Rect){b.x+(b.width-textWidth)*0.5,top+h+gap,textWidth,captionHeight},!iconsOnly,1);
 }
 static void ProfileShortcutCardLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserShortcutCell","fqx179r1_originalShortcutCardLayout"))(self,cmd);
@@ -5771,14 +5814,16 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     }
     V1(controllers,"addObject:",self);
     Obj filtered=0;
-    B hideBenefits=!MineBenefitsEnabled(),hideRecommendations=!MineRecommendationsEnabled(),removedGame=0;
+    B hideBenefits=!MineBenefitsEnabled(),hideRecommendations=!MineRecommendationsEnabled();
+    B hideShortcut=!DefaultEnabled(Text("FanqieX.MineShortcutCard.1")),removedGame=0;
     U count=((U(*)(Obj,Sel))Message)(rows,sel_registerName("count"));
     for (U i=count;i>0;--i) {
         Obj row=At(rows,i-1);
         B game=MineStandaloneGameRow(row);
         // The entire recommendation waterfall is one native list section.
         B recommendation=hideRecommendations && Kind(row,"SSMyUserUnlimitedCellModel");
-        if (!game && !recommendation && !(hideBenefits && MineBenefitsRow(row))) continue;
+        B shortcut=hideShortcut && Kind(row,"SSMyUserShortcutCellModel");
+        if (!game && !recommendation && !shortcut && !(hideBenefits && MineBenefitsRow(row))) continue;
         removedGame|=game;
         if (!filtered) filtered=O0(O0(rows,"mutableCopy"),"autorelease");
         Q1(filtered,"removeObjectAtIndex:",i-1);
@@ -8231,8 +8276,10 @@ static void BottomSymbol178(Obj button,Obj item,B icons,double size) {
 }
 static void BottomVisualFrame178R7Key(void) {}
 static void BottomVisualCompact178R7Key(void) {}
+static void BottomLensBox178Key(void) {}
 
 void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
+    BottomSetWeak178(proxy,BottomLensBox178Key,lens);
     Rect frame=Frame(proxy);
     Obj lastFrame=objc_getAssociatedObject(proxy,BottomVisualFrame178R7Key);
     Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
@@ -8427,6 +8474,11 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         }
     }
     BottomCompactPresentation178R7(bar,proxy,buttons,native);
+    Obj motion=Lookup("FQXDockMotion");
+    if (motion)
+        ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj))Message)(motion,
+            sel_registerName("syncTabBar:proxy:buttons:native:lens:"),
+            bar,proxy,buttons,native,BottomWeakValue178(proxy,BottomLensBox178Key));
     if (FQDDiagnosticsEnabled() && (icons || BottomValue178(11)!=100 || BottomValue178(12)!=100 ||
         BottomFlag178(2))) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
@@ -8445,6 +8497,11 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     }
 }
 void FQHBottomReset178(Obj bar,Obj proxy) {
+    Obj motion=Lookup("FQXDockMotion");
+    if (motion)
+        ((void(*)(Obj,Sel,Obj,Obj,Obj,Obj,Obj))Message)(motion,
+            sel_registerName("syncTabBar:proxy:buttons:native:lens:"),bar,proxy,0,0,0);
+    BottomSetWeak178(proxy,BottomLensBox178Key,0);
     BottomSetCompact178(bar,0);
     BottomSetWeak178(bar,BottomSelectedBox178Key,0);
     BottomCompactPresentation178R7(bar,proxy,0,0);

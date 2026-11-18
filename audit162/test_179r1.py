@@ -248,8 +248,13 @@ def mine_unified_liquid_glass_card(data, labels):
                 f"{row_class}: unified card uses max_radius 18 and adaptive interface style")
 
         for cell, content, _, _ in items:
-            require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"],
-                    f"{row_class}: individual shortcut items must not create per-item glass capsules")
+            if release_version(data) == "1.79R3":
+                item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
+                require(item_surface and rt.objects[item_surface].state["frame"] == (4., 2., 62., 56.),
+                        f"{row_class}: 1.79R3 shortcut items get coordinated inner liquid glass buttons")
+            else:
+                require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"],
+                        f"{row_class}: individual shortcut items must not create per-item glass capsules")
             require(rt.objects[cell].state["backgroundColor"] == clear and
                     rt.objects[content].state["backgroundColor"] == clear,
                     f"{row_class}: individual shortcut item paints cleared cleanly")
@@ -262,6 +267,8 @@ def mine_unified_liquid_glass_card(data, labels):
 
         # Disable restores every cleared background cleanly and removes unified surface.
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 1
+        for cell, _, _, _ in items:
+            send(cpu, rt, cell, "layoutSubviews")
         send(cpu, rt, row, "layoutSubviews")
         require(not call(cpu, labels, "LFQH_FQHSurface", row_content)["result"] and
                 rt.objects[white_card].state["backgroundColor"] == white_card_bg and
@@ -269,6 +276,8 @@ def mine_unified_liquid_glass_card(data, labels):
                 rt.objects[row_content].state["backgroundColor"] == row_cv_bg,
                 f"{row_class}: disabling glass restores all saved card backgrounds")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 0
+        for cell, _, _, _ in items:
+            send(cpu, rt, cell, "layoutSubviews")
         send(cpu, rt, row, "layoutSubviews")
         card_surface2 = call(cpu, labels, "LFQH_FQHSurface", row_content)["result"]
         require(card_surface2, f"{row_class}: re-enabling glass restores unified card")
@@ -282,7 +291,7 @@ def mine_unified_liquid_glass_card(data, labels):
         results[row_class] = {"card_frame": list(card_state["frame"]), "item_count": len(items),
                               "page_control": page_control > 0}
 
-    if release_version(data) == "1.79R2":
+    if release_version(data) in ("1.79R2", "1.79R3"):
         # Real 7.4.3 VIP card (SSMyUserCollectionView1Cell with lynxVipView) must never be styled as a shortcut card.
         vip_bg = rt.color("vip.bg")
         vip_row = rt.view("SSMyUserCollectionView1Cell", "Mine VIP card", (16., 120., 408., 72.), rt.ROOT,
@@ -295,24 +304,69 @@ def mine_unified_liquid_glass_card(data, labels):
         # Real 7.4.3 SSMyUserShortcutCell is already inset to 408pt with clipsToBounds=True and full-bounds funcView.
         full_bg = rt.color("full.rowBg")
         func_bg = rt.color("full.funcBg")
+        strip_bg = rt.color("full.bottomStripBg")
         full_row = rt.view("SSMyUserShortcutCell", "7.4.3 shortcut cell", (16., 220., 408., 96.), rt.ROOT,
                            backgroundColor=full_bg, clipsToBounds=True)
         func_view = rt.view("UIView", "SSScrollFoldFuncView", (0., 0., 408., 96.), full_row, backgroundColor=func_bg)
-        select_dots = rt.view("FQReaderSaaSBookStoreSelectView", "7.4.3 page dots", (184., 84., 40., 6.), func_view)
+        select_dots = rt.view("FQReaderSaaSBookStoreSelectView", "7.4.3 page dots", (0., 80., 408., 16.), func_view,
+                              backgroundColor=strip_bg)
         send(cpu, rt, full_row, "layoutSubviews")
         full_surface = call(cpu, labels, "LFQH_FQHSurface", full_row)["result"]
         require(full_surface and rt.objects[full_surface].state["frame"] == (0., 0., 408., 96.) and
                 not rt.objects[full_row].state["clipsToBounds"],
                 "Full-bounds 7.4.3 shortcut cell unclips row bounds so 18pt liquid glass corners are unclipped")
+        if release_version(data) == "1.79R3":
+            require(rt.objects[select_dots].state["backgroundColor"] == clear,
+                    "1.79R3 clears full-width bottom page-control strip so outer card bottom is never chopped")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 1
         send(cpu, rt, full_row, "layoutSubviews")
         require(not call(cpu, labels, "LFQH_FQHSurface", full_row)["result"] and
                 rt.objects[full_row].state["clipsToBounds"] and
-                rt.objects[func_view].state["backgroundColor"] == func_bg,
+                rt.objects[func_view].state["backgroundColor"] == func_bg and
+                (release_version(data) != "1.79R3" or rt.objects[select_dots].state["backgroundColor"] == strip_bg),
                 "Disabling glass restores 7.4.3 shortcut cell clipsToBounds and funcView background")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 0
         results["host_743_shortcut"] = {"unclipped_active": True, "select_dots": select_dots > 0}
     return results
+
+
+def detail_novel_crossfade_zero_alpha(data, labels):
+    """During performForegroundCrossfadeWithRenderBlock:, alpha starts at 0.0 before animation."""
+    cpu, rt = make(data, Runtime)
+    rt.labels = labels
+    call(cpu, labels, "LFQH_FQHPageInstall")
+    window = rt.view("UIWindow", "portrait window", (0., 0., 440., 956.))
+    root = rt.view("FQVShortVideoVPlayerSeriesControlView", "detail controls", (0., 0., 440., 876.), window)
+    insert = rt.view("NativeInsertContainerView", "detail insert container", (0., 826., 440., 40.), root)
+    rt.objects[root].state["insertAboveProgressView"] = insert
+    entry = rt.view("SSShortVideoBottomDistributionView", "crossfading novel distribution",
+                    (0., 0., 280., 40.), insert, userInteractionEnabled=True, alpha=0.0)
+    content = rt.view("SSShortVideoDistributionContentView", "crossfading novel content",
+                      (0., 0., 280., 40.), entry, backgroundColor=rt.color("novel shade"), alpha=0.0)
+    rt.objects[entry].state["defaultContentView"] = content
+    progress = rt.view("FQVShortVideoProgressView", "seek container", (0., 851., 440., 30.), root,
+                       userInteractionEnabled=True, gestureRecognizers=["host seek pan"])
+    track = rt.view("UIView", "seek track", (16., 22., 408., 2.), progress)
+    rt.objects[progress].state["progressBarBackgroundView"] = track
+    rt.objects[root].state["progressContainer"] = progress
+    anchor = rt.obj("NSLayoutConstraint", "detail insert to seek top", firstItem=insert, secondItem=progress,
+                    firstAttribute=4, secondAttribute=3, relation=0, multiplier=1., constant=15., isActive=1)
+    rt.objects[root].state["constraints"] = rt.obj("NSArray", "constraints", items=[anchor])
+
+    def sync_constraint(runtime, view):
+        if view == root:
+            x, _, w, h = rt.objects[insert].state["frame"]
+            rt.objects[insert].state["frame"] = (x, 851. + rt.objects[anchor].state["constant"] - h, w, h)
+
+    rt.layout_mutator = sync_constraint
+    send(cpu, rt, entry, RELATED_SEL, content,
+         rt.obj("NSArray", "text", items=[]), 1, 0, rt.obj("NSObject", "book"), 1)
+    send(cpu, rt, root, "layoutSubviews")
+    novel_glass = glass_rect(rt, content)
+    track_rect = global_rect(rt, track)
+    gap = track_rect[1] - (novel_glass[1] + novel_glass[3])
+    require(gap == 12., f"Crossfading alpha=0 novel pill must already resolve 12pt gap, got {gap}")
+    return {"crossfade_gap_pt": gap}
 
 
 def main():
@@ -322,7 +376,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     version = release_version(data)
-    require(version in ("1.79R1", "1.79R2"), f"Expected 1.79R1/1.79R2 candidate, got {version}")
+    require(version in ("1.79R1", "1.79R2", "1.79R3"), f"Expected 1.79R1/1.79R2/1.79R3 candidate, got {version}")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {
         "passed": True,
@@ -335,6 +389,8 @@ def main():
         "mine_unified_card": mine_unified_liquid_glass_card(data, labels),
         "device_tested": False,
     }
+    if version == "1.79R3":
+        report["detail_novel_crossfade"] = detail_novel_crossfade_zero_alpha(data, labels)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 

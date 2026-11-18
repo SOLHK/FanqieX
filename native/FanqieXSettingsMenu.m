@@ -212,11 +212,20 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
         if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
             row.path = @"阅读/阅读页面净化/正文与底栏";
+        if ([option[@"key"] isEqualToString:@"FanqieX.AudioRecommendations.1"])
+            row.path = @"阅读/听书页面净化";
+        if ([@[@"FanqieX.MineScanButton.1", @"FanqieX.MineSearchBar.1", @"FanqieX.MineNightButton.1"] containsObject:option[@"key"]])
+            row.path = @"我的页面净化/顶部栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.MinePublish.1"]) row.path = @"我的页面净化/悬浮入口";
         if ([option[@"key"] isEqualToString:@"FanqieX.ShelfRecommendationBanner.1"]) row.path = @"书架净化/顶部与统计";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
+            @"FanqieX.MineScanButton.1":@"扫一扫 扫码 二维码 我的顶部 左上角 移除",
+            @"FanqieX.MineSearchBar.1":@"搜索框 搜索栏 我的顶部 搜索 移除",
+            @"FanqieX.MineNightButton.1":@"夜间 月亮 深色模式 日夜间 我的顶部 右上角 移除",
+            @"FanqieX.MineShortcutCard.1":@"快捷功能 订单 历史 消息 创作 签到 快捷入口 卡片 移除",
+            @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮",
             @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子",
             @"FanqieX.ReaderDoubleTapAutoread.1":@"自动翻页 双击",
@@ -420,6 +429,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     (void)tableView; (void)section;
     if (self.search.searchBar.text.length) return nil;
     if ([self.path hasPrefix:@"阅读/阅读页面净化"]) return @"开启“隐藏”才会移除对应入口，各项独立控制。章末内容在重新进入书籍后应用。";
+    if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
