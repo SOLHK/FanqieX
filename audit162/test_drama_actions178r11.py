@@ -266,8 +266,11 @@ def mine_shortcuts(data, labels):
     def layout():
         send(cpu, rt, cell, 'layoutSubviews')
         if unified_card:
-            require(not call(cpu, labels, 'LFQH_FQHSurface', content)['result'],
-                    'Unified card removes per-item glass capsules')
+            item = call(cpu, labels, 'LFQH_FQHSurface', content)['result']
+            if release_version(data) == '1.79R3':
+                require(item, '1.79R3 keeps an inner liquid glass button per shortcut')
+            else:
+                require(not item, 'Unified card removes per-item glass capsules')
             return call(cpu, labels, 'LFQH_FQHSurface', row)['result']
         return call(cpu, labels, 'LFQH_FQHSurface', content)['result']
 
