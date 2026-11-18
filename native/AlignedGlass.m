@@ -5629,7 +5629,7 @@ static void ProfileEntryGlass(Obj self,B order) {
     if (oldGlyph!=glyph) objc_setAssociatedObject(content,GlyphViewKey,glyph,1);
     if (oldCaption!=caption) objc_setAssociatedObject(content,ProfileCaptionKey,caption,1);
     ProfileSetFrame(glyph,iconFrame,icon,adjusted);
-    double textWidth=__builtin_fmax(b.width-4,56);
+    double textWidth=56;
     CenterCaption(caption,content,(Rect){b.x+(b.width-textWidth)*0.5,top+glyphHeight+4,textWidth,captionHeight},!iconsOnly,1);
 }
 static void ProfileShortcutCardLayout(Obj self,Sel cmd) {
