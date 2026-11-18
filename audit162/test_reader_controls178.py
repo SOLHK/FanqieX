@@ -285,15 +285,16 @@ def main_checks(data, labels):
     require(surface, "Known profile shortcut receives glass")
     if layered_buttons:
         item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
-        require(item_surface and runtime.objects[item_surface].state["frame"] == (4., 2., 62., 56.),
-                "1.79R3 shortcut retains coordinated per-item liquid glass button inside outer card")
+        expected_item = (2., 1., 66., 58.) if release_version(data) == "1.79R5" else (4., 2., 62., 56.)
+        require(item_surface and runtime.objects[item_surface].state["frame"] == expected_item,
+                "1.79R3+ shortcut retains coordinated per-item liquid glass button inside outer card")
     elif unified_card:
         require(not call(cpu, labels, "LFQH_FQHSurface", content)["result"],
                 "Unified profile card removes per-item glass")
-    glyph_size = 24. if layered_buttons else 20. if release_version(data) in ("1.78R9","1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else 18. if compact_reader else 20.
+    glyph_size = 25. if release_version(data) == "1.79R5" else 24. if layered_buttons else 20. if release_version(data) in ("1.78R9","1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2") else 18. if compact_reader else 20.
     if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5"):
         expected_surface = (0., 0., 390., 64.) if unified_card else (-1., 0., 72., 60.)
-        expected_caption = (6., 34.5, 58., 18.) if layered_buttons else (7., 32., 56., 20.)
+        expected_caption = (6., 35., 58., 18.) if release_version(data) == "1.79R5" else (6., 34.5, 58., 18.) if layered_buttons else (7., 32., 56., 20.)
         require(runtime.objects[surface].state["frame"] == expected_surface,
                 "Profile glass expands with padded captions and covers the configured container")
         require(runtime.objects[caption].state["frame"] == expected_caption and

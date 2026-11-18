@@ -1902,9 +1902,14 @@ def exercise(data, labels):
                 adjusted_glyph=((width-20)/2,top,20.,20.)
                 adjusted_caption=(2. if compact else 7.,top+24,56.,20.)
             elif layered_buttons:
-                material_frame=(3.,1.,54.,45.) if compact else (4.,2.,62.,56.)
-                adjusted_glyph=(19.5,2.5,21.,21.) if compact else (23.,7.5,24.,24.)
-                adjusted_caption=(5.,26.5,50.,18.) if compact else (6.,34.5,58.,18.)
+                if release_version(data) == "1.79R5":
+                    material_frame=(1.,-3.5,58.,54.) if compact else (2.,1.,66.,58.)
+                    adjusted_glyph=(17.5,0.5,25.,25.) if compact else (22.5,7.,25.,25.)
+                    adjusted_caption=(3.,28.5,54.,18.) if compact else (6.,35.,58.,18.)
+                else:
+                    material_frame=(3.,1.,54.,45.) if compact else (4.,2.,62.,56.)
+                    adjusted_glyph=(19.5,2.5,21.,21.) if compact else (23.,7.5,24.,24.)
+                    adjusted_caption=(5.,26.5,50.,18.) if compact else (6.,34.5,58.,18.)
             image = runtime.view("UIImageView", "original icon", stock_glyph, content)
             label = runtime.label("original caption", content, caption_frame, title)
             cell_state = runtime.objects[cell].state
@@ -1922,12 +1927,13 @@ def exercise(data, labels):
             if layered_buttons:
                 surface = call(cpu, labels, "LFQH_FQHSurface", row)["result"]
                 item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
+                expected_item_radius = 18 if release_version(data) == "1.79R5" else 14
                 require(surface and item_surface and
                         runtime.objects[row].state["subviews"] == [surface, collection] and
                         runtime.objects[content].state["subviews"] == [item_surface] + foreground and
                         runtime.objects[surface].state["frame"] == (0., 0., 390., 64.) and
                         runtime.objects[item_surface].state["frame"] == material_frame and
-                        runtime.objects[runtime.objects[item_surface].state["cornerConfiguration"]].state["max_radius"] == 14 and
+                        runtime.objects[runtime.objects[item_surface].state["cornerConfiguration"]].state["max_radius"] == expected_item_radius and
                         runtime.objects[image].state["frame"] == adjusted_glyph and
                         runtime.objects[label].state["frame"] == adjusted_caption and
                         runtime.string_value(runtime.objects[label].state["text"]) == title and
@@ -1966,7 +1972,8 @@ def exercise(data, labels):
             if release_version(data) in ("1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5"):
                 corner = runtime.objects[runtime.objects[surface].state["cornerConfiguration"]]
                 full_capsule = release_version(data) in ("1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36")
-                require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == 18) and
+                expected_outer_radius = 22 if release_version(data) == "1.79R5" else 18
+                require((corner.name == "capsule" if full_capsule else corner.state["max_radius"] == expected_outer_radius) and
                         runtime.objects[label].state["textAlignment"] == 1,
                         "the configured corner shape keeps the caption centered above the native tap area")
             if legacy_order:
