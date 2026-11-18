@@ -234,6 +234,9 @@ class Runtime(AppearanceRuntime):
         name = self.selector_names.get(args[1])
         if receiver in self.classes.values():
             cls = self.class_names[receiver]
+            if cls == "FQXDockMotion" and name == "syncTabBar:proxy:buttons:native:lens:":
+                # 1.79R3 interactive droplet animator lives in the ARC companion.
+                return self.finish(cpu)
             if cls == "FQXDockMotion" and name in (
                     "prepareDock:inBar:", "animateDock:fromFrame:compact:button:"):
                 # Record arguments emitted by the candidate core. The linked
