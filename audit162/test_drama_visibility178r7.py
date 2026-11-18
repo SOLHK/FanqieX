@@ -107,7 +107,7 @@ class Runtime(PageRuntime):
         self.keep_stale_category_index = False
         self.search_actions = 0
         self.secondary_fill_style = "dark"
-        self.native_title_models = release_version(data) in ("1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2")
+        self.native_title_models = release_version(data) in ("1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3")
         if self.native_title_models:
             self._class("FQRJXCategoryTitleCellModel", "NSObject")
             self._add(self.classes["FQRJXCategoryTitleCellModel"], "isSelected", self.HOST_GETTER, "B16@0:8")
@@ -313,23 +313,23 @@ def exercise(data, labels):
     categories = rt.view("UIView", "three category tabs", (8., 0., 140., 44.), simple_header)
     search = rt.view(SEARCH, "drama search container", (0., 0., 440., 44.), header)
     version = release_version(data)
-    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2")
-    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2")
-    regular_header_material = version in ("1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2")
-    safe_area_header = version in ("1.8R1", "1.8R2")
+    native_category_geometry = version in ("1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3")
+    unified_selection = version in ("1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3")
+    regular_header_material = version in ("1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3")
+    safe_area_header = version in ("1.8R1", "1.8R2", "1.8R3")
     search_y = 4. if safe_area_header else 1.
     category_regressions = []
-    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2")
-    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}
-    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}
+    synchronized_search = version in ("1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3")
+    anchored_search = version in {"1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}
+    compact_header = version in {"1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}
     search_stock_frame = (402., 8., 26., 26.) if compact_header else (392., 0., 44., 44.)
     slot = rt.view("UIView", "native magnifier slot", search_stock_frame, search)
     image = rt.obj("UIImage", "app magnifier")
     icon = rt.view("UIImageView", "native magnifier", (0., 0., 26., 26.) if compact_header else (9., 9., 26., 26.),
                    slot, image=image, contentMode=0, nativeAction="search")
     bar = rt.view("UIView", "fresh find-drama search background")
-    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}
-    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}
+    always_visible_search = version in {"1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}
+    first_frame_checked = version in {"1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}
     if first_frame_checked:
         original = bar
         send(cpu, rt, search, "setSearchBgView:", original)
@@ -406,7 +406,7 @@ def exercise(data, labels):
         require(not search_shown() and hidden(slot) and hidden(icon),
                 "Feed appearance with a pending title row cannot reveal either search surface")
 
-    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}
+    glass_checked = version in {"1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}
     if glass_checked:
         models = [rt.obj(MODEL, f"category {index}", index=index, tabType=kind)
                   for index, kind in enumerate((7, 11, 103))]
@@ -768,7 +768,7 @@ def exercise(data, labels):
         native_state([source[2], source[1]], 1)
         category_cases.append("native ordering and original selected refresh preserved")
 
-    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"}:
+    if version in {"1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"}:
         titles = ["推荐", "漫剧", "看剧"]
         source = [rt.obj(MODEL, title, tabType=kind, title=rt.text_object(title), index=index)
                   for index, (kind, title) in enumerate(zip((7, 11, 103), titles))]
@@ -884,7 +884,7 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     data = args.candidate.read_bytes()
-    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"),
+    require(release_version(data) in ("1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R19", "1.78R20", "1.78R21", "1.78R22", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"),
             "Use the 1.78R7 or later candidate")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"),
                         EXTRA + ["LFQH_FQHBottomOptionChanged178"])

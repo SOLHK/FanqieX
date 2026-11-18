@@ -596,6 +596,31 @@ def exercise(data, labels, kind):
         call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
     else:
         call(c,r,owner,layout)
+    if shelf and release_version(data) == '1.8R3':
+        refresh = r.view(REFRESH_HEADER, 'native refresh', (0, -54, 440, 54), scroll, refresh_state=1)
+        animation = r.view('UIView', 'native refresh artwork', (199, 8, 42, 36), refresh)
+        r.objects[refresh].state['animationView'] = animation
+        scroll_state.update(mj_header=refresh, delegate=tab)
+        for offset, pinned in ((72, True), (-42, False), (-6, False), (72, True)):
+            scroll_state.update(contentOffset=(0, offset), bounds=(0, offset, 440, scroll_height),
+                                isDragging=offset < -6)
+            call(c, r, tab, SHELF_SCROLL, scroll)
+            call(c, r, tab, FLOATING_LAYOUT, scroll)
+            call(c, r, refresh, 'placeSubviews')
+            call(c, r, owner, layout)
+            require(not surfaces(r, root) and not surfaces(r, page) and not edge_state['hidden'],
+                    'Pull, release and pinning leave the original bookshelf backdrop in place')
+            require(r.objects[viewport].state['frame'] == viewport_frame and
+                    scroll_state['contentInset'] == stock_inset and scroll_state['contentOffset'] == (0, offset),
+                    'The shelf retains its native viewport, scroll anchor and refresh insets')
+            require(all(r.objects[view].state['backgroundColor'] == stock_fill
+                        for view in (header, tab_strip, holder, subheader)) and
+                    not r.objects[animation].state['hidden'] and
+                    r.objects[row].state['superview'] == (holder if pinned else inline_parent),
+                    'Host pinning moves the row while leaving all native background paint and refresh artwork alone')
+        exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scroll, viewport_frame, stock_inset)
+        exercise_history_pager(c, r, owner, tabs, horizontal, viewport)
+        return
     if shelf:
         require(r.objects[row].state['superview'] == holder and not r.objects[holder].state['hidden'] and
                 r.objects[holder].state['frame'][1] == boundary,
@@ -769,6 +794,7 @@ def exercise(data, labels, kind):
 
 
 def exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scroll, stock_frame, stock_inset):
+    stock_shelf = release_version(r.data) == '1.8R3'
     r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1'] = 0
     boundary = stock_frame[1]
     history_page = r.view('UIView', 'history page', (0, 0, 440, stock_frame[3]), horizontal)
@@ -778,8 +804,8 @@ def exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scr
     history = r.obj(HISTORY_TAB, 'history tab', view=history_page, viewIfLoaded=history_page)
     r.objects[owner].state['nativeCategoryTabs'] = (tab, history)
     call(c, r, owner, 'viewLayout')
-    require(r.objects[viewport].state['frame'][1] == 0 and drawn_rect(r, history_cover)[1] < boundary,
-            'The shelf uses underlap and its shared pager would cover a stock history page')
+    require(r.objects[viewport].state['frame'][1] == (boundary if stock_shelf else 0),
+            'The selected shelf layout sets the expected shared pager boundary')
     call(c, r, owner, SHELF_SELECTION, tabs, 1)
     hist_scroll = r.objects[history_scroll].state
     require(r.objects[owner].state['currentTabVC'] == history and
@@ -791,9 +817,9 @@ def exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scr
             'The history scroll keeps its native rest and only the prior shelf inset is removed')
     call(c, r, owner, SHELF_SELECTION, tabs, 0)
     require(r.objects[owner].state['currentTabVC'] == tab and
-            r.objects[viewport].state['frame'][1] == 0 and
-            r.objects[scroll].state['contentInset'][0] == stock_inset[0] + boundary,
-            'Switching back reestablishes one shelf inset and the underlap')
+            r.objects[viewport].state['frame'][1] == (boundary if stock_shelf else 0) and
+            r.objects[scroll].state['contentInset'][0] == stock_inset[0] + (0 if stock_shelf else boundary),
+            'Switching back returns the pager and shelf content to their expected positions')
 
 
 def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
@@ -804,7 +830,7 @@ def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
     owner_state.update(nativeCategoryTabs=pages, tabVCs=r.obj('NSArray', 'shelf pages', items=pages))
     history_state = r.objects[history].state
     history_state['filterSelection'] = 'listening history'
-    if release_version(c.data) in ('1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"):
+    if release_version(c.data) in ('1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"):
         r.objects[tabs].state['delegate'] = owner
         for index, source, expected_animation in ((1, 1, 0), (0, 1, 1), (2, 1, 1), (1, 2, 1), (1, 3, 1)):
             require(call(c, r, tabs, TITLE_SELECTION, index, source, 1)['result'] == 1 and
@@ -847,7 +873,7 @@ def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
     require(scroll['contentOffset'] == (440, 0),
             'The settled viewport aligns to History even with a fractional offset from a full page')
 
-    if release_version(c.data) in ('1.78R19', '1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2"):
+    if release_version(c.data) in ('1.78R19', '1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3"):
         owner_state.update(currentTabIndex=2, currentTabVC=collect)
         pager['currentIndex'] = 2
         scroll.update(contentOffset=(880, 0), isScrollAnimating=True)

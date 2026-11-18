@@ -745,168 +745,16 @@ static void BookstoreDoubleRowScroll(Obj self,Sel cmd,Obj scroll) {
     }
     if (nested==scroll) TopChromeRefreshVisibility(scroll);
 }
-static double TopChromeOverlap(Obj scroll) {
-    return Double(objc_getAssociatedObject(scroll,TopChromeInsetKey))-
-        Double(objc_getAssociatedObject(scroll,TopChromeStockInsetKey));
-}
-static void ShelfChromeCanvasRowKey(void) {}
-static Obj BookshelfCanvas(Obj tab) {
-    Obj colors=Lookup("UIColor"),canvas=Get(Get(Get(tab,"viewModel"),"uiConfigParams"),"backgroundColor");
-    if (!canvas && Responds(colors,"fq_reader_saas_ColorWithName:"))
-        canvas=O1(colors,"fq_reader_saas_ColorWithName:",Text("SS_COLOR_BG_FF"));
-    return canvas ? canvas : O0(colors,"systemBackgroundColor");
-}
-static void BookshelfRestingTint(Obj tab,Obj scroll) {
-    Obj owner=Get(tab,"delegate");
-    if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab || !scroll) return;
-    Obj root=Get(owner,"view"),surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
-    Obj content=Get(surface,"contentView");
-    if (!content) return;
-    Point offset=((Point(*)(Obj,Sel))Message)(scroll,sel_registerName("contentOffset"));
-    Rect inset=((Rect(*)(Obj,Sel))Message)(scroll,sel_registerName("adjustedContentInset"));
-    // At rest the empty strip behind the blur samples the header artwork, while
-    // the first row uses the shelf canvas. Blend back to live glass as books enter.
-    double distance=__builtin_fabs(offset.y+inset.x);
-    double blend=distance<16 && !Flag(Get(scroll,"mj_header"),"isRefreshing") ? 1-distance/16 : 0;
-    Obj tint=objc_getAssociatedObject(surface,TopChromeTintKey);
-    Obj canvasRow=objc_getAssociatedObject(root,ShelfChromeCanvasRowKey);
-    if (canvasRow) {
-        Obj canvas=Get(canvasRow,"backgroundColor");
-        tint=canvas && !SameColor(canvas,O0(Lookup("UIColor"),"clearColor")) ? canvas : BookshelfCanvas(tab);
-    } else if (blend>0) {
-        Obj canvas=BookshelfCanvas(tab);
-        tint=blend==1 ? canvas : ((Obj(*)(Obj,Sel,double))Message)(canvas,
-            sel_registerName("colorWithAlphaComponent:"),0.0625+0.9375*blend);
-    }
-    if (!SameColor(Get(content,"backgroundColor"),tint)) V1(content,"setBackgroundColor:",tint);
-}
-static void ShelfChromeHolderKey(void) {}
-static void ShelfChromeFilterKey(void) {}
-static void ShelfChromeClipKey(void) {}
-static void ShelfChromeLayoutKey(void) {}
 static void BookshelfHeaderActions(Obj controller);
-static Rect BookshelfChromeFrame(Obj root,Obj header,Obj viewport) {
-    Rect frame=Frame(header),bounds=Bounds(root);
-    Rect stock=TopChromeStockFrame(viewport,Frame(viewport));
-    return (Rect){bounds.x,bounds.y,bounds.width,__builtin_fmax(frame.y+frame.height,stock.y)-bounds.y};
-}
 static Obj At(Obj array,U index);
-static B BookshelfFilterAtEdge(Obj row,Obj root,Rect title) {
-    if (Flag(row,"isHidden")) return 0;
-    Rect bounds=Convert(row,Bounds(row),root);
-    double edge=title.y+title.height;
-    return VisibleRect(bounds) && bounds.x<=title.x+1 &&
-        bounds.x+bounds.width>=title.x+title.width-1 &&
-        bounds.y<=edge+1 && bounds.y+bounds.height>edge+1;
-}
-static Obj BookshelfChromeRow(Obj root,Obj tab,Obj scroll,Rect title) {
-    Obj holder=Get(tab,"fullGenreFloatingContainerView"),parent=Get(holder,"superview");
-    if (parent && parent==Get(tab,"viewIfLoaded") && Belongs(parent,root) &&
-        BookshelfFilterAtEdge(holder,root,title) &&
-        Belongs(Get(Get(tab,"functionCell"),"layoutContainerView"),holder)) return holder;
-    // UIKit section-header pinning also shows the filter directly in the collection.
-    if (!Responds(scroll,"visibleSupplementaryViewsOfKind:")) return 0;
-    Obj headers=O1(scroll,"visibleSupplementaryViewsOfKind:",Text("UICollectionElementKindSectionHeader"));
-    U count=((U(*)(Obj,Sel))Message)(headers,sel_registerName("count"));
-    for (U i=0;i<count;++i) {
-        Obj row=At(headers,i);
-        if (Kind(row,"SSBookShelfFilterHeaderView") && Belongs(row,scroll) &&
-            BookshelfFilterAtEdge(row,root,title)) return row;
-    }
-    return 0;
-}
-static Obj BookshelfChromeAnchor(Obj root,Obj header,Obj row,Rect *material) {
-    if (!row) return header;
-    Obj parent=Get(row,"superview");
-    Rect bounds=Convert(row,Bounds(row),root);
-    double bottom=bounds.y+bounds.height;
-    // Keep the shared effect above the collection and below the native filter.
-    // If any page container still clips the title region, retain the root mount.
-    for (Obj view=parent;view && view!=root;view=Get(view,"superview")) {
-        if (!Flag(view,"clipsToBounds")) continue;
-        Rect clip=Convert(view,Bounds(view),root);
-        if (clip.y>material->y || clip.y+clip.height<bottom ||
-            clip.x>material->x || clip.x+clip.width<material->x+material->width) return header;
-    }
-    material->height=bottom-material->y;
-    return row;
-}
-static void BookshelfChromeFills(Obj root,Obj tab,Obj holder) {
-    Obj filter=holder && !Kind(holder,"SSBookShelfFilterHeaderView") ? Get(Get(tab,"functionCell"),"headerView") : (Obj)0;
-    if (filter && !Belongs(filter,holder)) filter=0;
-    Obj oldHolder=objc_getAssociatedObject(root,ShelfChromeHolderKey);
-    Obj oldFilter=objc_getAssociatedObject(root,ShelfChromeFilterKey);
-    Obj cell=Get(tab,"functionCell");
-    Obj layout=Get(cell,"layoutContainerView"),clip=Get(cell,"filterClipView");
-    if (!holder || !Belongs(layout,holder)) layout=0;
-    if (!holder || !Belongs(clip,holder)) clip=0;
-    if (oldHolder!=holder) {
-        TopChromeFill(oldHolder,0);
-        objc_setAssociatedObject(root,ShelfChromeHolderKey,holder,1);
-    }
-    if (oldFilter!=filter) {
-        TopChromeFill(oldFilter,0);
-        objc_setAssociatedObject(root,ShelfChromeFilterKey,filter,1);
-    }
-    Obj oldClip=objc_getAssociatedObject(root,ShelfChromeClipKey);
-    if (oldClip!=clip) {
-        TopChromeFill(oldClip,0);
-        objc_setAssociatedObject(root,ShelfChromeClipKey,clip,1);
-    }
-    Obj oldLayout=objc_getAssociatedObject(root,ShelfChromeLayoutKey);
-    if (oldLayout!=layout) {
-        TopChromeFill(oldLayout,0);
-        objc_setAssociatedObject(root,ShelfChromeLayoutKey,layout,1);
-    }
-    TopChromeFill(holder,1);
-    TopChromeFill(filter,1);
-    TopChromeFill(clip,1);
-    TopChromeFill(layout,1);
-}
-static void BookshelfUpdateChrome(Obj controller,Obj root,Obj header,Obj viewport,Obj tab,Obj scroll,Rect material,B installed) {
-    Obj row=installed ? BookshelfChromeRow(root,tab,scroll,material) : (Obj)0;
-    Obj anchor=BookshelfChromeAnchor(root,header,row,&material);
-    if (installed)
-        MountTopChrome(root,objc_getAssociatedObject(root,TopChromeSurfaceKey),anchor,material);
-    BookshelfChromeFills(root,tab,anchor!=header ? anchor : (Obj)0);
-    Obj canvasRow=row && anchor==header ? row : (Obj)0;
-    if (objc_getAssociatedObject(root,ShelfChromeCanvasRowKey)!=canvasRow)
-        objc_setAssociatedObject(root,ShelfChromeCanvasRowKey,canvasRow,1);
-    TopChromeArtwork(Get(controller,"headerBgImgView"),viewport,installed,row ? 0 : 0.25);
-    if (installed) BookshelfRestingTint(tab,scroll);
-}
-static void BookshelfTopChrome(Obj controller) {
-    Obj root=Get(controller,"view"),header=Get(controller,"headerView");
-    Obj viewport=Get(controller,"containerView"),tab=Get(controller,"currentTabVC");
-    Obj scroll=Get(tab,"collectionView");
-    Rect base=BookshelfChromeFrame(root,header,viewport),material=base;
-    B enabled=Enabled() && Kind(tab,"SSBookShelfSubViewController") &&
-        Get(viewport,"superview")==root && TopChromeContains(viewport,scroll);
-    Obj row=enabled ? BookshelfChromeRow(root,tab,scroll,material) : (Obj)0;
-    Obj anchor=BookshelfChromeAnchor(root,header,row,&material);
-    B installed=TopChromePage(root,header,anchor,scroll,material,enabled);
-    Obj tabs=Get(controller,"tabSelectView");
-    TopChromeFill(header,installed);
-    TopChromeFill(tabs,installed);
-    TopChromeFill(Get(tabs,"collectionView"),installed);
-    TopChromeFill(Get(controller,"headerBackgroundView"),installed);
-    B owned=objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0;
-    TopChromeUnderlap(viewport,scroll,base.y,installed);
-    if (owned!=(objc_getAssociatedObject(scroll,TopChromeInsetKey)!=0) &&
-        Responds(tab,"fqx186_originalShelfFloating:"))
-        V1(tab,"updateFullGenreFloatingViewWithScrollView:",scroll);
-    BookshelfUpdateChrome(controller,root,header,viewport,tab,scroll,base,installed);
-    BookshelfHeaderActions(controller);
-    TopChromeDiagnostics(controller,"bookshelf",root,viewport,scroll,installed);
-}
 void FQHShelf(Obj self);
 static void BookshelfTopLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelf525ViewController","fqx186_originalShelfTopLayout"))(self,cmd);
-    BookshelfTopChrome(self);
+    BookshelfHeaderActions(self);
 }
 static void BookshelfTabSelected(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController","fqx186_originalShelfSelected:index:"))(self,cmd,category,index);
-    BookshelfTopChrome(self);
+    BookshelfHeaderActions(self);
 }
 static void BookshelfSyncHistoryPager(Obj viewport,B animationEnded);
 static void ShelfApplyPendingMotionComic(Obj controller);
@@ -942,7 +790,7 @@ static void BookshelfTabCommitted(Obj self,Sel cmd,Obj category,I index) {
         "fqx_originalShelfCommitted:index:"))(self,cmd,category,index);
     // The shared pager still carries the previous tab's geometry until the
     // host updates currentTabVC in this common selection callback.
-    BookshelfTopChrome(self);
+    BookshelfHeaderActions(self);
     Obj viewport=Get(self,"containerView");
     if (Responds(viewport,"fqx_originalHistoryPagerLayout")) BookshelfSyncHistoryPager(viewport,0);
     ShelfApplyPendingMotionComic(Get(self,"currentTabVC"));
@@ -1004,34 +852,6 @@ static void BookshelfHistoryPagerStopped(Obj self,Sel cmd) {
 static void BookshelfHistoryPagerAnimationEnded(Obj self,Sel cmd,Obj scroll) {
     (void)cmd;
     if (Get(self,"scrollView")==scroll) BookshelfSyncHistoryPager(self,1);
-}
-static void RestoreBookshelfTopInset(Obj self) {
-    Obj scroll=Get(self,"collectionView");
-    double overlap=TopChromeOverlap(scroll);
-    if (overlap>0) TopChromeInsets(scroll,overlap);
-}
-static void BookshelfUpdateInsets(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx186_originalShelfUpdateInsets"))(self,cmd);
-    RestoreBookshelfTopInset(self);
-}
-static void BookshelfFloatingLayout(Obj self,Sel cmd,Obj scroll) {
-    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx186_originalShelfFloating:"))(self,cmd,scroll);
-    if (!scroll || scroll!=Get(self,"collectionView") || !Enabled() ||
-        !objc_getAssociatedObject(scroll,TopChromeInsetKey)) return;
-    Obj owner=Get(self,"delegate"),root=Get(owner,"view");
-    Obj surface=objc_getAssociatedObject(root,TopChromeSurfaceKey);
-    if (!surface || Get(owner,"currentTabVC")!=self) return;
-    Obj header=Get(owner,"headerView"),viewport=Get(owner,"containerView");
-    Rect material=BookshelfChromeFrame(root,header,viewport);
-    Obj holder=Get(self,"fullGenreFloatingContainerView"),parent=Get(holder,"superview");
-    if (parent && !Flag(holder,"isHidden") && Belongs(parent,root)) {
-        // Use the title row's fixed edge, even when the shared effect extends
-        // under the pinned filter. Do not feed the extended height into pinning.
-        Rect chrome=Convert(root,material,parent),frame=Frame(holder);
-        double top=chrome.y+chrome.height;
-        if (frame.y!=top) { frame.y=top; SetFrame(holder,frame); }
-    }
-    BookshelfUpdateChrome(owner,root,header,viewport,self,scroll,material,1);
 }
 static Obj At(Obj array,U index) { return ((Obj(*)(Obj,Sel,U))Message)(array,sel_registerName("objectAtIndex:"),index); }
 static void Press(Obj self,Sel cmd,Obj sender) { (void)cmd; (void)sender; VB(self,"setHighlighted:",1); }
@@ -1825,11 +1645,9 @@ static void TopChromeRefreshVisibility(Obj scroll) {
 static void TopChromeRefreshHeaderVisibility(Obj header) {
     Obj scroll=Get(header,"superview"),owner=Get(scroll,"delegate");
     if (Get(scroll,"mj_header")!=header) return;
-    if ((Kind(owner,"SSBookShelfSubViewController") || Kind(owner,"SSBookStoreTabViewController")) &&
-        Get(owner,"collectionView")==scroll) {
+    if (Kind(owner,"SSBookStoreTabViewController") && Get(owner,"collectionView")==scroll)
         TopChromeRefreshVisibility(scroll);
-        if (Kind(owner,"SSBookShelfSubViewController")) BookshelfRestingTint(owner,scroll);
-    } else if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll &&
+    else if (Kind(owner,"SSBookStoreNestedTabView") && Get(owner,"containerScrollView")==scroll &&
              Get(owner,"refreshHeader")==header)
         TopChromeRefreshVisibility(scroll);
 }
@@ -1849,20 +1667,9 @@ static void TopChromeRefreshHostHidden(Obj self,Sel cmd,B hidden) {
     }
     ((void(*)(Obj,Sel,B))Original("SSNewRefreshHeader","fqx188_originalRefreshHidden:"))(self,cmd,hidden);
 }
-static void ShelfScroll(Obj self,Sel cmd,Obj scroll) {
-    ((void(*)(Obj,Sel,Obj))Original("SSBookShelfSubViewController","fqx187_originalShelfScroll:"))(self,cmd,scroll);
-    if (Get(self,"collectionView")==scroll) {
-        TopChromeRefreshVisibility(scroll);
-        BookshelfRestingTint(self,scroll);
-    }
-}
 static void ShelfLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfSubViewController","fqx167_originalShelfLayout"))(self,cmd);
     FQHShelf(self);
-    RestoreBookshelfTopInset(self);
-    Obj scroll=Get(self,"collectionView");
-    TopChromeRefreshVisibility(scroll);
-    BookshelfRestingTint(self,scroll);
 }
 static void ShelfButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBaseButton","fqx170_originalLayout"))(self,cmd);
@@ -5345,7 +5152,6 @@ static void ShelfFilterHeaderLayout(Obj self,Sel cmd) {
     ShelfFilterFade(Get(self,"gradienttLeftView"),glass);
     ShelfFilterFade(Get(self,"filterGradientView"),glass);
     if (Kind(options,"SSBookShelf541FilterView")) {
-        TopChromeFill(options,glass);
         ShelfFilterFade(Get(options,"leftGradientView"),glass);
         ShelfFilterFade(Get(options,"rightGradientView"),glass);
     }
@@ -7623,10 +7429,7 @@ void FQHInstall(void) {
              "v20@0:8B16",(Imp)BookshelfHistoryAppear);
     }
     Hook("SSBookShelf525ViewController","categoryView:didScrollSelectedItemAtIndex:","fqx186_originalShelfSelected:index:","v32@0:8@16q24",(Imp)BookshelfTabSelected);
-    Hook("SSBookShelfSubViewController","updateCollectionViewInsets","fqx186_originalShelfUpdateInsets","v16@0:8",(Imp)BookshelfUpdateInsets);
-    Hook("SSBookShelfSubViewController","updateFullGenreFloatingViewWithScrollView:","fqx186_originalShelfFloating:","v24@0:8@16",(Imp)BookshelfFloatingLayout);
     Hook("SSBookShelfSubViewController","viewDidLayoutSubviews","fqx167_originalShelfLayout","v16@0:8",(Imp)ShelfLayout);
-    Hook("SSBookShelfSubViewController","scrollViewDidScroll:","fqx187_originalShelfScroll:","v24@0:8@16",(Imp)ShelfScroll);
     if (Signature("SSNewRefreshHeader","animationView","@16@0:8") &&
         Signature("SSNewRefreshHeader","isRefreshing","B16@0:8")) {
         Hook("SSNewRefreshHeader","setAnimationHidden:","fqx188_originalRefreshHidden:","v20@0:8B16",(Imp)TopChromeRefreshHostHidden);
