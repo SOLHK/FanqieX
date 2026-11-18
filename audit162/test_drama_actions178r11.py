@@ -28,9 +28,14 @@ class Runtime(BaseRuntime):
         super().__init__(data)
         self._add(self.classes['UIView'], 'layoutSubviews', self.LAYOUT_IMP, 'v16@0:8')
         self._add(self.classes[PLAYER], 'controlViewDidDisplay', self.LAYOUT_IMP, 'v16@0:8')
+        self._add(self.classes['UIImageView'], 'setImage:', self.LAYOUT_IMP, 'v24@0:8@16')
         self._class(AUDIO, 'UIView')
         if 'UIImageSymbolConfiguration' not in self.classes:
             self._class('UIImageSymbolConfiguration', 'NSObject')
+        if release_version(data) == '1.8R5':
+            self._class('FQXDockMotion', 'NSObject')
+            self._add(self.metaclasses[self.classes['FQXDockMotion']], 'roundedDramaIconNamed:size:',
+                      self.LAYOUT_IMP, '@32@0:8@16d24')
         self._add(self.classes[AUDIO], 'layoutSubviews', self.LAYOUT_IMP, 'v16@0:8')
         self._add(self.classes[AUDIO], 'willMoveToSuperview:', self.LAYOUT_IMP, 'v24@0:8@16')
         for getter in ('contentView', 'backgroundView', 'backgroundEffectView'):
@@ -42,6 +47,9 @@ class Runtime(BaseRuntime):
                         renderingMode=rendering)
 
     def handle(self, cpu, pc):
+        if pc == self.LAYOUT_IMP and self.selector_names.get(cpu.x[1]) == 'setImage:':
+            self.objects[cpu.x[0]].state['image'] = cpu.x[2]
+            return self.finish(cpu)
         if pc - self.slide == 0xa5d4:
             receiver, selector, argument = cpu.x[:3]
             name = self.selector_names.get(selector)
@@ -49,6 +57,8 @@ class Runtime(BaseRuntime):
                 return self.finish(cpu, self.obj('UIImageSymbolConfiguration', 'outline style', size=cpu.fp(0)))
             if receiver == self.classes['UIImage'] and name == 'systemImageNamed:withConfiguration:':
                 return self.finish(cpu, self.obj('UIImage', self.string_value(argument)))
+            if receiver and receiver == self.classes.get('FQXDockMotion') and name == 'roundedDramaIconNamed:size:':
+                return self.finish(cpu, self.obj('UIImage', self.string_value(argument), roundedSize=cpu.fp(0)))
             if receiver == self.classes['UIImageView'] and name == 'new':
                 return self.finish(cpu, self.view('UIImageView', 'passive outline', image=0))
             if receiver == self.classes['CALayer'] and name == 'layer':
@@ -68,7 +78,11 @@ class Runtime(BaseRuntime):
                 if name in ('contentView', 'backgroundView', 'backgroundEffectView', 'isCleanMode',
                             'mask', 'isCollected', 'isLiked', 'model') and name in state:
                     return self.finish(cpu, state[name])
-                if name in ('setMask:', 'setContentMode:', 'setImage:'):
+                if name == 'setImage:':
+                    method = self.get_method(self.objects[receiver].cls, selector)
+                    cpu.pc = self.methods[method]['imp']
+                    return True
+                if name in ('setMask:', 'setContentMode:'):
                     state[name[3].lower() + name[4:-1]] = argument
                     return self.finish(cpu)
                 if name == 'insertSubview:aboveSubview:':
@@ -136,7 +150,7 @@ def right_column(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4")
+    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5")
     rows = []
     for index, (cls, selector) in enumerate(ROLES):
         owner = rt.view(cls, selector, (372., 500. + 76 * index, 60., 66.), rt.ROOT,
@@ -181,7 +195,8 @@ def right_column(data, labels):
                     'Numeric captions and native action bounds never resize')
 
     check(50.)
-    outline_tested = release_version(data) == '1.8R4'
+    outline_tested = release_version(data) in ('1.8R4', '1.8R5')
+    stable_image_tested = release_version(data) == '1.8R5'
     if outline_tested:
         star = rows[0][0]
         heart = rows[2][0]
@@ -208,6 +223,41 @@ def right_column(data, labels):
                 all(not rt.objects[rt.layer(row[1])].state.get('mask') for row in rows[1:]),
                 'Switching back restores the original per-icon masks')
         check(50.)
+    if stable_image_tested:
+        # Cold launch has its preference before the first layout. The stock
+        # UIImageViews start in ScaleToFill, then the image loader can deliver
+        # a replacement without running the interaction view's layout again.
+        prefs[SIZE_KEY] = 40.
+        for index in (0, 2):
+            cls, role = ROLES[index]
+            owner = rt.view(cls, 'cold launch action', (372., 460., 60., 66.), rt.ROOT,
+                            isCollected=False, model=0)
+            source = rt.artwork('cold launch artwork')
+            glyph = rt.view('UIImageView', role, (8., 2., 44., 44.), owner, contentMode=0, image=source)
+            rt.objects[owner].state[role] = glyph
+            role_address = selector_address(data, role)
+            call(cpu, labels, 'LFQH_FQHDramaGlyph', owner, role_address)
+            require(all(isclose(x, y * .8) for x, y in zip(
+                rt.objects[rt.objects[glyph].state['image']].state['size'], (36., 32.))),
+                'The persisted size scales the original asset before the first visible frame')
+            late = rt.artwork('late host artwork', (32., 28.), rendering=2)
+            send(cpu, rt, glyph, 'setImage:', late)
+            resized = rt.objects[rt.objects[glyph].state['image']].state
+            require(resized['CGImage'] == rt.objects[late].state['CGImage'] and
+                    all(isclose(x, y * .8) for x, y in zip(resized['size'], (32., 28.))),
+                    'Host image replacement keeps the current size without waiting for layout')
+            prefs[OUTLINE_KEY] = True
+            call(cpu, labels, 'LFQH_FQHDramaGlyph', owner, role_address)
+            outline = rt.objects[owner].state['subviews'][-1]
+            visual = rt.objects[outline].state
+            require(visual['contentMode'] == 4 and rt.objects[visual['image']].state['roundedSize'] == 24.,
+                    'The rounded outline uses the same persisted size')
+            prefs[OUTLINE_KEY] = False
+            prefs[SIZE_KEY] = 50.
+            call(cpu, labels, 'LFQH_FQHDramaGlyph', owner, role_address)
+            require(rt.objects[glyph].state['image'] == late and rt.objects[glyph].state['contentMode'] == 0,
+                    'Default size restores the current host artwork and content mode')
+            prefs[SIZE_KEY] = 40.
     owned = [materials(rt, row[0])[0] for row in rows]
     for value, expected in ((36., 36.), (54., 54.), (42., 42.), (12., 36.), (80., 54.), (float('nan'), 50.)):
         prefs[SIZE_KEY] = value
@@ -251,7 +301,7 @@ def right_column(data, labels):
     return {'shared_roles': [selector for _, selector in ROLES], 'default_pt': 50,
             'range_pt': [36, 54], 'live_refresh': True, 'native_targets_and_counts_preserved': True,
             'host_relayout_and_disable_restore': True, 'proportional_ink_and_selected_asset': scales_ink,
-            'outline_style_roundtrip': outline_tested}
+            'outline_style_roundtrip': outline_tested, 'cold_launch_and_late_artwork': stable_image_tested}
 
 
 def audio_indicator(data, labels, nested_blur):
@@ -314,13 +364,13 @@ def mine_shortcuts(data, labels):
     rt.objects[label].state.update(textColor=color, isAccessibilityElement=True)
     rt.objects[cell].state.update(contentView=content, productImage=image, functionType=label)
 
-    unified_card = release_version(data) in ('1.79R1', '1.79R2', '1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4')
+    unified_card = release_version(data) in ('1.79R1', '1.79R2', '1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5')
 
     def layout():
         send(cpu, rt, cell, 'layoutSubviews')
         if unified_card:
             item = call(cpu, labels, 'LFQH_FQHSurface', content)['result']
-            if release_version(data) in ('1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4'):
+            if release_version(data) in ('1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5'):
                 require(item, '1.79R3+ keeps an inner liquid glass button per shortcut')
             else:
                 require(not item, 'Unified card removes per-item glass capsules')
@@ -330,7 +380,7 @@ def mine_shortcuts(data, labels):
     glass = layout()
     capsule = rt.objects[rt.objects[glass].state['cornerConfiguration']]
     with_title = rt.objects[image].state['frame']
-    expected_radius = 22 if release_version(data) in ('1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4') else 18
+    expected_radius = 22 if release_version(data) in ('1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5') else 18
     shape_ok = capsule.state.get('max_radius') == expected_radius if unified_card else capsule.name == 'capsule'
     require(shape_ok and rt.objects[label].state['textColor'] == color,
             'Default shortcuts use the configured glass card and retain their visible title')
@@ -363,16 +413,16 @@ def main():
     data = args.candidate.read_bytes()
     entries = EXTRA + ['LFQH_FQHDramaGlyph']
     version = release_version(data)
-    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4"):
+    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5"):
         entries.append('LFQH_FQHRefreshDramaActions178R11')
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4"):
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5"):
         entries.append('LFQH_FQHBottomOptionChanged178')
     labels = labels_for(data, args.candidate.with_suffix('.composed.s'), entries)
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'fullscreen': fullscreen(data, labels), 'right_column': right_column(data, labels),
               'device_tested': False, 'pixel_rendering_tested': False}
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4"):
-        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4")),
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5"):
+        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5")),
                       mine_shortcuts=mine_shortcuts(data, labels))
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(json.dumps(report, indent=2))

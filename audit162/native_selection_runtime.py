@@ -48,6 +48,7 @@ def native_entries(data):
     layouts[0x15002] = (b'FQ162SEG', 0x10602)
     layouts[0x15003] = (b'FQ162SEG', 0x10602)
     layouts[0x15004] = (b'FQ162SEG', 0x10602)
+    layouts[0x15005] = (b'FQ162SEG', 0x10602)
     layouts[0x14e0f] = (b'FQ162SEG', 0x10602)
     require(binary_version in layouts, 'Known native selection binary')
     marker, layout_version = layouts[binary_version]

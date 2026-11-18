@@ -2440,23 +2440,24 @@ static double DramaActionDiameter178R11(void) {
 }
 static void DramaActionGlyphKey(void) {}
 static void DramaActionInkKey(void) {}
+static void DramaActionTrackImageKey(void) {}
 
 static void RestoreDramaActionInk(Obj glyph) {
     Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
     if (!ink) return;
-    if (O0(glyph,"image")==At(ink,1)) V1(glyph,"setImage:",At(ink,0));
+    if (O0(glyph,"image")==At(ink,1)) {
+        Obj tracking=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
+        if (tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,0,1);
+        V1(glyph,"setImage:",At(ink,0));
+        if (tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,tracking,1);
+    }
     I originalMode=(I)Double(At(ink,2));
     if (originalMode!=4 && ((I(*)(Obj,Sel))Message)(glyph,sel_registerName("contentMode"))==4)
         Q1(glyph,"setContentMode:",originalMode);
     objc_setAssociatedObject(glyph,DramaActionInkKey,0,1);
 }
 
-static void DramaActionInk(Obj owner,Obj glyph,double factor) {
-    Obj previous=objc_getAssociatedObject(owner,DramaActionGlyphKey);
-    if (previous!=glyph) {
-        RestoreDramaActionInk(previous);
-        objc_setAssociatedObject(owner,DramaActionGlyphKey,glyph,1);
-    }
+static void SizeDramaActionImage(Obj glyph,double factor,B stable) {
     if (!glyph) return;
     // Rescale the raster's point size so the native image view still supplies
     // the same clickableBoundsInWindow, center, selection and animation owner.
@@ -2468,7 +2469,7 @@ static void DramaActionInk(Obj owner,Obj glyph,double factor) {
     I originalMode=ink && mode==4 ? (I)Double(At(ink,2)) : mode;
     Obj pixels=Get(source,"CGImage");
     if (!pixels) { RestoreDramaActionInk(glyph); return; }
-    if (originalMode<=2) {
+    if (!stable && originalMode<=2) {
         Size original=((Size(*)(Obj,Sel))Message)(source,sel_registerName("size"));
         Rect bounds=Bounds(glyph);
         double x=bounds.width/original.width,y=bounds.height/original.height;
@@ -2491,8 +2492,35 @@ static void DramaActionInk(Obj owner,Obj glyph,double factor) {
     V1(glyph,"setImage:",scaled);
 }
 
+static void DramaActionInk(Obj owner,Obj glyph,double factor,B stable) {
+    Obj previous=objc_getAssociatedObject(owner,DramaActionGlyphKey);
+    if (previous!=glyph) {
+        if (previous) objc_setAssociatedObject(previous,DramaActionTrackImageKey,0,1);
+        RestoreDramaActionInk(previous);
+        objc_setAssociatedObject(owner,DramaActionGlyphKey,glyph,1);
+    }
+    if (!glyph) return;
+    if (stable) {
+        Obj tracking=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
+        if (factor==1 && tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,0,1);
+        else if (factor!=1 && !tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,Number(1),1);
+    }
+    SizeDramaActionImage(glyph,factor,stable);
+}
+
+static void DramaActionImageChanged(Obj glyph,Sel cmd,Obj image) {
+    ((void(*)(Obj,Sel,Obj))Original("UIImageView","fqx_originalSetDramaActionImage:"))(glyph,cmd,image);
+    if (!objc_getAssociatedObject(glyph,DramaActionTrackImageKey)) return;
+    Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
+    if (ink && image==At(ink,1)) return;
+    // Model refresh and the asynchronous artwork loader can supply new images
+    // after layout. Use their own intrinsic point sizes on both entry paths.
+    SizeDramaActionImage(glyph,Enabled() ? DramaActionDiameter178R11()/50 : 1,1);
+}
+
 static void DramaOutlineViewKey(void) {}
 static void DramaOutlineSymbolKey(void) {}
+static void DramaOutlineSizeKey(void) {}
 static void DramaOutlineGlyphKey(void) {}
 static void DramaOutlinePaintKey(void) {}
 static void DramaOutlineStockMaskKey(void) {}
@@ -2505,7 +2533,7 @@ static void DramaOutlineRestoreGlyph(Obj owner) {
     objc_setAssociatedObject(owner,DramaOutlineGlyphKey,0,1);
     objc_setAssociatedObject(owner,DramaOutlineStockMaskKey,0,1);
 }
-static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char *selector) {
+static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char *selector,double diameter) {
     Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
     if (!glyph) {
         DramaOutlineRestoreGlyph(owner);
@@ -2523,27 +2551,37 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
         if (BoolProp(Get(owner,"model"),"isLiked")) tint=O0(Lookup("UIColor"),"systemPinkColor");
     } else if (icon==sel_registerName("shareIcon")) name="paperplane";
 
-    if (!outline || !Equal(objc_getAssociatedObject(outline,DramaOutlineSymbolKey),name)) {
-        double size=__builtin_fmin(30,__builtin_fmin(frame.width,frame.height));
-        Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
-            sel_registerName("configurationWithPointSize:weight:scale:"),size,5,2);
-        Obj image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
-            sel_registerName("systemImageNamed:withConfiguration:"),Text(name),config);
+    double size=__builtin_fmin(30*diameter/50,__builtin_fmin(frame.width,frame.height));
+    if (!outline || !Equal(objc_getAssociatedObject(outline,DramaOutlineSymbolKey),name) ||
+        Double(objc_getAssociatedObject(outline,DramaOutlineSizeKey))!=size) {
+        Obj motion=Lookup("FQXDockMotion");
+        Obj image=0;
+        if (Responds(motion,"roundedDramaIconNamed:size:")) {
+            image=((Obj(*)(Obj,Sel,Obj,double))Message)(motion,
+                sel_registerName("roundedDramaIconNamed:size:"),Text(name),size);
+        }
         if (!image) {
-            DramaOutlineApply(owner,0,0,(Rect){0},selector);
+            Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
+                sel_registerName("configurationWithPointSize:weight:scale:"),size,5,2);
+            image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
+                sel_registerName("systemImageNamed:withConfiguration:"),Text(name),config);
+        }
+        if (!image) {
+            DramaOutlineApply(owner,0,0,(Rect){0},selector,diameter);
             return 0;
         }
         if (!outline) {
             outline=O0(Lookup("UIImageView"),"new");
             VB(outline,"setUserInteractionEnabled:",0);
             VB(outline,"setIsAccessibilityElement:",0);
-            Q1(outline,"setContentMode:",1);
+            Q1(outline,"setContentMode:",4);
             objc_setAssociatedObject(owner,DramaOutlineViewKey,outline,1);
             V0(outline,"release");
         }
         image=((Obj(*)(Obj,Sel,I))Message)(image,sel_registerName("imageWithRenderingMode:"),2);
         V1(outline,"setImage:",image);
         objc_setAssociatedObject(outline,DramaOutlineSymbolKey,Text(name),1);
+        objc_setAssociatedObject(outline,DramaOutlineSizeKey,Number(size),1);
     }
     if (objc_getAssociatedObject(owner,DramaOutlineGlyphKey)!=glyph) {
         DramaOutlineRestoreGlyph(owner);
@@ -2583,20 +2621,21 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     if (VisibleRect(frame)) V1(DramaActionOwners178R11(),"addObject:",owner);
     B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
-    if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector);
-    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1); RemoveDramaGlass(owner); return 1; }
+    double diameter=DramaActionDiameter178R11();
+    if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,diameter);
+    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0); RemoveDramaGlass(owner); return 1; }
     if (outline) {
-        DramaActionInk(owner,0,1);
-        if (DramaOutlineApply(owner,glyph,parent,frame,selector)) {
+        DramaActionInk(owner,0,1,0);
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector,diameter)) {
             RemoveDramaGlass(owner);
             return 1;
         }
     }
-    double diameter=DramaActionDiameter178R11();
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
-    if (!glass) { DramaActionInk(owner,0,1); return 0; }
-    DramaActionInk(owner,glyph,diameter/50);
+    if (!glass) { DramaActionInk(owner,0,1,0); return 0; }
+    B stable=glyphSelector==sel_registerName("starIcon") || glyphSelector==sel_registerName("likeIcon");
+    DramaActionInk(owner,glyph,diameter/50,stable);
     B hidden=Flag(glyph,"isHidden");
     if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
     return 1;
@@ -5191,8 +5230,23 @@ static void ShelfFilterFade(Obj view,B hide) {
         VB(view,"setHidden:",0);
     }
 }
+static I ShelfQuickFilterCount(Obj collection) {
+    if (!Responds(collection,"numberOfItemsInSection:")) return 0;
+    return ((I(*)(Obj,Sel,I))Message)(collection,sel_registerName("numberOfItemsInSection:"),0);
+}
 static B ShelfQuickFilterGrid(Obj row,Obj collection,double *width,double *gap,double *left) {
     if (!Enabled() || !FQHGlassAvailable() || Get(row,"collectionView")!=collection) return 0;
+    I itemCount=ShelfQuickFilterCount(collection);
+    Obj header=Get(row,"superview");
+    if (itemCount==5 && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==row &&
+        FQHSurface(Get(header,"filterButton"))) {
+        Insets inset=((Insets(*)(Obj,Sel))Message)(collection,sel_registerName("contentInset"));
+        *left=__builtin_fmax(0,19-inset.left);
+        *gap=8;
+        double available=Bounds(collection).width-inset.left-inset.right-*left-2;
+        *width=__builtin_fmax(46,(available-4 * *gap)/5);
+        return 1;
+    }
     Obj tab=0;
     for (Obj node=Get(row,"nextResponder");node && !Kind(node,"UIWindow");node=Get(node,"nextResponder")) {
         if (Kind(node,"SSBookShelfSubViewController")) { tab=node; break; }
@@ -5201,9 +5255,7 @@ static B ShelfQuickFilterGrid(Obj row,Obj collection,double *width,double *gap,d
     if (!Kind(owner,"SSBookShelf525ViewController") || Get(owner,"currentTabVC")!=tab) return 0;
     Obj upper=Get(Get(owner,"tabSelectView"),"collectionView"),layout=Get(upper,"collectionViewLayout");
     if (!upper || !layout || !Get(collection,"window") || Get(upper,"window")!=Get(collection,"window")) return 0;
-    I (*count)(Obj,Sel,I)=(I(*)(Obj,Sel,I))Message;
-    Sel sections=sel_registerName("numberOfItemsInSection:");
-    if (count(upper,sections,0)!=4 || count(collection,sections,0)!=4) return 0;
+    if (ShelfQuickFilterCount(upper)!=4 || itemCount!=4) return 0;
     Obj pathClass=Lookup("NSIndexPath");
     Obj (*path)(Obj,Sel,I,I)=(Obj(*)(Obj,Sel,I,I))Message;
     Sel at=sel_registerName("indexPathForItem:inSection:");
@@ -5259,6 +5311,20 @@ static void ShelfFilterPresent(Obj self) {
         ShelfFilterFade(Get(options,"leftGradientView"),glass);
         ShelfFilterFade(Get(options,"rightGradientView"),glass);
     }
+    if (Kind(options,"SSBookShelfFilterMixRowCollectionView") && Get(options,"superview")==self) {
+        Obj material=FQHSurface(button),collection=Get(options,"collectionView");
+        Rect current=Frame(options),stock=ProfileStockFrame(options,current),target=stock;
+        if (material) {
+            Rect capsule=Convert(button,Frame(material),self);
+            double available=capsule.x-8-stock.x;
+            if (available>40) target.width=__builtin_fmin(stock.width,available);
+        }
+        ProfileSetFrame(options,current,stock,target);
+        if (!SameRect(current,target)) {
+            V0(options,"setNeedsLayout");
+            V0(Get(collection,"collectionViewLayout"),"invalidateLayout");
+        }
+    }
     // The host positions the options row before the filter's final right inset.
     // Keep the button above that row where the two frames can now intersect.
     if (FQHSurface(button) && Get(button,"superview")==self && Get(options,"superview")==self &&
@@ -5284,6 +5350,7 @@ static Insets ShelfInlineFilterInsets(Obj self,Sel cmd,Obj collection,Obj layout
     double width,gap,left;
     if (section==0 && ShelfQuickFilterGrid(self,collection,&width,&gap,&left)) {
         insets.left=left;
+        if (ShelfQuickFilterCount(collection)==5) insets.right=2;
     } else {
         Obj header=Get(self,"superview");
         if (Enabled() && Kind(header,"SSBookShelfFilterHeaderView") && Get(header,"optionsView")==self)
@@ -7409,6 +7476,7 @@ void FQHPageInstall(void) {
          "fqx_originalCollectArtModel:animated:","v28@0:8@16B24",(Imp)DramaCollectModel);
     Hook("SSShortVideoRightInteractionLikeView","refreshUIWithModel:",
          "fqx_originalLikeArtModel:","v24@0:8@16",(Imp)DramaLikeModel);
+    Hook("UIImageView","setImage:","fqx_originalSetDramaActionImage:","v24@0:8@16",(Imp)DramaActionImageChanged);
     Obj actionStyle=Lookup("FQXDramaActionStyle");
     if (!actionStyle) {
         actionStyle=AllocateClass(Lookup("NSObject"),"FQXDramaActionStyle",0);
