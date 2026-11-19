@@ -44,6 +44,8 @@ static NSString *const HighestQualityPrefKey = @"FanqieX.DramaHighestQuality.1";
 static NSString *const PinchPureCleanPrefKey = @"FanqieX.DramaPinchPureClean.1";
 static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
 static NSString *const AudioIconsOnlyPrefKey = @"FanqieX.AudioControlIconsOnly.1";
+static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
+static const CGFloat AudioNavigationButtonDiameter = 42.0;
 
 static BOOL FQXGlassEnabled(void) {
     if ([NSUserDefaults.standardUserDefaults integerForKey:GlassDisabledPrefKey] != 0) return NO;
@@ -360,12 +362,14 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 - (void)cancelDropletImmediately {
     self.generation += 1;
-    if (self.dropletActive) self.restingLens.hidden = NO;
+    [UIView performWithoutAnimation:^{
+        if (self.dropletActive) self.restingLens.hidden = NO;
+        self.dropletView.hidden = YES;
+        [self.dropletView.layer removeAllAnimations];
+    }];
     self.dropletActive = NO;
     self.panning = NO;
     self.pressedButton = nil;
-    [self.dropletView.layer removeAllAnimations];
-    self.dropletView.hidden = YES;
     self.liftedButton.transform = CGAffineTransformIdentity;
     self.liftedButton = nil;
 }
@@ -434,13 +438,21 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.pressedButton = nil;
     NSString *title = sender.accessibilityLabel ?: sender.currentTitle;
     BOOL profile = [title isEqualToString:@"我的"];
+    // The plain fallback already paints selection on the button itself.
+    // A second moving pill on top of it doubles the fill.
+    if (profile && !self.restingLens.superview) {
+        [self cancelDropletImmediately];
+        return;
+    }
     UIView *host = [self startDropletFrom:previous profile:profile];
     if (!host) return;
     NSUInteger generation = self.generation;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.generation != generation || self.panning) return;
-        if (profile) self.dropletView.backgroundColor =
-            [UIColor.secondarySystemFillColor resolvedColorWithTraitCollection:self.proxy.traitCollection];
+        if (profile) {
+            [self settleDropletToButton:sender velocity:0.0 duration:0.32];
+            return;
+        }
         CGRect rest = [self restingRectForButton:sender inHost:host];
         if (CGRectIsEmpty(rest)) {
             [self cancelDropletImmediately];
@@ -1794,6 +1806,114 @@ static void FQXAudioSetHiddenTracked(UIView *view, BOOL hide) {
     }
 }
 
+static void (*OrigBottomImpactFeedback)(id, SEL);
+static void HookBottomImpactFeedback(id self, SEL cmd) {
+    NSNumber *enabled = [NSUserDefaults.standardUserDefaults objectForKey:BottomHapticsPrefKey];
+    if (!enabled || enabled.boolValue) OrigBottomImpactFeedback(self, cmd);
+}
+
+static const void *DramaLastCommentVideoKey = &DramaLastCommentVideoKey;
+static const void *DramaInitialCommentCountKey = &DramaInitialCommentCountKey;
+
+static void FQXRenderDramaCommentCount(UIView *view, SEL cmd, NSInteger count,
+                                      void (*original)(id, SEL, NSInteger)) {
+    UILabel *label = FQXObjGet(view, "commentCountLabel");
+    id model = FQXObjGet(FQXObjGet(view, "delegate"), "model");
+    id video = FQXObjGet(model, "vid") ?: NSNull.null;
+    id previous = objc_getAssociatedObject(view, DramaLastCommentVideoKey);
+    if ([label isKindOfClass:UILabel.class] && ![video isEqual:previous]) {
+        objc_setAssociatedObject(view, DramaLastCommentVideoKey, video, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // Keep the first cached/placeholder value out of the initial paint.
+        // The host still receives every count and formats the latest one.
+        NSArray<CALayer *> *pending = objc_getAssociatedObject(label, DramaInitialCommentCountKey);
+        CALayer *originalMask = pending && label.layer.mask == pending[0]
+            ? (pending.count > 1 ? pending[1] : nil) : label.layer.mask;
+        CALayer *mask = [CALayer layer];
+        NSArray<CALayer *> *state = originalMask ? @[mask, originalMask] : @[mask];
+        objc_setAssociatedObject(label, DramaInitialCommentCountKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        label.layer.mask = mask;
+        [CATransaction commit];
+        __weak UILabel *weakLabel = label;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 320 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            UILabel *current = weakLabel;
+            if (objc_getAssociatedObject(current, DramaInitialCommentCountKey) != state) return;
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            if (current.layer.mask == mask) current.layer.mask = originalMask;
+            [CATransaction commit];
+            objc_setAssociatedObject(current, DramaInitialCommentCountKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        });
+    }
+    [UIView performWithoutAnimation:^{
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        original(view, cmd, count);
+        [CATransaction commit];
+    }];
+}
+
+static void (*OrigDramaCommentCount)(id, SEL, NSInteger);
+static void HookDramaCommentCount(UIView *view, SEL cmd, NSInteger count) {
+    FQXRenderDramaCommentCount(view, cmd, count, OrigDramaCommentCount);
+}
+
+static void (*OrigHostDramaCommentCount)(id, SEL, NSInteger);
+static void HookHostDramaCommentCount(UIView *view, SEL cmd, NSInteger count) {
+    FQXRenderDramaCommentCount(view, cmd, count, OrigHostDramaCommentCount);
+}
+
+static const void *DramaComposerGlassKey = &DramaComposerGlassKey;
+static void FQXStyleDramaCommentBar(UIView *toolbar) {
+    UIView *text = FQXObjGet(toolbar, "textView");
+    UIView *image = FQXObjGet(toolbar, "addImageBtn");
+    UIView *emoji = FQXObjGet(toolbar, "emojiBtn");
+    CGRect row = CGRectNull;
+    for (UIView *view in @[text ?: toolbar, image ?: toolbar, emoji ?: toolbar]) {
+        if (view != toolbar && [view isDescendantOfView:toolbar] && !view.hidden)
+            row = CGRectUnion(row, [view convertRect:view.bounds toView:toolbar]);
+    }
+    CGRect frame = CGRectIntersection(CGRectInset(toolbar.bounds, 12.0, 2.0),
+                                      CGRectInset(row, -12.0, -5.0));
+    UIVisualEffectView *glass = objc_getAssociatedObject(toolbar, DramaComposerGlassKey);
+    BOOL active = toolbar.window && FQXGlassEnabled() && !CGRectIsNull(frame) &&
+                  CGRectGetWidth(frame) >= 44.0 && CGRectGetHeight(frame) >= 30.0;
+    if (active && !glass) {
+        glass = FQXNewGlassViewFull(0, NO, 0.0, NO, nil);
+        objc_setAssociatedObject(toolbar, DramaComposerGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (active && glass) {
+        if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
+        if (glass.superview != toolbar) [toolbar insertSubview:glass atIndex:0];
+    } else if (glass) {
+        [glass removeFromSuperview];
+        objc_setAssociatedObject(toolbar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL styled = active && glass;
+    FQXAudioClearBackground(toolbar, styled);
+    FQXAudioClearBackground(FQXObjGet(toolbar, "bgView"), styled);
+    FQXAudioClearBackground(text, styled);
+    FQXAudioClearBackground(image, styled);
+    FQXAudioClearBackground(emoji, styled);
+    UIView *effect = FQXObjGet(toolbar, "effectView");
+    FQXAudioSetHiddenTracked(effect, styled && ![text isDescendantOfView:effect] &&
+                                   ![image isDescendantOfView:effect] && ![emoji isDescendantOfView:effect]);
+    FQXAudioSetHiddenTracked(FQXObjGet(toolbar, "topLineView"), styled);
+}
+
+static void (*OrigDramaCommentBarLayout)(id, SEL);
+static void HookDramaCommentBarLayout(UIView *toolbar, SEL cmd) {
+    OrigDramaCommentBarLayout(toolbar, cmd);
+    FQXStyleDramaCommentBar(toolbar);
+}
+
+static void (*OrigDramaCommentBarTheme)(id, SEL, BOOL);
+static void HookDramaCommentBarTheme(UIView *toolbar, SEL cmd, BOOL darkMode) {
+    OrigDramaCommentBarTheme(toolbar, cmd, darkMode);
+    if (toolbar.window) FQXStyleDramaCommentBar(toolbar);
+}
+
 static CGPoint FQXAudioStockCenter(UIView *view) {
     CGPoint current = view.center;
     NSValue *applied = objc_getAssociatedObject(view, AudioAppliedPositionKey);
@@ -1938,7 +2058,10 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
     // The host's controls use white artwork, including in the light app mode.
     // Keep the backing local to each glass shape and limit cover highlights.
     surface.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    CGFloat backingOpacity = UIAccessibilityDarkerSystemColorsEnabled() ? 0.34 : 0.10;
+    // Keep the circular controls on one dark material even over a bright cover.
+    CGFloat backingOpacity = interactive
+        ? (UIAccessibilityDarkerSystemColorsEnabled() ? 0.34 : 0.10)
+        : (UIAccessibilityDarkerSystemColorsEnabled() ? 0.42 : 0.24);
     UIColor *backing = [UIColor colorWithWhite:0.025 alpha:backingOpacity];
     if (![surface.contentView.backgroundColor isEqual:backing])
         surface.contentView.backgroundColor = backing;
@@ -2004,7 +2127,7 @@ static void FQXStyleAudioCircleButton(UIButton *btn,
     CGRect b = btn.bounds;
     CGRect frame = CGRectMake(CGRectGetMidX(b) - diameter * 0.5, CGRectGetMidY(b) - diameter * 0.5,
                               diameter, diameter);
-    FQXInstallAudioSurfaceFull(btn, btn, nil, frame, 0, 0.0, NO, YES, nil, visible);
+    FQXInstallAudioSurfaceFull(btn, btn, nil, frame, 0, 0.0, NO, NO, nil, visible);
     if (visible) [FQXAudioButtonFeedback wireControl:btn];
 }
 
@@ -2045,14 +2168,15 @@ static void FQXApplyAudioNavigationGlass(UIView *nav) {
     BOOL dual = backLast.superview == backView && !backLast.hidden && CGRectGetWidth(backLast.bounds) > 8.0;
     if (backViewVisible && close.superview == backView) {
         CGFloat currentEdge = dual ? CGRectGetMinX(backView.frame)
-            : [backView convertPoint:close.center toView:nav].x - 19.0;
+            : [backView convertPoint:close.center toView:nav].x - AudioNavigationButtonDiameter * 0.5;
         FQXAudioPlaceView(backView, CGPointMake(backView.center.x + left - currentEdge, backView.center.y), enabled);
     } else {
         FQXAudioPlaceView(backView, CGPointZero, NO);
     }
-    FQXAudioPlaceView(backBtn, CGPointMake(left + 19., backBtn.center.y), enabled && !backViewVisible && backBtn.superview == nav);
+    CGFloat radius = AudioNavigationButtonDiameter * 0.5;
+    FQXAudioPlaceView(backBtn, CGPointMake(left + radius, backBtn.center.y), enabled && !backViewVisible && backBtn.superview == nav);
     BOOL alignMore = enabled && moreBtn.superview == nav && !moreBtn.hidden;
-    CGFloat trailingShift = alignMore ? right - 19.0 - FQXAudioStockCenter(moreBtn).x : 0.0;
+    CGFloat trailingShift = alignMore ? right - radius - FQXAudioStockCenter(moreBtn).x : 0.0;
     UIButton *trailingButtons[] = {gameBtn, shopBtn};
     for (size_t i = 0; i < sizeof(trailingButtons) / sizeof(trailingButtons[0]); ++i) {
         UIButton *button = trailingButtons[i];
@@ -2061,11 +2185,11 @@ static void FQXApplyAudioNavigationGlass(UIView *nav) {
         center.x += trailingShift;
         FQXAudioPlaceView(button, center, alignMore && button.superview == nav && !button.hidden);
     }
-    FQXAudioPlaceView(moreBtn, CGPointMake(right - 19., moreBtn.center.y), alignMore);
+    FQXAudioPlaceView(moreBtn, CGPointMake(right - radius, moreBtn.center.y), alignMore);
     FQXAudioCenterButtonArt(moreBtn, enabled);
-    FQXStyleAudioCircleButton(backBtn, 38.0, enabled && !backViewVisible);
+    FQXStyleAudioCircleButton(backBtn, AudioNavigationButtonDiameter, enabled && !backViewVisible);
     FQXAudioCenterBackGlyph(backBtn);
-    FQXStyleAudioCircleButton(moreBtn, 38.0, enabled);
+    FQXStyleAudioCircleButton(moreBtn, AudioNavigationButtonDiameter, enabled);
     FQXStyleAudioCircleButton(gameBtn, 36.0, enabled);
     FQXStyleAudioCircleButton(shopBtn, 36.0, enabled);
 }
@@ -2086,8 +2210,8 @@ static void FQXApplyAudioBackViewGlass(UIView *backView) {
         splitLine.alpha = (enabled && dualButtons) ? 0.25 : (enabled ? 0.0 : 1.0);
     }
     if (dualButtons) {
-        FQXStyleAudioCircleButton(closeBtn, 38.0, NO);
-        CGRect pill = CGRectInset(backView.bounds, 0.0, MAX(0.0, (CGRectGetHeight(backView.bounds) - 38.0) * 0.5));
+        FQXStyleAudioCircleButton(closeBtn, AudioNavigationButtonDiameter, NO);
+        CGRect pill = CGRectInset(backView.bounds, 0.0, MAX(0.0, (CGRectGetHeight(backView.bounds) - AudioNavigationButtonDiameter) * 0.5));
         FQXInstallAudioSurfaceFull(backView, backView, nil, pill, 0, 0.0, NO, YES, nil, enabled);
         if (enabled) {
             [FQXAudioButtonFeedback wireControl:closeBtn];
@@ -2095,7 +2219,7 @@ static void FQXApplyAudioBackViewGlass(UIView *backView) {
         }
     } else {
         FQXInstallAudioSurfaceFull(backView, backView, nil, CGRectZero, 0, 0.0, NO, YES, nil, NO);
-        FQXStyleAudioCircleButton(closeBtn, 38.0, enabled);
+        FQXStyleAudioCircleButton(closeBtn, AudioNavigationButtonDiameter, enabled);
     }
     FQXAudioCenterBackGlyph(closeBtn);
 }
@@ -2826,6 +2950,12 @@ void FQXInstallMotionAndAudioHooks(void) {
     Class _c = NSClassFromString(@clsName); \
     if (_c) FQXInstallOwnedHook(_c, NSSelectorFromString(@selName), NO, enc, (IMP)(hookFn), (IMP *)&(origVar)); \
 } while (0)
+
+        HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
+        HOOK_INST("SSShortVideoRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigDramaCommentCount, HookDramaCommentCount);
+        HOOK_INST("SSShortVideoHostRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigHostDramaCommentCount, HookHostDramaCommentCount);
+        HOOK_INST("FQCShortVideoBottomToolBar", "layoutSubviews", "v16@0:8", OrigDramaCommentBarLayout, HookDramaCommentBarLayout);
+        HOOK_INST("FQCShortVideoBottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigDramaCommentBarTheme, HookDramaCommentBarTheme);
 
         // 1. Drama spacing immediate sync on navigation push/pop & foreground crossfade
         HOOK_INST("FQVShortVideoListViewController", "viewWillAppear:", "v20@0:8B16", OrigShortVideoListWillAppear, HookShortVideoListWillAppear);

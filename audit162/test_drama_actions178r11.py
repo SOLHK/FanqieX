@@ -33,11 +33,11 @@ class Runtime(BaseRuntime):
         self._class(AUDIO, 'UIView')
         if 'UIImageSymbolConfiguration' not in self.classes:
             self._class('UIImageSymbolConfiguration', 'NSObject')
-        if release_version(data) in ('1.8R5', '1.8R6'):
+        if release_version(data) in ('1.8R5', '1.8R6', '1.8R7'):
             self._class('FQXDockMotion', 'NSObject')
             self._add(self.metaclasses[self.classes['FQXDockMotion']], 'roundedDramaIconNamed:size:',
                       self.LAYOUT_IMP, '@32@0:8@16d24')
-        if release_version(data) == '1.8R6':
+        if release_version(data) in ('1.8R6', '1.8R7'):
             self._class('SSShortVideoRightInteractionCollectModel', 'NSObject')
             self._add(self.classes['SSShortVideoRightInteractionCollectModel'], 'setIsCollected:',
                       self.LAYOUT_IMP, 'v20@0:8B16')
@@ -158,7 +158,7 @@ def right_column(data, labels):
     rt.labels = labels
     call(cpu, labels, 'LFQH_FQHPageInstall')
     prefs = rt.objects[rt.DEFAULTS].state['values']
-    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6")
+    scales_ink = release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7")
     rows = []
     for index, (cls, selector) in enumerate(ROLES):
         owner = rt.view(cls, selector, (372., 500. + 76 * index, 60., 66.), rt.ROOT,
@@ -203,8 +203,8 @@ def right_column(data, labels):
                     'Numeric captions and native action bounds never resize')
 
     check(50.)
-    outline_tested = release_version(data) in ('1.8R4', '1.8R5', '1.8R6')
-    stable_image_tested = release_version(data) in ('1.8R5', '1.8R6')
+    outline_tested = release_version(data) in ('1.8R4', '1.8R5', '1.8R6', '1.8R7')
+    stable_image_tested = release_version(data) in ('1.8R5', '1.8R6', '1.8R7')
     if outline_tested:
         star = rows[0][0]
         heart = rows[2][0]
@@ -258,10 +258,10 @@ def right_column(data, labels):
             call(cpu, labels, 'LFQH_FQHDramaGlyph', owner, role_address)
             outline = rt.objects[owner].state['subviews'][-1]
             visual = rt.objects[outline].state
-            rounded_points = 36. if release_version(data) == '1.8R6' else 24.
+            rounded_points = 36. if release_version(data) in ('1.8R6', '1.8R7') else 24.
             require(visual['contentMode'] == 4 and rt.objects[visual['image']].state['roundedSize'] == rounded_points,
                     'The rounded outline uses its release default at a 40-point glass preference')
-            if release_version(data) == '1.8R6' and index == 0:
+            if release_version(data) in ('1.8R6', '1.8R7') and index == 0:
                 model = rt.obj('SSShortVideoRightInteractionCollectModel', 'bound collect model', isCollected=False)
                 rt.objects[owner].state['model'] = model
                 call(cpu, labels, 'LFQH_FQHDramaGlyph', owner, role_address)
@@ -322,10 +322,42 @@ def right_column(data, labels):
                 rt.objects[glyph].state['contentMode'] == mode and
                 rt.objects[glyph].state['image'] == (heart_source if index == 2 else image),
                 'Disabling removes only the material and preserves current host glyph state')
+    compact_share_tested = release_version(data) == '1.8R7'
+    if compact_share_tested:
+        prefs[DISABLED_KEY] = False
+        prefs[SIZE_KEY] = 40.
+        share = rt.view(ROLES[3][0], 'compact share', (320., 540., 64., 66.), rt.WINDOW)
+        artwork = rt.artwork('wide native share', (52., 36.))
+        glyph = rt.view('UIImageView', 'share', (10., 1., 44., 44.), share, contentMode=1, image=artwork)
+        rt.objects[share].state['shareIcon'] = glyph
+        selector = selector_address(data, 'shareIcon')
+        window = rt.objects[rt.WINDOW].state
+        original_bounds = window['bounds']
+        window['bounds'] = (0., 0., 402., 874.)
+        call(cpu, labels, 'LFQH_FQHDramaGlyph', share, selector)
+        require(isclose(max(rt.objects[rt.objects[glyph].state['image']].state['size']), 28.8),
+                'The compact share art leaves a fixed proportion of padding within the glass circle')
+        replacement = rt.artwork('new wide native share', (56., 34.))
+        send(cpu, rt, glyph, 'setImage:', replacement)
+        require(isclose(max(rt.objects[rt.objects[glyph].state['image']].state['size']), 28.8),
+                'Asynchronous share artwork replacement still fits the same glass circle')
+        prefs[OUTLINE_KEY] = True
+        call(cpu, labels, 'LFQH_FQHDramaGlyph', share, selector)
+        outline = rt.objects[share].state['subviews'][-1]
+        require(isclose(rt.objects[rt.objects[outline].state['image']].state['roundedSize'], 30.8),
+                'Compact outline share leaves room on all four sides')
+        prefs[OUTLINE_KEY] = False
+        prefs[SIZE_KEY] = 50.
+        window['bounds'] = (0., 0., 440., 956.)
+        call(cpu, labels, 'LFQH_FQHDramaGlyph', share, selector)
+        require(rt.objects[glyph].state['image'] == replacement and rt.objects[glyph].state['contentMode'] == 1,
+                'Max width restores the current host artwork and its original content mode')
+        window['bounds'] = original_bounds
     return {'shared_roles': [selector for _, selector in ROLES], 'default_pt': 50,
             'range_pt': [36, 54], 'live_refresh': True, 'native_targets_and_counts_preserved': True,
             'host_relayout_and_disable_restore': True, 'proportional_ink_and_selected_asset': scales_ink,
-            'outline_style_roundtrip': outline_tested, 'cold_launch_and_late_artwork': stable_image_tested}
+            'outline_style_roundtrip': outline_tested, 'cold_launch_and_late_artwork': stable_image_tested,
+            'compact_share_padding_and_max_restore': compact_share_tested}
 
 
 def audio_indicator(data, labels, nested_blur):
@@ -388,13 +420,13 @@ def mine_shortcuts(data, labels):
     rt.objects[label].state.update(textColor=color, isAccessibilityElement=True)
     rt.objects[cell].state.update(contentView=content, productImage=image, functionType=label)
 
-    unified_card = release_version(data) in ('1.79R1', '1.79R2', '1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6')
+    unified_card = release_version(data) in ('1.79R1', '1.79R2', '1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7')
 
     def layout():
         send(cpu, rt, cell, 'layoutSubviews')
         if unified_card:
             item = call(cpu, labels, 'LFQH_FQHSurface', content)['result']
-            if release_version(data) in ('1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6'):
+            if release_version(data) in ('1.79R3', '1.79R4', '1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7'):
                 require(item, '1.79R3+ keeps an inner liquid glass button per shortcut')
             else:
                 require(not item, 'Unified card removes per-item glass capsules')
@@ -404,7 +436,7 @@ def mine_shortcuts(data, labels):
     glass = layout()
     capsule = rt.objects[rt.objects[glass].state['cornerConfiguration']]
     with_title = rt.objects[image].state['frame']
-    expected_radius = 22 if release_version(data) in ('1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6') else 18
+    expected_radius = 22 if release_version(data) in ('1.79R5', '1.8R1', '1.8R2', '1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7') else 18
     shape_ok = capsule.state.get('max_radius') == expected_radius if unified_card else capsule.name == 'capsule'
     require(shape_ok and rt.objects[label].state['textColor'] == color,
             'Default shortcuts use the configured glass card and retain their visible title')
@@ -437,16 +469,16 @@ def main():
     data = args.candidate.read_bytes()
     entries = EXTRA + ['LFQH_FQHDramaGlyph']
     version = release_version(data)
-    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6"):
+    if version in ('1.78R11', '1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7"):
         entries.append('LFQH_FQHRefreshDramaActions178R11')
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6"):
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7"):
         entries.append('LFQH_FQHBottomOptionChanged178')
     labels = labels_for(data, args.candidate.with_suffix('.composed.s'), entries)
     report = {'passed': True, 'candidate_sha256': hashlib.sha256(data).hexdigest(),
               'fullscreen': fullscreen(data, labels), 'right_column': right_column(data, labels),
               'device_tested': False, 'pixel_rendering_tested': False}
-    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6"):
-        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6")),
+    if version in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7"):
+        report.update(audio_indicator=audio_indicator(data, labels, nested_blur=version in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7")),
                       mine_shortcuts=mine_shortcuts(data, labels))
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
     print(json.dumps(report, indent=2))

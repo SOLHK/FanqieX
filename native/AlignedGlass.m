@@ -2460,11 +2460,11 @@ static void RestoreDramaActionInk(Obj glyph) {
     objc_setAssociatedObject(glyph,DramaActionInkKey,0,1);
 }
 
-static void SizeDramaActionImage(Obj glyph,double factor,B stable) {
+static void SizeDramaActionImage(Obj glyph,double factor,B stable,double maximumSpan) {
     if (!glyph) return;
     // Rescale the raster's point size so the native image view still supplies
     // the same clickableBoundsInWindow, center, selection and animation owner.
-    if (factor==1 || Flag(glyph,"isAnimating")) { RestoreDramaActionInk(glyph); return; }
+    if ((factor==1 && maximumSpan<=0) || Flag(glyph,"isAnimating")) { RestoreDramaActionInk(glyph); return; }
     Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
     Obj current=O0(glyph,"image"), applied=ink ? At(ink,1) : 0;
     Obj source=ink && current==applied ? At(ink,0) : current;
@@ -2472,6 +2472,12 @@ static void SizeDramaActionImage(Obj glyph,double factor,B stable) {
     I originalMode=ink && mode==4 ? (I)Double(At(ink,2)) : mode;
     Obj pixels=Get(source,"CGImage");
     if (!pixels) { RestoreDramaActionInk(glyph); return; }
+    if (maximumSpan>0) {
+        Size size=((Size(*)(Obj,Sel))Message)(source,sel_registerName("size"));
+        double span=__builtin_fmax(size.width,size.height);
+        if (span>0) factor=__builtin_fmin(factor,maximumSpan/span);
+        if (factor==1 && originalMode==4) { RestoreDramaActionInk(glyph); return; }
+    }
     if (!stable && originalMode<=2) {
         Size original=((Size(*)(Obj,Sel))Message)(source,sel_registerName("size"));
         Rect bounds=Bounds(glyph);
@@ -2495,7 +2501,7 @@ static void SizeDramaActionImage(Obj glyph,double factor,B stable) {
     V1(glyph,"setImage:",scaled);
 }
 
-static void DramaActionInk(Obj owner,Obj glyph,double factor,B stable) {
+static void DramaActionInk(Obj owner,Obj glyph,double factor,B stable,double maximumSpan) {
     Obj previous=objc_getAssociatedObject(owner,DramaActionGlyphKey);
     if (previous!=glyph) {
         if (previous) objc_setAssociatedObject(previous,DramaActionTrackImageKey,0,1);
@@ -2503,22 +2509,28 @@ static void DramaActionInk(Obj owner,Obj glyph,double factor,B stable) {
         objc_setAssociatedObject(owner,DramaActionGlyphKey,glyph,1);
     }
     if (!glyph) return;
-    if (stable) {
-        Obj tracking=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
-        if (factor==1 && tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,0,1);
-        else if (factor!=1 && !tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,Number(1),1);
-    }
-    SizeDramaActionImage(glyph,factor,stable);
+    Obj tracking=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
+    if (stable && (factor!=1 || maximumSpan>0)) {
+        if (!tracking || Double(At(tracking,0))!=factor || Double(At(tracking,1))!=maximumSpan) {
+            Obj values[]={Number(factor),Number(maximumSpan)};
+            Obj sizing=((Obj(*)(Obj,Sel,Obj *,U))Message)(Lookup("NSArray"),
+                sel_registerName("arrayWithObjects:count:"),values,2);
+            objc_setAssociatedObject(glyph,DramaActionTrackImageKey,sizing,1);
+        }
+    } else if (tracking) objc_setAssociatedObject(glyph,DramaActionTrackImageKey,0,1);
+    SizeDramaActionImage(glyph,factor,stable,maximumSpan);
 }
 
 static void DramaActionImageChanged(Obj glyph,Sel cmd,Obj image) {
     ((void(*)(Obj,Sel,Obj))Original("UIImageView","fqx_originalSetDramaActionImage:"))(glyph,cmd,image);
-    if (!objc_getAssociatedObject(glyph,DramaActionTrackImageKey)) return;
+    Obj sizing=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
+    if (!sizing) return;
     Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
     if (ink && image==At(ink,1)) return;
     // Model refresh and the asynchronous artwork loader can supply new images
     // after layout. Use their own intrinsic point sizes on both entry paths.
-    SizeDramaActionImage(glyph,Enabled() ? DramaActionDiameter178R11()/50 : 1,1);
+    B enabled=Enabled();
+    SizeDramaActionImage(glyph,enabled ? Double(At(sizing,0)) : 1,1,enabled ? Double(At(sizing,1)) : 0);
 }
 
 static void DramaOutlineViewKey(void) {}
@@ -2630,14 +2642,20 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     Obj glyph=Get(owner,selector);
     Obj parent=Enabled() && Kind(glyph,"UIImageView") ? O0(glyph,"superview") : (Obj)0;
     Rect frame=parent ? Frame(glyph) : (Rect){0};
+    B share=glyphSelector==sel_registerName("shareIcon");
+    Obj window=share && parent ? Get(owner,"window") : (Obj)0;
+    double width=window ? Bounds(window).width : 0;
+    B compactShare=width>0 && width<420;
     if (VisibleRect(frame)) V1(DramaActionOwners178R11(),"addObject:",owner);
     B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
     if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
-    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0); RemoveDramaGlass(owner); return 1; }
+    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0,0); RemoveDramaGlass(owner); return 1; }
     if (outline) {
-        DramaActionInk(owner,0,1,0);
-        if (DramaOutlineApply(owner,glyph,parent,frame,selector,BottomValue178(16))) {
+        DramaActionInk(owner,0,1,0,0);
+        double points=BottomValue178(16);
+        if (compactShare) points=__builtin_fmin(points,__builtin_fmin(frame.width,frame.height)*0.70);
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector,points)) {
             RemoveDramaGlass(owner);
             return 1;
         }
@@ -2645,9 +2663,9 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     double diameter=DramaActionDiameter178R11();
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
-    if (!glass) { DramaActionInk(owner,0,1,0); return 0; }
-    B stable=glyphSelector==sel_registerName("starIcon") || glyphSelector==sel_registerName("likeIcon");
-    DramaActionInk(owner,glyph,diameter/50,stable);
+    if (!glass) { DramaActionInk(owner,0,1,0,0); return 0; }
+    B stable=glyphSelector==sel_registerName("starIcon") || glyphSelector==sel_registerName("likeIcon") || compactShare;
+    DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
     B hidden=Flag(glyph,"isHidden");
     if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
     return 1;
@@ -3585,7 +3603,29 @@ static void DramaVisibilityApplySearch(Obj header,B visible) {
     DramaVisibilitySet(Get(search,"searchBgView"),0);
 }
 
-enum { DramaCategoryTagBase=1000 };
+enum { BottomHapticTag=38, DramaWatchTag, DramaRecentTag, DramaFavoritesTag, DramaCategoryTagBase=1000 };
+
+static const char *DramaNamedCategoryTitle(I tag) {
+    switch (tag) {
+        case DramaWatchTag: return "看剧";
+        case DramaRecentTag: return "最近";
+        case DramaFavoritesTag: return "收藏";
+    }
+    return 0;
+}
+static I DramaNamedCategoryTag(Obj title) {
+    for (I tag=DramaWatchTag;tag<=DramaFavoritesTag;++tag)
+        if (Equal(title,DramaNamedCategoryTitle(tag))) return tag;
+    return 0;
+}
+static Obj DramaNamedCategoryPreference(I tag) {
+    switch (tag) {
+        case DramaWatchTag: return Text("FanqieX.DramaWatchTab.1");
+        case DramaRecentTag: return Text("FanqieX.DramaRecentTab.1");
+        case DramaFavoritesTag: return Text("FanqieX.DramaFavoritesTab.1");
+    }
+    return 0;
+}
 
 static Obj DramaCategoryDefaults(void) {
     return O0(Lookup("NSUserDefaults"),"standardUserDefaults");
@@ -3603,6 +3643,11 @@ static U DramaCategoryCount(Obj list) {
     return Kind(list,"NSArray") ? ((U(*)(Obj,Sel))Message)(list,sel_registerName("count")) : 0;
 }
 static B DramaCategoryVisible(Obj model) {
+    I tag=DramaNamedCategoryTag(Get(model,"title"));
+    if (tag) {
+        Obj value=O1(DramaCategoryDefaults(),"objectForKey:",DramaNamedCategoryPreference(tag));
+        if (value) return BoolProp(value,"boolValue");
+    }
     I type=DramaCategoryType(model);
     return type<0 || DefaultEnabled(DramaCategoryPreference(type));
 }
@@ -7705,6 +7750,7 @@ static I BottomCompactPosition(void) {
         Text(BottomCompactPositionKey));
 }
 static Obj BottomPreference178(I tag) {
+    if (tag>=DramaWatchTag && tag<=DramaFavoritesTag) return DramaNamedCategoryPreference(tag);
     if (tag>=DramaCategoryTagBase && tag-DramaCategoryTagBase<=2147483647)
         return DramaCategoryPreference(tag-DramaCategoryTagBase);
     switch (tag) {
@@ -7733,13 +7779,26 @@ static Obj BottomPreference178(I tag) {
         case 35: return Text("FanqieX.LocalRewardTest.1");
         case 36: return Text("FanqieX.ReaderScreenshotQuickShare.1");
         case 37: return Text("FanqieX.DramaFollowBottomWidth.1");
+        case BottomHapticTag: return Text("FanqieX.BottomHaptics.1");
     }
     return 0;
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
+    if (!value && tag>=DramaWatchTag && tag<=DramaFavoritesTag) {
+        Obj rows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
+        for (U i=0,count=DramaCategoryCount(rows);i<count && i<24;++i) {
+            Obj row=At(rows,i);
+            if (!Kind(row,"NSDictionary") ||
+                !Equal(O1(row,"objectForKey:",Text("title")),DramaNamedCategoryTitle(tag))) continue;
+            Obj type=O1(row,"objectForKey:",Text("type"));
+            if (Kind(type,"NSNumber")) value=O1(BottomDefaults178(),"objectForKey:",DramaCategoryPreference((I)Double(type)));
+            break;
+        }
+        if (!value) return 1;
+    }
     return value ? Responds(value,"boolValue") && Flag(value,"boolValue") :
-        (tag>=21 && tag<=29) || tag==36 || tag==37 || tag>=DramaCategoryTagBase;
+        (tag>=21 && tag<=29) || tag==36 || tag==37 || tag==BottomHapticTag || tag>=DramaCategoryTagBase;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
@@ -8771,7 +8830,8 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         if (tag==2 && changed) SettingsUpdateCompactPosition(self);
         if (tag>=21) {
             if (changed) {
-                if (tag<=25 || tag>=DramaCategoryTagBase) DramaVisibilityRefresh();
+                if (tag<=25 || (tag>=DramaWatchTag && tag<=DramaFavoritesTag) || tag>=DramaCategoryTagBase)
+                    DramaVisibilityRefresh();
                 else if (tag<=29) FeatureVisibilityRefresh178R9(tag);
                 else if (tag==30 || tag==33) DramaPureCleanRefresh178R13();
                 else if (tag==34) FQHRefreshMineQuickAppearance178R13();
@@ -9432,6 +9492,7 @@ static void SettingsInstall178R13(Obj controller) {
     Obj group=SettingsGroup178R13(header,"底栏入口");
     for (I option=StoreOption;option<=MallOption;++option)
         SettingsToggle178R13(group,controller,router,option,1,0,0);
+    SettingsToggle178R13(group,controller,router,BottomHapticTag,0,"底栏点击震动",0);
     group=SettingsGroup178R13(header,"短剧播放");
     SettingsToggle178R13(group,controller,router,2,0,"短剧滚动自动收缩",0);
     Obj position=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
@@ -9447,12 +9508,16 @@ static void SettingsInstall178R13(Obj controller) {
     Obj categoryRows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
     U categoryCount=DramaCategoryCount(categoryRows);
     SettingsToggle178R13(group,controller,router,21,0,"显示短剧顶部分类",
-        categoryCount ? 0 : "进入短剧加载分类后，可单独设置每个分类。");
+        0);
+    SettingsToggle178R13(group,controller,router,DramaWatchTag,0,"短剧分类：看剧",0);
+    SettingsToggle178R13(group,controller,router,DramaRecentTag,0,"短剧分类：最近",0);
+    SettingsToggle178R13(group,controller,router,DramaFavoritesTag,0,"短剧分类：收藏",0);
     for (U i=0;i<categoryCount && i<24;++i) {
         Obj row=At(categoryRows,i);
         if (!Kind(row,"NSDictionary")) continue;
         Obj type=O1(row,"objectForKey:",Text("type")),title=O1(row,"objectForKey:",Text("title"));
         if (!Kind(type,"NSNumber") || !Kind(title,"NSString")) continue;
+        if (DramaNamedCategoryTag(title)) continue;
         I code=((I(*)(Obj,Sel))Message)(type,sel_registerName("integerValue"));
         if (code<0 || code>2147483647) continue;
         Obj label=O1(Text("短剧分类："),"stringByAppendingString:",title);

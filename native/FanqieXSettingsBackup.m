@@ -21,6 +21,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomMine.1": @YES,
         @"FanqieX.BottomMall.1": @YES,
         @"FanqieX.BottomIconsOnly.1": @NO,
+        @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
         @"FanqieX.BottomDramaCompactPosition.1": @0,
         @"FanqieX.BottomLengthScale.1": @100,
@@ -30,6 +31,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaActionDiameter.1": @50,
         @"FanqieX.DramaOutlinePointSize.1": @36,
         @"FanqieX.DramaCategories.1": @YES,
+        @"FanqieX.DramaWatchTab.1": @YES,
+        @"FanqieX.DramaRecentTab.1": @YES,
+        @"FanqieX.DramaFavoritesTab.1": @YES,
         @"FanqieX.DramaSearch.1": @YES,
         @"FanqieX.DramaAuthorDeclaration.1": @YES,
         @"FanqieX.DramaOriginalNovel.1": @YES,
@@ -131,6 +135,9 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
 static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     NSDictionary<NSString *, id> *defaults = BuiltInSettings();
     NSMutableDictionary<NSString *, id> *snapshot = [defaults mutableCopy];
+    // Until explicitly set, these switches inherit the existing per-type
+    // setting. Omit the unset overrides so older choices survive export/import.
+    [snapshot removeObjectsForKeys:@[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1"]];
     [storage.dictionaryRepresentation enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
         (void)stop;
         BOOL known;

@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.8R6'
+        run: test "$(cat VERSION)" = '1.8R7'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -67,9 +67,9 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.8R6
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.8R7
       - name: Build FanqieX with integrated export and settings modules
-        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.8R6.dylib --output build/xcode27/integrated
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.8R7.dylib --output build/xcode27/integrated
       - name: Exercise export formats and local chapter sources on real Foundation
         run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Exercise settings backup and video container recognition
