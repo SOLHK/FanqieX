@@ -1523,23 +1523,27 @@ static void ApplyReaderGlassStyle(Obj controller,Obj theme) {
     Q1(controller,"setOverrideUserInterfaceStyle:",wanted);
 }
 
-static void ReaderGlassWillAppear(Obj self,Sel cmd,B animated) {
+static void ReaderPresentationReadyKey(void) {}
+
+static void ReaderGlassDidAppear(Obj self,Sel cmd,B animated) {
+    ((void(*)(Obj,Sel,B))Original("BDReaderViewController","fqx192_originalReaderDidAppear:"))(self,cmd,animated);
+    objc_setAssociatedObject(self,ReaderPresentationReadyKey,self,0);
     ApplyReaderGlassStyle(self,Get(Get(Get(self,"readerModel"),"config"),"themeConfig"));
-    ((void(*)(Obj,Sel,B))Original("BDReaderViewController","fqx192_originalReaderWillAppear:"))(self,cmd,animated);
 }
 
 static void ReaderGlassThemeChanged(Obj self,Sel cmd,Obj theme) {
-    ApplyReaderGlassStyle(self,theme);
     ((void(*)(Obj,Sel,Obj))Original("BDReaderViewController","fqx192_originalReaderTheme:"))(self,cmd,theme);
+    if (objc_getAssociatedObject(self,ReaderPresentationReadyKey)) ApplyReaderGlassStyle(self,theme);
 }
 
 static void ReaderGlassStyleInstall(void) {
     const char *reader="BDReaderViewController";
     if (!FQHGlassAvailable() || !Signature("BDReaderThemeConfig","themeStyle","Q16@0:8") ||
         !Signature(reader,"overrideUserInterfaceStyle","q16@0:8") ||
-        !Signature(reader,"setOverrideUserInterfaceStyle:","v24@0:8q16")) return;
-    Hook("BDReaderViewController","viewWillAppear:","fqx192_originalReaderWillAppear:","v20@0:8B16",(Imp)ReaderGlassWillAppear);
-    Hook("BDReaderViewController","onConfigThemeChange:","fqx192_originalReaderTheme:","v24@0:8@16",(Imp)ReaderGlassThemeChanged);
+        !Signature(reader,"setOverrideUserInterfaceStyle:","v24@0:8q16") ||
+        !Signature(reader,"viewDidAppear:","v20@0:8B16")) return;
+    Hook(reader,"viewDidAppear:","fqx192_originalReaderDidAppear:","v20@0:8B16",(Imp)ReaderGlassDidAppear);
+    Hook(reader,"onConfigThemeChange:","fqx192_originalReaderTheme:","v24@0:8@16",(Imp)ReaderGlassThemeChanged);
 }
 
 static void ReaderShelfWrapperLayout(Obj self,Sel cmd) {
