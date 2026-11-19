@@ -89,7 +89,7 @@ def build_and_sync(data):
                 'Native selection does not compete with the material-lifecycle owner')
         require(not state['momentary'] and not state['apportionsSegmentWidthsByContent'],
                 'Native control retains selection with equal segment widths')
-        if release_version(data) in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7"):
+        if release_version(data) in ('1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8"):
             require('selectedSegmentTintColor' not in state,
                     "The R15 selector preserves UIKit's system selection tint")
         require(selected(rt) == 2 and all(not rt.objects[b].state['hidden'] for b in rt.buttons),

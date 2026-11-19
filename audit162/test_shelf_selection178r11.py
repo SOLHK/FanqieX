@@ -153,7 +153,7 @@ def exercise(data,labels):
         r.objects[cell].state[key]=r.label(key,cell,(0,-8,34,34),"圈子",alignment=0)
         r.objects[r.objects[cell].state[key]].state["transform"]=(1.,0.,0.,1.,0.,0.)
     for i,model in enumerate(models): send(c,r,view,"refreshCellModel:index:",model,i)
-    if release_version(data) in ("1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7"):
+    if release_version(data) in ("1.78R15", "1.78R16", "1.78R17", "1.78R18", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8"):
         collection=r.view("UICollectionView","actual title collection",(0,0,440,34),view)
         r.objects[view].state["collectionView"]=collection
         first=r.view(CELL,"first frame before UIKit layout",(20,0,46,34),collection,cellModel=models[0],layout_passes=0)

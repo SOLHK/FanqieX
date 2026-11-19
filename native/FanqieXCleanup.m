@@ -35,6 +35,10 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DurationLimit, "ReaderAutoReadDurationLimit", "关闭自动阅读广告时长限制", "gestures", NO) \
     X(DramaPinchPureClean, "DramaPinchPureClean", "双指缩放切换纯净清屏", "drama", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
+    X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
+    X(DramaShowComment, "DramaShowComment", "显示评论按钮", "dramaActions", YES) \
+    X(DramaShowLike, "DramaShowLike", "显示点赞按钮", "dramaActions", YES) \
+    X(DramaShowShare, "DramaShowShare", "显示分享按钮", "dramaActions", YES) \
     X(DramaAutoplay, "DramaAutoplay", "关闭短剧进入自动播放", "drama", NO) \
     X(ReaderRatingInvite, "ReaderRatingInvite", "关闭阅读评价邀请", "readerFeatures", NO) \
     X(ExcerptWidgetGuide, "ExcerptWidgetGuide", "隐藏书摘小组件提醒", "readerFeatures", NO) \
@@ -512,6 +516,29 @@ static id CleanupIvarObject(id target, const char *ivarName) {
     return (enc && enc[0] == '@') ? object_getIvar(target, ivar) : nil;
 }
 
+static char MineGlassPreferencesKey;
+static char MineGlassPositionPendingKey;
+static NSArray *MineGlassPreferences(void) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableArray *values = [NSMutableArray array];
+    for (NSString *key in @[@"FanqieAdBlock.GlassDisabled.1", @"FanqieX.BottomIconsOnly.1",
+                            @"FanqieX.BottomLengthScale.1", @"FanqieX.BottomHeightScale.1",
+                            @"FanqieX.BottomButtonWidthScale.1", @"FanqieX.BottomIconPointSize.1",
+                            @"FanqieX.MineQuickIconsOnly.1", MineScanButtonKey, MineSearchBarKey, MineNightButtonKey]) {
+        [values addObject:[defaults objectForKey:key] ?: NSNull.null];
+    }
+    return values;
+}
+
+static void RestoreMinePosition(UIViewController *controller) {
+    UIScrollView *list = HostObject(controller, NSSelectorFromString(@"collectionView"));
+    if (![list isKindOfClass:UIScrollView.class] || list.dragging || list.decelerating) return;
+    [controller.view layoutIfNeeded];
+    CGPoint top = list.contentOffset;
+    top.y = -list.adjustedContentInset.top;
+    if (!CGPointEqualToPoint(list.contentOffset, top)) [list setContentOffset:top animated:NO];
+}
+
 static void (*NativeMineWillAppear)(id, SEL, BOOL);
 static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
     if (NativeMineWillAppear) NativeMineWillAppear(owner, cmd, animated);
@@ -520,6 +547,54 @@ static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
     if ([bar isKindOfClass:UIView.class]) {
         [bar setNeedsLayout];
     }
+    NSArray *current = MineGlassPreferences();
+    NSArray *previous = objc_getAssociatedObject(owner, &MineGlassPreferencesKey);
+    objc_setAssociatedObject(owner, &MineGlassPreferencesKey, current, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (previous && ![previous isEqualToArray:current]) {
+        objc_setAssociatedObject(owner, &MineGlassPositionPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        RestoreMinePosition(owner);
+    }
+}
+
+static void (*NativeMineDidAppear)(id, SEL, BOOL);
+static void MineDidAppear(id owner, SEL cmd, BOOL animated) {
+    NativeMineDidAppear(owner, cmd, animated);
+    if (objc_getAssociatedObject(owner, &MineGlassPositionPendingKey)) {
+        objc_setAssociatedObject(owner, &MineGlassPositionPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        RestoreMinePosition(owner);
+    }
+}
+
+static char DramaActionRequestedHiddenKey;
+static NSMutableDictionary<NSString *, NSHashTable<UIView *> *> *DramaActionOwners;
+
+static void InstallDramaActionVisibility(NSString *className, NSString *key) {
+    Class cls = NSClassFromString(className);
+    SEL hidden = @selector(setHidden:);
+    SEL refresh = NSSelectorFromString(@"refreshSubviews");
+    if (!HostMethod(cls, hidden, "v20@0:8B16") || !HostMethod(cls, refresh, "v16@0:8")) return;
+    if (!DramaActionOwners) DramaActionOwners = [NSMutableDictionary dictionary];
+    NSHashTable<UIView *> *owners = DramaActionOwners[key];
+    if (!owners) DramaActionOwners[key] = owners = [NSHashTable weakObjectsHashTable];
+
+    __block void (*originalHidden)(id, SEL, BOOL);
+    IMP hide = imp_implementationWithBlock(^(UIView *view, BOOL requested) {
+        [owners addObject:view];
+        objc_setAssociatedObject(view, &DramaActionRequestedHiddenKey, @(requested), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        originalHidden(view, hidden, requested || !Option(key, YES));
+    });
+    if (!FQXInstallOwnedHook(cls, hidden, NO, "v20@0:8B16", hide, (IMP *)&originalHidden)) {
+        imp_removeBlock(hide);
+        return;
+    }
+    __block void (*originalRefresh)(id, SEL);
+    IMP refreshView = imp_implementationWithBlock(^(UIView *view) {
+        originalRefresh(view, refresh);
+        NSNumber *requested = objc_getAssociatedObject(view, &DramaActionRequestedHiddenKey);
+        [view setHidden:requested ? requested.boolValue : view.hidden];
+    });
+    if (!FQXInstallOwnedHook(cls, refresh, NO, "v16@0:8", refreshView, (IMP *)&originalRefresh))
+        imp_removeBlock(refreshView);
 }
 
 static void RefreshMineViewsInSubtree(UIView *view) {
@@ -717,6 +792,7 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
             REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
         }
         REPLACE(NativeMineWillAppear, "SSMyUser621ViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
+        REPLACE(NativeMineDidAppear, "SSMyUser621ViewController", "viewDidAppear:", "v20@0:8B16", MineDidAppear);
         REPLACE(NativeAudioLoadUnlimited, "SSNewAudioPlayViewController", "loadUnlimitedRecommend", "v16@0:8", AudioLoadUnlimited);
         REPLACE(NativeAudioPreloadUnlimited, "SSNewAudioPlayViewController", "preLoadAudioPlayUnlimitedRecData", "v16@0:8", AudioPreloadUnlimited);
         REPLACE(NativeAudioLoadRecommendBook, "SSNewAudioPlayViewController", "loadRecommendBook", "v16@0:8", AudioLoadRecommendBook);
@@ -741,6 +817,11 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
         HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
         FQXInstallContentCleanupHooks();
+        InstallDramaActionVisibility(@"SSShortVideoRightInteractionCollectView", DramaShowCollectKey);
+        InstallDramaActionVisibility(@"SSShortVideoRightInteractionCommentView", DramaShowCommentKey);
+        InstallDramaActionVisibility(@"SSShortVideoHostRightInteractionCommentView", DramaShowCommentKey);
+        InstallDramaActionVisibility(@"SSShortVideoRightInteractionLikeView", DramaShowLikeKey);
+        InstallDramaActionVisibility(@"SSShortVideoRightInteractionShareView", DramaShowShareKey);
         FQXInstallMotionAndAudioHooks();
     });
 }
@@ -796,6 +877,9 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         if ([dockMotion respondsToSelector:refreshAudioSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshAudioSel);
         }
+    } else if (DramaActionOwners[key]) {
+        for (UIView *view in DramaActionOwners[key].allObjects)
+            view.hidden = [objc_getAssociatedObject(view, &DramaActionRequestedHiddenKey) boolValue];
     } else if ([key isEqualToString:DramaOutlineActionsKey]) {
         Class style = NSClassFromString(@"FQXDramaActionStyle");
         SEL refresh = NSSelectorFromString(@"refresh");
