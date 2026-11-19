@@ -147,7 +147,7 @@ def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INS
                  "-adhoc_codesign", "-o", binary, *objects]
     if install_name != INSTALL_NAME:
         reserve = output / "unwind-reserve.bin"
-        reserve.write_bytes(bytes(0x4000))
+        reserve.write_bytes(bytes(0x8000))
         arguments.extend(("-headerpad", "0x2000", "-sectcreate", "__TEXT", "__fq_unwind", reserve))
     for name in FRAMEWORKS:
         arguments.extend(("-framework", name))
