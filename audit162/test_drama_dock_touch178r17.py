@@ -86,7 +86,7 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
         send(cpu, runtime, entry, "renderWithModel:", model)
 
     proxy_state = runtime.objects[proxy].state
-    r24 = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12")
+    r24 = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13")
     bar = proxy_state["superview"]
     for dock_x, dock_width, expected_x, expected_width in ((20., 400., 20., 400.),
                                                            (34., 372., 34., 372.),
@@ -181,10 +181,10 @@ def verify(data, labels):
             pan.update({"locationInView:": (48., 2.), "translationInView:": (8., 11.)})
             require(send(cpu, runtime, controls, BEGIN, gesture)["result"] == 1,
                     "A track-origin pan keeps the native delegate after moving down")
-        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12"):
+        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13"):
             verify_alignment(cpu, runtime, labels, controls, kind, proxy)
             cases.append(f"{kind} rail and available episode CTA align to native dock edges")
-        if kind == OUTER and release_version(data) in ("1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12"):
+        if kind == OUTER and release_version(data) in ("1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13"):
             verify_novel_clearance(cpu, runtime, labels, controls, proxy)
             cases.append("Novel CTA and metadata stay above the dock and restore on reuse")
         cases.append(f"{kind} initial dock and track separation")
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     binary = args.candidate.read_bytes()
-    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12") else []
+    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13") else []
     symbols = labels_for(binary, args.candidate.with_suffix(".composed.s"), list(dict.fromkeys(LABELS + EXTRA + extra)))
     report = {"passed": True, "candidate_sha256": hashlib.sha256(binary).hexdigest(),
               "cases": verify(binary, symbols), "device_tested": False}

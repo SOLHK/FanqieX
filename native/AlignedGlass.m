@@ -112,17 +112,16 @@ static B InstanceABI(Obj object,const char *sel,const char *expected) {
 B FQHHostBundle(void) {
     Obj pool=objc_autoreleasePoolPush();
     Obj bundle=O0(Lookup("NSBundle"),"mainBundle");
-    B matches=Equal(O0(bundle,"bundleIdentifier"),"com.dragon.read");
+    B matches=Equal(O0(bundle,"bundleIdentifier"),"com.dragon.read") ||
+        (Lookup("BDReaderViewController") && Lookup("SSTabBarController"));
     objc_autoreleasePoolPop(pool);
     return matches;
 }
 
-// Kept for historical build profiles. Current installers validate each feature.
+// Version-independent host check: never pin CFBundleVersion so all Fanqie versions work.
 B FQHCompatibleHost(void) {
     Obj pool=objc_autoreleasePoolPush();
-    Obj bundle=O0(Lookup("NSBundle"),"mainBundle");
-    B compatible=Equal(O0(bundle,"bundleIdentifier"),"com.dragon.read") &&
-        Equal(O1(bundle,"objectForInfoDictionaryKey:",Text("CFBundleVersion")),"7.4.3.33") &&
+    B compatible=FQHHostBundle() &&
         Signature("SSBookStoreNewViewController","relayout","v16@0:8") &&
         Signature("SSBookStoreNewViewController","searchBgView","@16@0:8");
     objc_autoreleasePoolPop(pool);
