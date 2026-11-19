@@ -244,12 +244,12 @@ def mine_unified_liquid_glass_card(data, labels):
         require(card_state["frame"] == (12., 6., 366., 80.),
                 f"{row_class}: unified card spans white card + page control, got {card_state['frame']}")
         corner = rt.objects[card_state["cornerConfiguration"]]
-        expected_radius = 22 if release_version(data) in ("1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17") else 18
+        expected_radius = 22 if release_version(data) in ("1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18") else 18
         require(corner.state.get("max_radius") == expected_radius and card_state["overrideUserInterfaceStyle"] == 0,
                 f"{row_class}: unified card uses max_radius {expected_radius} and adaptive interface style")
 
         for cell, content, _, _ in items:
-            if release_version(data) in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+            if release_version(data) in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
                 item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
                 expected_item = {
                     "1.8R1": (10., 5., 50., 50.),
@@ -269,6 +269,7 @@ def mine_unified_liquid_glass_card(data, labels):
         "1.8R15": (10., 5., 50., 50.),
         "1.8R16": (10., 5., 50., 50.),
         "1.8R17": (10., 5., 50., 50.),
+        "1.8R18": (10., 5., 50., 50.),
                     "1.79R5": (2., 1., 66., 58.),
                 }.get(release_version(data), (4., 2., 62., 56.))
                 require(item_surface and rt.objects[item_surface].state["frame"] == expected_item,
@@ -312,7 +313,7 @@ def mine_unified_liquid_glass_card(data, labels):
         results[row_class] = {"card_frame": list(card_state["frame"]), "item_count": len(items),
                               "page_control": page_control > 0}
 
-    if release_version(data) in ("1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+    if release_version(data) in ("1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
         # Real 7.4.3 VIP card (SSMyUserCollectionView1Cell with lynxVipView) must never be styled as a shortcut card.
         vip_bg = rt.color("vip.bg")
         vip_row = rt.view("SSMyUserCollectionView1Cell", "Mine VIP card", (16., 120., 408., 72.), rt.ROOT,
@@ -336,7 +337,7 @@ def mine_unified_liquid_glass_card(data, labels):
         require(full_surface and rt.objects[full_surface].state["frame"] == (0., 0., 408., 96.) and
                 not rt.objects[full_row].state["clipsToBounds"],
                 "Full-bounds 7.4.3 shortcut cell unclips row bounds so 18pt liquid glass corners are unclipped")
-        if release_version(data) in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+        if release_version(data) in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
             require(rt.objects[select_dots].state["backgroundColor"] == clear,
                     "1.79R3+ clears full-width bottom page-control strip so outer card bottom is never chopped")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 1
@@ -344,7 +345,7 @@ def mine_unified_liquid_glass_card(data, labels):
         require(not call(cpu, labels, "LFQH_FQHSurface", full_row)["result"] and
                 rt.objects[full_row].state["clipsToBounds"] and
                 rt.objects[func_view].state["backgroundColor"] == func_bg and
-                (release_version(data) not in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17") or rt.objects[select_dots].state["backgroundColor"] == strip_bg),
+                (release_version(data) not in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18") or rt.objects[select_dots].state["backgroundColor"] == strip_bg),
                 "Disabling glass restores 7.4.3 shortcut cell clipsToBounds and funcView background")
         rt.objects[rt.DEFAULTS].state["values"][DISABLED] = 0
         results["host_743_shortcut"] = {"unclipped_active": True, "select_dots": select_dots > 0}
@@ -397,7 +398,7 @@ def main():
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     version = release_version(data)
-    require(version in ("1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"), f"Expected 1.79R1..1.79R4 candidate, got {version}")
+    require(version in ("1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"), f"Expected 1.79R1..1.79R4 candidate, got {version}")
     labels = labels_for(data, args.candidate.with_suffix(".composed.s"), EXTRA)
     report = {
         "passed": True,
@@ -410,7 +411,7 @@ def main():
         "mine_unified_card": mine_unified_liquid_glass_card(data, labels),
         "device_tested": False,
     }
-    if version in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+    if version in ("1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
         report["detail_novel_crossfade"] = detail_novel_crossfade_zero_alpha(data, labels)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

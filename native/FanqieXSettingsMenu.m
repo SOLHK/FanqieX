@@ -201,7 +201,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
-        @"dramaActions":@"短剧/右侧互动按钮"};
+        @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
         @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};
     for (NSDictionary *option in options) {
@@ -232,6 +232,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.DramaPinchHaptic.1":@"双指 双指张开 双指收缩 清屏 震动 振动 触感 反馈 haptic",
             @"FanqieX.DramaDoubleTapComment.1":@"短剧 双击 打开评论区 评论 关闭双击点赞 点赞 手势",
             @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
+            @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
+            @"FanqieX.CommentGlassFrosted.1":@"评论区 液态玻璃 清透液态玻璃 模糊液态玻璃 磨砂 iOS27 短剧评论 小说评论 外观",
             @"FanqieX.CommentActivityBanner.1":@"评论区 活动 活动横幅 激励 创作者计划 段评 顶部 隐藏",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",

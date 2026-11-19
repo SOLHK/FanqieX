@@ -148,7 +148,7 @@ def exercise(data, labels):
     require(len(rt.clean_calls) == 4 and view_state['hostPlaybackCallbacks'] == 13,
             'Pause switch off leaves the clean state and all original callbacks intact')
     results = {'real_play_pause_callbacks': True, 'defaults_and_manual_exit': True, 'scoped_to_active_portrait_feed': True}
-    if release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+    if release_version(data) in ('1.78R12', '1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
         container = rt.view('UIView', 'native exit circle', (370., 765., 36., 36.), view, hidden=False)
         icon = rt.view('UIImageView', 'native exit gesture target', (6., 6., 24., 24.), container, hidden=False)
         view_state.update({EXIT_ICON: icon, RIGHT_CONTROLS: container, 'listVCConfig': config,
@@ -164,7 +164,7 @@ def exercise(data, labels):
         send(cpu, rt, view, EXIT_ICON)
         require(not rt.objects[icon].state['hidden'], 'An unrelated feed keeps its native exit')
         results['portrait_clean_exit_hidden'] = True
-    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+    if release_version(data) in ('1.78R13', '1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
         rt.objects[config].state['feedType'] = 4
         view_state.update(userInteractionEnabled=True)
         rail = rt.view('UIView', 'native seek rail', (0., 835., 440., 26.), view, window=screen)
@@ -186,7 +186,7 @@ def exercise(data, labels):
         require(prefs.get(PURE) is True and all(rt.objects[child].state['hidden'] for child in chrome) and
                 rt.objects[mini].state['superview'] == dock and view_state['userInteractionEnabled'] and not view_state['hidden'],
                 'Enabling pure clean during native clean hides the exact chrome while preserving its hierarchy and canvas input')
-        if release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17"):
+        if release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18"):
             prefs[REVEAL] = True
             rt.objects[status].state['isCleanMode'] = False
             rt.objects[player].state['playbackState'] = 2
