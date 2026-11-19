@@ -596,7 +596,7 @@ def exercise(data, labels, kind):
         call(c,r,tab,DOUBLE_ROW_SCROLL,scroll)
     else:
         call(c,r,owner,layout)
-    if shelf and release_version(data) in ('1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7', '1.8R8'):
+    if shelf and release_version(data) in ('1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7', '1.8R8', '1.8R9'):
         refresh = r.view(REFRESH_HEADER, 'native refresh', (0, -54, 440, 54), scroll, refresh_state=1)
         animation = r.view('UIView', 'native refresh artwork', (199, 8, 42, 36), refresh)
         r.objects[refresh].state['animationView'] = animation
@@ -794,7 +794,7 @@ def exercise(data, labels, kind):
 
 
 def exercise_history_selection(c, r, owner, tab, tabs, horizontal, viewport, scroll, stock_frame, stock_inset):
-    stock_shelf = release_version(r.data) in ('1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7', '1.8R8')
+    stock_shelf = release_version(r.data) in ('1.8R3', '1.8R4', '1.8R5', '1.8R6', '1.8R7', '1.8R8', '1.8R9')
     r.objects[r.DEFAULTS].state['values']['FanqieAdBlock.GlassDisabled.1'] = 0
     boundary = stock_frame[1]
     history_page = r.view('UIView', 'history page', (0, 0, 440, stock_frame[3]), horizontal)
@@ -830,7 +830,7 @@ def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
     owner_state.update(nativeCategoryTabs=pages, tabVCs=r.obj('NSArray', 'shelf pages', items=pages))
     history_state = r.objects[history].state
     history_state['filterSelection'] = 'listening history'
-    if release_version(c.data) in ('1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8"):
+    if release_version(c.data) in ('1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9"):
         r.objects[tabs].state['delegate'] = owner
         for index, source, expected_animation in ((1, 1, 0), (0, 1, 1), (2, 1, 1), (1, 2, 1), (1, 3, 1)):
             require(call(c, r, tabs, TITLE_SELECTION, index, source, 1)['result'] == 1 and
@@ -873,7 +873,7 @@ def exercise_history_pager(c, r, owner, tabs, horizontal, viewport):
     require(scroll['contentOffset'] == (440, 0),
             'The settled viewport aligns to History even with a fractional offset from a full page')
 
-    if release_version(c.data) in ('1.78R19', '1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8"):
+    if release_version(c.data) in ('1.78R19', '1.78R20', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9"):
         owner_state.update(currentTabIndex=2, currentTabVC=collect)
         pager['currentIndex'] = 2
         scroll.update(contentOffset=(880, 0), isScrollAnimating=True)

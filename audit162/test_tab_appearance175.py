@@ -96,7 +96,7 @@ def exercise(data, labels, slide):
             'A black drama page makes the real mounted glass dark in a light system')
     effect = runtime.objects[runtime.PROXY].state['effect']
     control = runtime.control()
-    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8")
+    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9")
     input_surface = runtime.associated(runtime.PROXY, 'overlay') if drag_selection else control
     require(effect and input_surface and runtime.objects[effect].state['style'] == 0,
             'Dark appearance retains Regular glass and the active input surface')

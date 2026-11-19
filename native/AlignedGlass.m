@@ -3998,7 +3998,7 @@ static void DramaVisibilitySearchBarAlpha(Obj self,Sel cmd,double alpha) {
 
 static void DramaVisibilitySearchIcon(Obj self,Sel cmd,B visible,double top) {
     ((void(*)(Obj,Sel,B,double))Original("SSVideoSeriesFeedHeaderView","fqx_originalDramaSearchIcon:top:"))(
-        self,cmd,visible,top);
+        self,cmd,visible && DefaultEnabled(Text("FanqieX.DramaSearch.1")),top);
     DramaVisibilityKeepSearchHidden(self);
 }
 
@@ -4044,7 +4044,8 @@ static void DramaVisibilityHeaderTabs(Obj self,Sel cmd,Size size) {
 
 static void DramaHeaderTabGeometry(Obj self,Sel cmd,double desired,double base,B reserve) {
     ((void(*)(Obj,Sel,double,double,B))Original("SSVideoSeriesFeedHeaderView",
-        "fqx_originalDramaHeaderTabGeometry:base:reserve:"))(self,cmd,desired,base,reserve);
+        "fqx_originalDramaHeaderTabGeometry:base:reserve:"))(
+        self,cmd,desired,base,reserve && DefaultEnabled(Text("FanqieX.DramaSearch.1")));
     DramaVisibilityApplyHeader(self);
 }
 
@@ -9524,7 +9525,7 @@ static void SettingsInstall178R13(Obj controller) {
         const char *name=((const char *(*)(Obj,Sel))Message)(label,sel_registerName("UTF8String"));
         if (name) SettingsToggle178R13(group,controller,router,DramaCategoryTagBase+code,0,name,0);
     }
-    SettingsToggle178R13(group,controller,router,22,0,"显示短剧搜索按钮",0);
+    SettingsToggle178R13(group,controller,router,22,0,"显示短剧右上角搜索按钮",0);
     SettingsToggle178R13(group,controller,router,23,0,"显示作者声明",0);
     SettingsToggle178R13(group,controller,router,24,0,"显示阅读原著",0);
     SettingsToggle178R13(group,controller,router,25,0,"显示小说兴趣推荐",0);
