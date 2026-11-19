@@ -13,6 +13,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ChapterGift, "ReaderChapterGift", "显示章末送礼物", "reader", YES) \
     X(ChapterEndActions, "ReaderChapterEndActions", "显示最新章节底部三个按钮", "reader", YES) \
     X(ReaderComments, "ReaderComments", "显示章末开启评论", "reader", YES) \
+    X(CommentActivityBanner, "CommentActivityBanner", "显示评论区活动横幅", "reader", YES) \
     X(ReaderEarnMore, "ReaderEarnMore", "显示阅读页去赚更多", "reader", YES) \
     X(SpeechFloat, "ReaderSpeechFloat", "显示阅读页听书悬浮按钮", "reader", YES) \
     X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
@@ -36,6 +37,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaPinchPureClean, "DramaPinchPureClean", "双指缩放切换纯净清屏", "drama", NO) \
     X(DramaPinchHaptic, "DramaPinchHaptic", "双指缩放清屏震动反馈", "drama", YES) \
     X(DramaDoubleTapComment, "DramaDoubleTapComment", "双击打开评论区（关闭双击点赞）", "drama", NO) \
+    X(DramaCommentNoVideoShift, "DramaCommentNoVideoShift", "打开评论区短剧画面不上移", "drama", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
     X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
     X(DramaShowComment, "DramaShowComment", "显示评论按钮", "dramaActions", YES) \

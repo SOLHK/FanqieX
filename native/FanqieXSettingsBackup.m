@@ -46,6 +46,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaPinchPureClean.1": @NO,
         @"FanqieX.DramaPinchHaptic.1": @YES,
         @"FanqieX.DramaDoubleTapComment.1": @NO,
+        @"FanqieX.DramaCommentNoVideoShift.1": @NO,
+        @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.DramaFollowBottomWidth.1": @YES,
         @"FanqieX.FullscreenFill.1": @NO,
         @"FanqieX.MineBenefitsCard.1": @YES,

@@ -213,7 +213,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         row.inverted = [@[@"reader", @"mine", @"shelf"] containsObject:option[@"category"]];
         row.title = row.inverted ? [option[@"title"] stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"] : option[@"title"];
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
-        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1", @"FanqieX.CommentActivityBanner.1"] containsObject:option[@"key"]])
             row.path = @"阅读/阅读页面净化/正文与底栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.AudioRecommendations.1"])
             row.path = @"阅读/听书页面净化";
@@ -231,6 +231,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.DramaPinchPureClean.1":@"双指 双指张开 双指收缩 双指捏合 双指缩放 自动清屏 纯净清屏 手势 tiktok 抖音",
             @"FanqieX.DramaPinchHaptic.1":@"双指 双指张开 双指收缩 清屏 震动 振动 触感 反馈 haptic",
             @"FanqieX.DramaDoubleTapComment.1":@"短剧 双击 打开评论区 评论 关闭双击点赞 点赞 手势",
+            @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
+            @"FanqieX.CommentActivityBanner.1":@"评论区 活动 活动横幅 激励 创作者计划 段评 顶部 隐藏",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 语速 下载 章评 目录 定时",
