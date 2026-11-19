@@ -34,6 +34,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
     X(DurationLimit, "ReaderAutoReadDurationLimit", "关闭自动阅读广告时长限制", "gestures", NO) \
     X(DramaPinchPureClean, "DramaPinchPureClean", "双指缩放切换纯净清屏", "drama", NO) \
+    X(DramaPinchHaptic, "DramaPinchHaptic", "双指缩放清屏震动反馈", "drama", YES) \
     X(DramaDoubleTapComment, "DramaDoubleTapComment", "双击打开评论区（关闭双击点赞）", "drama", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
     X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
@@ -765,6 +766,7 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "enable", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "recommend_feed_enabled", ShelfRecommendations);
         SHOW_RULE("SSMyUser621BaseViewController", "showShortcut", MineShortcutCard);
+        SHOW_RULE("SSMyUser621ViewController", "shouldInsertUnlimited", MineRecommendations);
         SHOW_RULE("SSNewAudioPlayViewController", "isUnlimitedRecommendNotEmpty", AudioRecommendations);
         SHOW_RULE("SSNewAudioPlayViewController", "shouldShowSlideGuide", AudioRecommendations);
         SHOW_RULE("SSNewAudioPlayViewController", "canReportRecommendItems", AudioRecommendations);

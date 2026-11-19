@@ -229,6 +229,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.MineNightButton.1":@"夜间 月亮 深色模式 日夜间 我的顶部 右上角 移除",
             @"FanqieX.MineShortcutCard.1":@"快捷功能 订单 历史 消息 创作 签到 快捷入口 卡片 移除",
             @"FanqieX.DramaPinchPureClean.1":@"双指 双指张开 双指收缩 双指捏合 双指缩放 自动清屏 纯净清屏 手势 tiktok 抖音",
+            @"FanqieX.DramaPinchHaptic.1":@"双指 双指张开 双指收缩 清屏 震动 振动 触感 反馈 haptic",
             @"FanqieX.DramaDoubleTapComment.1":@"短剧 双击 打开评论区 评论 关闭双击点赞 点赞 手势",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",

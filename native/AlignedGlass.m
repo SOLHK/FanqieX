@@ -3606,19 +3606,21 @@ static void DramaVisibilityApplySearch(Obj header,B visible) {
     DramaVisibilitySet(Get(search,"searchBgView"),0);
 }
 
-enum { BottomHapticTag=38, DramaWatchTag, DramaRecentTag, DramaFavoritesTag, DramaCategoryTagBase=1000 };
+enum { BottomHapticTag=38, DramaWatchTag, DramaRecentTag, DramaFavoritesTag, DramaComicTag, DramaCategoryTagBase=1000 };
 
 static const char *DramaNamedCategoryTitle(I tag) {
     switch (tag) {
         case DramaWatchTag: return "看剧";
         case DramaRecentTag: return "最近";
         case DramaFavoritesTag: return "收藏";
+        case DramaComicTag: return "漫剧";
     }
     return 0;
 }
 static I DramaNamedCategoryTag(Obj title) {
-    for (I tag=DramaWatchTag;tag<=DramaFavoritesTag;++tag)
+    for (I tag=DramaWatchTag;tag<=DramaComicTag;++tag)
         if (Equal(title,DramaNamedCategoryTitle(tag))) return tag;
+    if (Equal(title,"动态漫")) return DramaComicTag;
     return 0;
 }
 static Obj DramaNamedCategoryPreference(I tag) {
@@ -3626,6 +3628,7 @@ static Obj DramaNamedCategoryPreference(I tag) {
         case DramaWatchTag: return Text("FanqieX.DramaWatchTab.1");
         case DramaRecentTag: return Text("FanqieX.DramaRecentTab.1");
         case DramaFavoritesTag: return Text("FanqieX.DramaFavoritesTab.1");
+        case DramaComicTag: return Text("FanqieX.DramaComicTab.1");
     }
     return 0;
 }
@@ -3646,13 +3649,35 @@ static U DramaCategoryCount(Obj list) {
     return Kind(list,"NSArray") ? ((U(*)(Obj,Sel))Message)(list,sel_registerName("count")) : 0;
 }
 static B DramaCategoryVisible(Obj model) {
-    I tag=DramaNamedCategoryTag(Get(model,"title"));
+    Obj title=Get(model,"title");
+    I tag=DramaNamedCategoryTag(title);
     if (tag) {
         Obj value=O1(DramaCategoryDefaults(),"objectForKey:",DramaNamedCategoryPreference(tag));
         if (value) return BoolProp(value,"boolValue");
     }
     I type=DramaCategoryType(model);
-    return type<0 || DefaultEnabled(DramaCategoryPreference(type));
+    if (type>=0) {
+        Obj value=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryPreference(type));
+        if (value) return BoolProp(value,"boolValue");
+    }
+    if (Kind(title,"NSString")) {
+        Obj rows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
+        for (U i=0,count=DramaCategoryCount(rows);i<count && i<24;++i) {
+            Obj row=At(rows,i);
+            if (!Kind(row,"NSDictionary")) continue;
+            Obj rowTitle=O1(row,"objectForKey:",Text("title"));
+            B match=Kind(rowTitle,"NSString") &&
+                (((B(*)(Obj,Sel,Obj))Message)(rowTitle,sel_registerName("isEqualToString:"),title) ||
+                 (tag && DramaNamedCategoryTag(rowTitle)==tag));
+            if (!match) continue;
+            Obj storedType=O1(row,"objectForKey:",Text("type"));
+            if (Kind(storedType,"NSNumber")) {
+                Obj storedVal=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryPreference((I)Double(storedType)));
+                if (storedVal) return BoolProp(storedVal,"boolValue");
+            }
+        }
+    }
+    return 1;
 }
 static B DramaCategoryMaster(void) {
     return DefaultEnabled(Text("FanqieX.DramaCategories.1"));
@@ -7754,7 +7779,7 @@ static I BottomCompactPosition(void) {
         Text(BottomCompactPositionKey));
 }
 static Obj BottomPreference178(I tag) {
-    if (tag>=DramaWatchTag && tag<=DramaFavoritesTag) return DramaNamedCategoryPreference(tag);
+    if (tag>=DramaWatchTag && tag<=DramaComicTag) return DramaNamedCategoryPreference(tag);
     if (tag>=DramaCategoryTagBase && tag-DramaCategoryTagBase<=2147483647)
         return DramaCategoryPreference(tag-DramaCategoryTagBase);
     switch (tag) {
@@ -7789,12 +7814,12 @@ static Obj BottomPreference178(I tag) {
 }
 static B BottomFlag178(I tag) {
     Obj value=O1(BottomDefaults178(),"objectForKey:",BottomPreference178(tag));
-    if (!value && tag>=DramaWatchTag && tag<=DramaFavoritesTag) {
+    if (!value && tag>=DramaWatchTag && tag<=DramaComicTag) {
         Obj rows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
         for (U i=0,count=DramaCategoryCount(rows);i<count && i<24;++i) {
             Obj row=At(rows,i);
             if (!Kind(row,"NSDictionary") ||
-                !Equal(O1(row,"objectForKey:",Text("title")),DramaNamedCategoryTitle(tag))) continue;
+                DramaNamedCategoryTag(O1(row,"objectForKey:",Text("title")))!=tag) continue;
             Obj type=O1(row,"objectForKey:",Text("type"));
             if (Kind(type,"NSNumber")) value=O1(BottomDefaults178(),"objectForKey:",DramaCategoryPreference((I)Double(type)));
             break;
@@ -8833,8 +8858,18 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
         if (tag==2 && changed) SettingsUpdateCompactPosition(self);
         if (tag>=21) {
+            if (tag>=DramaWatchTag && tag<=DramaComicTag) {
+                Obj rows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
+                for (U i=0,count=DramaCategoryCount(rows);i<count && i<24;++i) {
+                    Obj row=At(rows,i);
+                    if (!Kind(row,"NSDictionary") ||
+                        DramaNamedCategoryTag(O1(row,"objectForKey:",Text("title")))!=tag) continue;
+                    Obj type=O1(row,"objectForKey:",Text("type"));
+                    if (Kind(type,"NSNumber")) SetDefault(DramaCategoryPreference((I)Double(type)),value);
+                }
+            }
             if (changed) {
-                if (tag<=25 || (tag>=DramaWatchTag && tag<=DramaFavoritesTag) || tag>=DramaCategoryTagBase)
+                if (tag<=25 || (tag>=DramaWatchTag && tag<=DramaComicTag) || tag>=DramaCategoryTagBase)
                     DramaVisibilityRefresh();
                 else if (tag<=29) FeatureVisibilityRefresh178R9(tag);
                 else if (tag==30 || tag==33) DramaPureCleanRefresh178R13();
@@ -9517,6 +9552,7 @@ static void SettingsInstall178R13(Obj controller) {
     SettingsToggle178R13(group,controller,router,DramaWatchTag,0,"短剧分类：看剧",0);
     SettingsToggle178R13(group,controller,router,DramaRecentTag,0,"短剧分类：最近",0);
     SettingsToggle178R13(group,controller,router,DramaFavoritesTag,0,"短剧分类：收藏",0);
+    SettingsToggle178R13(group,controller,router,DramaComicTag,0,"短剧分类：漫剧",0);
     for (U i=0;i<categoryCount && i<24;++i) {
         Obj row=At(categoryRows,i);
         if (!Kind(row,"NSDictionary")) continue;

@@ -34,6 +34,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaWatchTab.1": @YES,
         @"FanqieX.DramaRecentTab.1": @YES,
         @"FanqieX.DramaFavoritesTab.1": @YES,
+        @"FanqieX.DramaComicTab.1": @YES,
         @"FanqieX.DramaSearch.1": @YES,
         @"FanqieX.DramaAuthorDeclaration.1": @YES,
         @"FanqieX.DramaOriginalNovel.1": @YES,
@@ -43,6 +44,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaHighestQuality.1": @NO,
         @"FanqieX.DramaPureClean.1": @NO,
         @"FanqieX.DramaPinchPureClean.1": @NO,
+        @"FanqieX.DramaPinchHaptic.1": @YES,
         @"FanqieX.DramaDoubleTapComment.1": @NO,
         @"FanqieX.DramaFollowBottomWidth.1": @YES,
         @"FanqieX.FullscreenFill.1": @NO,
@@ -139,7 +141,7 @@ static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     NSMutableDictionary<NSString *, id> *snapshot = [defaults mutableCopy];
     // Until explicitly set, these switches inherit the existing per-type
     // setting. Omit the unset overrides so older choices survive export/import.
-    [snapshot removeObjectsForKeys:@[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1"]];
+    [snapshot removeObjectsForKeys:@[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"]];
     [storage.dictionaryRepresentation enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
         (void)stop;
         BOOL known;
