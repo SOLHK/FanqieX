@@ -39,11 +39,14 @@ static const void *DramaCanvasStockKey = &DramaCanvasStockKey;
 static const void *DramaCanvasAppliedKey = &DramaCanvasAppliedKey;
 static const void *CommentSearchGlassKey = &CommentSearchGlassKey;
 static const void *ExpandedInputSavedClipsKey = &ExpandedInputSavedClipsKey;
+static const void *FQXDoubleTapCommentGestureKey = &FQXDoubleTapCommentGestureKey;
+static const void *AudioToneStockInsetKey = &AudioToneStockInsetKey;
 
 static NSString *const DockContentAnimation = @"FanqieX.dock.content";
 static NSString *const GlassDisabledPrefKey = @"FanqieAdBlock.GlassDisabled.1";
 static NSString *const HighestQualityPrefKey = @"FanqieX.DramaHighestQuality.1";
 static NSString *const PinchPureCleanPrefKey = @"FanqieX.DramaPinchPureClean.1";
+static NSString *const DoubleTapCommentPrefKey = @"FanqieX.DramaDoubleTapComment.1";
 static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
 static NSString *const AudioIconsOnlyPrefKey = @"FanqieX.AudioControlIconsOnly.1";
 static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
@@ -124,6 +127,14 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     surface.backgroundColor = UIColor.clearColor;
     surface.contentView.backgroundColor = UIColor.clearColor;
     return surface;
+}
+
+static id FQXRawIvarObj(id target, const char *ivarName) {
+    if (!target || !ivarName) return nil;
+    Ivar ivar = class_getInstanceVariable(object_getClass(target), ivarName);
+    if (!ivar) return nil;
+    const char *enc = ivar_getTypeEncoding(ivar);
+    return (enc && enc[0] == '@') ? object_getIvar(target, ivar) : nil;
 }
 
 static id FQXObjGet(id target, const char *name) {
@@ -1739,10 +1750,101 @@ static void HookVPlayerUpdateControlState(UIView *self, SEL _cmd) {
     }
 }
 
+static BOOL FQXDoubleTapCommentEnabled(void) {
+    return [NSUserDefaults.standardUserDefaults boolForKey:DoubleTapCommentPrefKey];
+}
+
+static UIView *FQXFindDramaCommentView(UIView *root, NSInteger depth) {
+    if (![root isKindOfClass:UIView.class] || depth > 8) return nil;
+    Class c1 = NSClassFromString(@"SSShortVideoRightInteractionCommentView");
+    Class c2 = NSClassFromString(@"SSShortVideoHostRightInteractionCommentView");
+    if ((c1 && [root isKindOfClass:c1]) || (c2 && [root isKindOfClass:c2])) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *found = FQXFindDramaCommentView(sub, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static BOOL FQXTriggerDramaCommentFromControl(UIView *control) {
+    if (![control isKindOfClass:UIView.class]) return NO;
+    UIView *commentView = FQXFindDramaCommentView(control, 0);
+    if (!commentView) {
+        Class cellCls = NSClassFromString(@"FQVShortVideoPlayerCellView");
+        for (UIView *cur = control.superview; cur; cur = cur.superview) {
+            if ((cellCls && [cur isKindOfClass:cellCls]) || [cur isKindOfClass:UICollectionViewCell.class]) {
+                commentView = FQXFindDramaCommentView(cur, 0);
+                break;
+            }
+        }
+    }
+    if (!commentView) return NO;
+    SEL sel = NSSelectorFromString(@"commentViewDidClicked");
+    Method m = class_getInstanceMethod(object_getClass(commentView), sel);
+    if (!m || strcmp(method_getTypeEncoding(m), "v16@0:8") != 0) return NO;
+    ((void (*)(id, SEL))objc_msgSend)(commentView, sel);
+    return YES;
+}
+
+@interface FQXDramaDoubleTapHandler : NSObject <UIGestureRecognizerDelegate>
++ (instancetype)shared;
+- (void)handleOuterDoubleTap:(UITapGestureRecognizer *)gesture;
+@end
+
+@implementation FQXDramaDoubleTapHandler
++ (instancetype)shared {
+    static FQXDramaDoubleTapHandler *inst;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ inst = [[FQXDramaDoubleTapHandler alloc] init]; });
+    return inst;
+}
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    return FQXDoubleTapCommentEnabled() && gestureRecognizer.view.window != nil;
+}
+- (void)handleOuterDoubleTap:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateEnded || !FQXDoubleTapCommentEnabled()) return;
+    FQXTriggerDramaCommentFromControl(gesture.view);
+}
+@end
+
+static void FQXSyncOuterDoubleTapComment(UIView *outer) {
+    if (![outer isKindOfClass:UIView.class]) return;
+    UITapGestureRecognizer *dt = objc_getAssociatedObject(outer, FQXDoubleTapCommentGestureKey);
+    BOOL enabled = FQXDoubleTapCommentEnabled();
+    if (!enabled) {
+        if (dt) dt.enabled = NO;
+        return;
+    }
+    if (!dt || dt.view != outer) {
+        dt = [[UITapGestureRecognizer alloc] initWithTarget:[FQXDramaDoubleTapHandler shared]
+                                                     action:@selector(handleOuterDoubleTap:)];
+        dt.numberOfTapsRequired = 2;
+        dt.cancelsTouchesInView = YES;
+        dt.delegate = [FQXDramaDoubleTapHandler shared];
+        [outer addGestureRecognizer:dt];
+        objc_setAssociatedObject(outer, FQXDoubleTapCommentGestureKey, dt, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    dt.enabled = YES;
+    UIGestureRecognizer *single = FQXRawIvarObj(outer, "_playPauseTapGesture");
+    if ([single isKindOfClass:UIGestureRecognizer.class] && single != dt) {
+        [single requireGestureRecognizerToFail:dt];
+    }
+}
+
+static void (*OrigVPlayerDoubleTap)(id, SEL, id);
+static void HookVPlayerDoubleTap(UIView *self, SEL cmd, id gesture) {
+    if (FQXDoubleTapCommentEnabled()) {
+        FQXTriggerDramaCommentFromControl(self);
+        return;
+    }
+    if (OrigVPlayerDoubleTap) OrigVPlayerDoubleTap(self, cmd, gesture);
+}
+
 static void (*OrigOuterControlLayout)(id, SEL);
 static void HookOuterControlLayout(UIView *self, SEL _cmd) {
     if (OrigOuterControlLayout) OrigOuterControlLayout(self, _cmd);
     FQXAttachDramaPinchIfNeeded(self);
+    FQXSyncOuterDoubleTapComment(self);
     if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
         FQXApplyPinchPureCleanState(self, YES);
     }
@@ -2039,13 +2141,16 @@ static BOOL FQXCommentViewIsDark(UIView *view) {
     return view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
 }
 
-static UIColor *FQXUnifiedCommentGlassTint(BOOL composer) {
-    CGFloat lightAlpha = composer ? 0.16 : 0.22;
-    CGFloat darkAlpha = composer ? 0.22 : 0.26;
+static UIColor *FQXUnifiedCommentGlassTint(BOOL nestedPill) {
+    // Bright luminous frosted-white Liquid Glass in light mode (zero muddy gray over dark videos
+    // or dimmed reader pages) and clean dark glass in dark mode. Nested floating controls use a
+    // subtle same-hue interactive layer so the entire comment screen shares one harmonious tone.
+    CGFloat lightAlpha = nestedPill ? 0.22 : 0.66;
+    CGFloat darkAlpha = nestedPill ? 0.26 : 0.60;
     return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
         return traits.userInterfaceStyle == UIUserInterfaceStyleDark
-            ? [UIColor colorWithWhite:0.13 alpha:darkAlpha]
-            : [UIColor colorWithWhite:0.96 alpha:lightAlpha];
+            ? [UIColor colorWithWhite:nestedPill ? 0.20 : 0.15 alpha:darkAlpha]
+            : [UIColor colorWithWhite:1.0 alpha:lightAlpha];
     }];
 }
 
@@ -2083,7 +2188,7 @@ static void FQXNeutralizeStrayBarGlass(UIView *view, UIVisualEffectView *keepGla
     }
 }
 
-static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat radius, BOOL dark) {
+static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat radius, BOOL dark, BOOL nestedPill) {
     UIVisualEffectView *glass = objc_getAssociatedObject(host, DramaComposerGlassKey);
     BOOL active = host.window && FQXGlassEnabled() &&
                   CGRectGetWidth(frame) >= 44.0 && CGRectGetHeight(frame) >= 30.0;
@@ -2093,7 +2198,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
         return NO;
     }
     if (!glass) {
-        glass = FQXNewGlassViewFull(0, NO, radius, YES, FQXUnifiedCommentGlassTint(YES));
+        glass = FQXNewGlassViewFull(0, nestedPill, radius, YES, FQXUnifiedCommentGlassTint(nestedPill));
         objc_setAssociatedObject(host, DramaComposerGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (!glass) return NO;
@@ -2145,12 +2250,17 @@ static void FQXStyleCommentBar(UIView *toolbar) {
     [FQXTrackedCommentBars() addObject:toolbar];
     UIView *text = FQXObjGet(toolbar, "textView");
     UIView *placeholder = FQXObjGet(toolbar, "placeholderLabel");
+    UIView *contentLabel = FQXRawIvarObj(toolbar, "_contentLabel");
     UIView *image = FQXObjGet(toolbar, "addImageBtn") ?: FQXObjGet(toolbar, "textViewAddImageBtn");
     UIView *emoji = FQXObjGet(toolbar, "textViewEmojiBtn") ?: FQXObjGet(toolbar, "emojiBtn");
     UIView *aigc = FQXObjGet(toolbar, "textViewAIGCImageBtn");
     CGRect row = CGRectNull;
-    for (UIView *view in @[placeholder ?: text ?: toolbar, image ?: toolbar, emoji ?: toolbar, aigc ?: toolbar]) {
-        if (view != toolbar && [view isDescendantOfView:toolbar] && !view.hidden)
+    for (UIView *view in @[placeholder ?: contentLabel ?: text ?: toolbar,
+                           contentLabel ?: toolbar,
+                           image ?: toolbar,
+                           emoji ?: toolbar,
+                           aigc ?: toolbar]) {
+        if (view != toolbar && [view isDescendantOfView:toolbar] && !view.hidden && CGRectGetHeight(view.bounds) > 1.0)
             row = CGRectUnion(row, [view convertRect:view.bounds toView:toolbar]);
     }
     CGRect frame = CGRectZero;
@@ -2161,17 +2271,15 @@ static void FQXStyleCommentBar(UIView *toolbar) {
                        CGRectGetWidth(toolbar.bounds) - 20.0, height));
     }
     BOOL dark = FQXCommentViewIsDark(toolbar);
-    BOOL styled = FQXPlaceCommentComposerGlass(toolbar, frame, 24.0, dark);
+    BOOL styled = FQXPlaceCommentComposerGlass(toolbar, frame, 24.0, dark, YES);
     CGPoint position = FQXAudioStockCenter(toolbar);
     position.y -= 16.0;
     FQXAudioPlaceView(toolbar, position, styled);
     FQXAudioClearBackground(toolbar, styled);
     UIView *bg = FQXObjGet(toolbar, "bgView");
     FQXAudioClearBackground(bg, styled);
-    if (bg) {
-        FQXAudioSetHiddenTracked(bg, styled && bg != text && bg != image && bg != emoji && bg != placeholder &&
-                                 ![text isDescendantOfView:bg] && ![image isDescendantOfView:bg] &&
-                                 ![emoji isDescendantOfView:bg] && ![placeholder isDescendantOfView:bg]);
+    if (styled && bg && bg.layer.borderWidth > 0.0) {
+        bg.layer.borderWidth = 0.0;
     }
     FQXAudioClearBackground(text, styled);
     if (styled && text) {
@@ -2212,6 +2320,13 @@ static void (*OrigDramaCommentBarLayout)(id, SEL);
 static void HookDramaCommentBarLayout(UIView *toolbar, SEL cmd) {
     OrigDramaCommentBarLayout(toolbar, cmd);
     FQXStyleCommentBar(toolbar);
+}
+
+static void (*OrigBottomBarPluginDidLayoutEnd)(id, SEL);
+static void HookBottomBarPluginDidLayoutEnd(id plugin, SEL cmd) {
+    OrigBottomBarPluginDidLayoutEnd(plugin, cmd);
+    UIView *bar = FQXRawIvarObj(plugin, "_bottomToolBar");
+    if (bar) FQXStyleCommentBar(bar);
 }
 
 static void (*OrigDramaCommentBarTheme)(id, SEL, BOOL);
@@ -2406,15 +2521,15 @@ static void FQXStyleDramaPanel(UIViewController *controller) {
     FQXClearCommentCollection(FQXObjGet(titles, "collectionView"), glass);
     FQXClearCommentSurface(lists, glass);
     FQXClearCommentCollection(FQXObjGet(lists, "contentScrollView"), glass);
-    UIViewController *videoVC = FQXObjGet(controller, "videoCommentVC");
+    UIViewController *videoVC = FQXRawIvarObj(controller, "_videoCommentVC");
     if ([videoVC isKindOfClass:UIViewController.class] && videoVC.isViewLoaded) {
         FQXStyleDramaCommentList(videoVC);
     }
-    UIViewController *kmpVideoVC = FQXObjGet(controller, "kmpVideoCommentVC");
+    UIViewController *kmpVideoVC = FQXRawIvarObj(controller, "_kmpVideoCommentVC");
     if ([kmpVideoVC isKindOfClass:UIViewController.class] && kmpVideoVC.isViewLoaded) {
         FQXStyleDramaCommentList(kmpVideoVC);
     }
-    UIViewController *seriesVC = FQXObjGet(controller, "seriesCommentVC");
+    UIViewController *seriesVC = FQXRawIvarObj(controller, "_seriesCommentVC");
     if ([seriesVC isKindOfClass:UIViewController.class] && seriesVC.isViewLoaded) {
         FQXStyleSeriesCommentList(seriesVC);
     }
@@ -2558,12 +2673,7 @@ static void FQXStyleCommentSearchEntrance(UIView *entrance) {
 
     BOOL dark = FQXCommentViewIsDark(entrance);
     if (!pill) {
-        UIColor *tint = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
-            return traits.userInterfaceStyle == UIUserInterfaceStyleDark
-                ? [UIColor colorWithWhite:0.16 alpha:0.26]
-                : [UIColor colorWithWhite:0.98 alpha:0.32];
-        }];
-        pill = FQXNewGlassViewFull(0, YES, 0.0, NO, tint);
+        pill = FQXNewGlassViewFull(0, YES, 0.0, NO, FQXUnifiedCommentGlassTint(YES));
         if (!pill) return;
         objc_setAssociatedObject(entrance, CommentSearchGlassKey, pill, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -2585,6 +2695,13 @@ static void (*OrigCommentSearchTheme)(id, SEL, BOOL);
 static void HookCommentSearchTheme(UIView *entrance, SEL cmd, BOOL dark) {
     OrigCommentSearchTheme(entrance, cmd, dark);
     FQXStyleCommentSearchEntrance(entrance);
+}
+
+static void (*OrigTopSectionPluginDidLayoutEnd)(id, SEL);
+static void HookTopSectionPluginDidLayoutEnd(id plugin, SEL cmd) {
+    OrigTopSectionPluginDidLayoutEnd(plugin, cmd);
+    UIView *entrance = FQXRawIvarObj(plugin, "_searchEntranceView");
+    if (entrance) FQXStyleCommentSearchEntrance(entrance);
 }
 
 static void FQXReapplyAllTrackedCommentGlass(void) {
@@ -2695,7 +2812,8 @@ static void FQXStyleSeriesCommentList(UIViewController *controller) {
     FQXClearCommentSurface(FQXObjGet(controller, "loadingView"), glass);
     FQXClearCommentSurface(FQXObjGet(controller, "errorContainerView"), glass);
     FQXClearCommentCovers(root, CGRectGetWidth(root.bounds), glass);
-    FQXStyleWriteReviewButton(FQXObjGet(controller, "writeReviewButton"), glass);
+    UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
+    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, glass);
 }
 
 static void (*OrigSeriesCommentLayout)(id, SEL);
@@ -2719,7 +2837,15 @@ static void HookSeriesCommentTraitChange(UIViewController *controller, SEL cmd, 
 static void (*OrigSeriesWriteReviewUpdate)(id, SEL, BOOL);
 static void HookSeriesWriteReviewUpdate(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigSeriesWriteReviewUpdate(controller, cmd, animated);
-    FQXStyleWriteReviewButton(FQXObjGet(controller, "writeReviewButton"), FQXGlassEnabled());
+    UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
+    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXGlassEnabled());
+}
+
+static void (*OrigSeriesWriteReviewHidden)(id, SEL, BOOL, BOOL);
+static void HookSeriesWriteReviewHidden(UIViewController *controller, SEL cmd, BOOL hidden, BOOL animated) {
+    OrigSeriesWriteReviewHidden(controller, cmd, hidden, animated);
+    UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
+    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXGlassEnabled());
 }
 
 static void (*OrigSeriesCommentCellLayout)(id, SEL);
@@ -2916,7 +3042,7 @@ static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *em
     // Span full edge-to-edge width (0pt side margins) and extend past the bottom
     // so only the top two corners round cleanly above the full-width keyboard bar.
     CGRect frame = CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + 24.0);
-    BOOL glass = FQXPlaceCommentComposerGlass(sheet, frame, 22.0, FQXCommentViewIsDark(sheet));
+    BOOL glass = FQXPlaceCommentComposerGlass(sheet, frame, 22.0, FQXCommentViewIsDark(sheet), NO);
     if (glass) {
         if (!objc_getAssociatedObject(sheet, ExpandedInputSavedClipsKey)) {
             objc_setAssociatedObject(sheet, ExpandedInputSavedClipsKey, @(sheet.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2979,7 +3105,7 @@ static void FQXStyleCommunityInput(UIView *editor) {
 
     BOOL glass = NO;
     if (glassHost) {
-        glass = FQXPlaceCommentComposerGlass(glassHost, glassFrame, 22.0, FQXCommentViewIsDark(glassHost));
+        glass = FQXPlaceCommentComposerGlass(glassHost, glassFrame, 22.0, FQXCommentViewIsDark(glassHost), NO);
         if (glass) {
             if (!objc_getAssociatedObject(glassHost, ExpandedInputSavedClipsKey)) {
                 objc_setAssociatedObject(glassHost, ExpandedInputSavedClipsKey, @(glassHost.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -3652,16 +3778,45 @@ static void FQXApplyAudioOuterCardGlass(UIView *card) {
 static void FQXApplyAudioToneListGlass(UIView *toneList) {
     if (![toneList isKindOfClass:UIView.class]) return;
     FQXApplyAudioOuterCardGlass(toneList);
+    BOOL enabled = FQXGlassEnabled() && !toneList.hidden;
+    CGFloat cardW = CGRectGetWidth(toneList.bounds);
 
-    // Circular Liquid Glass button on `音色设置 >` arrow (`moreButton`)
+    // Circular Liquid Glass button on `音色设置 >` arrow (`moreButton`), pulled inward
+    // so the 26pt lens keeps a clean 12pt margin from the right edge of the outer card.
     UIButton *moreBtn = FQXObjGet(toneList, "moreButton");
     if ([moreBtn isKindOfClass:UIButton.class]) {
-        FQXStyleAudioCircleButton(moreBtn, 28.0, FQXGlassEnabled());
+        CGFloat d = 26.0;
+        if (moreBtn.superview == toneList && cardW > 80.0) {
+            CGPoint stock = FQXAudioStockCenter(moreBtn);
+            CGFloat maxCenterX = cardW - 12.0 - d * 0.5;
+            CGPoint desired = CGPointMake(MIN(stock.x, maxCenterX), stock.y);
+            FQXAudioPlaceView(moreBtn, desired, enabled);
+        }
+        FQXStyleAudioCircleButton(moreBtn, d, enabled);
     }
 
     UICollectionView *cv = FQXObjGet(toneList, "toneListView");
     if ([cv isKindOfClass:UICollectionView.class]) {
-        FQXAudioClearBackground(cv, FQXGlassEnabled());
+        FQXAudioClearBackground(cv, enabled);
+        if (enabled && cardW > 120.0) {
+            if (!objc_getAssociatedObject(cv, AudioToneStockInsetKey)) {
+                objc_setAssociatedObject(cv, AudioToneStockInsetKey,
+                                         [NSValue valueWithUIEdgeInsets:cv.contentInset],
+                                         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            UIEdgeInsets stockInset = [objc_getAssociatedObject(cv, AudioToneStockInsetKey) UIEdgeInsetsValue];
+            UIEdgeInsets targetInset = UIEdgeInsetsMake(stockInset.top, MAX(stockInset.left, 8.0),
+                                                        stockInset.bottom, MAX(stockInset.right, 10.0));
+            if (!UIEdgeInsetsEqualToEdgeInsets(cv.contentInset, targetInset)) {
+                cv.contentInset = targetInset;
+            }
+        } else if (!enabled) {
+            NSValue *saved = objc_getAssociatedObject(cv, AudioToneStockInsetKey);
+            if (saved) {
+                cv.contentInset = saved.UIEdgeInsetsValue;
+                objc_setAssociatedObject(cv, AudioToneStockInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
         for (UICollectionViewCell *cell in cv.visibleCells) {
             FQXApplyAudioToneCellGlass(cell);
         }
@@ -3671,15 +3826,24 @@ static void FQXApplyAudioToneListGlass(UIView *toneList) {
 static void FQXApplyAudioReadingGuideGlass(UIView *guide) {
     if (![guide isKindOfClass:UIView.class]) return;
     FQXApplyAudioOuterCardGlass(guide);
-    FQXAudioSetControlInk(FQXObjGet(guide, "chapterTitleLabel"), FQXGlassEnabled() && !guide.hidden);
+    BOOL enabled = FQXGlassEnabled() && !guide.hidden;
+    FQXAudioSetControlInk(FQXObjGet(guide, "chapterTitleLabel"), enabled);
 
-    // Circular Liquid Glass pill behind `边听边读 >` arrow (`indicatorImageView`)
+    // Circular Liquid Glass pill behind `边听边读 >` arrow (`indicatorImageView`), pulled inward
+    // so the 26pt lens keeps a clean 12pt margin from the right edge of the outer card.
     UIView *arrow = FQXObjGet(guide, "indicatorImageView");
     if ([arrow isKindOfClass:UIView.class] && arrow.superview != nil) {
-        BOOL active = FQXGlassEnabled() && !arrow.hidden && arrow.alpha > 0.01 && CGRectGetWidth(arrow.bounds) > 1.0;
         CGFloat d = 26.0;
+        CGFloat cardW = CGRectGetWidth(guide.bounds);
+        if (arrow.superview == guide && cardW > 60.0) {
+            CGPoint stock = FQXAudioStockCenter(arrow);
+            CGFloat maxCenterX = cardW - 12.0 - d * 0.5;
+            CGPoint desired = CGPointMake(MIN(stock.x, maxCenterX), stock.y);
+            FQXAudioPlaceView(arrow, desired, enabled);
+        }
+        BOOL active = enabled && !arrow.hidden && arrow.alpha > 0.01 && CGRectGetWidth(arrow.bounds) > 1.0;
         CGRect af = arrow.frame;
-        CGRect circle = CGRectMake(CGRectGetMidX(af) - d * 0.5, CGRectGetMidY(af) - d * 0.5, d, d);
+        CGRect circle = CGRectMake(round(CGRectGetMidX(af) - d * 0.5), round(CGRectGetMidY(af) - d * 0.5), d, d);
         FQXInstallAudioSurfaceFull(arrow, arrow.superview, arrow, circle, 0, 0.0, NO, YES, nil, active);
     }
 }
@@ -4203,6 +4367,8 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSShortVideoHostRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigHostDramaCommentLayout, HookHostDramaCommentLayout);
         HOOK_INST("FQCCommentBottomToolBar", "layoutSubviews", "v16@0:8", OrigBaseCommentBarLayout, HookBaseCommentBarLayout);
         HOOK_INST("FQCShortVideoBottomToolBar", "layoutSubviews", "v16@0:8", OrigDramaCommentBarLayout, HookDramaCommentBarLayout);
+        HOOK_INST("FQCShortVideoCommentListBottomBarPlugin", "contextDidLayoutEnd", "v16@0:8", OrigBottomBarPluginDidLayoutEnd, HookBottomBarPluginDidLayoutEnd);
+        HOOK_INST("FQCShortVideoCommentTopSectionPlugin", "contextDidLayoutEnd", "v16@0:8", OrigTopSectionPluginDidLayoutEnd, HookTopSectionPluginDidLayoutEnd);
         HOOK_INST("FQCShortVideoBottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigDramaCommentBarTheme, HookDramaCommentBarTheme);
         HOOK_INST("FQCCommentV1BottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigReaderCommentBarTheme, HookReaderCommentBarTheme);
         HOOK_INST("FQCShortVideoCommentPanelViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaPanelLayout, HookDramaPanelLayout);
@@ -4223,6 +4389,7 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesCommentAppeared, HookSeriesCommentAppeared);
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigSeriesCommentTraitChange, HookSeriesCommentTraitChange);
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "updateWriteReviewButtonUIAnimated:", "v20@0:8B16", OrigSeriesWriteReviewUpdate, HookSeriesWriteReviewUpdate);
+        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "setWriteReviewButtonHidden:animated:", "v24@0:8B16B20", OrigSeriesWriteReviewHidden, HookSeriesWriteReviewHidden);
         HOOK_INST("FQCShortPlaySeriesCommentCell", "layoutSubviews", "v16@0:8", OrigSeriesCommentCellLayout, HookSeriesCommentCellLayout);
         HOOK_INST("FQCShortPlayCommentPanelScoreView", "updateViews", "v16@0:8", OrigSeriesScoreUpdateViews, HookSeriesScoreUpdateViews);
         HOOK_INST("FQCShortPlayCommentListHeaderView", "updateWithListViewModel:", "v24@0:8@16", OrigDramaCommentHeaderUpdate, HookDramaCommentHeaderUpdate);
@@ -4294,8 +4461,9 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQVShortVideoPlayerCellView", "updatePlayerSuperViewLayout", "v16@0:8", OrigCellUpdatePlayerSuperLayout, HookCellUpdatePlayerSuperLayout);
         HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayerSuperViewSize:", "v32@0:8{CGSize=dd}16", OrigCellRefreshPlayerSuperSize, HookCellRefreshPlayerSuperSize);
 
-        // 4. TikTok-style two-finger spread/pinch pure clean screen
+        // 4. TikTok-style two-finger spread/pinch pure clean screen & double-tap opens comments
         HOOK_INST("FQVShortVideoVPlayerControlView", "setupGestures", "v16@0:8", OrigVPlayerSetupGestures, HookVPlayerSetupGestures);
+        HOOK_INST("FQVShortVideoVPlayerControlView", "doubleTapGesture:", "v24@0:8@16", OrigVPlayerDoubleTap, HookVPlayerDoubleTap);
         HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillDisplay", "v16@0:8", OrigVPlayerWillDisplay, HookVPlayerWillDisplay);
         HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillEndDisplay", "v16@0:8", OrigVPlayerWillEndDisplay, HookVPlayerWillEndDisplay);
         HOOK_INST("FQVShortVideoVPlayerControlView", "updateControlState", "v16@0:8", OrigVPlayerUpdateControlState, HookVPlayerUpdateControlState);
