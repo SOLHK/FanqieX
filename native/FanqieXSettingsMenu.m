@@ -111,10 +111,10 @@ static NSString *PathForTitle(NSString *group, NSString *title) {
     if ([title isEqualToString:@"Telegram 频道"]) return @"";
     if ([group isEqualToString:@"底栏入口"]) return @"页面与导航/底栏入口";
     if ([group isEqualToString:@"短剧播放"]) {
-        if ([title containsString:@"分类"]) return @"短剧/顶部分类";
+        if ([title containsString:@"分类"] || [title isEqualToString:@"显示短剧右上角搜索按钮"]) return @"短剧/顶部分类";
         if ([title containsString:@"收缩"] || [title containsString:@"跟随底栏长度"]) return @"短剧/底栏收缩";
         if ([title containsString:@"显示作者"] || [title containsString:@"显示阅读原著"] ||
-            [title containsString:@"兴趣推荐"] || [title containsString:@"搜索按钮"]) return @"短剧/页面内容";
+            [title containsString:@"兴趣推荐"]) return @"短剧/页面内容";
         return @"短剧/播放设置";
     }
     if ([title containsString:@"导出书籍"]) return @"导出与备份";

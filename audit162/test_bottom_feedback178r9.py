@@ -21,7 +21,7 @@ from test_native_orchestration162 import repair
 
 def observed_dock(data, labels):
     cases = []
-    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9")
+    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10")
     for fallback in (False, True):
         for icons, minimum in ((False, 64), (True, 56)):
             cpu, rt, entries = fixture(data, labels, fallback=fallback)
@@ -156,7 +156,7 @@ def native_pan_and_settled_offset(data, labels):
     position_key = 'FanqieX.BottomDramaCompactPosition.1'
     for position, x in ((0, 336.), (1, 20.), (2, 190.)):
         cpu, rt, entries = fixture(data, labels, selected=1, stock=stock)
-        if release_version(data) in ('1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9"):
+        if release_version(data) in ('1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10"):
             # The selected outer tab is Short Drama even when its container
             # provider reports a recommendation category with another type.
             rt._add(rt.classes['SSTabBarController'], 'currentSelectedVCTabType', NATIVE_INNER_FEED_TYPE, 'i16@0:8')
@@ -231,7 +231,7 @@ def main():
               'boundary': 'Actual candidate ARM64; explicit UIKit/Foundation boundary objects'}
     if release_version(data) == '1.78R22':
         report['native_scroll_completion'] = native_scroll_completion_and_dock_position(data, labels)
-    if release_version(data) in ('1.78R23', '1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9"):
+    if release_version(data) in ('1.78R23', '1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10"):
         report['native_pan_and_settled_offset'] = native_pan_and_settled_offset(data, labels)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

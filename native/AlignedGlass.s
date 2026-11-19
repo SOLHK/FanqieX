@@ -1,4 +1,4 @@
-// Source SHA-256: dbc205c4740fd973ef3af141dc3cb0e278da3f0d2660508252842d21ceb3c780
+// Source SHA-256: e177ce3cb793710df7c2f77f491847b57a672d42cf02cae358fac78dc9955beb
 .p2align	2
 LFQH_FQHHostBundle:
 .cfi_startproc
@@ -16764,7 +16764,7 @@ nop
 mov	x0, x26
 mov	x1, x19
 mov	x2, x25
-mov	w3, #39
+mov	w3, #22
 mov	w4, #0
 mov	x6, #0
 bl	LFQH_SettingsToggle178R13
@@ -16775,13 +16775,24 @@ nop
 mov	x0, x26
 mov	x1, x19
 mov	x2, x25
-mov	w3, #40
+mov	w3, #39
 mov	w4, #0
 mov	x6, #0
 bl	LFQH_SettingsToggle178R13
 LFQH_Lloh2604:
 adr x5, LFQH_l_.str.1617
 LFQH_Lloh2605:
+nop
+mov	x0, x26
+mov	x1, x19
+mov	x2, x25
+mov	w3, #40
+mov	w4, #0
+mov	x6, #0
+bl	LFQH_SettingsToggle178R13
+LFQH_Lloh2606:
+adr x5, LFQH_l_.str.1618
+LFQH_Lloh2607:
 nop
 stp	x26, x25, [sp, #16]
 mov	x0, x26
@@ -16797,22 +16808,22 @@ mov	w8, #24
 csel	x19, x20, x8, lo
 cbz	x20, LFQH_LBB91_24
 mov	x25, #0
-LFQH_Lloh2606:
-adr x28, LFQH_l_.str.74
-LFQH_Lloh2607:
-nop
 LFQH_Lloh2608:
-adr x22, LFQH_l_.str.446
+adr x28, LFQH_l_.str.74
 LFQH_Lloh2609:
 nop
 LFQH_Lloh2610:
-adr x20, LFQH_l_.str.499
+adr x22, LFQH_l_.str.446
 LFQH_Lloh2611:
 nop
-LFQH_LBB91_16:
 LFQH_Lloh2612:
-adr x0, LFQH_l_.str.566
+adr x20, LFQH_l_.str.499
 LFQH_Lloh2613:
+nop
+LFQH_LBB91_16:
+LFQH_Lloh2614:
+adr x0, LFQH_l_.str.566
+LFQH_Lloh2615:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -16820,9 +16831,9 @@ mov	x0, x24
 mov	x2, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh2614:
+LFQH_Lloh2616:
 adr x1, LFQH_l_.str.1467
-LFQH_Lloh2615:
+LFQH_Lloh2617:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB91_23
@@ -16836,9 +16847,9 @@ mov	x0, x20
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
-LFQH_Lloh2616:
+LFQH_Lloh2618:
 adr x2, LFQH_l_.str.612
-LFQH_Lloh2617:
+LFQH_Lloh2619:
 nop
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
@@ -16856,9 +16867,9 @@ mov	x0, x20
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x27
-LFQH_Lloh2618:
+LFQH_Lloh2620:
 adr x2, LFQH_l_.str.474
-LFQH_Lloh2619:
+LFQH_Lloh2621:
 nop
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
@@ -16867,9 +16878,9 @@ mov	x1, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
 mov	x0, x21
-LFQH_Lloh2620:
+LFQH_Lloh2622:
 adr x1, LFQH_l_.str.599
-LFQH_Lloh2621:
+LFQH_Lloh2623:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB91_23
@@ -16880,9 +16891,9 @@ cbz	w0, LFQH_LBB91_23
 mov	x0, x23
 bl	LFQH_DramaNamedCategoryTag
 cbnz	x0, LFQH_LBB91_23
-LFQH_Lloh2622:
+LFQH_Lloh2624:
 adr x0, LFQH_l_.str.30
-LFQH_Lloh2623:
+LFQH_Lloh2625:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -16898,15 +16909,15 @@ mov	x0, x20
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
-LFQH_Lloh2624:
-adr x2, LFQH_l_.str.1618
-LFQH_Lloh2625:
+LFQH_Lloh2626:
+adr x2, LFQH_l_.str.1619
+LFQH_Lloh2627:
 nop
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh2626:
+LFQH_Lloh2628:
 adr x0, LFQH_l_.str.1011
-LFQH_Lloh2627:
+LFQH_Lloh2629:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -16914,9 +16925,9 @@ mov	x0, x26
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh2628:
-adr x0, LFQH_l_.str.1619
-LFQH_Lloh2629:
+LFQH_Lloh2630:
+adr x0, LFQH_l_.str.1620
+LFQH_Lloh2631:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -16935,24 +16946,13 @@ add	x25, x25, #1
 cmp	x19, x25
 b.ne	LFQH_LBB91_16
 LFQH_LBB91_24:
-LFQH_Lloh2630:
-adr x5, LFQH_l_.str.1620
-LFQH_Lloh2631:
-nop
-ldp	x20, x28, [sp, #16]
-mov	x0, x20
-ldr	x19, [sp, #32]
-mov	x1, x19
-mov	x2, x28
-mov	w3, #22
-mov	w4, #0
-mov	x6, #0
-bl	LFQH_SettingsToggle178R13
 LFQH_Lloh2632:
 adr x5, LFQH_l_.str.1621
 LFQH_Lloh2633:
 nop
+ldp	x20, x28, [sp, #16]
 mov	x0, x20
+ldr	x19, [sp, #32]
 mov	x1, x19
 mov	x2, x28
 mov	w3, #23
@@ -91333,17 +91333,17 @@ LFQH_l_.str.1613:
 LFQH_l_.str.1614:
 .asciz	"\346\230\276\347\244\272\347\237\255\345\211\247\351\241\266\351\203\250\345\210\206\347\261\273"
 LFQH_l_.str.1615:
-.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\347\234\213\345\211\247"
-LFQH_l_.str.1616:
-.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\346\234\200\350\277\221"
-LFQH_l_.str.1617:
-.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\346\224\266\350\227\217"
-LFQH_l_.str.1618:
-.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232"
-LFQH_l_.str.1619:
-.asciz	"UTF8String"
-LFQH_l_.str.1620:
 .asciz	"\346\230\276\347\244\272\347\237\255\345\211\247\345\217\263\344\270\212\350\247\222\346\220\234\347\264\242\346\214\211\351\222\256"
+LFQH_l_.str.1616:
+.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\347\234\213\345\211\247"
+LFQH_l_.str.1617:
+.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\346\234\200\350\277\221"
+LFQH_l_.str.1618:
+.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232\346\224\266\350\227\217"
+LFQH_l_.str.1619:
+.asciz	"\347\237\255\345\211\247\345\210\206\347\261\273\357\274\232"
+LFQH_l_.str.1620:
+.asciz	"UTF8String"
 LFQH_l_.str.1621:
 .asciz	"\346\230\276\347\244\272\344\275\234\350\200\205\345\243\260\346\230\216"
 LFQH_l_.str.1622:

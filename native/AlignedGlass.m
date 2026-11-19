@@ -9510,6 +9510,7 @@ static void SettingsInstall178R13(Obj controller) {
     U categoryCount=DramaCategoryCount(categoryRows);
     SettingsToggle178R13(group,controller,router,21,0,"显示短剧顶部分类",
         0);
+    SettingsToggle178R13(group,controller,router,22,0,"显示短剧右上角搜索按钮",0);
     SettingsToggle178R13(group,controller,router,DramaWatchTag,0,"短剧分类：看剧",0);
     SettingsToggle178R13(group,controller,router,DramaRecentTag,0,"短剧分类：最近",0);
     SettingsToggle178R13(group,controller,router,DramaFavoritesTag,0,"短剧分类：收藏",0);
@@ -9525,7 +9526,6 @@ static void SettingsInstall178R13(Obj controller) {
         const char *name=((const char *(*)(Obj,Sel))Message)(label,sel_registerName("UTF8String"));
         if (name) SettingsToggle178R13(group,controller,router,DramaCategoryTagBase+code,0,name,0);
     }
-    SettingsToggle178R13(group,controller,router,22,0,"显示短剧右上角搜索按钮",0);
     SettingsToggle178R13(group,controller,router,23,0,"显示作者声明",0);
     SettingsToggle178R13(group,controller,router,24,0,"显示阅读原著",0);
     SettingsToggle178R13(group,controller,router,25,0,"显示小说兴趣推荐",0);
