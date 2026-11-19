@@ -2761,6 +2761,68 @@ static B DramaWatchIsEpisode(Obj model) {
     return Equal(type,"short_play") || Equal(type,"unreal_short_play") || Equal(type,"album");
 }
 
+static void DramaClampBusyKey(void) {}
+static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double rightLimit,int depth) {
+    if (!container || depth>3) return;
+    Obj subs=Get(container,"subviews");
+    U count=TabCount(subs);
+    for (U i=0;i<count && i<32;++i) {
+        Obj sub=At(subs,i);
+        if (!sub || sub==glass || Flag(sub,"isHidden") || Kind(sub,"UIVisualEffectView")) continue;
+        Rect sb=Bounds(sub);
+        if (sb.width<=0.5 || sb.height<=0.5) continue;
+        Rect inRoot=Convert(sub,sb,rootContent);
+        B isText=Kind(sub,"UILabel") || Responds(sub,"setLineBreakMode:");
+        if (isText) {
+            if (inRoot.x+inRoot.width>rightLimit+0.5 && inRoot.x<rightLimit-16.0) {
+                Q1(sub,"setLineBreakMode:",4);
+                Rect f=Frame(sub);
+                double excess=(inRoot.x+inRoot.width)-rightLimit;
+                double newW=f.width-excess;
+                if (newW<24.0) newW=24.0;
+                if (newW<f.width-0.5) {
+                    f.width=newW;
+                    SetFrame(sub,f);
+                }
+            }
+            continue;
+        }
+        if (Kind(sub,"UIImageView")) {
+            // Keep trailing icons inside the pill if needed, without distorting small glyphs.
+            if (inRoot.x+inRoot.width>rightLimit+0.5 && inRoot.width<=28.0 && rightLimit-inRoot.width>inRoot.x-80.0) {
+                Rect f=Frame(sub);
+                f.x-=(inRoot.x+inRoot.width)-rightLimit;
+                if (f.x>=0) SetFrame(sub,f);
+            }
+            continue;
+        }
+        if (inRoot.x+inRoot.width>rightLimit+0.5 && inRoot.x<rightLimit-24.0) {
+            Rect f=Frame(sub);
+            double excess=(inRoot.x+inRoot.width)-rightLimit;
+            double newW=f.width-excess;
+            if (newW>=24.0 && newW<f.width-0.5) {
+                f.width=newW;
+                SetFrame(sub,f);
+            }
+        }
+        DramaClampSubviews(sub,rootContent,glass,rightLimit,depth+1);
+    }
+}
+
+static void DramaClampEpisodeText(Obj content,Rect material,B alignedChanged) {
+    if (!content || !VisibleRect(material)) return;
+    if (alignedChanged && !objc_getAssociatedObject(content,DramaClampBusyKey)) {
+        objc_setAssociatedObject(content,DramaClampBusyKey,content,0);
+        V0(content,"setNeedsLayout");
+        V0(content,"layoutIfNeeded");
+        objc_setAssociatedObject(content,DramaClampBusyKey,0,0);
+    }
+    Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
+    double rightLimit=material.x+material.width-12.0;
+    if (rightLimit>material.x+32.0) DramaClampSubviews(content,content,glass,rightLimit,0);
+    if (!Flag(content,"clipsToBounds")) VB(content,"setClipsToBounds:",1);
+}
+
 static void DramaWatchGlass(Obj owner,Obj model) {
     Obj previous=objc_getAssociatedObject(owner,DramaWatchContentKey);
     if (!DramaWatchIsEpisode(model) || !Enabled() || !FQHGlassAvailable()) {
@@ -2773,7 +2835,7 @@ static void DramaWatchGlass(Obj owner,Obj model) {
         if (content==previous) RestoreDramaWatch(owner,content);
         return;
     }
-    DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
+    B alignedChanged=DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
     Rect bounds=Bounds(content);
     Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
     if (!VisibleRect(material)) {
@@ -2801,6 +2863,7 @@ static void DramaWatchGlass(Obj owner,Obj model) {
     // This chevron belongs only to the decorated "watch all episodes" row.
     // The original-novel and other distribution rows keep their native arrows.
     DramaEpisodeArrow(content,Get(content,"arrowImageView"));
+    DramaClampEpisodeText(content,material,alignedChanged);
 }
 
 static void DramaDetailRelatedGlass(Obj owner,B reset) {
@@ -2868,7 +2931,8 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
     Obj content=Get(self,"containerView");
     if (O0(content,"superview")!=self) return;
     B glassEnabled=Enabled() && FQHGlassAvailable() && Get(self,"albumDetailInfo");
-    if (glassEnabled) DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
+    B alignedChanged=0;
+    if (glassEnabled) alignedChanged=DramaAlignWithDockFrame(content,BottomDramaEpisodeDockFrame(content),8);
     else BottomRestoreFrame178(content,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
     Rect bounds=Bounds(content);
     Rect material={bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6};
@@ -2876,6 +2940,7 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
         if (PlaceDramaGlass(content,content,0,material)) {
             DramaClearBackground(content,1);
             DramaEpisodeArrow(content,Get(self,"arrowImageView"));
+            DramaClampEpisodeText(content,material,alignedChanged);
         }
     } else {
         DramaEpisodeArrow(content,0);
@@ -7827,7 +7892,7 @@ static B BottomFlag178(I tag) {
         if (!value) return 1;
     }
     return value ? Responds(value,"boolValue") && Flag(value,"boolValue") :
-        (tag>=21 && tag<=29) || tag==36 || tag==37 || tag==BottomHapticTag || tag>=DramaCategoryTagBase;
+        (tag>=21 && tag<=29) || tag==36 || tag==BottomHapticTag || tag>=DramaCategoryTagBase;
 }
 static double BottomClamp178(double value,double low,double high) {
     return value<low ? low : value>high ? high : value;
@@ -8923,7 +8988,7 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
         Obj control=At(controls,i);
         I tag=((I(*)(Obj,Sel))Message)(control,sel_registerName("tag"));
         if (tag==37) {
-            ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),1,1);
+            ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
             continue;
         }
         if (tag>=21 || tag==15 || tag==16) continue;

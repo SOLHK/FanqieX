@@ -201,7 +201,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
-        @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果"};
+        @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果", @"comment":@"评论区净化"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
         @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};
     for (NSDictionary *option in options) {
@@ -210,10 +210,10 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             if ([existing.originalTitle isEqualToString:legacyTitles[option[@"key"]]]) { row = existing; break; }
         BOOL existing = row != nil;
         if (!row) row = [FQXSettingRow new];
-        row.inverted = [@[@"reader", @"mine", @"shelf"] containsObject:option[@"category"]];
+        row.inverted = [@[@"reader", @"mine", @"shelf", @"comment"] containsObject:option[@"category"]];
         row.title = row.inverted ? [option[@"title"] stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"] : option[@"title"];
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
-        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1", @"FanqieX.CommentActivityBanner.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
             row.path = @"阅读/阅读页面净化/正文与底栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.AudioRecommendations.1"])
             row.path = @"阅读/听书页面净化";
@@ -233,8 +233,9 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.DramaDoubleTapComment.1":@"短剧 双击 打开评论区 评论 关闭双击点赞 点赞 手势",
             @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
             @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
-            @"FanqieX.CommentGlassFrosted.1":@"评论区 液态玻璃 清透液态玻璃 模糊液态玻璃 磨砂 iOS27 短剧评论 小说评论 外观",
-            @"FanqieX.CommentActivityBanner.1":@"评论区 活动 活动横幅 激励 创作者计划 段评 顶部 隐藏",
+            @"FanqieX.CommentGlassFrosted.1":@"评论区 液态玻璃 清透液态玻璃 模糊液态玻璃 磨砂 短剧评论 小说评论 外观",
+            @"FanqieX.CommentActivityBanner.1":@"评论区 公告 活动 社区公约 文明发言 活动横幅 激励 创作者计划 段评 顶部 隐藏 关闭",
+            @"FanqieX.CommentSearchEntrance.1":@"评论区 大家都在搜 大家在搜 热搜 搜索 推荐 顶部 隐藏 关闭",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 语速 下载 章评 目录 定时",
@@ -346,7 +347,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                 if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:[NSUserDefaults.standardUserDefaults boolForKey:CompactKey]];
         } else if ([row.title isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
             id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
-            BOOL follow = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : YES;
+            BOOL follow = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             for (UIView *control in row.content.subviews)
                 if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:follow];
         }
@@ -407,7 +408,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         return left.matchScore > right.matchScore ? NSOrderedAscending : NSOrderedDescending;
     }];
     self.visibleRows = rows;
-    NSArray *order = @[@"页面与导航", @"阅读", @"短剧", @"书架净化", @"我的页面净化", @"通知管理", @"外观", @"广告与福利", @"书城", @"导出与备份", @"诊断与其他"];
+    NSArray *order = @[@"页面与导航", @"阅读", @"短剧", @"书架净化", @"我的页面净化", @"评论区净化", @"通知管理", @"外观", @"广告与福利", @"书城", @"导出与备份", @"诊断与其他"];
     NSUInteger fallback = [order indexOfObject:@"导出与备份"];
     self.folders = self.path.length ? folders.array : [folders.array sortedArrayUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
         NSUInteger a = [order indexOfObject:left], b = [order indexOfObject:right];
@@ -541,7 +542,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                 [sw addTarget:self action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
             } else if ([sw.accessibilityLabel isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
                 id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
-                sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : YES;
+                sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             }
         }
     } else {
