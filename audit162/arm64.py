@@ -69,8 +69,10 @@ def release_version(data):
         return "1.8R10"
     if version == 0x1500B:
         return "1.8R11"
-    if version in (0x1500C, 0x1500D):
-        return "1.8R12", "1.8R13"
+    if version == 0x1500C:
+        return "1.8R12"
+    if version == 0x1500D:
+        return "1.8R13"
     if version == 0x15007:
         return "1.8R7"
     if version == 0x15006:
