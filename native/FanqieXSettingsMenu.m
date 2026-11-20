@@ -6,7 +6,8 @@ static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
-static NSString *const CommentMaterialModeKey = @"FanqieX.CommentMaterialMode.1";
+static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.1";
+static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
 
 static id Invoke(id receiver, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -66,6 +67,8 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL inverted;
 @property(nonatomic) BOOL diagnosticExport;
 @property(nonatomic) BOOL hiddenFromSearch;
+@property(nonatomic) NSInteger commentMaterialChoice;
+@property(nonatomic) BOOL commentAppearanceRow;
 @property(nonatomic) NSInteger matchScore;
 @end
 @implementation FQXSettingRow
@@ -162,46 +165,50 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     [menu.catalog addObject:row];
 }
 
-static NSInteger CurrentSavedCommentMaterialMode(void) {
+static NSInteger CurrentSavedCommentMaterialStyle(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    id stored = [ud objectForKey:CommentMaterialModeKey];
-    if (!stored) {
-        if ([ud objectForKey:@"FanqieX.CommentGlassFrosted.1"]) {
-            return [ud boolForKey:@"FanqieX.CommentGlassFrosted.1"] ? 2 : 0;
-        }
-        return 0;
-    }
+    if ([ud objectForKey:@"FanqieX.CommentGlassFrosted.1"]) [ud removeObjectForKey:@"FanqieX.CommentGlassFrosted.1"];
+    if ([ud objectForKey:@"FanqieX.CommentMaterialMode.1"]) [ud removeObjectForKey:@"FanqieX.CommentMaterialMode.1"];
+    id stored = [ud objectForKey:CommentMaterialStyleKey];
+    if (!stored) return 0;
     NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
     return (val >= 0 && val <= 2) ? val : 0;
 }
 
-static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSearch) {
-    FQXSettingRow *row = [FQXSettingRow new];
-    row.title = @"评论区材质风格";
-    row.path = route;
-    row.hiddenFromSearch = hiddenFromSearch;
-    row.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 材质 风格 浅色液态玻璃 深色液态玻璃 iOS18 高斯模糊 毛玻璃 液态玻璃";
-    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 86)];
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 310, 22)];
-    label.font = [UIFont systemFontOfSize:16];
-    label.text = @"评论区材质（短剧与看书评价同步）";
-    label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [container addSubview:label];
+static NSInteger CurrentSavedCommentAppearanceMode(void) {
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentAppearanceModeKey];
+    if (!stored) return 0;
+    NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
+    return (val >= 0 && val <= 2) ? val : 0;
+}
 
-    UISegmentedControl *seg = [[UISegmentedControl alloc] initWithItems:@[@"深色液态玻璃", @"浅色液态玻璃", @"iOS18高斯模糊"]];
-    seg.frame = CGRectMake(20, 40, 310, 34);
-    seg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    seg.accessibilityIdentifier = CommentMaterialModeKey;
-    seg.accessibilityLabel = row.title;
-    NSDictionary *segAttrs = @{NSFontAttributeName: [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium]};
-    [seg setTitleTextAttributes:segAttrs forState:UIControlStateNormal];
-    [seg setTitleTextAttributes:segAttrs forState:UIControlStateSelected];
-    seg.selectedSegmentIndex = CurrentSavedCommentMaterialMode();
-    [container addSubview:seg];
+static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *glassRow = [FQXSettingRow new];
+    glassRow.title = @"评论区液态玻璃";
+    glassRow.path = route;
+    glassRow.hiddenFromSearch = hiddenFromSearch;
+    glassRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 液态玻璃 材质 透明";
+    glassRow.commentMaterialChoice = 1;
+    glassRow.height = 52;
+    [menu.catalog addObject:glassRow];
 
-    row.content = container;
-    row.height = 86;
-    return row;
+    FQXSettingRow *blurRow = [FQXSettingRow new];
+    blurRow.title = @"评论区高斯模糊";
+    blurRow.path = route;
+    blurRow.hiddenFromSearch = hiddenFromSearch;
+    blurRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 高斯模糊 毛玻璃 iOS18 材质";
+    blurRow.commentMaterialChoice = 2;
+    blurRow.height = 52;
+    [menu.catalog addObject:blurRow];
+
+    FQXSettingRow *appearanceRow = [FQXSettingRow new];
+    appearanceRow.title = @"评论区外观";
+    appearanceRow.path = route;
+    appearanceRow.hiddenFromSearch = hiddenFromSearch;
+    appearanceRow.keywords = @"评论区 外观 浅色 深色 夜间模式 日间模式 跟随软件 独立 主题 颜色 背景";
+    appearanceRow.commentAppearanceRow = YES;
+    appearanceRow.height = 52;
+    [menu.catalog addObject:appearanceRow];
 }
 
 @implementation FQXSettingsMenu
@@ -246,11 +253,12 @@ static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSea
             }
         }
     }
-    // Add 3-way Comment Material selector across Drama, Reading, Comment Cleanup, and Appearance.
-    [menu.catalog addObject:MakeCommentMaterialRow(@"短剧/播放设置", NO)];
-    [menu.catalog addObject:MakeCommentMaterialRow(@"阅读/阅读设置", YES)];
-    [menu.catalog addObject:MakeCommentMaterialRow(@"评论区净化", YES)];
-    [menu.catalog addObject:MakeCommentMaterialRow(@"外观/玻璃效果", YES)];
+    // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native)
+    // and standalone Comment Appearance selector (Follow App / Light / Dark).
+    AddCommentStyleRows(menu, @"评论区净化", NO);
+    AddCommentStyleRows(menu, @"短剧/播放设置", YES);
+    AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
+    AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
 
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
@@ -529,6 +537,7 @@ static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSea
     if ([self.path hasPrefix:@"阅读/阅读页面净化"]) return @"开启“隐藏”才会移除对应入口，各项独立控制。章末内容在重新进入书籍后应用。";
     if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
+    if ([self.path isEqualToString:@"评论区净化"]) return @"“液态玻璃”与“高斯模糊”二选一开启，全部关闭则使用番茄小说原版评论区；“评论区外观”可跟随软件或独立指定浅色/深色。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
     return nil;
@@ -605,16 +614,6 @@ static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSea
             [button addTarget:self action:@selector(performStoredAction:) forControlEvents:UIControlEventTouchUpInside];
         }
         for (UIView *control in row.content.subviews) {
-            if ([control isKindOfClass:UISegmentedControl.class] &&
-                [control.accessibilityIdentifier isEqualToString:CommentMaterialModeKey]) {
-                UISegmentedControl *seg = (UISegmentedControl *)control;
-                seg.selectedSegmentIndex = CurrentSavedCommentMaterialMode();
-                for (id target in seg.allTargets.allObjects) {
-                    [seg removeTarget:target action:@selector(commentMaterialChanged:) forControlEvents:UIControlEventValueChanged];
-                }
-                [seg addTarget:self action:@selector(commentMaterialChanged:) forControlEvents:UIControlEventValueChanged];
-                continue;
-            }
             if (![control isKindOfClass:UISwitch.class]) continue;
             UISwitch *sw = (UISwitch *)control;
             if ([sw.accessibilityLabel isEqualToString:@"短剧滚动自动收缩"]) {
@@ -632,7 +631,26 @@ static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSea
         }
     } else {
         cell.textLabel.text = row.title;
-        if (row.option || row.originalToggle) {
+        if (row.commentMaterialChoice > 0) {
+            UISwitch *toggle = [[UISwitch alloc] init];
+            toggle.on = (CurrentSavedCommentMaterialStyle() == row.commentMaterialChoice);
+            toggle.accessibilityIdentifier = CommentMaterialStyleKey;
+            toggle.accessibilityLabel = row.title;
+            objc_setAssociatedObject(toggle, RowKey, row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [toggle addTarget:self action:@selector(commentMaterialSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = toggle;
+        } else if (row.commentAppearanceRow) {
+            UISegmentedControl *seg = [[UISegmentedControl alloc] initWithItems:@[@"跟随软件", @"浅色", @"深色"]];
+            seg.frame = CGRectMake(0, 0, 186, 32);
+            seg.accessibilityIdentifier = CommentAppearanceModeKey;
+            seg.accessibilityLabel = row.title;
+            NSDictionary *segAttrs = @{NSFontAttributeName: [UIFont systemFontOfSize:12 weight:UIFontWeightMedium]};
+            [seg setTitleTextAttributes:segAttrs forState:UIControlStateNormal];
+            [seg setTitleTextAttributes:segAttrs forState:UIControlStateSelected];
+            seg.selectedSegmentIndex = CurrentSavedCommentAppearanceMode();
+            [seg addTarget:self action:@selector(commentAppearanceChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = seg;
+        } else if (row.option || row.originalToggle) {
             UISwitch *toggle = [[UISwitch alloc] init];
             id stored = row.option ? [NSUserDefaults.standardUserDefaults objectForKey:row.option[@"key"]] : nil;
             BOOL enabled = row.originalToggle ? row.originalToggle.on : (stored ? [stored boolValue] : [row.option[@"default"] boolValue]);
@@ -657,27 +675,39 @@ static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSea
     return cell;
 }
 
-- (void)commentMaterialChanged:(UISegmentedControl *)sender {
-    NSInteger mode = sender.selectedSegmentIndex;
-    if (mode < 0 || mode > 2) mode = 0;
+- (void)commentMaterialSwitchChanged:(UISwitch *)toggle {
+    FQXSettingRow *row = objc_getAssociatedObject(toggle, RowKey);
+    NSInteger choice = row ? row.commentMaterialChoice : 0;
+    NSInteger nextStyle = toggle.isOn ? choice : 0;
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    [ud setInteger:mode forKey:CommentMaterialModeKey];
+    [ud setInteger:nextStyle forKey:CommentMaterialStyleKey];
     [ud removeObjectForKey:@"FanqieX.CommentGlassFrosted.1"];
-    for (FQXSettingRow *row in self.catalog) {
-        for (UIView *sub in row.content.subviews) {
-            if ([sub isKindOfClass:UISegmentedControl.class] &&
-                [sub.accessibilityIdentifier isEqualToString:CommentMaterialModeKey]) {
-                UISegmentedControl *other = (UISegmentedControl *)sub;
-                if (other != sender && other.selectedSegmentIndex != mode) {
-                    other.selectedSegmentIndex = mode;
-                }
+    [ud removeObjectForKey:@"FanqieX.CommentMaterialMode.1"];
+    for (UITableViewCell *cell in self.tableView.visibleCells) {
+        if ([cell.accessoryView isKindOfClass:UISwitch.class] && cell.accessoryView != toggle) {
+            UISwitch *other = (UISwitch *)cell.accessoryView;
+            FQXSettingRow *otherRow = objc_getAssociatedObject(other, RowKey);
+            if (otherRow && otherRow.commentMaterialChoice > 0) {
+                BOOL shouldBeOn = (nextStyle == otherRow.commentMaterialChoice);
+                if (other.isOn != shouldBeOn) [other setOn:shouldBeOn animated:YES];
             }
         }
     }
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL selector = NSSelectorFromString(@"refreshForKey:");
     if ([cleanup respondsToSelector:selector]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, CommentMaterialModeKey);
+        ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, CommentMaterialStyleKey);
+    }
+}
+
+- (void)commentAppearanceChanged:(UISegmentedControl *)sender {
+    NSInteger mode = sender.selectedSegmentIndex;
+    if (mode < 0 || mode > 2) mode = 0;
+    [NSUserDefaults.standardUserDefaults setInteger:mode forKey:CommentAppearanceModeKey];
+    Class cleanup = NSClassFromString(@"FQXCleanup");
+    SEL selector = NSSelectorFromString(@"refreshForKey:");
+    if ([cleanup respondsToSelector:selector]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, CommentAppearanceModeKey);
     }
 }
 

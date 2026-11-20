@@ -60,7 +60,8 @@ extern void FQXInstallMotionAndAudioHooks(void);
     static NSString *const name##Key = @"FanqieX." suffix ".1";
 CLEANUP_OPTIONS(OPTION_KEY)
 #undef OPTION_KEY
-static NSString *const CommentMaterialModeKey = @"FanqieX.CommentMaterialMode.1";
+static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.1";
+static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -795,14 +796,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
     __block unsigned long long freedBytes = 0;
 
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    NSString *legacyFrostedKey = @"FanqieX.CommentGlassFrosted.1";
-    if (![ud objectForKey:CommentMaterialModeKey] && [ud objectForKey:legacyFrostedKey]) {
-        BOOL wasFrosted = [ud boolForKey:legacyFrostedKey];
-        [ud setInteger:(wasFrosted ? 2 : 0) forKey:CommentMaterialModeKey];
-    }
     NSDictionary<NSString *, id> *dict = ud.dictionaryRepresentation;
     NSSet<NSString *> *retiredExact = [NSSet setWithObjects:
-        legacyFrostedKey,
+        @"FanqieX.CommentGlassFrosted.1",
+        @"FanqieX.CommentMaterialMode.1",
         @"FanqieX.LocalRewardTest.1",
         @"FanqieAdBlock.PopupShown",
         @"FanqieAdBlock.Version",
@@ -1091,7 +1088,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
-    } else if ([key isEqualToString:CommentMaterialModeKey] ||
+    } else if ([key isEqualToString:CommentMaterialStyleKey] ||
+               [key isEqualToString:CommentAppearanceModeKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
                [key isEqualToString:CommentSearchEntranceKey]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
