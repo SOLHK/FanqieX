@@ -496,13 +496,15 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 @property(nonatomic, strong) NSHashTable<UIControl *> *wiredControls;
 @property(nonatomic, strong) UIView *pillClipView;
 @property(nonatomic, strong) UIView *pillView;
+@property(nonatomic, strong) UIVisualEffectView *trackingLens;
 @property(nonatomic) BOOL pillActive;
 @property(nonatomic) BOOL panning;
+@property(nonatomic) BOOL settlingPill;
+@property(nonatomic) CGFloat dragOffsetX;
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic, weak) UIButton *lastSelectedButton;
 @property(nonatomic, weak) UIButton *liftedButton;
 @property(nonatomic, weak) UIButton *pressedButton;
-@property(nonatomic, weak) UIButton *targetButton;
 @property(nonatomic, weak) UIButton *fallbackSelectionButton;
 @property(nonatomic, strong) UIColor *fallbackSelectionColor;
 - (void)syncWithBar:(UIView *)bar
@@ -615,10 +617,12 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
                                    size.width, size.height);
     CGRect btnRect = [button.superview convertRect:buttonSlot toView:host];
     CGFloat barH = CGRectGetHeight(track);
-    if (barH <= 1.0 || CGRectGetWidth(btnRect) <= 1.0) return btnRect;
-    CGFloat pillH = MAX(28.0, MIN(barH - 6.0, CGRectGetHeight(btnRect)));
-    CGFloat pillW = MAX(28.0, CGRectGetWidth(btnRect));
-    return CGRectMake(CGRectGetMidX(btnRect) - pillW * 0.5,
+    if (barH <= 6.0 || CGRectGetWidth(track) <= 6.0 || CGRectGetWidth(btnRect) <= 1.0) return CGRectZero;
+    CGFloat pillH = MIN(barH - 6.0, MAX(28.0, CGRectGetHeight(btnRect)));
+    CGFloat pillW = MIN(CGRectGetWidth(track) - 6.0, MAX(28.0, CGRectGetWidth(btnRect)));
+    CGFloat x = MIN(CGRectGetMaxX(track) - pillW - 3.0,
+                    MAX(CGRectGetMinX(track) + 3.0, CGRectGetMidX(btnRect) - pillW * 0.5));
+    return CGRectMake(x,
                       CGRectGetMidY(track) - pillH * 0.5,
                       pillW,
                       pillH);
@@ -626,23 +630,20 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 - (CGRect)dragRectAtCenterX:(CGFloat)centerX
                   baseWidth:(CGFloat)baseWidth
+                   velocity:(CGFloat)velocity
                      inHost:(UIView *)host {
     if (!host) return CGRectZero;
     CGRect track = [self trackBoundsInHost:host];
     CGFloat W = CGRectGetWidth(track);
     CGFloat H = CGRectGetHeight(track);
-    if (W <= 1.0 || H <= 1.0) return CGRectZero;
-    CGFloat pillW = MIN(W - 6.0, MAX(34.0, baseWidth + 8.0));
-    CGFloat pillH = MAX(29.0, H - 4.0);
+    if (W <= 6.0 || H <= 4.0) return CGRectZero;
+    CGFloat stretch = 1.0 + MIN(0.18, fabs(velocity) / 3100.0);
+    CGFloat pillW = MIN(W - 6.0, (baseWidth + 12.0) * stretch);
+    CGFloat pillH = (H - 4.0) / sqrt(stretch);
     CGFloat minX = CGRectGetMinX(track) + 3.0;
     CGFloat maxX = CGRectGetMaxX(track) - pillW - 3.0;
-    CGFloat rawX = centerX - pillW * 0.5;
-    if (rawX < minX) {
-        rawX = minX - (minX - rawX) * 0.10;
-    } else if (rawX > maxX) {
-        rawX = maxX + (rawX - maxX) * 0.10;
-    }
-    return CGRectMake(rawX, CGRectGetMidY(track) - pillH * 0.5, pillW, pillH);
+    CGFloat x = MIN(maxX, MAX(minX, centerX - pillW * 0.5));
+    return CGRectMake(x, CGRectGetMidY(track) - pillH * 0.5, pillW, pillH);
 }
 
 static void FQXAnimateIOS27Spring(NSTimeInterval duration,
@@ -794,6 +795,57 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     self.pillView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
     self.pillView.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
     self.pillView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
+    if (self.trackingLens && !self.trackingLens.hidden) {
+        self.trackingLens.frame = [self.pillClipView convertRect:frame toView:self.trackingLens.superview];
+    }
+}
+
+- (BOOL)showTrackingLens {
+    if (!NSClassFromString(@"UIGlassEffect") || UIAccessibilityIsReduceTransparencyEnabled()) return NO;
+    UIView *mountHost = self.pillClipView.superview;
+    if (!self.trackingLens) {
+        UIVisualEffectView *lens = [[UIVisualEffectView alloc] initWithEffect:nil];
+        objc_setAssociatedObject(lens, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        FQXApplyCornerConfiguration(lens, 0.0, NO);
+        lens.userInteractionEnabled = NO;
+        lens.accessibilityElementsHidden = YES;
+        lens.hidden = YES;
+        self.trackingLens = lens;
+    }
+    UIVisualEffectView *lens = self.trackingLens;
+    if (lens.overrideUserInterfaceStyle != self.proxy.overrideUserInterfaceStyle) {
+        lens.overrideUserInterfaceStyle = self.proxy.overrideUserInterfaceStyle;
+    }
+    if (lens.superview != mountHost) [mountHost addSubview:lens];
+    // The optical surface sits in front of the glyphs and samples them as it moves.
+    if (mountHost.subviews.lastObject != lens) [mountHost bringSubviewToFront:lens];
+    if (lens.hidden) {
+        CGRect live = [self livePillFrameInHost:self.pillClipView];
+        lens.frame = [self.pillClipView convertRect:live toView:mountHost];
+        lens.hidden = NO;
+    }
+    self.pillView.hidden = YES;
+    if (!lens.effect) {
+        UIVisualEffect *effect = FQXMakeUnifiedGlassEffect(FQXGlassRoleDock);
+        [UIView animateWithDuration:0.16 delay:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                         animations:^{ lens.effect = effect; } completion:nil];
+    }
+    return YES;
+}
+
+- (void)settleTrackingLensForGeneration:(NSUInteger)generation {
+    UIVisualEffectView *lens = self.trackingLens;
+    if (!lens || lens.hidden) return;
+    self.pillView.hidden = NO;
+    __weak typeof(self) weakSelf = self;
+    [UIView animateWithDuration:0.16 delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{ lens.effect = nil; }
+                     completion:^(BOOL finished) {
+        (void)finished;
+        if (weakSelf.generation == generation) lens.hidden = YES;
+    }];
 }
 
 - (CGRect)livePillFrameInHost:(UIView *)host {
@@ -878,11 +930,14 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         if (self.pillClipView) {
             self.pillClipView.hidden = YES;
         }
+        self.trackingLens.hidden = YES;
+        self.trackingLens.effect = nil;
+        [self.trackingLens.layer removeAllAnimations];
     }];
     self.pillActive = NO;
     self.panning = NO;
+    self.settlingPill = NO;
     self.pressedButton = nil;
-    self.targetButton = nil;
     self.liftedButton.transform = CGAffineTransformIdentity;
     self.liftedButton = nil;
 }
@@ -890,7 +945,7 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
 - (UIView *)ensureActivePillAtButton:(UIButton *)button {
     UIView *host = [self ensurePillMounted];
     if (!host) return nil;
-    if (!self.pillActive || self.pillView.hidden || CGRectGetWidth(self.pillView.bounds) < 2.0) {
+    if (!self.pillActive || CGRectGetWidth(self.pillView.bounds) < 2.0) {
         UIButton *seed = button ?: [self currentSelectedButton];
         CGRect start = [self restingRectForButton:seed inHost:host];
         if (CGRectIsEmpty(start)) return nil;
@@ -933,14 +988,16 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     CGFloat slots = fabs(dx) / slotW;
     BOOL hasTravel = fabs(dx) > 6.0;
     BOOL isEdgeTab = (button == self.buttons.firstObject || button == self.buttons.lastObject);
-    CGFloat initVel = hasTravel ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
+    BOOL refracting = [self showTrackingLens];
+    CGFloat initVel = (hasTravel && !isEdgeTab) ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
     NSTimeInterval springDuration = hasTravel ? (slots > 1.45 ? 0.52 : 0.47) : 0.36;
-    CGFloat bounce = isEdgeTab ? (hasTravel ? 0.34 : 0.38) : (hasTravel ? 0.44 : 0.48);
+    CGFloat bounce = refracting ? (isEdgeTab ? 0.0 : 0.23)
+                                : (isEdgeTab ? 0.34 : 0.44);
     UIColor *desiredFill = [self restingPillFillColor];
 
     NSUInteger generation = ++self.generation;
+    self.settlingPill = YES;
     self.lastSelectedButton = button;
-    self.targetButton = button;
     [self highlightButton:nil];
 
     // 1) Official iOS 26/27 perceptual bounce spring (animateWithSpringDuration:bounce:)
@@ -956,12 +1013,14 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         (void)finished;
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
+        strongSelf.settlingPill = NO;
+        [strongSelf settleTrackingLensForGeneration:generation];
         FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
     });
 
     // 2) Incompressible liquid-droplet Q弹 stretch + landing jelly recoil on pillView.layer,
     //    synchronized icon Q弹 pop on destination button, and subtle Dock glass breath.
-    if (!UIAccessibilityIsReduceMotionEnabled()) {
+    if (!refracting && !UIAccessibilityIsReduceMotionEnabled()) {
         if (hasTravel) {
             CGFloat stretchX = isEdgeTab
                 ? MIN(0.20, 0.14 + MIN(0.06, slots * 0.02))
@@ -995,7 +1054,7 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
 }
 
 - (void)syncPillFillSmoothly {
-    if (!self.pillActive || !self.pillView || self.pillView.hidden) return;
+    if (!self.pillActive) return;
     UIColor *desired = [self restingPillFillColor];
     if ([self.pillView.backgroundColor isEqual:desired]) return;
     [UIView animateWithDuration:0.22
@@ -1013,23 +1072,28 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         !self.bar || self.proxy.hidden || (self.overlay && self.overlay.hidden) ||
         !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return;
     self.pressedButton = sender;
-    [self highlightButton:sender];
     UIButton *selected = self.lastSelectedButton ?: [self currentSelectedButton];
     UIView *host = [self ensureActivePillAtButton:selected];
     if (!host) return;
-    if (sender == selected) {
-        CGRect rest = [self restingRectForButton:sender inHost:host];
+    self.generation += 1;
+    self.settlingPill = NO;
+    BOOL refracting = [self showTrackingLens];
+    if (!refracting) [self highlightButton:sender];
+    if (refracting || sender == selected) {
+        CGRect rest = [self restingRectForButton:selected inHost:host];
         if (!CGRectIsEmpty(rest)) {
             CGRect safeBounds = CGRectInset(host.bounds, 2.0, 1.5);
-            CGRect swell = CGRectIntersection(CGRectInset(rest, -4.0, -2.0), safeBounds);
+            CGRect swell = refracting
+                ? [self dragRectAtCenterX:CGRectGetMidX(rest) baseWidth:CGRectGetWidth(rest) velocity:0.0 inHost:host]
+                : CGRectIntersection(CGRectInset(rest, -4.0, -2.0), safeBounds);
             if (!CGRectIsEmpty(swell)) {
-                FQXAnimateIOS27Spring(0.24, 0.36, 0.0, ^{
+                FQXAnimateIOS27Spring(0.24, refracting ? 0.0 : 0.36, 0.0, ^{
                     [self placePill:swell];
                 }, nil);
             }
         }
     }
-    if (self.proxy && !self.proxy.hidden) {
+    if (!refracting && self.proxy && !self.proxy.hidden) {
         FQXAddAdditiveScalePulse(self.proxy.layer, @"fqx.dock.down",
                                  @[@0.0, @0.014, @0.0], @[@0.0, @(-0.018), @0.0],
                                  @[@0.0, @0.35, @1.0], 0.24);
@@ -1042,9 +1106,8 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return;
     self.pressedButton = nil;
     [self highlightButton:nil];
-    // If SSTabBar's action fired first and syncWithBar: already launched the additive glide
-    // to sender, only crossfade fill if needed — never relaunch or reset spring velocity.
-    if (self.pillActive && self.lastSelectedButton == sender && self.pillView.layer.animationKeys.count > 0) {
+    // The host selection callback may already have started the landing spring.
+    if (self.settlingPill && self.lastSelectedButton == sender) {
         [self syncPillFillSmoothly];
         return;
     }
@@ -1089,17 +1152,27 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
             }];
         }
         CGPoint location = [pan locationInView:host];
-        CGFloat vx = [pan velocityInView:host].x;
-        CGFloat stretchX = 1.0 + MIN(0.24, fabs(vx) / 1350.0);
-        CGFloat squishY = 1.0 / sqrt(stretchX);
-        CGAffineTransform dragStretch = CGAffineTransformMakeScale(stretchX, squishY);
+        if (began) {
+            self.generation += 1;
+            self.settlingPill = NO;
+            CGRect rest = [self restingRectForButton:seed inHost:host];
+            CGFloat initialX = location.x - [pan translationInView:host].x;
+            self.dragOffsetX = (initialX >= CGRectGetMinX(rest) && initialX <= CGRectGetMaxX(rest))
+                ? MAX(-8.0, MIN(8.0, initialX - CGRectGetMidX(rest))) : 0.0;
+            [self showTrackingLens];
+            for (NSString *key in @[@"position", @"bounds", @"cornerRadius"]) {
+                [self.pillView.layer removeAnimationForKey:key];
+                [self.trackingLens.layer removeAnimationForKey:key];
+            }
+        }
+        CGFloat centerX = location.x - self.dragOffsetX;
         UIButton *nearest = nil;
         CGFloat bestDistance = CGFLOAT_MAX;
         CGFloat width = 0.0;
         for (UIButton *button in self.buttons) {
             if (!button.superview) continue;
-            CGRect frame = [button convertRect:button.bounds toView:host];
-            CGFloat distance = fabs(CGRectGetMidX(frame) - location.x);
+            CGRect frame = [self restingRectForButton:button inHost:host];
+            CGFloat distance = fabs(CGRectGetMidX(frame) - centerX);
             if (distance < bestDistance) {
                 nearest = button;
                 bestDistance = distance;
@@ -1107,38 +1180,23 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
             }
         }
         if (!nearest) return;
-        self.targetButton = nearest;
-        CGRect target = [self dragRectAtCenterX:location.x baseWidth:width inHost:host];
-        [self highlightButton:nearest];
-        if (began) {
-            CGRect live = [self livePillFrameInHost:host];
-            [UIView performWithoutAnimation:^{
-                if (!CGRectIsEmpty(live)) [self placePill:live];
-                [self.pillView.layer removeAnimationForKey:@"position"];
-                [self.pillView.layer removeAnimationForKey:@"bounds"];
-                [self.pillView.layer removeAnimationForKey:@"cornerRadius"];
-            }];
-            FQXAnimateIOS27Spring(0.22, 0.36, 0.0, ^{
-                self.pillView.backgroundColor = [self restingPillFillColor];
-                [self placePill:target];
-                self.pillView.transform = dragStretch;
-            }, nil);
-        } else {
-            // Direct 1:1 120Hz ProMotion tracking under finger with live liquid-droplet velocity stretch.
-            [UIView performWithoutAnimation:^{
-                [self placePill:target];
-                self.pillView.transform = dragStretch;
-            }];
-        }
+        CGRect target = [self dragRectAtCenterX:centerX baseWidth:width velocity:[pan velocityInView:host].x inHost:host];
+        if (!self.trackingLens.effect) [self highlightButton:nearest];
+        [UIView performWithoutAnimation:^{ [self placePill:target]; }];
     } else if (self.panning) {
         self.panning = NO;
         UIView *coordHost = [self pillCoordHost];
         CGFloat velocity = (pan.state == UIGestureRecognizerStateEnded && coordHost)
             ? [pan velocityInView:coordHost].x : 0.0;
-        UIButton *dest = (pan.state == UIGestureRecognizerStateEnded && self.targetButton && self.targetButton.isEnabled)
-            ? self.targetButton
-            : ([self currentSelectedButton] ?: self.lastSelectedButton);
-        [self animatePillToButton:dest velocity:velocity];
+        // The existing pan target commits the tab. Read the actual selection after
+        // both targets have run, including cancellations and rejected selections.
+        NSUInteger generation = self.generation;
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
+            [strongSelf animatePillToButton:[strongSelf currentSelectedButton] velocity:velocity];
+        });
     }
 }
 
@@ -1273,6 +1331,8 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     [self deactivatePillAndRestoreLens];
     [self.pillView removeFromSuperview];
     self.pillView = nil;
+    [self.trackingLens removeFromSuperview];
+    self.trackingLens = nil;
     [self.pillClipView removeFromSuperview];
     self.pillClipView = nil;
 }
@@ -3805,8 +3865,8 @@ static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerShee
             CGFloat rimAlpha = 0.22;
             if (mode == FQXCommentMaterialLightGlass) {
                 CGFloat lightAlpha = readerSheet
-                    ? (appDark ? 0.80 : 0.70)
-                    : (FQXDramaCommentNoVideoShiftEnabled() ? 0.70 : 0.78);
+                    ? (appDark ? 0.72 : 0.62)
+                    : (FQXDramaCommentNoVideoShiftEnabled() ? 0.62 : 0.70);
                 scrim = [UIColor colorWithWhite:0.97 alpha:lightAlpha];
                 rimAlpha = 0.72;
             } else if (mode == FQXCommentMaterialIOS18Blur) {
