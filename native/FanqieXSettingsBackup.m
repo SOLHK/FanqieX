@@ -50,6 +50,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaExitCollectAlert.1": @NO,
         @"FanqieX.CommentMaterialStyle.1": @0,
         @"FanqieX.CommentAppearanceMode.1": @0,
+        @"FanqieX.AudioLiquidGlass.1": @NO,
         @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.CommentSearchEntrance.1": @YES,
         @"FanqieX.DramaFollowBottomWidth.1": @NO,

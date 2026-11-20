@@ -58,6 +58,7 @@ static NSString *const CommentActivityBannerPrefKey = @"FanqieX.CommentActivityB
 static NSString *const CommentSearchEntrancePrefKey = @"FanqieX.CommentSearchEntrance.1";
 static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
 static NSString *const AudioIconsOnlyPrefKey = @"FanqieX.AudioControlIconsOnly.1";
+static NSString *const AudioLiquidGlassPrefKey = @"FanqieX.AudioLiquidGlass.1";
 static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
 static NSString *const FQXCTForegroundColorAttr = @"CTForegroundColor";
 static const CGFloat AudioNavigationButtonDiameter = 42.0;
@@ -165,6 +166,10 @@ static BOOL FQXGlassEnabled(void) {
            [glassCls respondsToSelector:NSSelectorFromString(@"effectWithStyle:")] &&
            [cornerCls respondsToSelector:NSSelectorFromString(@"capsuleConfiguration")] &&
            [UIVisualEffectView instancesRespondToSelector:NSSelectorFromString(@"setCornerConfiguration:")];
+}
+
+static BOOL FQXAudioGlassEnabled(void) {
+    return FQXGlassEnabled() && [NSUserDefaults.standardUserDefaults boolForKey:AudioLiquidGlassPrefKey];
 }
 
 static BOOL FQXCommentStylingEnabled(void) {
@@ -722,12 +727,12 @@ static UIImage *FQXDockItemImage(NSString *title,
                                  CGFloat iconPointSize,
                                  BOOL selected,
                                  UIColor *color) {
-    CGFloat symPt = iconsOnly ? MAX(18.0, MIN(32.0, iconPointSize)) : 20.0;
+    CGFloat symPt = iconsOnly ? MAX(16.0, MIN(26.0, iconPointSize * 0.72)) : 18.0;
     NSString *symName = FQXDockSymbolNameForTitle(title, selected);
     UIImage *icon = nil;
     if (symName) {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:symPt
-                                                                                          weight:UIImageSymbolWeightMedium
+                                                                                          weight:UIImageSymbolWeightRegular
                                                                                            scale:UIImageSymbolScaleMedium];
         icon = [UIImage systemImageNamed:symName withConfiguration:cfg];
         if (icon) {
@@ -882,7 +887,7 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     BOOL isDark = (self.dockAppliedStyle == UIUserInterfaceStyleDark);
     CGFloat white = isDark ? 1.0 : 0.0;
     UIColor *selectedInk = [UIColor colorWithWhite:white alpha:1.0];
-    UIColor *normalInk = [UIColor colorWithWhite:white alpha:0.60];
+    UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
     BOOL iconsOnly = [self dockIconsOnlyEnabled];
     CGFloat ptSize = [self dockIconPointSize];
     NSArray<UITabBarItem *> *items = tabBar.items;
@@ -1116,8 +1121,13 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     if (self.nativeDockBar.superview != bar) {
         [bar addSubview:self.nativeDockBar];
     }
-    if (bar.subviews.lastObject != self.nativeDockBar) {
-        [bar bringSubviewToFront:self.nativeDockBar];
+    UIView *anchor = (overlay && overlay.superview == bar) ? overlay : (proxy.superview == bar ? proxy : nil);
+    if (anchor) {
+        NSUInteger nativeIdx = [bar.subviews indexOfObjectIdenticalTo:self.nativeDockBar];
+        NSUInteger anchorIdx = [bar.subviews indexOfObjectIdenticalTo:anchor];
+        if (nativeIdx == NSNotFound || (anchorIdx != NSNotFound && nativeIdx < anchorIdx)) {
+            [bar insertSubview:self.nativeDockBar aboveSubview:anchor];
+        }
     }
 
     UIUserInterfaceStyle desiredStyle = [self isDarkDock] ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
@@ -1149,6 +1159,430 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
 }
 
 @end
+
+#pragma mark - DYKiller-Style Top Drama Channel Capsule (Long-Press Floating Glass & Drag)
+
+@interface FQXFlexGlassView : UIVisualEffectView
+@property(nonatomic, weak) UIView *flexSourceView;
+@end
+
+@implementation FQXFlexGlassView
+- (UIView *)_flexInteractionGestureView {
+    UIView *source = self.flexSourceView;
+    if (source && source.window) return source;
+    SEL sel = NSSelectorFromString(@"_flexInteractionGestureView");
+    if ([UIVisualEffectView instancesRespondToSelector:sel]) {
+        struct objc_super sup = { self, UIVisualEffectView.class };
+        return ((id (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, sel);
+    }
+    return nil;
+}
+@end
+
+typedef NS_ENUM(NSInteger, FQXTopCapsuleTouchMode) {
+    FQXTopCapsuleTouchIdle = 0,
+    FQXTopCapsuleTouchPressing = 1,
+    FQXTopCapsuleTouchDragging = 2,
+};
+
+static const void *FQXDramaTopCapsuleKey = &FQXDramaTopCapsuleKey;
+static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
+
+@interface FQXDramaTopCapsuleInteraction : NSObject <UIGestureRecognizerDelegate>
+@property(nonatomic, weak) UIView *tabsView;
+@property(nonatomic, weak) UICollectionView *collectionView;
+@property(nonatomic, weak) UIVisualEffectView *outerGlass;
+@property(nonatomic, weak) UIView *flatLens;
+@property(nonatomic, strong) FQXFlexGlassView *pillGlass;
+@property(nonatomic, strong) UILongPressGestureRecognizer *pressGesture;
+@property(nonatomic, strong) UILongPressGestureRecognizer *dragGesture;
+@property(nonatomic) FQXTopCapsuleTouchMode mode;
+@property(nonatomic) NSInteger lastSelectedIndex;
+@property(nonatomic) NSInteger hoverIndex;
+@property(nonatomic) CGFloat anchorX;
+@end
+
+@implementation FQXDramaTopCapsuleInteraction
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lastSelectedIndex = NSNotFound;
+        _hoverIndex = NSNotFound;
+    }
+    return self;
+}
+
+- (void)applyMaterialToOuter:(UIVisualEffectView *)outer isDark:(BOOL)isDark {
+    if (!outer || !self.pillGlass) return;
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0);
+    NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
+    if (applied && applied.integerValue == stamp) return;
+    objc_setAssociatedObject(outer, FQXDramaTopGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    NSInteger glassStyle = reduce ? 0 : 1;
+    UIColor *outerTint = (!reduce && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIColor *pillTint = [UIColor colorWithWhite:0.0 alpha:(isDark ? 0.50 : 0.10)];
+    void (^changes)(void) = ^{
+        outer.overrideUserInterfaceStyle = uiStyle;
+        outer.effect = FQXMakeGlassEffect(glassStyle, NO, outerTint);
+        self.pillGlass.overrideUserInterfaceStyle = uiStyle;
+        self.pillGlass.effect = FQXMakeGlassEffect(glassStyle, YES, pillTint);
+    };
+    if (applied) {
+        [UIView animateWithDuration:0.20 animations:changes];
+    } else {
+        changes();
+    }
+}
+
+- (NSArray<NSValue *> *)visibleItemRectsInCollection:(NSMutableArray<NSNumber *> *)outIndices {
+    UICollectionView *cv = self.collectionView;
+    if (!cv) return @[];
+    NSInteger count = [cv numberOfItemsInSection:0];
+    if (count <= 0 || count > 24) return @[];
+    NSMutableArray<NSValue *> *rects = [NSMutableArray arrayWithCapacity:(NSUInteger)count];
+    for (NSInteger i = 0; i < count; ++i) {
+        NSIndexPath *ip = [NSIndexPath indexPathForItem:i inSection:0];
+        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:ip];
+        CGRect f = attr ? attr.frame : CGRectZero;
+        if (CGRectGetWidth(f) < 6.0 || CGRectGetHeight(f) < 6.0) continue;
+        [rects addObject:[NSValue valueWithCGRect:f]];
+        if (outIndices) [outIndices addObject:@(i)];
+    }
+    return rects;
+}
+
+- (NSInteger)currentHostSelectedIndex {
+    UIView *tabs = self.tabsView;
+    if (!tabs) return NSNotFound;
+    NSArray *ds = FQXObjGet(tabs, "dataSource");
+    if (![ds isKindOfClass:NSArray.class]) return NSNotFound;
+    for (NSUInteger i = 0; i < ds.count && i < 24; ++i) {
+        if (FQXBoolGet(ds[i], "isSelected", NO)) return (NSInteger)i;
+    }
+    return NSNotFound;
+}
+
+- (NSInteger)itemIndexAtCollectionX:(CGFloat)x {
+    NSMutableArray<NSNumber *> *indices = [NSMutableArray array];
+    NSArray<NSValue *> *rects = [self visibleItemRectsInCollection:indices];
+    NSInteger nearest = NSNotFound;
+    CGFloat best = CGFLOAT_MAX;
+    for (NSUInteger i = 0; i < rects.count; ++i) {
+        CGRect f = rects[i].CGRectValue;
+        if (x >= CGRectGetMinX(f) && x <= CGRectGetMaxX(f)) return indices[i].integerValue;
+        CGFloat d = fabs(x - CGRectGetMidX(f));
+        if (d < best) {
+            best = d;
+            nearest = indices[i].integerValue;
+        }
+    }
+    return nearest;
+}
+
+- (CGRect)pillRectForAnchorX:(CGFloat)anchorX {
+    UICollectionView *cv = self.collectionView;
+    UIVisualEffectView *outer = self.outerGlass;
+    if (!cv || !outer) return CGRectZero;
+    NSArray<NSValue *> *rects = [self visibleItemRectsInCollection:nil];
+    if (!rects.count) return CGRectZero;
+    CGFloat pillW = CGRectGetWidth(rects.firstObject.CGRectValue);
+    CGRect prevRect = CGRectZero;
+    BOOL hasPrev = NO;
+    for (NSValue *val in rects) {
+        CGRect r = val.CGRectValue;
+        CGFloat mid = CGRectGetMidX(r);
+        if (anchorX <= mid) {
+            if (!hasPrev) {
+                pillW = CGRectGetWidth(r);
+            } else {
+                CGFloat from = CGRectGetMidX(prevRect);
+                CGFloat progress = mid > from ? (anchorX - from) / (mid - from) : 1.0;
+                pillW = CGRectGetWidth(prevRect) + (CGRectGetWidth(r) - CGRectGetWidth(prevRect)) * progress;
+            }
+            hasPrev = NO;
+            break;
+        }
+        prevRect = r;
+        hasPrev = YES;
+    }
+    if (hasPrev) pillW = CGRectGetWidth(prevRect);
+    pillW += 12.0;
+
+    CGPoint inOuter = [cv convertPoint:CGPointMake(anchorX, CGRectGetMidY(cv.bounds)) toView:outer.contentView];
+    CGRect ob = outer.contentView.bounds;
+    CGFloat insetY = 3.0;
+    CGFloat pillH = MAX(22.0, CGRectGetHeight(ob) - insetY * 2.0);
+    CGFloat minX = 3.0;
+    CGFloat maxX = MAX(minX, CGRectGetWidth(ob) - pillW - 3.0);
+    CGFloat x = MIN(maxX, MAX(minX, inOuter.x - pillW * 0.5));
+    return CGRectMake(x, (CGRectGetHeight(ob) - pillH) * 0.5, MIN(pillW, CGRectGetWidth(ob) - 6.0), pillH);
+}
+
+- (void)placePill:(CGRect)target animated:(BOOL)animated {
+    if (!self.pillGlass) return;
+    if (CGRectGetWidth(target) < 12.0 || CGRectGetHeight(target) < 12.0) {
+        if (!self.pillGlass.hidden) self.pillGlass.hidden = YES;
+        return;
+    }
+    if (self.pillGlass.hidden) self.pillGlass.hidden = NO;
+    if (fabs(CGRectGetMinX(self.pillGlass.frame) - CGRectGetMinX(target)) < 0.25 &&
+        fabs(CGRectGetMinY(self.pillGlass.frame) - CGRectGetMinY(target)) < 0.25 &&
+        fabs(CGRectGetWidth(self.pillGlass.frame) - CGRectGetWidth(target)) < 0.25 &&
+        fabs(CGRectGetHeight(self.pillGlass.frame) - CGRectGetHeight(target)) < 0.25) {
+        return;
+    }
+    if (animated && !UIAccessibilityIsReduceMotionEnabled()) {
+        [UIView animateWithDuration:0.42
+                              delay:0.0
+             usingSpringWithDamping:0.78
+              initialSpringVelocity:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState |
+                                    UIViewAnimationOptionAllowUserInteraction
+                         animations:^{
+            self.pillGlass.frame = target;
+        } completion:nil];
+    } else {
+        [UIView performWithoutAnimation:^{
+            self.pillGlass.frame = target;
+        }];
+    }
+}
+
+- (void)placePillAtRestingAnimated:(BOOL)animated {
+    if (self.flatLens && !self.flatLens.hidden && CGRectGetWidth(self.flatLens.frame) >= 12.0) {
+        [self placePill:self.flatLens.frame animated:animated];
+        return;
+    }
+    NSInteger sel = [self currentHostSelectedIndex];
+    UICollectionView *cv = self.collectionView;
+    if (sel != NSNotFound && cv) {
+        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:sel inSection:0]];
+        if (attr && CGRectGetWidth(attr.frame) >= 6.0) {
+            self.anchorX = CGRectGetMidX(attr.frame);
+            [self placePill:[self pillRectForAnchorX:self.anchorX] animated:animated];
+        }
+    }
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    (void)gr; (void)other;
+    return YES;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gr {
+    if (gr != self.dragGesture) return YES;
+    UICollectionView *cv = self.collectionView;
+    if (!cv || cv.isDragging) return NO;
+    CGFloat x = [gr locationInView:cv].x;
+    NSInteger idx = [self itemIndexAtCollectionX:x];
+    NSInteger sel = [self currentHostSelectedIndex];
+    return idx != NSNotFound && idx == sel;
+}
+
+- (void)handlePress:(UILongPressGestureRecognizer *)gr {
+    UICollectionView *cv = self.collectionView;
+    if (!cv) return;
+    if (gr.state == UIGestureRecognizerStateBegan) {
+        CGFloat x = [gr locationInView:cv].x;
+        NSInteger idx = [self itemIndexAtCollectionX:x];
+        if (idx == NSNotFound) return;
+        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:idx inSection:0]];
+        if (!attr) return;
+        self.mode = FQXTopCapsuleTouchPressing;
+        self.anchorX = CGRectGetMidX(attr.frame);
+        [self placePill:[self pillRectForAnchorX:self.anchorX] animated:YES];
+    } else if (gr.state == UIGestureRecognizerStateEnded ||
+               gr.state == UIGestureRecognizerStateCancelled ||
+               gr.state == UIGestureRecognizerStateFailed) {
+        if (self.mode != FQXTopCapsuleTouchPressing) return;
+        self.mode = FQXTopCapsuleTouchIdle;
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) s = weakSelf;
+            if (!s || s.mode != FQXTopCapsuleTouchIdle) return;
+            [s placePillAtRestingAnimated:YES];
+        });
+    }
+}
+
+- (void)updateDragAtGesture:(UILongPressGestureRecognizer *)gr animated:(BOOL)animated {
+    UICollectionView *cv = self.collectionView;
+    if (!cv) return;
+    NSArray<NSValue *> *rects = [self visibleItemRectsInCollection:nil];
+    if (!rects.count) return;
+    CGFloat minAnchor = CGRectGetMidX(rects.firstObject.CGRectValue);
+    CGFloat maxAnchor = CGRectGetMidX(rects.lastObject.CGRectValue);
+    CGFloat x = [gr locationInView:cv].x;
+    self.anchorX = MIN(maxAnchor, MAX(minAnchor, x));
+    NSInteger idx = [self itemIndexAtCollectionX:self.anchorX];
+    if (idx != NSNotFound && idx != self.hoverIndex) {
+        self.hoverIndex = idx;
+        UISelectionFeedbackGenerator *gen = [[UISelectionFeedbackGenerator alloc] init];
+        [gen selectionChanged];
+    }
+    [self placePill:[self pillRectForAnchorX:self.anchorX] animated:animated];
+}
+
+- (void)handleDrag:(UILongPressGestureRecognizer *)gr {
+    UICollectionView *cv = self.collectionView;
+    UIView *tabs = self.tabsView;
+    if (!cv || !tabs) return;
+    if (gr.state == UIGestureRecognizerStateBegan) {
+        self.mode = FQXTopCapsuleTouchDragging;
+        self.hoverIndex = [self currentHostSelectedIndex];
+        cv.panGestureRecognizer.enabled = NO;
+        UIImpactFeedbackGenerator *impact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [impact impactOccurred];
+        [self updateDragAtGesture:gr animated:YES];
+    } else if (gr.state == UIGestureRecognizerStateChanged) {
+        [self updateDragAtGesture:gr animated:NO];
+    } else if (self.mode == FQXTopCapsuleTouchDragging) {
+        self.mode = FQXTopCapsuleTouchIdle;
+        cv.panGestureRecognizer.enabled = YES;
+        NSInteger target = self.hoverIndex;
+        self.hoverIndex = NSNotFound;
+        NSInteger cur = [self currentHostSelectedIndex];
+        if (gr.state == UIGestureRecognizerStateEnded && target != NSNotFound && target != cur) {
+            NSIndexPath *ip = [NSIndexPath indexPathForItem:target inSection:0];
+            SEL sel = @selector(collectionView:didSelectItemAtIndexPath:);
+            if ([tabs respondsToSelector:sel]) {
+                ((void (*)(id, SEL, id, id))objc_msgSend)(tabs, sel, cv, ip);
+            }
+            self.lastSelectedIndex = target;
+            [self placePillAtRestingAnimated:YES];
+        } else {
+            [self placePillAtRestingAnimated:YES];
+        }
+    }
+}
+
+- (void)invalidate {
+    if (self.pressGesture.view) [self.pressGesture.view removeGestureRecognizer:self.pressGesture];
+    if (self.dragGesture.view) [self.dragGesture.view removeGestureRecognizer:self.dragGesture];
+    [self.pillGlass removeFromSuperview];
+    self.pillGlass = nil;
+    if (self.flatLens && self.flatLens.layer.opacity != 1.0f) self.flatLens.layer.opacity = 1.0f;
+    if (self.mode == FQXTopCapsuleTouchDragging && self.collectionView) {
+        self.collectionView.panGestureRecognizer.enabled = YES;
+    }
+    self.mode = FQXTopCapsuleTouchIdle;
+}
+
+- (void)syncWithTabs:(UIView *)tabs {
+    if (!tabs || !FQXGlassEnabled()) {
+        [self invalidate];
+        return;
+    }
+    UIView *categories = tabs.superview;
+    UICollectionView *cv = FQXObjGet(tabs, "collectionView");
+    if (!categories || ![cv isKindOfClass:UICollectionView.class]) return;
+
+    UIVisualEffectView *outer = nil;
+    for (UIView *sub in categories.subviews) {
+        if ([sub isKindOfClass:UIVisualEffectView.class] && ![sub isKindOfClass:FQXFlexGlassView.class] &&
+            !sub.hidden && CGRectGetWidth(sub.bounds) >= 60.0 && CGRectGetHeight(sub.bounds) <= 48.0) {
+            outer = (UIVisualEffectView *)sub;
+            break;
+        }
+    }
+    if (!outer) {
+        if (self.pillGlass) self.pillGlass.hidden = YES;
+        return;
+    }
+
+    UIView *flat = nil;
+    for (UIView *sub in outer.contentView.subviews) {
+        if (sub != self.pillGlass && ![sub isKindOfClass:FQXFlexGlassView.class]) {
+            flat = sub;
+            break;
+        }
+    }
+
+    self.tabsView = tabs;
+    self.collectionView = cv;
+    self.outerGlass = outer;
+    self.flatLens = flat;
+    if (flat && flat.layer.opacity != 0.0f) flat.layer.opacity = 0.0f;
+
+    if (!self.pillGlass) {
+        FQXFlexGlassView *pill = [[FQXFlexGlassView alloc] initWithEffect:nil];
+        pill.flexSourceView = cv;
+        pill.userInteractionEnabled = NO;
+        pill.accessibilityElementsHidden = YES;
+        FQXApplyCornerConfiguration(pill, 0.0, NO);
+        objc_setAssociatedObject(pill, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        self.pillGlass = pill;
+    }
+    if (self.pillGlass.flexSourceView != cv) self.pillGlass.flexSourceView = cv;
+    if (self.pillGlass.superview != outer.contentView) {
+        [outer.contentView addSubview:self.pillGlass];
+    }
+
+    if (!self.pressGesture) {
+        self.pressGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handlePress:)];
+        self.pressGesture.minimumPressDuration = 0.0;
+        self.pressGesture.cancelsTouchesInView = NO;
+        self.pressGesture.delegate = self;
+    }
+    if (self.pressGesture.view != cv) {
+        [self.pressGesture.view removeGestureRecognizer:self.pressGesture];
+        [cv addGestureRecognizer:self.pressGesture];
+    }
+    if (!self.dragGesture) {
+        self.dragGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
+        self.dragGesture.minimumPressDuration = 0.22;
+        self.dragGesture.cancelsTouchesInView = NO;
+        self.dragGesture.delegate = self;
+    }
+    if (self.dragGesture.view != cv) {
+        [self.dragGesture.view removeGestureRecognizer:self.dragGesture];
+        [cv addGestureRecognizer:self.dragGesture];
+    }
+
+    BOOL isDark = (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
+                  (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
+                   outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+    [self applyMaterialToOuter:outer isDark:isDark];
+
+    if (self.mode == FQXTopCapsuleTouchIdle) {
+        NSInteger sel = [self currentHostSelectedIndex];
+        BOOL selChanged = (self.lastSelectedIndex != NSNotFound && sel != NSNotFound && sel != self.lastSelectedIndex);
+        self.lastSelectedIndex = sel;
+        [self placePillAtRestingAnimated:selChanged];
+    }
+}
+
+@end
+
+static void FQXSyncDramaTopCapsuleForHeader(UIView *header) {
+    if (!header || !FQXGlassEnabled()) return;
+    id owner = FQXObjGet(header, "delegate");
+    UIView *tabs = FQXObjGet(owner, "simpleTabView");
+    if (![tabs isKindOfClass:UIView.class]) return;
+    FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+    if (!interaction) {
+        interaction = [[FQXDramaTopCapsuleInteraction alloc] init];
+        objc_setAssociatedObject(tabs, FQXDramaTopCapsuleKey, interaction, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [interaction syncWithTabs:tabs];
+}
+
+static void (*OrigDramaHeaderLayoutForCapsule)(id, SEL);
+static void HookDramaHeaderLayoutForCapsule(UIView *header, SEL cmd) {
+    if (OrigDramaHeaderLayoutForCapsule) OrigDramaHeaderLayoutForCapsule(header, cmd);
+    FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaTabsLayoutForCapsule)(id, SEL);
+static void HookDramaTabsLayoutForCapsule(UIView *tabs, SEL cmd) {
+    if (OrigDramaTabsLayoutForCapsule) OrigDramaTabsLayoutForCapsule(tabs, cmd);
+    FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+    if (interaction) [interaction syncWithTabs:tabs];
+}
 
 static void FQXRefreshAllAudioGlass(void);
 static void FQXRefreshAllDramaControlsInWindows(void);
@@ -6285,7 +6719,7 @@ static void FQXAudioMenuCellIcons(UICollectionViewCell *cell) {
     BOOL iconsOnly = [NSUserDefaults.standardUserDefaults boolForKey:AudioIconsOnlyPrefKey];
     UILabel *label = FQXObjGet(cell, "nameLabel");
     UIView *icon = FQXObjGet(cell, "iconView");
-    FQXAudioSetControlInk(label, FQXGlassEnabled());
+    FQXAudioSetControlInk(label, FQXAudioGlassEnabled());
     FQXAudioSetHiddenTracked(label, iconsOnly);
     UIView *parent = icon.superview;
     if (parent) {
@@ -6306,7 +6740,7 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
                                                       BOOL active) {
     if (!host) return nil;
     UIVisualEffectView *surface = objc_getAssociatedObject(host, AudioGlassSurfaceKey);
-    if (!active || !FQXGlassEnabled() || !mountParent ||
+    if (!active || !FQXAudioGlassEnabled() || !mountParent ||
         CGRectGetWidth(frame) <= 2.0 || CGRectGetHeight(frame) <= 2.0) {
         if (surface) {
             [surface removeFromSuperview];
@@ -6363,7 +6797,7 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
 
 @implementation FQXAudioButtonFeedback
 + (void)onDown:(UIControl *)sender {
-    if (UIAccessibilityIsReduceMotionEnabled() || !FQXGlassEnabled()) return;
+    if (UIAccessibilityIsReduceMotionEnabled() || !FQXAudioGlassEnabled()) return;
     [UIView animateWithDuration:0.18
                           delay:0.0
          usingSpringWithDamping:0.72
@@ -6446,7 +6880,7 @@ static CGRect FQXAudioCardColumnBounds(UIView *view) {
 static void FQXApplyAudioNavigationGlass(UIView *nav) {
     if (![nav isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(nav);
-    BOOL enabled = FQXGlassEnabled();
+    BOOL enabled = FQXAudioGlassEnabled();
     FQXAudioSetUnclipped(nav, enabled);
 
     UIButton *backBtn = FQXObjGet(nav, "backBtn");
@@ -6506,7 +6940,7 @@ static void FQXApplyAudioNavigationGlass(UIView *nav) {
 static void FQXApplyAudioBackViewGlass(UIView *backView) {
     if (![backView isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(backView);
-    BOOL enabled = FQXGlassEnabled() && !backView.hidden;
+    BOOL enabled = FQXAudioGlassEnabled() && !backView.hidden;
     UIButton *closeBtn = FQXObjGet(backView, "closeButton");
     UIButton *backLastBtn = FQXObjGet(backView, "backLastButton");
     UIView *splitLine = FQXObjGet(backView, "splitLineView");
@@ -6544,7 +6978,7 @@ static void FQXApplyAudioBookGlass(UIView *bookView) {
     if (!host) return;
     CGFloat diameter = AudioBookArrowDiameter;
     CGRect stock = arrow.frame;
-    BOOL active = FQXGlassEnabled() && !arrow.hidden && arrow.alpha > 0.01 &&
+    BOOL active = FQXAudioGlassEnabled() && !arrow.hidden && arrow.alpha > 0.01 &&
                   !CGRectIsEmpty(stock) && [arrow isDescendantOfView:bookView];
     FQXAudioSetUnclipped(host, active);
     FQXAudioSetUnclipped(bookView, active);
@@ -6558,7 +6992,7 @@ static void FQXApplyAudioBookGlass(UIView *bookView) {
 static void FQXApplyAudioMenuGlass(UIView *menuView) {
     if (![menuView isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(menuView);
-    BOOL enabled = FQXGlassEnabled() && !menuView.hidden && CGRectGetWidth(menuView.bounds) > 40.0;
+    BOOL enabled = FQXAudioGlassEnabled() && !menuView.hidden && CGRectGetWidth(menuView.bounds) > 40.0;
     FQXAudioSetUnclipped(menuView, enabled);
     FQXAudioClearBackground(menuView, enabled);
 
@@ -6612,7 +7046,7 @@ static void FQXApplyAudioMenuGlass(UIView *menuView) {
 static void FQXApplyAudioMenuCellPress(UICollectionViewCell *cell, BOOL pressed) {
     if (![cell isKindOfClass:UICollectionViewCell.class]) return;
     FQXTrackAudioView(cell);
-    BOOL enabled = FQXGlassEnabled();
+    BOOL enabled = FQXAudioGlassEnabled();
     FQXAudioSetUnclipped(cell, enabled);
     FQXAudioSetUnclipped(cell.contentView, enabled);
     CGRect pill = CGRectInset(cell.contentView.bounds, 4.0, 0.0);
@@ -6637,7 +7071,7 @@ static void FQXApplyAudioMenuCellPress(UICollectionViewCell *cell, BOOL pressed)
 static void FQXApplyAudioControlGlass(UIView *control) {
     if (![control isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(control);
-    BOOL enabled = FQXGlassEnabled() && !control.hidden;
+    BOOL enabled = FQXAudioGlassEnabled() && !control.hidden;
     FQXAudioSetUnclipped(control, enabled);
     FQXAudioClearBackground(control, enabled);
 
@@ -6687,7 +7121,7 @@ static void FQXApplyAudioControlGlass(UIView *control) {
 static void FQXApplyAudioToneCellGlass(UICollectionViewCell *cell) {
     if (![cell isKindOfClass:UICollectionViewCell.class]) return;
     FQXTrackAudioView(cell);
-    BOOL enabled = FQXGlassEnabled() && CGRectGetWidth(cell.contentView.bounds) > 16.0 &&
+    BOOL enabled = FQXAudioGlassEnabled() && CGRectGetWidth(cell.contentView.bounds) > 16.0 &&
                    CGRectGetHeight(cell.contentView.bounds) > 16.0;
     FQXAudioSetUnclipped(cell, enabled);
     FQXAudioSetUnclipped(cell.contentView, enabled);
@@ -6709,7 +7143,7 @@ static void FQXApplyAudioToneCellGlass(UICollectionViewCell *cell) {
 static void FQXApplyAudioOuterCardGlass(UIView *card) {
     if (![card isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(card);
-    BOOL enabled = FQXGlassEnabled() && !card.hidden &&
+    BOOL enabled = FQXAudioGlassEnabled() && !card.hidden &&
                    CGRectGetWidth(card.bounds) > 24.0 && CGRectGetHeight(card.bounds) > 24.0;
     FQXAudioSetUnclipped(card, enabled);
     FQXAudioClearBackground(card, enabled);
@@ -6724,7 +7158,7 @@ static void FQXApplyAudioOuterCardGlass(UIView *card) {
 static void FQXApplyAudioToneListGlass(UIView *toneList) {
     if (![toneList isKindOfClass:UIView.class]) return;
     FQXApplyAudioOuterCardGlass(toneList);
-    BOOL enabled = FQXGlassEnabled() && !toneList.hidden;
+    BOOL enabled = FQXAudioGlassEnabled() && !toneList.hidden;
     CGFloat cardW = CGRectGetWidth(toneList.bounds);
 
     // Circular Liquid Glass button on `音色设置 >` arrow (`moreButton`), pulled inward
@@ -6772,7 +7206,7 @@ static void FQXApplyAudioToneListGlass(UIView *toneList) {
 static void FQXApplyAudioReadingGuideGlass(UIView *guide) {
     if (![guide isKindOfClass:UIView.class]) return;
     FQXApplyAudioOuterCardGlass(guide);
-    BOOL enabled = FQXGlassEnabled() && !guide.hidden;
+    BOOL enabled = FQXAudioGlassEnabled() && !guide.hidden;
     FQXAudioSetControlInk(FQXObjGet(guide, "chapterTitleLabel"), enabled);
 
     // Circular Liquid Glass pill behind `边听边读 >` arrow (`indicatorImageView`), pulled inward
@@ -6797,7 +7231,7 @@ static void FQXApplyAudioReadingGuideGlass(UIView *guide) {
 static void FQXApplyAudioToneView611Glass(UIView *container) {
     if (![container isKindOfClass:UIView.class]) return;
     FQXTrackAudioView(container);
-    BOOL enabled = FQXGlassEnabled();
+    BOOL enabled = FQXAudioGlassEnabled();
     FQXAudioSetUnclipped(container, enabled);
     FQXAudioClearBackground(container, enabled);
     FQXAudioClearCardShadow(container, enabled);
@@ -6864,7 +7298,7 @@ static void FQXApplyAudioBackgroundSeamless(UIView *bgView) {
     FQXTrackAudioView(bgView);
     NSNumber *recsVal = [NSUserDefaults.standardUserDefaults objectForKey:AudioRecsPrefKey];
     BOOL recsHidden = [recsVal isKindOfClass:NSNumber.class] && !recsVal.boolValue;
-    BOOL seamless = FQXGlassEnabled() || recsHidden;
+    BOOL seamless = FQXAudioGlassEnabled() || recsHidden;
 
     FQXAudioHideGradient(FQXObjGet(bgView, "bottomBgMaskGradientLayer"), seamless);
     UIView *bottomBgView = FQXObjGet(bgView, "bottomBgView");
@@ -6916,7 +7350,7 @@ static void FQXUpdateTTSReaderCaptionMask(id ttsReaderVC) {
     UIView *readerContainer = FQXObjGet(ttsReaderVC, "readerContainerView");
     CALayer *rawMask = FQXObjGet(ttsReaderVC, "captionMaskLayer");
     if (![readerContainer isKindOfClass:UIView.class] || ![rawMask isKindOfClass:CAGradientLayer.class]) return;
-    if (!FQXGlassEnabled()) return;
+    if (!FQXAudioGlassEnabled()) return;
     CAGradientLayer *maskLayer = (CAGradientLayer *)rawMask;
     CGRect bounds = readerContainer.bounds;
     if (CGRectGetHeight(bounds) <= 40.0) return;
@@ -6950,7 +7384,7 @@ static void FQXApplyAudioPlayControllerRefractionAndSeamless(UIViewController *v
     if (![vc isKindOfClass:UIViewController.class] || !vc.isViewLoaded) return;
     [FQXAudioPlayVCs() addObject:vc];
 
-    BOOL glassOn = FQXGlassEnabled();
+    BOOL glassOn = FQXAudioGlassEnabled();
     BOOL expanded = FQXBoolGet(vc, "isReaderVCExpanded", NO);
     BOOL active = glassOn && !expanded;
 
@@ -7180,7 +7614,7 @@ static void HookToneListAdjust(UIView *self, SEL _cmd) {
 }
 static void (*OrigToneListSetBg)(id, SEL, id);
 static void HookToneListSetBg(UIView *self, SEL _cmd, UIColor *color) {
-    if (FQXGlassEnabled() && ![objc_getAssociatedObject(self, AudioClearingBgKey) boolValue]) {
+    if (FQXAudioGlassEnabled() && ![objc_getAssociatedObject(self, AudioClearingBgKey) boolValue]) {
         if (color && ![color isEqual:UIColor.clearColor]) {
             objc_setAssociatedObject(self, AudioSavedBgKey, color, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -7353,6 +7787,8 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v24@0:8q16", OrigMineTabBarCurrentTap64, HookMineTabBarCurrentTap64);
         HOOK_INST("SSMyUser621ViewController", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineUnlimitedRefresh, HookMineUnlimitedRefresh);
+        HOOK_INST("SSVideoSeriesFeedHeaderView", "layoutSubviews", "v16@0:8", OrigDramaHeaderLayoutForCapsule, HookDramaHeaderLayoutForCapsule);
+        HOOK_INST("SSHGBookStoreCategoryTitleView", "layoutSubviews", "v16@0:8", OrigDramaTabsLayoutForCapsule, HookDramaTabsLayoutForCapsule);
         HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
         HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
         HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);

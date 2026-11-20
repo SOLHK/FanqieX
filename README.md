@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.1beta6 测试版
+## FanqieX 1.9.1beta7 测试版
 
 调整底栏液态玻璃胶囊的跟手滑动和松手回弹，降低短剧评论与小说段评的浅色面板泛白。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.1beta6.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.1beta7.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta6。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta7。
 
 ## FanqieX 1.76
 

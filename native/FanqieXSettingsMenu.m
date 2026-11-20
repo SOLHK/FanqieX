@@ -23,14 +23,23 @@ static NSString *Fold(NSString *text) {
 static NSString *SearchText(NSString *text) {
     NSString *normalized = Fold(text);
     // Normalize wording before matching, including queries without spaces.
-    for (NSArray *pair in @[@[@"看听读时长", @"阅读时长"], @[@"听读时长", @"阅读时长"], @[@"朗读", @"听书"],
+    for (NSArray *pair in @[@[@"看听读时长", @"阅读时长"], @[@"听读时长", @"阅读时长"],
+                           @[@"朗读", @"听书"], @[@"语音", @"听书"],
+                           @[@"dock栏", @"底栏"], @[@"dock", @"底栏"], @[@"底部栏", @"底栏"], @[@"tabbar", @"底栏"], @[@"导航栏", @"底栏"],
+                           @[@"液态玻璃", @"玻璃"], @[@"毛玻璃", @"高斯模糊"], @[@"磨砂", @"高斯模糊"],
+                           @[@"黑夜", @"深色"], @[@"暗黑", @"深色"], @[@"深色模式", @"深色"],
+                           @[@"白天", @"浅色"], @[@"日间", @"浅色"], @[@"浅色模式", @"浅色"],
+                           @[@"看书", @"阅读"], @[@"读书", @"阅读"], @[@"小说", @"阅读"],
+                           @[@"剧评", @"评论"], @[@"段评", @"评论"], @[@"章评", @"评论"], @[@"评价", @"评论"],
+                           @[@"屏蔽", @"拦截"], @[@"去除", @"拦截"], @[@"去广告", @"广告"],
+                           @[@"震动", @"振动"], @[@"触感", @"振动"],
                            @[@"自动翻页", @"自动阅读"], @[@"动态漫", @"漫剧"],
                            @[@"改编剧场", @"改编剧"], @[@"发布", @"发帖"],
                            @[@"推荐卡片", @"推荐内容"], @[@"送礼物", @"送礼"],
                            @[@"折叠", @"收缩"], @[@"收起", @"收缩"],
                            @[@"保存", @"导出"], @[@"下载", @"导出"]])
         normalized = [normalized stringByReplacingOccurrencesOfString:pair[0] withString:pair[1]];
-    for (NSString *word in @[@"隐藏", @"显示", @"关闭", @"开启", @"去掉", @"打开", @"按钮", @"入口", @"页面"])
+    for (NSString *word in @[@"隐藏", @"显示", @"关闭", @"开启", @"去掉", @"打开", @"按钮", @"入口", @"页面", @"界面", @"功能"])
         normalized = [normalized stringByReplacingOccurrencesOfString:word withString:@""];
     return normalized;
 }
@@ -159,9 +168,19 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     row.content = row.originalToggle ? nil : view;
     row.height = row.originalToggle ? 52 : MAX(52, CGRectGetHeight(view.bounds));
     row.requiresCompact = [title containsString:@"收缩位置"];
-    if ([title containsString:@"自动收缩"]) row.keywords = [row.keywords stringByAppendingString:@" 缩小 收起 折叠 底栏"];
+    if ([title containsString:@"自动收缩"]) row.keywords = [row.keywords stringByAppendingString:@" 缩小 收起 折叠 底栏 dock 胶囊"];
     if ([title containsString:@"跟随底栏长度"]) row.keywords = [row.keywords stringByAppendingString:@" 查看全集 观看完整漫剧 进度条 底栏长度 胶囊长度 自动跟随 宽度"];
     if ([title containsString:@"时长"]) row.keywords = [row.keywords stringByAppendingString:@" 书架今日听读时长 阅读统计"];
+    if ([title containsString:@"底栏"]) row.keywords = [row.keywords stringByAppendingString:@" dock dock栏 底部栏 导航栏 胶囊 图标 尺寸 大小 长度 高度"];
+    if ([title containsString:@"纯图标"]) row.keywords = [row.keywords stringByAppendingString:@" 无文字 隐藏文字 仅图标 图标模式"];
+    if ([title containsString:@"画质"]) row.keywords = [row.keywords stringByAppendingString:@" 1080p 清晰度 超清 蓝光 最高画质 视频"];
+    if ([title containsString:@"清屏"]) row.keywords = [row.keywords stringByAppendingString:@" 纯净 隐藏界面 无遮挡 沉浸"];
+    if ([title containsString:@"横屏"] || [title containsString:@"铺满"]) row.keywords = [row.keywords stringByAppendingString:@" 全屏 裁切 放大 黑边 视频"];
+    if ([title containsString:@"主题"] || [title containsString:@"隔离"]) row.keywords = [row.keywords stringByAppendingString:@" 深色 浅色 夜间 日间 护眼 背景"];
+    if ([title containsString:@"备份"] || [title containsString:@"导入"] || [title containsString:@"导出"]) row.keywords = [row.keywords stringByAppendingString:@" 备份 恢复 迁移 配置 设置 JSON TXT EPUB"];
+    if ([title containsString:@"启动"]) row.keywords = [row.keywords stringByAppendingString:@" 默认页 首页 书架 短剧 书城 冷启动"];
+    if ([title containsString:@"分类"]) row.keywords = [row.keywords stringByAppendingString:@" 顶部分类 顶部胶囊 推荐 看剧 漫剧 最近 收藏 频道"];
+    if ([title containsString:@"玻璃"]) row.keywords = [row.keywords stringByAppendingString:@" 液态玻璃 毛玻璃 透明 材质 外观"];
     [menu.catalog addObject:row];
 }
 
@@ -187,7 +206,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     glassRow.title = @"评论区液态玻璃";
     glassRow.path = route;
     glassRow.hiddenFromSearch = hiddenFromSearch;
-    glassRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 液态玻璃 材质 透明";
+    glassRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 液态玻璃 液态玻璃评论区 评论液态玻璃 材质 透明 玻璃";
     glassRow.commentMaterialChoice = 1;
     glassRow.height = 52;
     [menu.catalog addObject:glassRow];
@@ -196,7 +215,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     blurRow.title = @"评论区高斯模糊";
     blurRow.path = route;
     blurRow.hiddenFromSearch = hiddenFromSearch;
-    blurRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 高斯模糊 毛玻璃 iOS18 材质";
+    blurRow.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 高斯模糊 高斯模糊评论区 毛玻璃 磨砂 iOS18 材质";
     blurRow.commentMaterialChoice = 2;
     blurRow.height = 52;
     [menu.catalog addObject:blurRow];
@@ -205,7 +224,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     appearanceRow.title = @"评论区外观";
     appearanceRow.path = route;
     appearanceRow.hiddenFromSearch = hiddenFromSearch;
-    appearanceRow.keywords = @"评论区 外观 浅色 深色 夜间模式 日间模式 跟随软件 独立 主题 颜色 背景";
+    appearanceRow.keywords = @"评论区 外观 浅色 深色 浅色深色 夜间模式 日间模式 跟随软件 独立 主题 颜色 背景 评论区深浅";
     appearanceRow.commentAppearanceRow = YES;
     appearanceRow.height = 52;
     [menu.catalog addObject:appearanceRow];
@@ -297,20 +316,35 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
             @"FanqieX.CommentActivityBanner.1":@"评论区 公告 活动 社区公约 文明发言 活动横幅 激励 创作者计划 段评 顶部 隐藏 关闭",
             @"FanqieX.CommentSearchEntrance.1":@"评论区 大家都在搜 大家在搜 热搜 搜索 推荐 顶部 隐藏 关闭",
-            @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
+            @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓 图标",
+            @"FanqieX.DramaShowCollect.1":@"短剧 右侧 收藏 星星 互动按钮 隐藏",
+            @"FanqieX.DramaShowComment.1":@"短剧 右侧 评论 气泡 互动按钮 隐藏",
+            @"FanqieX.DramaShowLike.1":@"短剧 右侧 点赞 爱心 红心 互动按钮 隐藏",
+            @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
+            @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
+            @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原书 玻璃 外观",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
-            @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 语速 下载 章评 目录 定时",
-            @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮",
-            @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子",
-            @"FanqieX.ReaderDoubleTapAutoread.1":@"自动翻页 双击",
-            @"FanqieX.ReaderAutoReadDurationLimit.1":@"时间限制 广告时长",
-            @"FanqieX.NotificationsBadge.1":@"红点 数字 角标",
+            @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 纯图标 语速 下载 章评 目录 定时",
+            @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮 悬浮球 按钮",
+            @"FanqieX.ReaderChapterCircle.1":@"书圈 圈子 章末",
+            @"FanqieX.ReaderDoubleTapAutoread.1":@"自动翻页 双击 自动阅读 手势",
+            @"FanqieX.ReaderAutoReadDurationLimit.1":@"时间限制 广告时长 自动阅读 看广告",
+            @"FanqieX.ReaderRatingInvite.1":@"评分 评价 邀请 弹窗 书评",
+            @"FanqieX.ExcerptWidgetGuide.1":@"书摘 小组件 桌面 提醒 弹窗",
+            @"FanqieX.ContentWidgetGuide.1":@"内容 小组件 桌面 提醒 弹窗",
+            @"FanqieX.BookstorePublishButton.1":@"书城 发帖 发布 按钮 悬浮",
+            @"FanqieX.ListenPendant.1":@"听读赚钱 赚钱 挂件 悬浮 福利 金币",
+            @"FanqieX.StoryAds.1":@"短篇 正文 广告 拦截 净化",
+            @"FanqieX.HotLaunchAds.1":@"热启动 开屏 广告 拦截 净化",
+            @"FanqieX.AudioAds.1":@"听书 朗读 广告 拦截 净化",
+            @"FanqieX.ChapterTitle.1":@"返回 标题 章节名 书名 阅读页",
+            @"FanqieX.NotificationsBadge.1":@"红点 数字 角标 通知 提醒",
             @"FanqieX.ReaderChapterEndDrama.1":@"阅读底栏 改编剧场 改编剧入口",
             @"FanqieX.ReaderChapterEndActions.1":@"最新章节 三个按钮 最新章 章末",
             @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
             @"FanqieX.ShelfRecommendations.1":@"书架 推荐内容 展开全部 猜你喜欢 为你推荐 书架底部推荐 榜单推荐",
             @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书",
-            @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片",
+            @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片 无限流",
             @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币"
         };
         if (aliases[option[@"key"]]) row.keywords = [row.keywords stringByAppendingFormat:@" %@", aliases[option[@"key"]]];
