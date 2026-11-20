@@ -1983,7 +1983,7 @@ def exercise(data, labels):
             if layered_buttons:
                 surface = call(cpu, labels, "LFQH_FQHSurface", row)["result"]
                 item_surface = call(cpu, labels, "LFQH_FQHSurface", content)["result"]
-                expected_item_radius = {"1.8R1": 25, "1.8R2": 25, "1.8R3": 25, "1.8R4": 25, "1.8R5": 25, "1.8R6": 25, "1.8R7": 25, "1.8R8": 25, "1.8R9": 25, "1.8R10": 25, "1.8R11": 25, "1.8R12": 25, "1.8R13": 25, "1.8R14": 25, "1.8R15": 25, "1.8R16": 25, "1.8R17": 25, "1.8R18": 25, "1.79R5": 18}.get(release_version(data), 14)
+                expected_item_radius = {"1.8R1": 25, "1.8R2": 25, "1.8R3": 25, "1.8R4": 25, "1.8R5": 25, "1.8R6": 25, "1.8R7": 25, "1.8R8": 25, "1.8R9": 25, "1.8R10": 25, "1.8R11": 25, "1.8R12": 25, "1.8R13": 25, "1.8R14": 25, "1.8R15": 25, "1.8R16": 25, "1.8R17": 25, "1.8R18": 25, "1.8R19": 25, "1.79R5": 18}.get(release_version(data), 14)
                 require(surface and item_surface and
                         runtime.objects[row].state["subviews"] == [surface, collection] and
                         runtime.objects[content].state["subviews"] == [item_surface] + foreground and

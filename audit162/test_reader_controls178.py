@@ -304,6 +304,7 @@ def main_checks(data, labels):
         "1.8R16": (10., 5., 50., 50.),
         "1.8R17": (10., 5., 50., 50.),
         "1.8R18": (10., 5., 50., 50.),
+        "1.8R19": (10., 5., 50., 50.),
             "1.79R5": (2., 1., 66., 58.),
         }.get(release_version(data), (4., 2., 62., 56.))
         require(item_surface and runtime.objects[item_surface].state["frame"] == expected_item,

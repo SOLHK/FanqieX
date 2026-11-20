@@ -402,6 +402,8 @@ def version_word(version: str) -> int:
         return 0x15011
     if version == "1.8R18":
         return 0x15012
+    if version == "1.8R19":
+        return 0x15013
     if version == "1.8R7":
         return 0x15007
     if version == "1.8R6":
