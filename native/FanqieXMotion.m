@@ -2620,7 +2620,8 @@ static NSHashTable<UIView *> *FQXPinchCleanControls(void) {
 @end
 
 static void FQXHideViewForPinchClean(UIView *view, NSMapTable<UIView *, FQXPinchCleanViewState *> *views) {
-    if (![view isKindOfClass:UIView.class] || view.hidden || view.alpha == 0.0 || [views objectForKey:view]) return;
+    if (![view isKindOfClass:UIView.class] || !view.window || view.hidden ||
+        view.alpha == 0.0 || [views objectForKey:view]) return;
     FQXPinchCleanViewState *state = [FQXPinchCleanViewState new];
     state.originalMask = view.layer.mask;
     state.mask = [CALayer layer];
@@ -2667,13 +2668,13 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
 
         Class outerCls = NSClassFromString(@"SSShortVideoOutterMultiGenreFeedControlView");
         if (outerCls && [control isKindOfClass:outerCls]) {
-            const char *outerKeys[] = {
-                "aboveProgressView", "progressView", "rightInteractionView",
-                "baseInfoView", "bookCardView", "progressFloatView", "playBtn",
-                "topGradientView", "bottomGradientView"
+            // Use mounted ivars so clean-screen entry does not create controls through lazy getters.
+            const char *outerIvars[] = {
+                "_aboveProgressView", "_progressView", "_baseInfoView", "_bookCardView",
+                "_progressFloatView", "_playBtn", "_topGradientView", "_bottomGradientView"
             };
-            for (size_t i = 0; i < sizeof(outerKeys) / sizeof(outerKeys[0]); ++i) {
-                FQXHideViewForPinchClean(FQXObjGet(control, outerKeys[i]), hiddenSet);
+            for (size_t i = 0; i < sizeof(outerIvars) / sizeof(*outerIvars); ++i) {
+                FQXHideViewForPinchClean(FQXRawIvarObj(control, outerIvars[i]), hiddenSet);
             }
         } else {
             const char *vPlayerKeys[] = {
@@ -2758,6 +2759,8 @@ static BOOL FQXDramaPinchConflicts(UIGestureRecognizer *gesture) {
 
 @interface FQXDramaPinchHandler : NSObject <UIGestureRecognizerDelegate>
 + (instancetype)shared;
+@property(nonatomic, strong) UIImpactFeedbackGenerator *haptic;
+- (void)prepareHaptic;
 - (void)handlePinch:(FQXDramaPinchGestureRecognizer *)pinch;
 @end
 
@@ -2789,14 +2792,21 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     return NO;
 }
 
+- (void)prepareHaptic {
+    if (!self.haptic) self.haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [self.haptic prepare];
+}
+
 - (void)triggerHaptic {
     if (!FQXPinchHapticEnabled()) return;
-    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [gen impactOccurred];
+    [self.haptic impactOccurred];
 }
 
 - (void)handlePinch:(FQXDramaPinchGestureRecognizer *)pinch {
     UIView *control = pinch.view;
+    if (pinch.state == UIGestureRecognizerStateBegan && FQXPinchHapticEnabled()) {
+        [self prepareHaptic];
+    }
     if (pinch.state != UIGestureRecognizerStateEnded || !control.window || !FQXPinchPureCleanEnabled()) return;
     BOOL clean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
     BOOL spread = pinch.scale >= 1.10 || (pinch.scale > 1.03 && pinch.velocity > 0.35);
@@ -2810,7 +2820,10 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
             if (current.window != window || !FQXPinchPureCleanEnabled() ||
                 FQXObjGet(current, "contentModel") != model ||
                 [objc_getAssociatedObject(current, FQXPinchPureCleanActiveKey) boolValue] != clean) return;
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
             FQXApplyPinchPureCleanState(current, !clean);
+            [CATransaction commit];
             [self triggerHaptic];
         });
     }
@@ -2829,6 +2842,10 @@ static void FQXAttachDramaPinchIfNeeded(UIView *control) {
     pinch.delaysTouchesEnded = NO;
     pinch.delegate = [FQXDramaPinchHandler shared];
     [control addGestureRecognizer:pinch];
+    FQXDramaPinchHandler *handler = [FQXDramaPinchHandler shared];
+    if (control.window && !handler.haptic && FQXPinchPureCleanEnabled() && FQXPinchHapticEnabled()) {
+        [handler prepareHaptic];
+    }
     [FQXPinchCleanControls() addObject:control];
     objc_setAssociatedObject(control, FQXPinchRecognizerKey, pinch, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -4418,7 +4435,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     UIVisualEffectView *glass = objc_getAssociatedObject(host, DramaComposerGlassKey);
     FQXCommentComposerStyle compStyle = nestedPill ? FQXCommentComposerDockedGlass : FQXCurrentCommentComposerStyle();
     BOOL enabledForKind = nestedPill ? FQXCommentStylingEnabled() : (compStyle != FQXCommentComposerNative);
-    BOOL active = host.window && enabledForKind &&
+    BOOL active = host.window && enabledForKind && !CGRectIsNull(frame) &&
                   CGRectGetWidth(frame) >= 44.0 && CGRectGetHeight(frame) >= 30.0;
     if (!active) {
         [glass removeFromSuperview];
@@ -4457,7 +4474,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     } else if (!darkTheme) {
         scrim = nestedPill
             ? [UIColor colorWithWhite:1.0 alpha:0.64]
-            : (floatingDetached ? [UIColor colorWithWhite:0.99 alpha:0.82] : [UIColor colorWithWhite:0.97 alpha:0.78]);
+            : (floatingDetached ? [UIColor colorWithWhite:0.99 alpha:0.68] : [UIColor colorWithWhite:0.97 alpha:0.78]);
     } else {
         scrim = [UIColor colorWithWhite:0.01 alpha:(nestedPill ? 0.50 : (floatingDetached ? 0.56 : 0.46))];
     }
@@ -7053,6 +7070,33 @@ static void HookAudioSettingSaveFloatingFrame(id self, SEL cmd, CGRect frame) {
 
 static CGRect FQXComposerKeyboardFrame;
 
+static CGRect FQXCompactComposerFrame(UIView *host, UIView *text, UIView *emoji, UIView *quote,
+                                      id input, id editor) {
+    if (!host.window || ![text isDescendantOfView:host] || CGRectIsEmpty(text.bounds)) return CGRectNull;
+    CGRect content = CGRectNull;
+    UIView *editorImages = FQXBoolGet(editor, "isCurrentShowSelectImageView", NO) ? FQXObjGet(editor, "selectImageViews") : nil;
+    UIView *controls[] = {text, emoji, quote, FQXObjGet(input, "imagesView"),
+        FQXObjGet(input, "addImageButton"), FQXObjGet(input, "emojiButton"),
+        FQXObjGet(input, "mentionUserButton"), FQXObjGet(input, "sendButton"),
+        FQXObjGet(editor, "funcView"), FQXObjGet(editor, "sendButton"), editorImages};
+    for (NSUInteger i = 0; i < sizeof(controls) / sizeof(*controls); ++i) {
+        UIView *view = controls[i];
+        if (![view isKindOfClass:UIView.class] || ![view isDescendantOfView:host] || CGRectIsEmpty(view.bounds)) continue;
+        BOOL visible = YES;
+        for (UIView *ancestor = view; ancestor && ancestor != host; ancestor = ancestor.superview) {
+            if (ancestor.hidden || ancestor.alpha < 0.01) { visible = NO; break; }
+        }
+        if (visible) content = CGRectUnion(content, [view convertRect:view.bounds toView:host]);
+    }
+    if (CGRectIsNull(content)) return CGRectNull;
+    CGRect bounds = host.bounds;
+    CGRect windowBounds = [host convertRect:host.window.bounds fromView:host.window];
+    CGFloat left = MAX(CGRectGetMinX(bounds), CGRectGetMinX(windowBounds)) + 11.0;
+    CGFloat right = MIN(CGRectGetMaxX(bounds), CGRectGetMaxX(windowBounds)) - 11.0;
+    return CGRectMake(left, CGRectGetMinY(content) - 12.0, MAX(0.0, right - left),
+                      CGRectGetHeight(content) + 24.0);
+}
+
 static void FQXPlaceExpandedComposer(UIView *host, CGRect cardFrame, BOOL floating) {
     if (!host) return;
     NSValue *last = objc_getAssociatedObject(host, ExpandedInputAppliedTransformKey);
@@ -7060,18 +7104,20 @@ static void FQXPlaceExpandedComposer(UIView *host, CGRect cardFrame, BOOL floati
     CGAffineTransform current = host.transform;
     CGAffineTransform base = last && CGAffineTransformEqualToTransform(current, last.CGAffineTransformValue)
         ? saved.CGAffineTransformValue : current;
-    CGFloat width = CGRectGetWidth(host.bounds);
     CGAffineTransform desired = base;
-    if (floating && width > 80.0) {
-        desired = CGAffineTransformScale(base, (width - 24.0) / width, 1.0);
+    if (floating && !CGRectIsNull(cardFrame)) {
         UIWindow *window = host.window;
         CGRect inWindow = [host convertRect:cardFrame toView:window];
-        CGFloat unmodifiedBottom = CGRectGetMaxY(inWindow) - (current.ty - base.ty);
+        CGFloat shift = current.ty - base.ty;
+        CGFloat stockBottom = CGRectGetMaxY(inWindow) - shift;
         CGRect keyboard = [window convertRect:FQXComposerKeyboardFrame fromCoordinateSpace:window.screen.coordinateSpace];
-        BOOL open = !CGRectIsEmpty(keyboard) && CGRectIntersectsRect(keyboard, window.bounds) &&
-            CGRectGetMinX(inWindow) < CGRectGetMaxX(keyboard) && CGRectGetMaxX(inWindow) > CGRectGetMinX(keyboard);
-        CGFloat lift = open ? MAX(14.0, unmodifiedBottom - CGRectGetMinY(keyboard) + 14.0) : 14.0;
-        desired.ty -= lift;
+        BOOL docked = !CGRectIsEmpty(keyboard) && CGRectIntersectsRect(keyboard, window.bounds) &&
+            CGRectGetWidth(keyboard) >= CGRectGetWidth(window.bounds) * 0.75 &&
+            CGRectGetMaxY(keyboard) >= CGRectGetMaxY(window.bounds) - window.safeAreaInsets.bottom;
+        CGFloat gap = 11.0;
+        CGFloat lift = docked ? stockBottom - CGRectGetMinY(keyboard) + gap : gap;
+        CGFloat stockTop = CGRectGetMinY(inWindow) - shift;
+        desired.ty -= MIN(lift, stockTop - window.safeAreaInsets.top - 4.0);
         if (!saved || !CGAffineTransformEqualToTransform(saved.CGAffineTransformValue, base)) {
             objc_setAssociatedObject(host, ExpandedInputBaseTransformKey, [NSValue valueWithCGAffineTransform:base], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -7085,13 +7131,12 @@ static void FQXPlaceExpandedComposer(UIView *host, CGRect cardFrame, BOOL floati
     if (!CGAffineTransformEqualToTransform(current, desired)) host.transform = desired;
 }
 
-static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *emoji) {
+static void FQXStyleExpandedCommentInput(UIView *editor, UIView *sheet, UIView *text, UIView *emoji) {
     if (!sheet) return;
-    [FQXTrackedExpandedComposers() addObject:sheet];
     FQXCommentComposerStyle compStyle = FQXCurrentCommentComposerStyle();
     BOOL floatingDetached = (compStyle == FQXCommentComposerFloatingDetached);
-    CGFloat extraBottom = floatingDetached ? 0.0 : 24.0;
-    CGRect frame = CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + extraBottom);
+    CGRect frame = floatingDetached ? FQXCompactComposerFrame(sheet, text, emoji, nil, nil, editor)
+        : CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + 24.0);
     BOOL glass = FQXPlaceCommentComposerGlass(sheet, frame, 22.0, FQXCommentViewIsDark(sheet), NO);
     FQXPlaceExpandedComposer(sheet, frame, glass && floatingDetached);
     if (glass) {
@@ -7107,7 +7152,7 @@ static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *em
             objc_setAssociatedObject(sheet, ExpandedInputSavedClipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    FQXClearCommentSurface(sheet, glass);
+    FQXClearCommentSurface(sheet, glass || (floatingDetached && sheet.window));
     FQXClearCommentSurface(emoji, glass);
     FQXClearCommentSurface(text, glass);
     FQXClearCommentCovers(sheet, CGRectGetWidth(sheet.bounds), glass);
@@ -7189,6 +7234,9 @@ static void FQXStyleCommunityInput(UIView *editor) {
         FQXClearStaleComposerHost(editor);
     }
 
+    if (floatingDetached) {
+        glassFrame = FQXCompactComposerFrame(glassHost, text, emoji, paraHasQuote ? paraBg : nil, input, editor);
+    }
     BOOL glass = NO;
     if (glassHost) {
         glass = FQXPlaceCommentComposerGlass(glassHost, glassFrame, 22.0, FQXCommentViewIsDark(glassHost), NO);
@@ -7208,17 +7256,18 @@ static void FQXStyleCommunityInput(UIView *editor) {
         }
     }
     UIVisualEffectView *keep = glassHost ? objc_getAssociatedObject(glassHost, DramaComposerGlassKey) : nil;
-    FQXClearCommentSurface(editor, glass);
-    FQXClearCommentSurface(sheet, glass);
-    FQXClearCommentSurface(input, glass);
+    BOOL clearHost = glass || (floatingDetached && editor.window);
+    FQXClearCommentSurface(editor, clearHost);
+    FQXClearCommentSurface(sheet, clearHost);
+    FQXClearCommentSurface(input, clearHost);
     FQXClearCommentSurface(text, glass);
     FQXClearCommentSurface(emoji, glass);
-    FQXClearCommentSurface(FQXObjGet(input, "bgView"), glass);
-    FQXClearCommentSurface(FQXObjGet(input, "contentView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "backView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "coverView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), glass);
+    FQXClearCommentSurface(FQXObjGet(input, "bgView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(input, "contentView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "backView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "coverView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), clearHost);
     FQXClearCommentSurface(paraBg, glass);
     FQXHideLayerGradients(paraBg.layer, glass);
     FQXHideLayerGradients(editor.layer, glass);
@@ -7298,15 +7347,17 @@ static void HookShortVideoNewEditorLayout(UIView *editor, SEL cmd) {
     if (sheet != inputContainer && inputContainer) {
         FQXClearStaleComposerHost(inputContainer);
     }
-    FQXStyleExpandedCommentInput(sheet, FQXObjGet(editor, "textView"), FQXObjGet(editor, "emojiListView"));
+    FQXStyleExpandedCommentInput(editor, sheet, FQXObjGet(editor, "textView"), FQXObjGet(editor, "emojiListView"));
     BOOL glass = objc_getAssociatedObject(sheet, DramaComposerGlassKey) != nil;
-    FQXClearCommentSurface(editor, glass);
-    FQXClearCommentSurface(content, glass);
-    FQXClearCommentSurface(inputContainer, glass);
+    BOOL clearHost = glass || (sheet && editor.window &&
+        FQXCurrentCommentComposerStyle() == FQXCommentComposerFloatingDetached);
+    FQXClearCommentSurface(editor, clearHost);
+    FQXClearCommentSurface(content, clearHost);
+    FQXClearCommentSurface(inputContainer, clearHost);
     FQXClearCommentSurface(FQXObjGet(editor, "emoticonContainerView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "funcView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), glass);
-    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "funcView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), clearHost);
+    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), clearHost);
     FQXAudioSetHiddenTracked(FQXObjGet(editor, "topMaskView"), glass);
     FQXHideLayerGradients(editor.layer, glass);
     FQXHideLayerGradients(content.layer, glass);
@@ -8792,7 +8843,7 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
 
-        [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardDidChangeFrameNotification
+        [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardWillChangeFrameNotification
                                                         object:nil
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(NSNotification *note) {
@@ -8824,6 +8875,7 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                         object:nil
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(__unused NSNotification *note) {
+            FQXComposerKeyboardFrame = CGRectZero;
             FQXResetPinchCleanStates();
             FQXCompactRuntimeMemory();
         }];
