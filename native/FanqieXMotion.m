@@ -3163,7 +3163,7 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
                 id container = ((id (*)(id, SEL))objc_msgSend)(layout, containerSel);
                 if ([lText isKindOfClass:NSAttributedString.class] && container) {
                     NSAttributedString *as = (NSAttributedString *)lText;
-                    NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF) ^ ((NSUInteger)(uintptr_t)container & 0xFFFF);
+                    NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF) ^ ([container hash] & 0xFFFF);
                     NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
                     if (prevStamp && prevStamp.unsignedIntegerValue == stamp) {
                         handledLayout = YES;
