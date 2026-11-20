@@ -40,7 +40,6 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaDoubleTapComment, "DramaDoubleTapComment", "双击打开评论区（关闭双击点赞）", "drama", NO) \
     X(DramaCommentNoVideoShift, "DramaCommentNoVideoShift", "打开评论区短剧画面不上移", "drama", NO) \
     X(DramaExitCollectAlert, "DramaExitCollectAlert", "隐藏短剧退出收藏弹窗", "drama", NO) \
-    X(CommentGlassFrosted, "CommentGlassFrosted", "评论区模糊液态玻璃", "appearance", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
     X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
     X(DramaShowComment, "DramaShowComment", "显示评论按钮", "dramaActions", YES) \
@@ -61,6 +60,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     static NSString *const name##Key = @"FanqieX." suffix ".1";
 CLEANUP_OPTIONS(OPTION_KEY)
 #undef OPTION_KEY
+static NSString *const CommentMaterialModeKey = @"FanqieX.CommentMaterialMode.1";
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -789,13 +789,136 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
     ApplyAudioRecommendVisibility(self);
 }
 
+static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
+    NSUInteger removedKeys = 0;
+    NSUInteger removedFiles = 0;
+    unsigned long long freedBytes = 0;
+
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSString *legacyFrostedKey = @"FanqieX.CommentGlassFrosted.1";
+    if (![ud objectForKey:CommentMaterialModeKey] && [ud objectForKey:legacyFrostedKey]) {
+        BOOL wasFrosted = [ud boolForKey:legacyFrostedKey];
+        [ud setInteger:(wasFrosted ? 2 : 0) forKey:CommentMaterialModeKey];
+    }
+    NSDictionary<NSString *, id> *dict = ud.dictionaryRepresentation;
+    NSSet<NSString *> *retiredExact = [NSSet setWithObjects:
+        legacyFrostedKey,
+        @"FanqieX.LocalRewardTest.1",
+        @"FanqieAdBlock.PopupShown",
+        @"FanqieAdBlock.Version",
+        nil];
+    for (NSString *key in dict.allKeys) {
+        BOOL obsolete = [retiredExact containsObject:key];
+        if (!obsolete && [key hasPrefix:@"FanqieAdBlock."] &&
+            ![key isEqualToString:@"FanqieAdBlock.Options.1"] &&
+            ![key isEqualToString:@"FanqieAdBlock.GlassDisabled.1"]) {
+            obsolete = YES;
+        }
+        if (obsolete) {
+            [ud removeObjectForKey:key];
+            removedKeys += 1;
+        }
+    }
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    void (^sweepFolder)(NSURL *, BOOL (^)(NSURL *, unsigned long long)) =
+        ^(NSURL *folder, BOOL (^predicate)(NSURL *, unsigned long long)) {
+        if (!folder) return;
+        NSArray<NSURL *> *items = [fm contentsOfDirectoryAtURL:folder
+                                    includingPropertiesForKeys:@[NSURLFileSizeKey, NSURLIsDirectoryKey]
+                                                       options:0
+                                                         error:NULL];
+        for (NSURL *item in items) {
+            NSNumber *sizeNum = nil;
+            [item getResourceValue:&sizeNum forKey:NSURLFileSizeKey error:NULL];
+            unsigned long long sz = sizeNum ? sizeNum.unsignedLongLongValue : 0;
+            if (predicate(item, sz)) {
+                if ([fm removeItemAtURL:item error:NULL]) {
+                    removedFiles += 1;
+                    freedBytes += sz;
+                }
+            }
+        }
+    };
+
+    NSURL *appSupport = [fm URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
+    if (appSupport) {
+        NSURL *exportsDir = [appSupport URLByAppendingPathComponent:@"FanqieXDiagnosticsExports" isDirectory:YES];
+        sweepFolder(exportsDir, ^BOOL(NSURL *u, unsigned long long sz) {
+            (void)u; (void)sz;
+            return YES;
+        });
+        NSURL *diagDir = [appSupport URLByAppendingPathComponent:@"FanqieAdBlockDiagnostics" isDirectory:YES];
+        unsigned long long maxBytes = aggressiveLogs ? (256ULL * 1024ULL) : (768ULL * 1024ULL);
+        sweepFolder(diagDir, ^BOOL(NSURL *u, unsigned long long sz) {
+            NSString *name = u.lastPathComponent ?: @"";
+            if ([name hasSuffix:@".tmp"] || [name hasSuffix:@".old"] || [name hasSuffix:@".bak"]) return YES;
+            return sz > maxBytes;
+        });
+    }
+
+    NSURL *cachesDir = [fm URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
+    sweepFolder(cachesDir, ^BOOL(NSURL *u, unsigned long long sz) {
+        (void)sz;
+        NSString *name = u.lastPathComponent ?: @"";
+        return [name hasPrefix:@"FanqieAdBlock"] || [name hasPrefix:@"FanqieX"];
+    });
+
+    NSURL *tmpDir = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
+    sweepFolder(tmpDir, ^BOOL(NSURL *u, unsigned long long sz) {
+        (void)sz;
+        NSString *name = u.lastPathComponent ?: @"";
+        return [name hasPrefix:@"FanqieX"] || [name hasPrefix:@"FQX"] ||
+               [name hasPrefix:@"FanqieAdBlock"] || [name hasPrefix:@"BookExport"] ||
+               [name hasSuffix:@".fqcfg"];
+    });
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL compactSel = NSSelectorFromString(@"compactMemory");
+        if ([dockMotion respondsToSelector:compactSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, compactSel);
+        }
+    });
+
+    return @{
+        @"removedKeys": @(removedKeys),
+        @"removedFiles": @(removedFiles),
+        @"freedBytes": @(freedBytes),
+    };
+}
+
 @interface FQXCleanup : NSObject
 + (void)install;
 + (NSArray<NSDictionary *> *)optionRows;
 + (void)refreshForKey:(NSString *)key;
++ (NSDictionary *)purgeHistoricalResidue;
++ (void)presentFromController:(UIViewController *)owner;
 @end
 
 @implementation FQXCleanup
++ (NSDictionary *)purgeHistoricalResidue {
+    return FQXPurgeHistoricalResidueImpl(YES);
+}
+
++ (void)presentFromController:(UIViewController *)owner {
+    if (!owner) return;
+    NSDictionary *res = [self purgeHistoricalResidue];
+    NSUInteger keys = [res[@"removedKeys"] unsignedIntegerValue];
+    NSUInteger files = [res[@"removedFiles"] unsignedIntegerValue];
+    double kb = [res[@"freedBytes"] doubleValue] / 1024.0;
+    NSString *sizeText = kb >= 1024.0
+        ? [NSString stringWithFormat:@"%.2f MB", kb / 1024.0]
+        : [NSString stringWithFormat:@"%.1f KB", kb];
+    NSString *msg = [NSString stringWithFormat:
+        @"已清理旧版残留配置 %lu 项、历史缓存与诊断残留文件 %lu 个（释放 %@），并已回收后台离屏玻璃图层内存。",
+        (unsigned long)keys, (unsigned long)files, sizeText];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"历史残留清理完成"
+                                                                   message:msg
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [owner presentViewController:alert animated:YES completion:nil];
+}
 + (NSArray<NSDictionary *> *)optionRows {
 #define OPTION_ROW(name, suffix, titleValue, categoryValue, defaultValue) \
     @{@"title": @titleValue, @"key": name##Key, @"category": @categoryValue, @"default": @(defaultValue)},
@@ -897,6 +1020,10 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         InstallDramaActionVisibility(@"SSShortVideoRightInteractionLikeView", DramaShowLikeKey);
         InstallDramaActionVisibility(@"SSShortVideoRightInteractionShareView", DramaShowShareKey);
         FQXInstallMotionAndAudioHooks();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                       dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            FQXPurgeHistoricalResidueImpl(NO);
+        });
     });
 }
 
@@ -964,7 +1091,7 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
-    } else if ([key isEqualToString:CommentGlassFrostedKey] ||
+    } else if ([key isEqualToString:CommentMaterialModeKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
                [key isEqualToString:CommentSearchEntranceKey]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");

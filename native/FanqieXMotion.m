@@ -50,7 +50,8 @@ static NSString *const PinchHapticPrefKey = @"FanqieX.DramaPinchHaptic.1";
 static NSString *const DoubleTapCommentPrefKey = @"FanqieX.DramaDoubleTapComment.1";
 static NSString *const DramaCommentNoVideoShiftPrefKey = @"FanqieX.DramaCommentNoVideoShift.1";
 static NSString *const DramaExitCollectAlertPrefKey = @"FanqieX.DramaExitCollectAlert.1";
-static NSString *const CommentGlassFrostedPrefKey = @"FanqieX.CommentGlassFrosted.1";
+static NSString *const CommentMaterialModePrefKey = @"FanqieX.CommentMaterialMode.1";
+static NSString *const LegacyCommentGlassFrostedPrefKey = @"FanqieX.CommentGlassFrosted.1";
 static NSString *const CommentActivityBannerPrefKey = @"FanqieX.CommentActivityBanner.1";
 static NSString *const CommentSearchEntrancePrefKey = @"FanqieX.CommentSearchEntrance.1";
 static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
@@ -60,6 +61,12 @@ static NSString *const FQXCTForegroundColorAttr = @"CTForegroundColor";
 static const CGFloat AudioNavigationButtonDiameter = 42.0;
 static const CGFloat AudioBookArrowDiameter = 28.0;
 
+typedef NS_ENUM(NSInteger, FQXCommentMaterialMode) {
+    FQXCommentMaterialDarkGlass = 0,
+    FQXCommentMaterialLightGlass = 1,
+    FQXCommentMaterialIOS18Blur = 2,
+};
+
 static BOOL FQXDramaCommentNoVideoShiftEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:DramaCommentNoVideoShiftPrefKey];
 }
@@ -68,8 +75,32 @@ static BOOL FQXDramaExitCollectAlertHidden(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:DramaExitCollectAlertPrefKey];
 }
 
-static BOOL FQXCommentGlassFrostedEnabled(void) {
-    return [NSUserDefaults.standardUserDefaults boolForKey:CommentGlassFrostedPrefKey];
+static FQXCommentMaterialMode FQXCurrentCommentMaterialMode(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id stored = [ud objectForKey:CommentMaterialModePrefKey];
+    if (!stored) {
+        if ([ud objectForKey:LegacyCommentGlassFrostedPrefKey]) {
+            BOOL legacyFrosted = [ud boolForKey:LegacyCommentGlassFrostedPrefKey];
+            NSInteger migrated = legacyFrosted ? FQXCommentMaterialIOS18Blur : FQXCommentMaterialDarkGlass;
+            [ud setInteger:migrated forKey:CommentMaterialModePrefKey];
+            [ud removeObjectForKey:LegacyCommentGlassFrostedPrefKey];
+            return (FQXCommentMaterialMode)migrated;
+        }
+        return FQXCommentMaterialDarkGlass;
+    }
+    NSInteger mode = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
+    if (mode < FQXCommentMaterialDarkGlass || mode > FQXCommentMaterialIOS18Blur) {
+        return FQXCommentMaterialDarkGlass;
+    }
+    return (FQXCommentMaterialMode)mode;
+}
+
+static BOOL FQXCommentsUseDarkTheme(void) {
+    return FQXCurrentCommentMaterialMode() != FQXCommentMaterialLightGlass;
+}
+
+static UIUserInterfaceStyle FQXDesiredCommentInterfaceStyle(void) {
+    return FQXCommentsUseDarkTheme() ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
 }
 
 static BOOL FQXCommentActivityBannerEnabled(void) {
@@ -90,6 +121,12 @@ static BOOL FQXGlassEnabled(void) {
            [glassCls respondsToSelector:NSSelectorFromString(@"effectWithStyle:")] &&
            [cornerCls respondsToSelector:NSSelectorFromString(@"capsuleConfiguration")] &&
            [UIVisualEffectView instancesRespondToSelector:NSSelectorFromString(@"setCornerConfiguration:")];
+}
+
+static BOOL FQXCommentStylingEnabled(void) {
+    if ([NSUserDefaults.standardUserDefaults integerForKey:GlassDisabledPrefKey] != 0) return NO;
+    if (FQXCurrentCommentMaterialMode() == FQXCommentMaterialIOS18Blur) return YES;
+    return FQXGlassEnabled();
 }
 
 // Unified Liquid Glass rendering layer shared across Dock, Short-Drama Comments, and Novel Comments.
@@ -114,6 +151,7 @@ static const void *FQXCommentBannerSavedHeightKey = &FQXCommentBannerSavedHeight
 static const void *FQXReaderDisappearingKey = &FQXReaderDisappearingKey;
 static const void *FQXReaderSwipeHiddenIndicatorKey = &FQXReaderSwipeHiddenIndicatorKey;
 static const void *FQXShelfHeaderFixPendingKey = &FQXShelfHeaderFixPendingKey;
+static const void *FQXCommentTypographyStampKey = &FQXCommentTypographyStampKey;
 
 static UIVisualEffect *FQXMakeGlassEffect(NSInteger style, BOOL interactive, UIColor *tintColor) {
     Class glassCls = NSClassFromString(@"UIGlassEffect");
@@ -139,18 +177,31 @@ static UIVisualEffect *FQXMakeGlassEffect(NSInteger style, BOOL interactive, UIC
     return [UIBlurEffect effectWithStyle:fallbackStyle];
 }
 
-static NSInteger FQXDesiredGlassStyleForRole(FQXGlassRole role) {
-    if (UIAccessibilityIsReduceTransparencyEnabled()) return 0;
-    if (role == FQXGlassRoleDock) return 1; // CoolApk crystal-clear Liquid Glass
-    if (role == FQXGlassRoleFloatingPill) return 0; // Regular Liquid Glass so scrolling text diffuses cleanly behind input pill
-    // Comment sheet & expanded composer honor user choice: Clear (1) vs iOS 27 Frosted (0)
-    return FQXCommentGlassFrostedEnabled() ? 0 : 1;
+static NSInteger FQXDesiredGlassStampForRole(FQXGlassRole role) {
+    NSInteger reduce = UIAccessibilityIsReduceTransparencyEnabled() ? 64 : 0;
+    if (role == FQXGlassRoleDock) return 1 + reduce;
+    FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
+    return 100 + ((NSInteger)mode * 8) + (NSInteger)role + reduce;
 }
 
 static UIVisualEffect *FQXMakeUnifiedGlassEffect(FQXGlassRole role) {
-    BOOL interactive = (role == FQXGlassRoleDock || role == FQXGlassRoleFloatingPill);
-    NSInteger style = FQXDesiredGlassStyleForRole(role);
-    return FQXMakeGlassEffect(style, interactive, nil);
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    if (role == FQXGlassRoleDock) {
+        return FQXMakeGlassEffect(reduce ? 0 : 1, YES, nil);
+    }
+    FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
+    if (mode == FQXCommentMaterialIOS18Blur) {
+        UIBlurEffectStyle blurStyle = (role == FQXGlassRoleFloatingPill)
+            ? UIBlurEffectStyleSystemThinMaterialDark
+            : UIBlurEffectStyleSystemChromeMaterialDark;
+        return [UIBlurEffect effectWithStyle:blurStyle];
+    }
+    BOOL interactive = (role == FQXGlassRoleFloatingPill);
+    NSInteger style = (reduce || role == FQXGlassRoleFloatingPill) ? 0 : 1;
+    UIColor *tint = (mode == FQXCommentMaterialLightGlass)
+        ? [UIColor colorWithWhite:1.0 alpha:(role == FQXGlassRoleFloatingPill ? 0.34 : 0.24)]
+        : nil;
+    return FQXMakeGlassEffect(style, interactive, tint);
 }
 
 static void FQXApplyCornerConfiguration(UIView *view, CGFloat radius, BOOL continuousCard) {
@@ -184,6 +235,30 @@ static void FQXApplyCornerConfiguration(UIView *view, CGFloat radius, BOOL conti
     }
 }
 
+static void FQXApplyUnifiedSurfaceCorners(UIVisualEffectView *surface,
+                                          FQXGlassRole role,
+                                          CGFloat radius,
+                                          BOOL continuousCard) {
+    if (!surface) return;
+    BOOL useBlurCorners = (role != FQXGlassRoleDock &&
+                           FQXCurrentCommentMaterialMode() == FQXCommentMaterialIOS18Blur);
+    if (useBlurCorners) {
+        SEL setCornerSel = NSSelectorFromString(@"setCornerConfiguration:");
+        if ([surface respondsToSelector:setCornerSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(surface, setCornerSel, nil);
+        }
+        surface.layer.cornerCurve = kCACornerCurveContinuous;
+        CGFloat half = MIN(CGRectGetWidth(surface.bounds), CGRectGetHeight(surface.bounds)) * 0.5;
+        CGFloat r = radius < 0.0 ? 0.0 : (radius == 0.0 ? half : radius);
+        if (fabs(surface.layer.cornerRadius - r) > 0.25) surface.layer.cornerRadius = r;
+        if (!surface.clipsToBounds) surface.clipsToBounds = YES;
+        return;
+    }
+    if (surface.layer.cornerRadius > 0.0) surface.layer.cornerRadius = 0.0;
+    if (surface.clipsToBounds) surface.clipsToBounds = NO;
+    FQXApplyCornerConfiguration(surface, radius, continuousCard);
+}
+
 static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
                                                BOOL interactive,
                                                CGFloat radius,
@@ -208,8 +283,8 @@ static UIVisualEffectView *FQXNewUnifiedGlassView(FQXGlassRole role, CGFloat rad
     if (!effect) return nil;
     UIVisualEffectView *surface = [[UIVisualEffectView alloc] initWithEffect:effect];
     if (!surface) return nil;
-    FQXApplyCornerConfiguration(surface, radius, continuousCard);
-    objc_setAssociatedObject(surface, FQXCommentGlassStyleAppliedKey, @(FQXDesiredGlassStyleForRole(role)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXApplyUnifiedSurfaceCorners(surface, role, radius, continuousCard);
+    objc_setAssociatedObject(surface, FQXCommentGlassStyleAppliedKey, @(FQXDesiredGlassStampForRole(role)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     surface.userInteractionEnabled = NO;
     surface.accessibilityElementsHidden = YES;
     surface.isAccessibilityElement = NO;
@@ -221,16 +296,16 @@ static UIVisualEffectView *FQXNewUnifiedGlassView(FQXGlassRole role, CGFloat rad
 
 static void FQXSyncUnifiedGlassEffect(UIVisualEffectView *surface, FQXGlassRole role, CGFloat radius, BOOL continuousCard) {
     if (!surface) return;
-    NSInteger desired = FQXDesiredGlassStyleForRole(role);
+    NSInteger desired = FQXDesiredGlassStampForRole(role);
     NSNumber *applied = objc_getAssociatedObject(surface, FQXCommentGlassStyleAppliedKey);
     if (!applied || applied.integerValue != desired) {
         UIVisualEffect *effect = FQXMakeUnifiedGlassEffect(role);
         if (effect) {
             surface.effect = effect;
-            FQXApplyCornerConfiguration(surface, radius, continuousCard);
             objc_setAssociatedObject(surface, FQXCommentGlassStyleAppliedKey, @(desired), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
+    FQXApplyUnifiedSurfaceCorners(surface, role, radius, continuousCard);
 }
 
 // Lightweight next-runloop Liquid Glass scroll-edge hint for SSTabBarController, adapted from
@@ -537,17 +612,66 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat W = CGRectGetWidth(track);
     CGFloat H = CGRectGetHeight(track);
     if (W <= 1.0 || H <= 1.0) return CGRectZero;
-    CGFloat pillW = MIN(W - 6.0, MAX(32.0, baseWidth + 4.0));
-    CGFloat pillH = MAX(28.0, H - 5.0);
+    CGFloat pillW = MIN(W - 6.0, MAX(34.0, baseWidth + 8.0));
+    CGFloat pillH = MAX(29.0, H - 4.0);
     CGFloat minX = CGRectGetMinX(track) + 3.0;
     CGFloat maxX = CGRectGetMaxX(track) - pillW - 3.0;
     CGFloat rawX = centerX - pillW * 0.5;
     if (rawX < minX) {
-        rawX = minX - (minX - rawX) * 0.16;
+        rawX = minX - (minX - rawX) * 0.22;
     } else if (rawX > maxX) {
-        rawX = maxX + (rawX - maxX) * 0.16;
+        rawX = maxX + (rawX - maxX) * 0.22;
     }
     return CGRectMake(rawX, CGRectGetMidY(track) - pillH * 0.5, pillW, pillH);
+}
+
+static void FQXAnimateIOS27Spring(NSTimeInterval duration,
+                                  CGFloat bounce,
+                                  CGFloat initialVelocity,
+                                  void (^animations)(void),
+                                  void (^completion)(BOOL)) {
+    UIViewAnimationOptions opts = UIViewAnimationOptionBeginFromCurrentState |
+                                  UIViewAnimationOptionAllowUserInteraction;
+    SEL springSel = NSSelectorFromString(@"animateWithSpringDuration:bounce:initialSpringVelocity:delay:options:animations:completion:");
+    if ([UIView respondsToSelector:springSel]) {
+        ((void (*)(id, SEL, NSTimeInterval, CGFloat, CGFloat, NSTimeInterval, UIViewAnimationOptions, void (^)(void), void (^)(BOOL)))objc_msgSend)(
+            UIView.class, springSel, duration, bounce, initialVelocity, 0.0, opts, animations, completion);
+        return;
+    }
+    CGFloat damping = MAX(0.45, MIN(0.95, 1.0 - bounce));
+    [UIView animateWithDuration:duration
+                          delay:0.0
+         usingSpringWithDamping:damping
+          initialSpringVelocity:initialVelocity
+                        options:opts | UIViewAnimationOptionCurveEaseOut
+                     animations:animations
+                     completion:completion];
+}
+
+static void FQXAddAdditiveScalePulse(CALayer *layer,
+                                     NSString *keyPrefix,
+                                     NSArray<NSNumber *> *dxValues,
+                                     NSArray<NSNumber *> *dyValues,
+                                     NSArray<NSNumber *> *keyTimes,
+                                     CFTimeInterval duration) {
+    if (!layer || dxValues.count != keyTimes.count || dyValues.count != keyTimes.count) return;
+    CAKeyframeAnimation *ax = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale.x"];
+    ax.values = dxValues;
+    ax.keyTimes = keyTimes;
+    ax.duration = duration;
+    ax.additive = YES;
+    ax.calculationMode = kCAAnimationCubic;
+    ax.removedOnCompletion = YES;
+    [layer addAnimation:ax forKey:[keyPrefix stringByAppendingString:@".sx"]];
+
+    CAKeyframeAnimation *ay = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale.y"];
+    ay.values = dyValues;
+    ay.keyTimes = keyTimes;
+    ay.duration = duration;
+    ay.additive = YES;
+    ay.calculationMode = kCAAnimationCubic;
+    ay.removedOnCompletion = YES;
+    [layer addAnimation:ay forKey:[keyPrefix stringByAppendingString:@".sy"]];
 }
 
 - (UIView *)pillCoordHost {
@@ -584,7 +708,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (!self.pillView) {
         // Pure borderless capsule behind tab icons inside the single Liquid Glass Dock proxy:
         // zero nested UIGlassEffect specular white/black border, zero effect->nil backdrop flash,
-        // and native 120Hz Core Animation additive Render-Server springs.
+        // and native 120Hz Core Animation additive Render-Server Q-elastic springs.
         UIView *pill = [[UIView alloc] initWithFrame:CGRectZero];
         if (!pill) return nil;
         objc_setAssociatedObject(pill, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -641,12 +765,28 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.liftedButton == button) return;
     UIButton *previous = self.liftedButton;
     self.liftedButton = button;
-    [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.76 initialSpringVelocity:0.0
-                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
+    FQXAnimateIOS27Spring(0.26, 0.36, 0.0, ^{
         previous.transform = CGAffineTransformIdentity;
-        button.transform = CGAffineTransformMakeScale(0.95, 0.95);
-    } completion:nil];
+        button.transform = CGAffineTransformMakeScale(0.87, 0.87);
+    }, nil);
+}
+
+- (void)pulseDockGlassForTravel:(BOOL)hasTravel {
+    if (UIAccessibilityIsReduceMotionEnabled()) return;
+    // Additive layer-only Liquid Glass breath so UIView.transform/frame stays Identity 100% of the time.
+    NSArray<NSNumber *> *times = @[@0.0, @0.22, @0.56, @0.82, @1.0];
+    NSArray<NSNumber *> *dx = hasTravel
+        ? @[@0.0, @0.022, @(-0.010), @0.004, @0.0]
+        : @[@0.0, @0.016, @(-0.007), @0.003, @0.0];
+    NSArray<NSNumber *> *dy = hasTravel
+        ? @[@0.0, @0.036, @(-0.015), @0.006, @0.0]
+        : @[@0.0, @0.028, @(-0.012), @0.005, @0.0];
+    if (self.proxy && !self.proxy.hidden) {
+        FQXAddAdditiveScalePulse(self.proxy.layer, @"fqx.dock.q", dx, dy, times, 0.46);
+    }
+    if (self.overlay && !self.overlay.hidden && self.overlay != self.proxy) {
+        FQXAddAdditiveScalePulse(self.overlay.layer, @"fqx.ovl.q", dx, dy, times, 0.46);
+    }
 }
 
 - (void)suppressFallbackSelection:(BOOL)suppress {
@@ -732,10 +872,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat dx = CGRectGetMidX(rest) - CGRectGetMidX(live);
     CGFloat slotW = MAX(32.0, CGRectGetWidth(rest));
     CGFloat slots = fabs(dx) / slotW;
-    CGFloat initVel = fabs(dx) > 3.0 ? MAX(-2.6, MIN(2.6, velocity / dx)) : 0.0;
-    NSTimeInterval duration = fabs(dx) <= 3.0
-        ? 0.24
-        : (slots > 1.35 ? 0.38 : 0.33);
+    BOOL hasTravel = fabs(dx) > 6.0;
+    CGFloat initVel = hasTravel ? MAX(-3.2, MIN(3.2, velocity / dx)) : 0.0;
+    NSTimeInterval springDuration = hasTravel ? (slots > 1.45 ? 0.54 : 0.49) : 0.38;
+    CGFloat bounce = hasTravel ? 0.44 : 0.48;
     UIColor *desiredFill = [self restingPillFillColor];
 
     NSUInteger generation = ++self.generation;
@@ -743,28 +883,52 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.targetButton = button;
     [self highlightButton:nil];
 
-    // Pure additive Core Animation spring on out-of-process Render Server (backboardd):
-    // UIViewAnimationOptionBeginFromCurrentState preserves full 120Hz ProMotion velocity
-    // across rapid taps and main-thread VC loads without ever calling stopAnimation:YES.
+    // 1) Official iOS 26/27 perceptual bounce spring (animateWithSpringDuration:bounce:)
+    //    on out-of-process Render Server (backboardd) at 120Hz ProMotion.
     __weak typeof(self) weakSelf = self;
-    [UIView animateWithDuration:duration
-                          delay:0.0
-         usingSpringWithDamping:0.84
-          initialSpringVelocity:initVel
-                        options:UIViewAnimationOptionBeginFromCurrentState |
-                                UIViewAnimationOptionAllowUserInteraction |
-                                UIViewAnimationOptionCurveEaseOut
-                     animations:^{
+    FQXAnimateIOS27Spring(springDuration, bounce, initVel, ^{
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
+        strongSelf.pillView.transform = CGAffineTransformIdentity;
         strongSelf.pillView.backgroundColor = desiredFill;
         [strongSelf placePill:rest];
-    } completion:^(BOOL finished) {
+    }, ^(BOOL finished) {
         (void)finished;
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
         FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
-    }];
+    });
+
+    // 2) Incompressible liquid-droplet Q弹 stretch + landing jelly recoil on pillView.layer,
+    //    synchronized icon Q弹 pop on destination button, and subtle Dock glass breath.
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        if (hasTravel) {
+            CGFloat stretchX = MIN(0.30, 0.22 + MIN(0.08, slots * 0.03));
+            FQXAddAdditiveScalePulse(
+                self.pillView.layer,
+                @"fqx.pill.q",
+                @[@0.0, @(stretchX), @(-0.11), @0.05, @0.0],
+                @[@0.0, @(-0.13), @0.075, @(-0.03), @0.0],
+                @[@0.0, @0.20, @0.54, @0.80, @1.0],
+                0.50);
+        } else {
+            FQXAddAdditiveScalePulse(
+                self.pillView.layer,
+                @"fqx.pill.q",
+                @[@0.0, @0.14, @(-0.065), @0.028, @0.0],
+                @[@0.0, @0.14, @(-0.065), @0.028, @0.0],
+                @[@0.0, @0.24, @0.58, @0.82, @1.0],
+                0.42);
+        }
+        FQXAddAdditiveScalePulse(
+            button.layer,
+            @"fqx.btn.q",
+            @[@0.0, @0.16, @(-0.065), @0.025, @0.0],
+            @[@0.0, @0.16, @(-0.065), @0.025, @0.0],
+            @[@0.0, @0.26, @0.60, @0.84, @1.0],
+            0.44);
+        [self pulseDockGlassForTravel:hasTravel];
+    }
 }
 
 - (void)syncPillFillSmoothly {
@@ -793,13 +957,16 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (sender == selected) {
         CGRect rest = [self restingRectForButton:sender inHost:host];
         if (!CGRectIsEmpty(rest)) {
-            CGRect breathe = CGRectInset(rest, -2.5, -1.5);
-            [UIView animateWithDuration:0.20 delay:0.0 usingSpringWithDamping:0.80 initialSpringVelocity:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{
-                [self placePill:breathe];
-            } completion:nil];
+            CGRect swell = CGRectInset(rest, -5.0, -2.5);
+            FQXAnimateIOS27Spring(0.24, 0.40, 0.0, ^{
+                [self placePill:swell];
+            }, nil);
         }
+    }
+    if (self.proxy && !self.proxy.hidden) {
+        FQXAddAdditiveScalePulse(self.proxy.layer, @"fqx.dock.down",
+                                 @[@0.0, @0.014, @0.0], @[@0.0, @(-0.018), @0.0],
+                                 @[@0.0, @0.35, @1.0], 0.24);
     }
 }
 
@@ -856,6 +1023,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
             }];
         }
         CGPoint location = [pan locationInView:host];
+        CGFloat vx = [pan velocityInView:host].x;
+        CGFloat stretchX = 1.0 + MIN(0.24, fabs(vx) / 1350.0);
+        CGFloat squishY = 1.0 / sqrt(stretchX);
+        CGAffineTransform dragStretch = CGAffineTransformMakeScale(stretchX, squishY);
         UIButton *nearest = nil;
         CGFloat bestDistance = CGFLOAT_MAX;
         CGFloat width = 0.0;
@@ -881,16 +1052,16 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
                 [self.pillView.layer removeAnimationForKey:@"bounds"];
                 [self.pillView.layer removeAnimationForKey:@"cornerRadius"];
             }];
-            [UIView animateWithDuration:0.18 delay:0.0 usingSpringWithDamping:0.84 initialSpringVelocity:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{
+            FQXAnimateIOS27Spring(0.22, 0.36, 0.0, ^{
                 self.pillView.backgroundColor = [self restingPillFillColor];
                 [self placePill:target];
-            } completion:nil];
+                self.pillView.transform = dragStretch;
+            }, nil);
         } else {
-            // Direct 1:1 120Hz ProMotion tracking under finger without spring lag.
+            // Direct 1:1 120Hz ProMotion tracking under finger with live liquid-droplet velocity stretch.
             [UIView performWithoutAnimation:^{
                 [self placePill:target];
+                self.pillView.transform = dragStretch;
             }];
         }
     } else if (self.panning) {
@@ -1044,6 +1215,7 @@ static void FQXRefreshAllAudioGlass(void);
 static void FQXRefreshAllDramaControlsInWindows(void);
 static void FQXRefreshAllPinchCleanStates(void);
 static void FQXReapplyAllTrackedCommentGlass(void);
+static void FQXCompactRuntimeMemory(void);
 
 #pragma mark - FQXDockMotion
 
@@ -1059,6 +1231,7 @@ static void FQXReapplyAllTrackedCommentGlass(void);
 + (void)refreshDramaControls;
 + (void)refreshDramaPinchClean;
 + (void)refreshCommentGlass;
++ (void)compactMemory;
 + (UIImage *)roundedDramaIconNamed:(NSString *)name size:(CGFloat)size;
 @end
 
@@ -1180,19 +1353,19 @@ static void FQXReapplyAllTrackedCommentGlass(void);
         return;
     }
 
-    // Interruptible live UIKit spring morph directly on the UIGlassEffect surface:
+    // Interruptible live UIKit Q-elastic spring morph directly on the UIGlassEffect surface:
     // continuous optical edge refraction, zero opacity-0 blink, zero static snapshot ghost.
     [UIView performWithoutAnimation:^{
         dock.frame = start;
         dock.layer.cornerRadius = MIN(CGRectGetWidth(start), CGRectGetHeight(start)) * 0.5;
         if (compact && button) {
             button.alpha = 0.0;
-            button.transform = CGAffineTransformMakeScale(0.84, 0.84);
+            button.transform = CGAffineTransformMakeScale(0.76, 0.76);
         }
     }];
     UISpringTimingParameters *timing = [[UISpringTimingParameters alloc]
-        initWithDampingRatio:compact ? 0.82 : 0.78];
-    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:0.42 timingParameters:timing];
+        initWithDampingRatio:compact ? 0.66 : 0.62];
+    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:0.48 timingParameters:timing];
     __weak UIView *weakDock = dock;
     __weak UIView *weakButton = button;
     [animator addAnimations:^{
@@ -1254,6 +1427,10 @@ static void FQXReapplyAllTrackedCommentGlass(void);
 
 + (void)refreshCommentGlass {
     FQXReapplyAllTrackedCommentGlass();
+}
+
++ (void)compactMemory {
+    FQXCompactRuntimeMemory();
 }
 @end
 
@@ -2632,10 +2809,10 @@ static void FQXSyncGlassStyleForDark(UIVisualEffectView *glass, BOOL dark) {
     if (glass.overrideUserInterfaceStyle != desired) glass.overrideUserInterfaceStyle = desired;
 }
 
-static void FQXApplyClearGlassBacking(UIVisualEffectView *glass, CGFloat dimAlpha, CGFloat radius, BOOL continuous) {
+static void FQXApplyCommentGlassBacking(UIVisualEffectView *glass, UIColor *scrimColor, CGFloat radius, BOOL continuous) {
     if (!glass) return;
-    FQXSyncGlassStyleForDark(glass, YES);
-    UIColor *scrim = dimAlpha > 0.005 ? [UIColor colorWithWhite:0.03 alpha:dimAlpha] : UIColor.clearColor;
+    FQXSyncGlassStyleForDark(glass, FQXCommentsUseDarkTheme());
+    UIColor *scrim = scrimColor ?: UIColor.clearColor;
     if (![glass.contentView.backgroundColor isEqual:scrim]) {
         glass.contentView.backgroundColor = scrim;
     }
@@ -2660,8 +2837,33 @@ static BOOL FQXColorGetRGBA(UIColor *color, CGFloat *r, CGFloat *g, CGFloat *b, 
 }
 
 static UIColor *FQXRichCommentBlueColor(void) {
-    // Rich, saturated, deeper vivid blue for links & "大家都在搜" over dark glass.
+    if (!FQXCommentsUseDarkTheme()) {
+        // High-contrast deep royal blue for Light Liquid Glass.
+        return [UIColor colorWithRed:0.04 green:0.38 blue:0.88 alpha:1.0];
+    }
+    // Rich, saturated, deeper vivid blue for links & "大家都在搜" over dark glass / iOS 18 blur.
     return [UIColor colorWithRed:0.18 green:0.56 blue:1.0 alpha:1.0];
+}
+
+static UIColor *FQXPrimaryCommentTextColor(void) {
+    return FQXCommentsUseDarkTheme()
+        ? [UIColor colorWithWhite:1.0 alpha:1.0]
+        : [UIColor colorWithWhite:0.07 alpha:1.0];
+}
+
+static BOOL FQXCommentUsesTextShadow(void) {
+    return FQXCurrentCommentMaterialMode() == FQXCommentMaterialDarkGlass;
+}
+
+static void FQXSyncLabelShadowForCommentMode(UILabel *label) {
+    if (!label) return;
+    if (FQXCommentUsesTextShadow()) {
+        label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.36];
+        label.shadowOffset = CGSizeMake(0.0, 0.5);
+    } else if (label.shadowColor) {
+        label.shadowColor = nil;
+        label.shadowOffset = CGSizeZero;
+    }
 }
 
 static UIColor *FQXBoostColorForClearGlass(UIColor *color, UITraitCollection *traits, BOOL *changed) {
@@ -2673,6 +2875,32 @@ static UIColor *FQXBoostColorForClearGlass(UIColor *color, UITraitCollection *tr
     CGFloat lum = 0.299 * r + 0.587 * g + 0.114 * b;
     CGFloat sat = MAX(MAX(r, g), b) - MIN(MIN(r, g), b);
     CGFloat effective = lum * a;
+    BOOL darkTheme = FQXCommentsUseDarkTheme();
+    if (!darkTheme) {
+        // Light Liquid Glass mode: crisp dark ink for primary text, slate gray for secondary metadata.
+        if (sat < 0.16) {
+            if (lum < 0.26 || (lum > 0.88 && a > 0.94)) {
+                if (fabs(lum - 0.07) > 0.03 || a < 0.98) {
+                    if (changed) *changed = YES;
+                    return [UIColor colorWithWhite:0.07 alpha:1.0];
+                }
+                return color;
+            }
+            if (fabs(lum - 0.28) > 0.04 || fabs(a - 0.92) > 0.04) {
+                if (changed) *changed = YES;
+                return [UIColor colorWithWhite:0.28 alpha:0.92];
+            }
+            return color;
+        }
+        if (b > r + 0.12 && b > g + 0.03) {
+            if (fabs(r - 0.04) > 0.05 || fabs(g - 0.38) > 0.05 || fabs(b - 0.88) > 0.05 || a < 0.98) {
+                if (changed) *changed = YES;
+                return FQXRichCommentBlueColor();
+            }
+        }
+        return color;
+    }
+
     if (sat < 0.16) {
         if (lum < 0.38) {
             // Dark/black primary text -> crisp pure white.
@@ -2712,33 +2940,38 @@ static BOOL FQXHasOpaqueLightBadgeBackground(UIView *view) {
     if (!FQXColorGetRGBA([bg resolvedColorWithTraitCollection:view.traitCollection], &r, &g, &b, &a)) return NO;
     CGFloat lum = 0.299 * r + 0.587 * g + 0.114 * b;
     CGFloat sat = MAX(MAX(r, g), b) - MIN(MIN(r, g), b);
-    if (a >= 0.45 && lum >= 0.55) return YES;
-    // Also preserve saturated colored pill buttons (e.g., orange "发表" submit button).
+    // Preserve saturated colored pill buttons (e.g., orange "发表" submit button).
     if (a >= 0.70 && sat >= 0.35 && CGRectGetHeight(view.bounds) <= 46.0 && CGRectGetWidth(view.bounds) <= 120.0) return YES;
+    if (FQXCommentsUseDarkTheme()) {
+        if (a >= 0.45 && lum >= 0.55) return YES;
+    } else {
+        if (a >= 0.65 && lum <= 0.25) return YES;
+    }
     return NO;
 }
 
 static void FQXStyleActiveCommentTextInput(UIView *view) {
-    if (!view || !FQXGlassEnabled()) return;
-    UIColor *pureWhite = [UIColor colorWithWhite:1.0 alpha:1.0];
+    if (!view || !FQXCommentStylingEnabled()) return;
+    UIColor *targetInk = FQXPrimaryCommentTextColor();
+    UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
     if ([view isKindOfClass:UITextView.class]) {
         UITextView *tv = (UITextView *)view;
-        if (tv.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) {
-            tv.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        if (tv.overrideUserInterfaceStyle != desiredUIStyle) {
+            tv.overrideUserInterfaceStyle = desiredUIStyle;
         }
         BOOL colorChanged = NO;
         if (!tv.textColor || FQXBoostColorForClearGlass(tv.textColor, tv.traitCollection, &colorChanged) != tv.textColor || colorChanged) {
-            tv.textColor = pureWhite;
+            tv.textColor = targetInk;
         }
         NSDictionary<NSAttributedStringKey, id> *typing = tv.typingAttributes;
         UIColor *typingColor = typing[NSForegroundColorAttributeName];
         BOOL typingChanged = NO;
         if (!typingColor || FQXBoostColorForClearGlass(typingColor, tv.traitCollection, &typingChanged) != typingColor || typingChanged) {
             NSMutableDictionary<NSAttributedStringKey, id> *mut = typing ? [typing mutableCopy] : [NSMutableDictionary dictionary];
-            mut[NSForegroundColorAttributeName] = pureWhite;
+            mut[NSForegroundColorAttributeName] = targetInk;
             tv.typingAttributes = mut;
         }
-        // Safely brighten existing typed text in-place when no IME composition (markedTextRange) is active.
+        // Safely adapt existing typed text in-place when no IME composition (markedTextRange) is active.
         if (tv.textStorage.length > 0 && !tv.markedTextRange) {
             NSRange fullRange = NSMakeRange(0, tv.textStorage.length);
             __block BOOL needsFix = NO;
@@ -2754,7 +2987,7 @@ static void FQXStyleActiveCommentTextInput(UIView *view) {
             }];
             if (needsFix) {
                 [tv.textStorage beginEditing];
-                [tv.textStorage addAttribute:NSForegroundColorAttributeName value:pureWhite range:fullRange];
+                [tv.textStorage addAttribute:NSForegroundColorAttributeName value:targetInk range:fullRange];
                 [tv.textStorage endEditing];
             }
         }
@@ -2762,27 +2995,27 @@ static void FQXStyleActiveCommentTextInput(UIView *view) {
     }
     if ([view isKindOfClass:UITextField.class]) {
         UITextField *tf = (UITextField *)view;
-        if (tf.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) {
-            tf.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        if (tf.overrideUserInterfaceStyle != desiredUIStyle) {
+            tf.overrideUserInterfaceStyle = desiredUIStyle;
         }
-        tf.textColor = pureWhite;
+        tf.textColor = targetInk;
         NSMutableDictionary<NSAttributedStringKey, id> *defAttrs = tf.defaultTextAttributes
             ? [tf.defaultTextAttributes mutableCopy] : [NSMutableDictionary dictionary];
-        defAttrs[NSForegroundColorAttributeName] = pureWhite;
+        defAttrs[NSForegroundColorAttributeName] = targetInk;
         tf.defaultTextAttributes = defAttrs;
         return;
     }
     // Custom text editors (e.g. YYTextView)
     SEL setColorSel = @selector(setTextColor:);
     if ([view respondsToSelector:setColorSel]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(view, setColorSel, pureWhite);
+        ((void (*)(id, SEL, id))objc_msgSend)(view, setColorSel, targetInk);
     }
     SEL getTyping = NSSelectorFromString(@"typingAttributes");
     SEL setTyping = NSSelectorFromString(@"setTypingAttributes:");
     if ([view respondsToSelector:getTyping] && [view respondsToSelector:setTyping]) {
         id cur = ((id (*)(id, SEL))objc_msgSend)(view, getTyping);
         NSMutableDictionary *mut = [cur isKindOfClass:NSDictionary.class] ? [cur mutableCopy] : [NSMutableDictionary dictionary];
-        mut[NSForegroundColorAttributeName] = pureWhite;
+        mut[NSForegroundColorAttributeName] = targetInk;
         ((void (*)(id, SEL, id))objc_msgSend)(view, setTyping, mut);
     }
 }
@@ -2825,7 +3058,7 @@ static NSAttributedString *FQXBoostAttributedString(NSAttributedString *src, UIT
             [mut addAttribute:FQXCTForegroundColorAttr value:(id)boosted.CGColor range:range];
         }
     }];
-    // If no foreground color attribute was present on a run, default dark text must become bright white.
+    // If no foreground color attribute was present on a run, apply mode's primary text color.
     if (!mut) {
         __block BOOL hasAnyColor = NO;
         [src enumerateAttributesInRange:fullRange options:0 usingBlock:^(NSDictionary<NSAttributedStringKey,id> *attrs, NSRange range, BOOL *stop) {
@@ -2837,9 +3070,9 @@ static NSAttributedString *FQXBoostAttributedString(NSAttributedString *src, UIT
         }];
         if (!hasAnyColor) {
             mut = [src mutableCopy];
-            UIColor *white = [UIColor colorWithWhite:1.0 alpha:0.97];
-            [mut addAttribute:NSForegroundColorAttributeName value:white range:fullRange];
-            [mut addAttribute:FQXCTForegroundColorAttr value:(id)white.CGColor range:fullRange];
+            UIColor *primary = FQXPrimaryCommentTextColor();
+            [mut addAttribute:NSForegroundColorAttributeName value:primary range:fullRange];
+            [mut addAttribute:FQXCTForegroundColorAttr value:(id)primary.CGColor range:fullRange];
         }
     }
     if (mut) {
@@ -2850,27 +3083,30 @@ static NSAttributedString *FQXBoostAttributedString(NSAttributedString *src, UIT
 }
 
 static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
-    if (!FQXGlassEnabled() || ![view isKindOfClass:UIView.class] || depth > 14) return;
+    if (!FQXCommentStylingEnabled() || ![view isKindOfClass:UIView.class] || depth > 14) return;
     if ([view isKindOfClass:UIVisualEffectView.class]) return;
     if (depth > 0 && FQXHasOpaqueLightBadgeBackground(view)) return;
 
+    FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
     UITraitCollection *traits = view.traitCollection;
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
+        FQXSyncLabelShadowForCommentMode(label);
         BOOL changed = NO;
         UIColor *boosted = FQXBoostColorForClearGlass(label.textColor, traits, &changed);
         if (changed && boosted) {
             label.textColor = boosted;
-            label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
-            label.shadowOffset = CGSizeMake(0.0, 0.5);
         }
         if (label.attributedText.length > 0) {
-            BOOL attrChanged = NO;
-            NSAttributedString *boostedAttr = FQXBoostAttributedString(label.attributedText, traits, &attrChanged);
-            if (attrChanged && boostedAttr) {
-                label.attributedText = boostedAttr;
-                label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
-                label.shadowOffset = CGSizeMake(0.0, 0.5);
+            NSUInteger stamp = ((NSUInteger)mode << 28) ^ (label.attributedText.string.hash & 0x0FFFFFFF);
+            NSNumber *prevStamp = objc_getAssociatedObject(label, FQXCommentTypographyStampKey);
+            if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                BOOL attrChanged = NO;
+                NSAttributedString *boostedAttr = FQXBoostAttributedString(label.attributedText, traits, &attrChanged);
+                if (attrChanged && boostedAttr) {
+                    label.attributedText = boostedAttr;
+                }
+                objc_setAssociatedObject(label, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
         return;
@@ -2899,7 +3135,7 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
         // Custom rich-text comment labels (YYLabel / FQCCommentContentLabel / FQCShortVideoCommentLabel)
         SEL setIsDarkSel = NSSelectorFromString(@"setIsDark:");
         if ([view respondsToSelector:setIsDarkSel]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(view, setIsDarkSel, YES);
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(view, setIsDarkSel, FQXCommentsUseDarkTheme());
         }
         SEL getColor = @selector(textColor);
         SEL setColor = @selector(setTextColor:);
@@ -2914,6 +3150,7 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
             }
         }
         // YYLabel often renders directly from cached textLayout instead of attributedText!
+        // Stamp (mode, string.hash) so 120Hz scrolling skips cloning & YYTextLayout rebuilds when unchanged.
         SEL getLayout = NSSelectorFromString(@"textLayout");
         SEL setLayout = NSSelectorFromString(@"setTextLayout:");
         BOOL handledLayout = NO;
@@ -2925,18 +3162,28 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
                 id lText = ((id (*)(id, SEL))objc_msgSend)(layout, textSel);
                 id container = ((id (*)(id, SEL))objc_msgSend)(layout, containerSel);
                 if ([lText isKindOfClass:NSAttributedString.class] && container) {
-                    BOOL lChanged = NO;
-                    NSAttributedString *boostedL = FQXBoostAttributedString((NSAttributedString *)lText, traits, &lChanged);
-                    if (lChanged && boostedL) {
-                        Class layoutCls = [layout class];
-                        SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
-                        if ([layoutCls respondsToSelector:makeLayout]) {
-                            id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, boostedL);
-                            if (newLayout) {
-                                ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
-                                handledLayout = YES;
+                    NSAttributedString *as = (NSAttributedString *)lText;
+                    NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF) ^ ((NSUInteger)(uintptr_t)container & 0xFFFF);
+                    NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+                    if (prevStamp && prevStamp.unsignedIntegerValue == stamp) {
+                        handledLayout = YES;
+                    } else {
+                        BOOL lChanged = NO;
+                        NSAttributedString *boostedL = FQXBoostAttributedString(as, traits, &lChanged);
+                        if (lChanged && boostedL) {
+                            Class layoutCls = [layout class];
+                            SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
+                            if ([layoutCls respondsToSelector:makeLayout]) {
+                                id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, boostedL);
+                                if (newLayout) {
+                                    ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                                    handledLayout = YES;
+                                }
                             }
+                        } else {
+                            handledLayout = YES;
                         }
+                        objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     }
                 }
             }
@@ -2946,10 +3193,16 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
         if (!handledLayout && [view respondsToSelector:getAttr] && [view respondsToSelector:setAttr]) {
             id curAttr = ((id (*)(id, SEL))objc_msgSend)(view, getAttr);
             if ([curAttr isKindOfClass:NSAttributedString.class]) {
-                BOOL attrChanged = NO;
-                NSAttributedString *boostedAttr = FQXBoostAttributedString((NSAttributedString *)curAttr, traits, &attrChanged);
-                if (attrChanged && boostedAttr) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(view, setAttr, boostedAttr);
+                NSAttributedString *as = (NSAttributedString *)curAttr;
+                NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF);
+                NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+                if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                    BOOL attrChanged = NO;
+                    NSAttributedString *boostedAttr = FQXBoostAttributedString(as, traits, &attrChanged);
+                    if (attrChanged && boostedAttr) {
+                        ((void (*)(id, SEL, id))objc_msgSend)(view, setAttr, boostedAttr);
+                    }
+                    objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 }
             }
         }
@@ -3150,7 +3403,7 @@ static void FQXRestoreSheetTopCornerMask(UIView *sheet) {
 static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat radius, BOOL dark, BOOL nestedPill) {
     (void)dark;
     UIVisualEffectView *glass = objc_getAssociatedObject(host, DramaComposerGlassKey);
-    BOOL active = host.window && FQXGlassEnabled() &&
+    BOOL active = host.window && FQXCommentStylingEnabled() &&
                   CGRectGetWidth(frame) >= 44.0 && CGRectGetHeight(frame) >= 30.0;
     if (!active) {
         [glass removeFromSuperview];
@@ -3158,32 +3411,45 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
         if (!nestedPill) FQXRestoreSheetTopCornerMask(host);
         return NO;
     }
+    FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
     FQXGlassRole role = nestedPill ? FQXGlassRoleFloatingPill : FQXGlassRoleExpandedComposer;
     BOOL topAlignedSheet = !nestedPill && frame.origin.y <= 1.0;
-    // For full-width expanded composer sheets, bleed glass 12pt past left/right edges so
-    // UIGlassEffect's optical edge bezel never leaves a seam along the screen sides.
+    CGFloat sideBleed = (mode == FQXCommentMaterialIOS18Blur) ? 0.0 : 12.0;
     CGFloat glassRad = nestedPill ? 0.0 : (topAlignedSheet ? -1.0 : radius);
     CGRect placedFrame = nestedPill
         ? frame
-        : CGRectMake(frame.origin.x - 12.0, frame.origin.y, CGRectGetWidth(frame) + 24.0, CGRectGetHeight(frame));
+        : CGRectMake(frame.origin.x - sideBleed, frame.origin.y, CGRectGetWidth(frame) + sideBleed * 2.0, CGRectGetHeight(frame));
     if (!glass) {
         glass = FQXNewUnifiedGlassView(role, glassRad, !nestedPill && !topAlignedSheet);
         objc_setAssociatedObject(host, DramaComposerGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else {
-        FQXSyncUnifiedGlassEffect(glass, role, glassRad, !nestedPill && !topAlignedSheet);
     }
     if (!glass) return NO;
     if (!CGRectEqualToRect(glass.frame, placedFrame)) glass.frame = placedFrame;
-    BOOL frosted = FQXCommentGlassFrostedEnabled();
-    CGFloat backingAlpha = nestedPill ? (frosted ? 0.48 : 0.42) : (frosted ? 0.48 : 0.38);
-    FQXApplyClearGlassBacking(glass, backingAlpha, glassRad, !nestedPill && !topAlignedSheet);
+    FQXSyncUnifiedGlassEffect(glass, role, glassRad, !nestedPill && !topAlignedSheet);
+    UIColor *scrim = nil;
+    if (mode == FQXCommentMaterialLightGlass) {
+        scrim = nestedPill
+            ? [UIColor colorWithWhite:1.0 alpha:0.62]
+            : [UIColor colorWithWhite:0.97 alpha:0.78];
+    } else if (mode == FQXCommentMaterialIOS18Blur) {
+        scrim = nestedPill
+            ? [UIColor colorWithWhite:1.0 alpha:0.08]
+            : [UIColor colorWithWhite:0.08 alpha:0.18];
+    } else {
+        scrim = [UIColor colorWithWhite:0.03 alpha:(nestedPill ? 0.42 : 0.38)];
+    }
+    FQXApplyCommentGlassBacking(glass, scrim, glassRad, !nestedPill && !topAlignedSheet);
     if (nestedPill) {
         glass.contentView.layer.borderWidth = 0.5;
-        glass.contentView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.24].CGColor;
+        UIColor *borderCol = (mode == FQXCommentMaterialLightGlass)
+            ? [UIColor colorWithWhite:0.0 alpha:0.10]
+            : [UIColor colorWithWhite:1.0 alpha:(mode == FQXCommentMaterialIOS18Blur ? 0.14 : 0.24)];
+        glass.contentView.layer.borderColor = borderCol.CGColor;
     } else if (topAlignedSheet) {
         glass.contentView.layer.borderWidth = 0.0;
         FQXApplySheetTopCornerMask(host, radius > 0.0 ? radius : 22.0);
-        FQXSyncSheetTopRimLayer(host, radius > 0.0 ? radius : 22.0, frosted ? 0.75 : 0.5, frosted ? 0.28 : 0.22);
+        CGFloat rimAlpha = (mode == FQXCommentMaterialLightGlass) ? 0.70 : (mode == FQXCommentMaterialIOS18Blur ? 0.14 : 0.22);
+        FQXSyncSheetTopRimLayer(host, radius > 0.0 ? radius : 22.0, 0.5, rimAlpha);
     } else {
         glass.contentView.layer.borderWidth = 0.0;
         FQXRemoveSheetTopRimLayer(host);
@@ -3254,7 +3520,7 @@ static void FQXStyleCommentBar(UIView *toolbar) {
             CGRectMake(CGRectGetMinX(toolbar.bounds) + 12.0, CGRectGetMidY(row) - height * 0.5,
                        CGRectGetWidth(toolbar.bounds) - 24.0, height));
     }
-    BOOL dark = FQXCommentViewIsDark(toolbar);
+    BOOL dark = FQXCommentsUseDarkTheme();
     BOOL styled = FQXPlaceCommentComposerGlass(toolbar, frame, 0.0, dark, YES);
     CGPoint position = FQXAudioStockCenter(toolbar);
     position.y -= 6.0;
@@ -3319,8 +3585,9 @@ static void FQXStyleCommentBar(UIView *toolbar) {
     FQXNeutralizeStrayBarGlass(toolbar, glass, styled, 0);
     FQXAudioSetHiddenTracked(FQXObjGet(toolbar, "topLineView"), styled);
     if (styled) {
-        if (toolbar.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-            toolbar.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+        if (toolbar.overrideUserInterfaceStyle != desiredUIStyle)
+            toolbar.overrideUserInterfaceStyle = desiredUIStyle;
         FQXBoostCommentTypography(toolbar, 0);
     }
     FQXExtendSiblingScrollForCommentBar(toolbar, styled);
@@ -3349,13 +3616,13 @@ static void HookBottomBarPluginDidLayoutEnd(id plugin, SEL cmd) {
 
 static void (*OrigDramaCommentBarTheme)(id, SEL, BOOL);
 static void HookDramaCommentBarTheme(UIView *toolbar, SEL cmd, BOOL darkMode) {
-    OrigDramaCommentBarTheme(toolbar, cmd, FQXGlassEnabled() ? YES : darkMode);
+    OrigDramaCommentBarTheme(toolbar, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : darkMode);
     if (toolbar.window) FQXStyleCommentBar(toolbar);
 }
 
 static void (*OrigReaderCommentBarTheme)(id, SEL, BOOL);
 static void HookReaderCommentBarTheme(UIView *toolbar, SEL cmd, BOOL darkMode) {
-    OrigReaderCommentBarTheme(toolbar, cmd, FQXGlassEnabled() ? YES : darkMode);
+    OrigReaderCommentBarTheme(toolbar, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : darkMode);
     if (toolbar.window) FQXStyleCommentBar(toolbar);
 }
 
@@ -3407,7 +3674,7 @@ static BOOL FQXHasVisibleCommentSheetInWindow(UIWindow *window, UIViewController
 
 static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController *excludingVC) {
     if (!window) return;
-    BOOL shouldHideDock = FQXGlassEnabled() && FQXHasVisibleCommentSheetInWindow(window, excludingVC);
+    BOOL shouldHideDock = FQXCommentStylingEnabled() && FQXHasVisibleCommentSheetInWindow(window, excludingVC);
     Class tabBarCls = NSClassFromString(@"SSTabBar");
     if (!tabBarCls) return;
     NSMutableArray<UIView *> *bars = [NSMutableArray array];
@@ -3432,61 +3699,63 @@ static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController
 
 static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerSheet) {
     if (!sheet) return NO;
-    BOOL enabled = FQXGlassEnabled() && CGRectGetWidth(sheet.bounds) > 100.0 &&
+    BOOL enabled = (commentSheet ? FQXCommentStylingEnabled() : FQXGlassEnabled()) &&
+                   CGRectGetWidth(sheet.bounds) > 100.0 &&
                    CGRectGetHeight(sheet.bounds) > 72.0;
     UIVisualEffectView *glass = objc_getAssociatedObject(sheet, SheetGlassKey);
     if (enabled && !glass) {
         UIColor *theme = sheet.backgroundColor;
         if (!theme || CGColorGetAlpha(theme.CGColor) < 0.01) theme = UIColor.systemBackgroundColor;
-        // For comment sheets, use square (-1.0) glass extended 12pt past left/right edges while
-        // sheet.layer clips cleanly to 28pt continuous top-only corners: 100% edge-to-edge coverage
-        // with zero optical side-bevel gap and zero vertical edge border.
         glass = commentSheet
             ? FQXNewUnifiedGlassView(FQXGlassRoleCommentSheet, -1.0, NO)
             : FQXNewGlassViewFull(0, NO, 22.0, YES, [theme colorWithAlphaComponent:0.76]);
         objc_setAssociatedObject(sheet, SheetGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else if (enabled && glass && commentSheet) {
-        FQXSyncUnifiedGlassEffect(glass, FQXGlassRoleCommentSheet, -1.0, NO);
     }
     if (!enabled || !glass) {
         FQXRemoveGlassSheet(sheet);
         return NO;
     }
     [UIView performWithoutAnimation:^{
-        // Bleed 12pt horizontally past left & right edges and 28pt past bottom so UIGlassEffect's
-        // optical perimeter refraction never leaves uncovered strips along the left/right sides.
+        FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
+        CGFloat sideBleed = (commentSheet && mode != FQXCommentMaterialIOS18Blur) ? 12.0 : 0.0;
         CGRect frame = commentSheet
-            ? CGRectMake(-12.0, 0.0, CGRectGetWidth(sheet.bounds) + 24.0, CGRectGetHeight(sheet.bounds) + 28.0)
+            ? CGRectMake(-sideBleed, 0.0, CGRectGetWidth(sheet.bounds) + sideBleed * 2.0, CGRectGetHeight(sheet.bounds) + 28.0)
             : sheet.bounds;
         if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
         if (commentSheet) {
+            FQXSyncUnifiedGlassEffect(glass, FQXGlassRoleCommentSheet, -1.0, NO);
             FQXApplySheetTopCornerMask(sheet, 28.0);
-            if (sheet.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) {
-                sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+            if (sheet.overrideUserInterfaceStyle != desiredUIStyle) {
+                sheet.overrideUserInterfaceStyle = desiredUIStyle;
             }
             BOOL appDark = FQXCommentViewIsDark(sheet.window);
-            BOOL frosted = FQXCommentGlassFrostedEnabled();
-            if (readerSheet) {
-                CGFloat dimAlpha = frosted ? (appDark ? 0.30 : 0.42) : (appDark ? 0.24 : 0.36);
-                FQXApplyClearGlassBacking(glass, dimAlpha, -1.0, NO);
+            UIColor *scrim = nil;
+            CGFloat rimAlpha = 0.22;
+            if (mode == FQXCommentMaterialLightGlass) {
+                CGFloat lightAlpha = readerSheet
+                    ? (appDark ? 0.80 : 0.70)
+                    : (FQXDramaCommentNoVideoShiftEnabled() ? 0.70 : 0.78);
+                scrim = [UIColor colorWithWhite:0.97 alpha:lightAlpha];
+                rimAlpha = 0.72;
+            } else if (mode == FQXCommentMaterialIOS18Blur) {
+                scrim = [UIColor colorWithWhite:0.08 alpha:(readerSheet ? 0.16 : 0.12)];
+                rimAlpha = 0.14;
             } else {
-                CGFloat dimAlpha = FQXDramaCommentNoVideoShiftEnabled()
-                    ? (frosted ? 0.28 : 0.20)
-                    : (frosted ? 0.14 : 0.08);
-                FQXApplyClearGlassBacking(glass, dimAlpha, -1.0, NO);
-                if (!FQXDramaCommentNoVideoShiftEnabled()) {
+                if (readerSheet) {
+                    scrim = [UIColor colorWithWhite:0.03 alpha:(appDark ? 0.24 : 0.36)];
+                } else if (FQXDramaCommentNoVideoShiftEnabled()) {
+                    scrim = [UIColor colorWithWhite:0.03 alpha:0.20];
+                } else {
                     // Over shrunk-video pure black backdrop, add a subtle luminous glass veil so the
                     // sheet reads unmistakably as translucent Liquid Glass rather than solid black.
-                    UIColor *veil = frosted
-                        ? [UIColor colorWithWhite:0.20 alpha:0.22]
-                        : [UIColor colorWithWhite:0.18 alpha:0.20];
-                    if (![glass.contentView.backgroundColor isEqual:veil]) {
-                        glass.contentView.backgroundColor = veil;
-                    }
+                    scrim = [UIColor colorWithWhite:0.18 alpha:0.20];
                 }
+                rimAlpha = 0.22;
             }
+            FQXApplyCommentGlassBacking(glass, scrim, -1.0, NO);
             glass.contentView.layer.borderWidth = 0.0;
-            FQXSyncSheetTopRimLayer(sheet, 28.0, frosted ? 0.75 : 0.5, frosted ? 0.28 : 0.22);
+            FQXSyncSheetTopRimLayer(sheet, 28.0, 0.5, rimAlpha);
         }
         if (sheet.subviews.firstObject != glass) [sheet insertSubview:glass atIndex:0];
         FQXAudioClearBackground(sheet, YES);
@@ -3531,8 +3800,9 @@ static void FQXClearCommentCell(UIView *cell, BOOL clear) {
     UIView *tipLabel = FQXRawIvarObj(cell, "_tipLabel");
     if (tipLabel) FQXClearCommentSurface(tipLabel, clear);
     if (clear) {
-        if (cell.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-            cell.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+        if (cell.overrideUserInterfaceStyle != desiredUIStyle)
+            cell.overrideUserInterfaceStyle = desiredUIStyle;
         FQXBoostCommentTypography(cell, 0);
     }
 }
@@ -3547,8 +3817,9 @@ static void FQXClearReplyFooter(UIView *footer, BOOL clear) {
         }
     }
     if (clear) {
-        if (footer.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-            footer.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+        if (footer.overrideUserInterfaceStyle != desiredUIStyle)
+            footer.overrideUserInterfaceStyle = desiredUIStyle;
         FQXBoostCommentTypography(footer, 0);
     }
 }
@@ -3706,7 +3977,7 @@ static void HookDramaPanelTraitChange(UIViewController *controller, SEL cmd, id 
 
 static void (*OrigDramaPanelDarkChange)(id, SEL, BOOL);
 static void HookDramaPanelDarkChange(UIViewController *controller, SEL cmd, BOOL dark) {
-    OrigDramaPanelDarkChange(controller, cmd, FQXGlassEnabled() ? YES : dark);
+    OrigDramaPanelDarkChange(controller, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : dark);
     FQXStyleDramaPanel(controller);
 }
 
@@ -3727,7 +3998,7 @@ static BOOL FQXStyleDramaCommentList(UIViewController *controller) {
         if (objc_getAssociatedObject(view, SheetGlassKey)) embedded = YES;
     }
     if (embedded && objc_getAssociatedObject(root, SheetGlassKey)) FQXRemoveGlassSheet(root);
-    BOOL glass = embedded ? FQXGlassEnabled() : FQXStyleCommentSheet(root, NO);
+    BOOL glass = embedded ? FQXCommentStylingEnabled() : FQXStyleCommentSheet(root, NO);
     FQXClearCommentSurface(root, glass);
     FQXClearCommentSurface(FQXObjGet(controller, "fqc_headerView"), glass);
     UICollectionView *collection = FQXObjGet(controller, "collectionView");
@@ -3777,7 +4048,7 @@ static void HookDramaCommentListTraitChange(UIViewController *controller, SEL cm
 
 static void (*OrigDramaCommentListDarkChange)(id, SEL, BOOL);
 static void HookDramaCommentListDarkChange(UIViewController *controller, SEL cmd, BOOL dark) {
-    OrigDramaCommentListDarkChange(controller, cmd, FQXGlassEnabled() ? YES : dark);
+    OrigDramaCommentListDarkChange(controller, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : dark);
     FQXStyleDramaCommentList(controller);
 }
 
@@ -3786,9 +4057,12 @@ static void FQXSetLabelColorForce(UIView *view, UIColor *color, BOOL addShadow) 
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
         label.textColor = color;
-        if (addShadow) {
+        if (addShadow && FQXCommentUsesTextShadow()) {
             label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
             label.shadowOffset = CGSizeMake(0.0, 0.5);
+        } else if (label.shadowColor) {
+            label.shadowColor = nil;
+            label.shadowOffset = CGSizeZero;
         }
         if (label.attributedText.length > 0) {
             NSMutableAttributedString *mut = [label.attributedText mutableCopy];
@@ -3869,7 +4143,7 @@ static NSHashTable<UIView *> *FQXTrackedDynamicNoticeBanners(void) {
 }
 
 static NSAttributedString *FQXSplitStyleSearchAttributed(NSAttributedString *source, NSString *plainText, UIFont *fallbackFont) {
-    UIColor *pureWhite = [UIColor colorWithWhite:1.0 alpha:0.98];
+    UIColor *prefixInk = FQXPrimaryCommentTextColor();
     UIColor *richBlue = FQXRichCommentBlueColor();
     NSMutableAttributedString *mut = nil;
     if (source.length > 0) {
@@ -3886,8 +4160,8 @@ static NSAttributedString *FQXSplitStyleSearchAttributed(NSAttributedString *sou
         ? NSMaxRange(colonRange)
         : MIN((NSUInteger)5, mut.length);
     NSRange prefixRange = NSMakeRange(0, MIN(split, mut.length));
-    [mut addAttribute:NSForegroundColorAttributeName value:pureWhite range:prefixRange];
-    [mut addAttribute:FQXCTForegroundColorAttr value:(id)pureWhite.CGColor range:prefixRange];
+    [mut addAttribute:NSForegroundColorAttributeName value:prefixInk range:prefixRange];
+    [mut addAttribute:FQXCTForegroundColorAttr value:(id)prefixInk.CGColor range:prefixRange];
     if (split < mut.length) {
         NSRange queryRange = NSMakeRange(split, mut.length - split);
         [mut addAttribute:NSForegroundColorAttributeName value:richBlue range:queryRange];
@@ -3898,7 +4172,7 @@ static NSAttributedString *FQXSplitStyleSearchAttributed(NSAttributedString *sou
 
 static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
     if (!view || depth > 6 || [view isKindOfClass:UIVisualEffectView.class]) return;
-    UIColor *pureWhite = [UIColor colorWithWhite:1.0 alpha:0.98];
+    UIColor *prefixInk = FQXPrimaryCommentTextColor();
     UIColor *richBlue = FQXRichCommentBlueColor();
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
@@ -3908,11 +4182,10 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
                 NSAttributedString *styled = FQXSplitStyleSearchAttributed(label.attributedText, txt, label.font);
                 if (styled) {
                     label.attributedText = styled;
-                    label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
-                    label.shadowOffset = CGSizeMake(0.0, 0.5);
+                    FQXSyncLabelShadowForCommentMode(label);
                 }
             } else {
-                FQXSetLabelColorForce(label, pureWhite, YES);
+                FQXSetLabelColorForce(label, prefixInk, YES);
             }
         } else if (txt.length > 0) {
             FQXSetLabelColorForce(label, richBlue, YES);
@@ -3931,7 +4204,7 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
             NSAttributedString *styled = FQXSplitStyleSearchAttributed(curAttr, t, btn.titleLabel.font);
             if (styled) [btn setAttributedTitle:styled forState:UIControlStateNormal];
         } else {
-            FQXSetLabelColorForce(btn, ([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) ? pureWhite : richBlue, YES);
+            FQXSetLabelColorForce(btn, ([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) ? prefixInk : richBlue, YES);
         }
         return;
     }
@@ -4059,7 +4332,7 @@ static void FQXStyleCommentSearchEntrance(UIView *entrance) {
     CGFloat width = CGRectGetWidth(entrance.bounds);
     CGFloat height = CGRectGetHeight(entrance.bounds);
     BOOL active = entrance.window && !entrance.hidden && entrance.alpha > 0.01 &&
-                  FQXGlassEnabled() && width > 80.0 && height > 16.0;
+                  FQXCommentStylingEnabled() && width > 80.0 && height > 16.0;
     if (!active) {
         if (pill) {
             [pill removeFromSuperview];
@@ -4079,9 +4352,10 @@ static void FQXStyleCommentSearchEntrance(UIView *entrance) {
     }
     FQXClearCommentSurface(entrance, YES);
     FQXClearCommentSurface(linkBox, YES);
-    if (entrance.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-        entrance.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    if (prefix) FQXSetLabelColorForce(prefix, [UIColor colorWithWhite:1.0 alpha:0.98], YES);
+    UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+    if (entrance.overrideUserInterfaceStyle != desiredUIStyle)
+        entrance.overrideUserInterfaceStyle = desiredUIStyle;
+    if (prefix) FQXSetLabelColorForce(prefix, FQXPrimaryCommentTextColor(), YES);
     if (curLink) FQXSetLabelColorForce(curLink, FQXRichCommentBlueColor(), YES);
     if (nextLink) FQXSetLabelColorForce(nextLink, FQXRichCommentBlueColor(), YES);
     FQXStyleSearchBannerSubtree(entrance, 0);
@@ -4165,11 +4439,12 @@ static void FQXApplyBannerRowState(UIView *leaf, UIView *root, BOOL isSearch) {
     if (container) {
         [tracker addObject:container];
         FQXSetCommentBannerCollapsed(container, hide);
-        if (!hide && FQXGlassEnabled()) {
+        if (!hide && FQXCommentStylingEnabled()) {
             FQXClearCommentSurface(container, YES);
             if (isSearch) {
-                if (container.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-                    container.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+                UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+                if (container.overrideUserInterfaceStyle != desiredUIStyle)
+                    container.overrideUserInterfaceStyle = desiredUIStyle;
                 FQXStyleSearchBannerSubtree(container, 0);
             } else {
                 FQXBoostCommentTypography(container, 0);
@@ -4192,7 +4467,7 @@ static void FQXApplyBannerRowState(UIView *leaf, UIView *root, BOOL isSearch) {
             [tracker addObject:sib];
             FQXAudioSetHiddenTracked(sib, hide);
             sib.alpha = hide ? 0.0 : 1.0;
-            if (!hide && FQXGlassEnabled()) {
+            if (!hide && FQXCommentStylingEnabled()) {
                 if (isSearch) FQXStyleSearchBannerSubtree(sib, 0);
                 else FQXBoostCommentTypography(sib, 0);
             }
@@ -4201,7 +4476,7 @@ static void FQXApplyBannerRowState(UIView *leaf, UIView *root, BOOL isSearch) {
         [tracker addObject:leaf];
         FQXAudioSetHiddenTracked(leaf, hide);
         leaf.alpha = hide ? 0.0 : 1.0;
-        if (!hide && FQXGlassEnabled()) {
+        if (!hide && FQXCommentStylingEnabled()) {
             if (isSearch) FQXStyleSearchBannerSubtree(leaf, 0);
             else FQXBoostCommentTypography(leaf, 0);
         }
@@ -4220,7 +4495,7 @@ static void FQXScanBannerNode(UIView *view, UIView *root, NSInteger depth) {
         BOOL hideBanner = !FQXCommentActivityBannerEnabled();
         [FQXTrackedDynamicNoticeBanners() addObject:view];
         FQXSetCommentBannerCollapsed(view, hideBanner);
-        if (!hideBanner && FQXGlassEnabled()) {
+        if (!hideBanner && FQXCommentStylingEnabled()) {
             FQXClearCommentSurface(view, YES);
             FQXBoostCommentTypography(view, 0);
         }
@@ -4277,7 +4552,7 @@ static void HookCommentSearchLayout(UIView *entrance, SEL cmd) {
 
 static void (*OrigCommentSearchTheme)(id, SEL, BOOL);
 static void HookCommentSearchTheme(UIView *entrance, SEL cmd, BOOL dark) {
-    OrigCommentSearchTheme(entrance, cmd, FQXGlassEnabled() ? YES : dark);
+    OrigCommentSearchTheme(entrance, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : dark);
     FQXStyleCommentSearchEntrance(entrance);
 }
 
@@ -4321,10 +4596,20 @@ static void HookTopSectionPluginDidLayoutEnd(id plugin, SEL cmd) {
         BOOL hideBanner = !FQXCommentActivityBannerEnabled();
         [FQXTrackedDynamicNoticeBanners() addObject:titleView];
         FQXSetCommentBannerCollapsed(titleView, hideBanner);
-        if (!hideBanner && FQXGlassEnabled()) {
+        if (!hideBanner && FQXCommentStylingEnabled()) {
             FQXClearCommentSurface(titleView, YES);
             FQXBoostCommentTypography(titleView, 0);
         }
+    }
+}
+
+static void FQXInvalidateTypographyStamps(UIView *view, NSInteger depth) {
+    if (!view || depth > 14) return;
+    if (objc_getAssociatedObject(view, FQXCommentTypographyStampKey)) {
+        objc_setAssociatedObject(view, FQXCommentTypographyStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (UIView *sub in view.subviews) {
+        FQXInvalidateTypographyStamps(sub, depth + 1);
     }
 }
 
@@ -4333,11 +4618,12 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXReapplyAllTrackedCommentGlass(); });
         return;
     }
+    BOOL darkTheme = FQXCommentsUseDarkTheme();
     BOOL hideSearch = !FQXCommentSearchEntranceEnabled();
     for (UIView *banner in FQXTrackedDynamicSearchBanners().allObjects) {
         if (!banner.superview) continue;
         FQXSetCommentBannerCollapsed(banner, hideSearch);
-        if (!hideSearch && FQXGlassEnabled()) {
+        if (!hideSearch && FQXCommentStylingEnabled()) {
             FQXClearCommentSurface(banner, YES);
             FQXStyleSearchBannerSubtree(banner, 0);
         }
@@ -4346,25 +4632,56 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
     for (UIView *banner in FQXTrackedDynamicNoticeBanners().allObjects) {
         if (!banner.superview) continue;
         FQXSetCommentBannerCollapsed(banner, hideNotice);
-        if (!hideNotice && FQXGlassEnabled()) {
+        if (!hideNotice && FQXCommentStylingEnabled()) {
             FQXClearCommentSurface(banner, YES);
+            FQXInvalidateTypographyStamps(banner, 0);
             FQXBoostCommentTypography(banner, 0);
         }
     }
+    SEL darkChangeSel = NSSelectorFromString(@"onDarkModeChange:");
+    SEL setupThemeSel = NSSelectorFromString(@"setupTheme");
     for (UIViewController *vc in FQXTrackedCommentPanels().allObjects) {
-        if (vc.isViewLoaded && vc.view.window) FQXStyleDramaPanel(vc);
+        if (vc.isViewLoaded && vc.view.window) {
+            FQXInvalidateTypographyStamps(vc.view, 0);
+            if ([vc respondsToSelector:darkChangeSel]) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(vc, darkChangeSel, darkTheme);
+            }
+            FQXStyleDramaPanel(vc);
+        }
     }
     for (UIViewController *vc in FQXTrackedCommentLists().allObjects) {
-        if (vc.isViewLoaded && vc.view.window) FQXStyleDramaCommentList(vc);
+        if (vc.isViewLoaded && vc.view.window) {
+            FQXInvalidateTypographyStamps(vc.view, 0);
+            if ([vc respondsToSelector:darkChangeSel]) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(vc, darkChangeSel, darkTheme);
+            }
+            FQXStyleDramaCommentList(vc);
+        }
     }
     for (UIViewController *vc in FQXTrackedSeriesCommentLists().allObjects) {
-        if (vc.isViewLoaded && vc.view.window) FQXStyleSeriesCommentList(vc);
+        if (vc.isViewLoaded && vc.view.window) {
+            FQXInvalidateTypographyStamps(vc.view, 0);
+            FQXStyleSeriesCommentList(vc);
+        }
     }
     for (UIViewController *vc in FQXTrackedReaderCommentLists().allObjects) {
-        if (vc.isViewLoaded && vc.view.window) FQXStyleReaderCommentList(vc);
+        if (vc.isViewLoaded && vc.view.window) {
+            FQXInvalidateTypographyStamps(vc.view, 0);
+            if ([vc respondsToSelector:setupThemeSel]) {
+                ((void (*)(id, SEL))objc_msgSend)(vc, setupThemeSel);
+            }
+            FQXStyleReaderCommentList(vc);
+        }
     }
+    SEL barThemeSel = NSSelectorFromString(@"configThemeWithDarkMode:");
     for (UIView *bar in FQXTrackedCommentBars().allObjects) {
-        if (bar.window) FQXStyleCommentBar(bar);
+        if (bar.window) {
+            FQXInvalidateTypographyStamps(bar, 0);
+            if ([bar respondsToSelector:barThemeSel]) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(bar, barThemeSel, darkTheme);
+            }
+            FQXStyleCommentBar(bar);
+        }
     }
     for (UIView *entrance in FQXTrackedSearchEntrances().allObjects) {
         if (entrance.window) FQXStyleCommentSearchEntrance(entrance);
@@ -4390,7 +4707,7 @@ static void FQXScheduleCommentForegroundRefresh(void) {
 static void FQXStyleWriteReviewButton(UIView *btn, BOOL active) {
     if (![btn isKindOfClass:UIView.class]) return;
     UIVisualEffectView *glass = objc_getAssociatedObject(btn, WriteReviewGlassKey);
-    BOOL canStyle = active && btn.window && FQXGlassEnabled() &&
+    BOOL canStyle = active && btn.window && FQXCommentStylingEnabled() &&
                     CGRectGetWidth(btn.bounds) >= 44.0 && CGRectGetHeight(btn.bounds) >= 24.0;
     // FQCommunityGradientButton's +layerClass is CAGradientLayer, so btn.gradientLayer == btn.layer!
     // Never set hidden = YES on btn.layer (that would hide the entire writeReviewButton).
@@ -4441,19 +4758,26 @@ static void FQXStyleWriteReviewButton(UIView *btn, BOOL active) {
     if (!glass) return;
     CGRect frame = btn.bounds;
     if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
-    FQXApplyClearGlassBacking(glass, 0.24, 0.0, NO);
+    FQXSyncUnifiedGlassEffect(glass, FQXGlassRoleFloatingPill, 0.0, NO);
+    FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
+    UIColor *pillScrim = (mode == FQXCommentMaterialLightGlass)
+        ? [UIColor colorWithWhite:1.0 alpha:0.62]
+        : (mode == FQXCommentMaterialIOS18Blur
+            ? [UIColor colorWithWhite:1.0 alpha:0.08]
+            : [UIColor colorWithWhite:0.03 alpha:0.24]);
+    FQXApplyCommentGlassBacking(glass, pillScrim, 0.0, NO);
     if (btn.subviews.firstObject != glass) [btn insertSubview:glass atIndex:0];
     if (btn.clipsToBounds) btn.clipsToBounds = NO;
-    if (btn.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-        btn.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    UIColor *ink = [UIColor colorWithWhite:1.0 alpha:0.97];
+    UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+    if (btn.overrideUserInterfaceStyle != desiredUIStyle)
+        btn.overrideUserInterfaceStyle = desiredUIStyle;
+    UIColor *ink = FQXPrimaryCommentTextColor();
     if ([label isKindOfClass:UILabel.class]) {
         if (!objc_getAssociatedObject(label, WriteReviewInkKey) && label.textColor) {
             objc_setAssociatedObject(label, WriteReviewInkKey, label.textColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         if (![label.textColor isEqual:ink]) label.textColor = ink;
-        label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.30];
-        label.shadowOffset = CGSizeMake(0.0, 0.5);
+        FQXSyncLabelShadowForCommentMode(label);
     }
     if ([icon isKindOfClass:UIImageView.class] && icon.image) {
         if (!objc_getAssociatedObject(icon, WriteReviewIconKey)) {
@@ -4507,20 +4831,20 @@ static void (*OrigSeriesWriteReviewUpdate)(id, SEL, BOOL);
 static void HookSeriesWriteReviewUpdate(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigSeriesWriteReviewUpdate(controller, cmd, animated);
     UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
-    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXGlassEnabled());
+    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXCommentStylingEnabled());
 }
 
 static void (*OrigSeriesWriteReviewHidden)(id, SEL, BOOL, BOOL);
 static void HookSeriesWriteReviewHidden(UIViewController *controller, SEL cmd, BOOL hidden, BOOL animated) {
     OrigSeriesWriteReviewHidden(controller, cmd, hidden, animated);
     UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
-    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXGlassEnabled());
+    if (writeBtn) FQXStyleWriteReviewButton(writeBtn, FQXCommentStylingEnabled());
 }
 
 static void (*OrigSeriesCommentCellLayout)(id, SEL);
 static void HookSeriesCommentCellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigSeriesCommentCellLayout(cell, cmd);
-    BOOL glass = FQXGlassEnabled();
+    BOOL glass = FQXCommentStylingEnabled();
     FQXClearCommentSurface(cell, glass);
     FQXClearCommentSurface(cell.contentView, glass);
     FQXClearCommentSurface(cell.backgroundView, glass);
@@ -4529,7 +4853,7 @@ static void HookSeriesCommentCellLayout(UICollectionViewCell *cell, SEL cmd) {
 static void (*OrigSeriesScoreUpdateViews)(id, SEL);
 static void HookSeriesScoreUpdateViews(UIView *scoreView, SEL cmd) {
     OrigSeriesScoreUpdateViews(scoreView, cmd);
-    BOOL glass = FQXGlassEnabled();
+    BOOL glass = FQXCommentStylingEnabled();
     FQXClearCommentSurface(scoreView, glass);
     FQXClearCommentSurface(FQXObjGet(scoreView, "contentView"), glass);
 }
@@ -4537,14 +4861,14 @@ static void HookSeriesScoreUpdateViews(UIView *scoreView, SEL cmd) {
 static void (*OrigDramaCommentHeaderUpdate)(id, SEL, id);
 static void HookDramaCommentHeaderUpdate(UIView *header, SEL cmd, id model) {
     OrigDramaCommentHeaderUpdate(header, cmd, model);
-    FQXClearCommentSurface(FQXObjGet(header, "v727BackgroundView"), FQXGlassEnabled());
+    FQXClearCommentSurface(FQXObjGet(header, "v727BackgroundView"), FQXCommentStylingEnabled());
     if (header.window) FQXScanAndStyleCommentTopBanners(header);
 }
 
 static void (*OrigDramaCommentHeaderResume)(id, SEL);
 static void HookDramaCommentHeaderResume(UIView *header, SEL cmd) {
     OrigDramaCommentHeaderResume(header, cmd);
-    FQXClearCommentSurface(FQXObjGet(header, "v727BackgroundView"), FQXGlassEnabled());
+    FQXClearCommentSurface(FQXObjGet(header, "v727BackgroundView"), FQXCommentStylingEnabled());
 }
 
 static void (*OrigDramaCommentListLayout)(id, SEL);
@@ -4701,47 +5025,47 @@ static void HookReaderCommentTransitionLayout(UIView *transition, SEL cmd) {
 static void (*OrigReplyFooterLayout)(id, SEL);
 static void HookReplyFooterLayout(UIView *footer, SEL cmd) {
     OrigReplyFooterLayout(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void (*OrigReplyFooterTheme)(id, SEL);
 static void HookReplyFooterTheme(UIView *footer, SEL cmd) {
     OrigReplyFooterTheme(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void (*OrigVideoReplyFooterTheme)(id, SEL);
 static void HookVideoReplyFooterTheme(UIView *footer, SEL cmd) {
     OrigVideoReplyFooterTheme(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void (*OrigVideoReplyFooterLayout)(id, SEL);
 static void HookVideoReplyFooterLayout(UIView *footer, SEL cmd) {
     OrigVideoReplyFooterLayout(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaFooterLayout)(id, SEL);
 static void HookParaFooterLayout(UIView *footer, SEL cmd) {
     OrigParaFooterLayout(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaFooterTheme)(id, SEL);
 static void HookParaFooterTheme(UIView *footer, SEL cmd) {
     OrigParaFooterTheme(footer, cmd);
-    FQXClearReplyFooter(footer, FQXGlassEnabled());
+    FQXClearReplyFooter(footer, FQXCommentStylingEnabled());
 }
 
 static void FQXStyleVideoCommentReplyCell(UICollectionViewCell *cell) {
     if (![cell isKindOfClass:UICollectionViewCell.class]) return;
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigVideoReplyCellTheme)(id, SEL, BOOL);
 static void HookVideoReplyCellTheme(UICollectionViewCell *cell, SEL cmd, BOOL dark) {
-    OrigVideoReplyCellTheme(cell, cmd, FQXGlassEnabled() ? YES : dark);
+    OrigVideoReplyCellTheme(cell, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : dark);
     FQXStyleVideoCommentReplyCell(cell);
 }
 
@@ -4754,31 +5078,31 @@ static void HookVideoReplyCellLayout(UICollectionViewCell *cell, SEL cmd) {
 static void (*OrigInvisibleTipCellLayout)(id, SEL);
 static void HookInvisibleTipCellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigInvisibleTipCellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigInvisibleTipCellBind)(id, SEL, id);
 static void HookInvisibleTipCellBind(UICollectionViewCell *cell, SEL cmd, id vm) {
     OrigInvisibleTipCellBind(cell, cmd, vm);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigCommentFoldCellLayout)(id, SEL);
 static void HookCommentFoldCellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigCommentFoldCellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigCommentEmptyCellLayout)(id, SEL);
 static void HookCommentEmptyCellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigCommentEmptyCellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigSeriesIntroCellLayout)(id, SEL);
 static void HookSeriesIntroCellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigSeriesIntroCellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 // 1a. Comment activity ticker banner toggle (FQCShortVideoCommentTitleView)
@@ -4793,7 +5117,7 @@ static void HookCommentTitleLayout(UIView *view, SEL cmd) {
     OrigCommentTitleLayout(view, cmd);
     BOOL hide = !FQXCommentActivityBannerEnabled();
     FQXAudioSetHiddenTracked(view, hide);
-    if (!hide && FQXGlassEnabled()) {
+    if (!hide && FQXCommentStylingEnabled()) {
         FQXClearCommentSurface(view, YES);
         FQXBoostCommentTypography(view, 0);
     }
@@ -4805,7 +5129,7 @@ static void HookCommentTitleUpdateModels(UIView *view, SEL cmd, id models) {
     BOOL hide = !FQXCommentActivityBannerEnabled();
     [FQXTrackedDynamicNoticeBanners() addObject:view];
     FQXSetCommentBannerCollapsed(view, hide);
-    if (!hide && FQXGlassEnabled()) {
+    if (!hide && FQXCommentStylingEnabled()) {
         FQXClearCommentSurface(view, YES);
         FQXBoostCommentTypography(view, 0);
     }
@@ -4828,31 +5152,31 @@ static void HookCommentTitleSetAlpha(UIView *view, SEL cmd, CGFloat alpha) {
 static void (*OrigParaV1CellBind)(id, SEL, id);
 static void HookParaV1CellBind(UICollectionViewCell *cell, SEL cmd, id vm) {
     OrigParaV1CellBind(cell, cmd, vm);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaV1CellTheme)(id, SEL);
 static void HookParaV1CellTheme(UICollectionViewCell *cell, SEL cmd) {
     OrigParaV1CellTheme(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaV1CellLayout)(id, SEL);
 static void HookParaV1CellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigParaV1CellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaReplyV1CellTheme)(id, SEL);
 static void HookParaReplyV1CellTheme(UICollectionViewCell *cell, SEL cmd) {
     OrigParaReplyV1CellTheme(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 static void (*OrigParaReplyV1CellLayout)(id, SEL);
 static void HookParaReplyV1CellLayout(UICollectionViewCell *cell, SEL cmd) {
     OrigParaReplyV1CellLayout(cell, cmd);
-    FQXClearCommentCell(cell, FQXGlassEnabled());
+    FQXClearCommentCell(cell, FQXCommentStylingEnabled());
 }
 
 // 5. Drama comment panel: keep video full-screen without shifting upward
@@ -4911,7 +5235,80 @@ static void HookLimitScaleUnbindPlayer(UIView *self, SEL cmd, UIView *playerView
     OrigLimitScaleUnbindPlayer(self, cmd, playerView);
 }
 
-// 1. Comment sheet visibility -> hide/restore floating Dock so it never bleeds through comments
+// 1. Comment sheet visibility -> hide/restore floating Dock & release offscreen Metal IOSurfaces
+static void FQXPurgeOffscreenCommentGlassForController(UIViewController *controller) {
+    if (!controller || !controller.isViewLoaded) return;
+    UIView *root = controller.viewIfLoaded;
+    if (!root || root.window) return;
+    FQXRemoveGlassSheet(root);
+    for (UIView *cur = root.superview; cur; cur = cur.superview) {
+        if (objc_getAssociatedObject(cur, SheetGlassKey)) FQXRemoveGlassSheet(cur);
+    }
+    UIView *bar = FQXObjGet(controller, "bottomToolBar");
+    if (bar && !bar.window) {
+        UIVisualEffectView *barGlass = objc_getAssociatedObject(bar, DramaComposerGlassKey);
+        if (barGlass) {
+            [barGlass removeFromSuperview];
+            objc_setAssociatedObject(bar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    UIView *writeBtn = FQXRawIvarObj(controller, "_writeReviewButton");
+    if (writeBtn && !writeBtn.window) {
+        UIVisualEffectView *wGlass = objc_getAssociatedObject(writeBtn, WriteReviewGlassKey);
+        if (wGlass) {
+            [wGlass removeFromSuperview];
+            objc_setAssociatedObject(writeBtn, WriteReviewGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+}
+
+static void FQXScheduleOffscreenCommentGlassRelease(UIViewController *controller) {
+    if (!controller) return;
+    __weak UIViewController *weakVC = controller;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.34 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        FQXPurgeOffscreenCommentGlassForController(weakVC);
+    });
+}
+
+static void FQXCompactWeakTable(NSHashTable *table) {
+    if (!table) return;
+    NSArray *alive = table.allObjects;
+    [table removeAllObjects];
+    for (id obj in alive) [table addObject:obj];
+}
+
+static void FQXCompactRuntimeMemory(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXCompactRuntimeMemory(); });
+        return;
+    }
+    NSArray<NSHashTable<UIViewController *> *> *vcTables = @[
+        FQXTrackedCommentPanels(),
+        FQXTrackedCommentLists(),
+        FQXTrackedSeriesCommentLists(),
+        FQXTrackedReaderCommentLists(),
+    ];
+    for (NSHashTable<UIViewController *> *tbl in vcTables) {
+        for (UIViewController *vc in tbl.allObjects) {
+            FQXPurgeOffscreenCommentGlassForController(vc);
+        }
+        FQXCompactWeakTable(tbl);
+    }
+    for (UIView *bar in FQXTrackedCommentBars().allObjects) {
+        if (!bar.window) {
+            UIVisualEffectView *g = objc_getAssociatedObject(bar, DramaComposerGlassKey);
+            if (g) {
+                [g removeFromSuperview];
+                objc_setAssociatedObject(bar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+    }
+    FQXCompactWeakTable(FQXTrackedCommentBars());
+    FQXCompactWeakTable(FQXTrackedSearchEntrances());
+    FQXCompactWeakTable(FQXTrackedDynamicSearchBanners());
+    FQXCompactWeakTable(FQXTrackedDynamicNoticeBanners());
+}
+
 static void (*OrigDramaPanelWillShow)(id, SEL);
 static void HookDramaPanelWillShow(UIViewController *controller, SEL cmd) {
     OrigDramaPanelWillShow(controller, cmd);
@@ -4939,6 +5336,7 @@ static void HookDramaPanelDismiss(UIViewController *controller, SEL cmd) {
     UIWindow *win = controller.viewIfLoaded.window;
     OrigDramaPanelDismiss(controller, cmd);
     FQXSyncDockHiddenAcrossWindows(win, controller);
+    FQXScheduleOffscreenCommentGlassRelease(controller);
 }
 
 static void (*OrigDramaCommentListDisappeared)(id, SEL, BOOL);
@@ -4946,6 +5344,7 @@ static void HookDramaCommentListDisappeared(UIViewController *controller, SEL cm
     UIWindow *win = controller.viewIfLoaded.window;
     OrigDramaCommentListDisappeared(controller, cmd, animated);
     FQXSyncDockHiddenAcrossWindows(win, controller);
+    FQXScheduleOffscreenCommentGlassRelease(controller);
 }
 
 static void (*OrigReaderCommentListDisappeared)(id, SEL, BOOL);
@@ -4953,6 +5352,7 @@ static void HookReaderCommentListDisappeared(UIViewController *controller, SEL c
     UIWindow *win = controller.viewIfLoaded.window;
     OrigReaderCommentListDisappeared(controller, cmd, animated);
     FQXSyncDockHiddenAcrossWindows(win, controller);
+    FQXScheduleOffscreenCommentGlassRelease(controller);
 }
 
 static void (*OrigSeriesCommentListDisappeared)(id, SEL, BOOL);
@@ -4960,6 +5360,7 @@ static void HookSeriesCommentListDisappeared(UIViewController *controller, SEL c
     UIWindow *win = controller.viewIfLoaded.window;
     OrigSeriesCommentListDisappeared(controller, cmd, animated);
     FQXSyncDockHiddenAcrossWindows(win, controller);
+    FQXScheduleOffscreenCommentGlassRelease(controller);
 }
 
 static void (*OrigTransitionShowInView)(id, SEL, id, BOOL, id);
@@ -4979,6 +5380,7 @@ static void HookTransitionDismissAnimated(UIView *self, SEL cmd, BOOL animated, 
     NSHashTable<UIViewController *> *owner = objc_getAssociatedObject(self, ReaderCommentTransitionKey);
     UIViewController *excluding = owner.anyObject;
     OrigTransitionDismissAnimated(self, cmd, animated, completion);
+    if (excluding) FQXScheduleOffscreenCommentGlassRelease(excluding);
     if (win) {
         FQXSyncDockHiddenForCommentSheets(win, excluding);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.26 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -5568,8 +5970,9 @@ static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *em
     UIVisualEffectView *keep = objc_getAssociatedObject(sheet, DramaComposerGlassKey);
     FQXNeutralizeStrayBarGlass(sheet, keep, glass, 0);
     if (glass) {
-        if (sheet.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-            sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+        if (sheet.overrideUserInterfaceStyle != desiredUIStyle)
+            sheet.overrideUserInterfaceStyle = desiredUIStyle;
         FQXStyleActiveCommentTextInput(text);
         FQXBoostCommentTypography(sheet, 0);
     }
@@ -5689,8 +6092,9 @@ static void FQXStyleCommunityInput(UIView *editor) {
     }
     FQXNeutralizeStrayBarGlass(editor, keep, glass, 0);
     if (glass) {
-        if (editor.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-            editor.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
+        if (editor.overrideUserInterfaceStyle != desiredUIStyle)
+            editor.overrideUserInterfaceStyle = desiredUIStyle;
         FQXStyleActiveCommentTextInput(text);
         FQXBoostCommentTypography(editor, 0);
     }
@@ -5714,7 +6118,7 @@ static void Hook503CommentInputLayout(UIView *input, SEL cmd) {
 
 static void (*Orig503CommentInputTheme)(id, SEL, BOOL);
 static void Hook503CommentInputTheme(UIView *input, SEL cmd, BOOL dark) {
-    Orig503CommentInputTheme(input, cmd, FQXGlassEnabled() ? YES : dark);
+    Orig503CommentInputTheme(input, cmd, FQXCommentStylingEnabled() ? FQXCommentsUseDarkTheme() : dark);
     FQXRestyleEnclosingCommunityInput(input);
 }
 
@@ -6938,19 +7342,19 @@ static void FQXInstallCommentTextViewObservers(void) {
         NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
         [nc addObserverForName:UITextViewTextDidBeginEditingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
             UIView *tv = note.object;
-            if (!FQXGlassEnabled() || !FQXIsCommentComposerTextView(tv)) return;
+            if (!FQXCommentStylingEnabled() || !FQXIsCommentComposerTextView(tv)) return;
             FQXStyleActiveCommentTextInput(tv);
             __weak UIView *weakTV = tv;
             dispatch_async(dispatch_get_main_queue(), ^{
                 UIView *strongTV = weakTV;
-                if (strongTV && FQXGlassEnabled() && FQXIsCommentComposerTextView(strongTV)) {
+                if (strongTV && FQXCommentStylingEnabled() && FQXIsCommentComposerTextView(strongTV)) {
                     FQXStyleActiveCommentTextInput(strongTV);
                 }
             });
         }];
         [nc addObserverForName:UITextViewTextDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
             UIView *tv = note.object;
-            if (!FQXGlassEnabled() || !FQXIsCommentComposerTextView(tv)) return;
+            if (!FQXCommentStylingEnabled() || !FQXIsCommentComposerTextView(tv)) return;
             FQXStyleActiveCommentTextInput(tv);
         }];
     });
@@ -7205,6 +7609,18 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXScheduleCommentForegroundRefresh();
+        }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
+                                                        object:nil
+                                                         queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(__unused NSNotification *note) {
+            FQXCompactRuntimeMemory();
+        }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                        object:nil
+                                                         queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(__unused NSNotification *note) {
+            FQXCompactRuntimeMemory();
         }];
 
 #undef HOOK_INST

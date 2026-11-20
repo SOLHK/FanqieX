@@ -48,7 +48,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaDoubleTapComment.1": @NO,
         @"FanqieX.DramaCommentNoVideoShift.1": @NO,
         @"FanqieX.DramaExitCollectAlert.1": @NO,
-        @"FanqieX.CommentGlassFrosted.1": @NO,
+        @"FanqieX.CommentMaterialMode.1": @0,
         @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.CommentSearchEntrance.1": @YES,
         @"FanqieX.DramaFollowBottomWidth.1": @NO,
@@ -65,7 +65,6 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.ShelfMotionComic.1": @YES,
         @"FanqieX.ShelfReadingDuration.1": @YES,
         @"FanqieX.SidebarGames.1": @YES,
-        @"FanqieX.LocalRewardTest.1": @NO,
         @"FanqieX.StartupTab.1": @0,
         HiddenBookstoreCategories: @[],
     } mutableCopy];
@@ -125,7 +124,9 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     if ([key isEqualToString:@"FanqieAdBlock.Options.1"]) {
         return number >= 0 && number <= 0x3FFFF && number == trunc(number) ? @((NSInteger)number) : nil;
     }
-    if ([key isEqualToString:@"FanqieX.StartupTab.1"] || [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"]) {
+    if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
+        [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
+        [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;
     }

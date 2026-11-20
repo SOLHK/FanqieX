@@ -6,6 +6,7 @@ static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
+static NSString *const CommentMaterialModeKey = @"FanqieX.CommentMaterialMode.1";
 
 static id Invoke(id receiver, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -64,6 +65,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL requiresCompact;
 @property(nonatomic) BOOL inverted;
 @property(nonatomic) BOOL diagnosticExport;
+@property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic) NSInteger matchScore;
 @end
 @implementation FQXSettingRow
@@ -78,7 +80,6 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic, weak) UIViewController *settingsOwner;
 @property(nonatomic, strong) id router;
 @property(nonatomic, strong) UIViewController *adsOwner;
-@property(nonatomic, strong) NSArray<UIView *> *legacyPanels;
 @property(nonatomic) BOOL diagnosticExportPending;
 @property(nonatomic, strong) NSURL *diagnosticFile;
 @property(nonatomic, copy) NSString *diagnosticError;
@@ -131,11 +132,14 @@ static NSString *PathForTitle(NSString *group, NSString *title) {
 
 static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     NSString *title = [ControlTitle(view) stringByReplacingOccurrencesOfString:@"  ›" withString:@""];
-    if (!title.length || [title isEqualToString:@"诊断与日志"] || [title isEqualToString:@"广告与福利"]) return;
+    if (!title.length || [title isEqualToString:@"诊断与日志"] || [title isEqualToString:@"广告与福利"] ||
+        [title isEqualToString:@"Telegram 频道"] || [title containsString:@"本地激励"] ||
+        [title containsString:@"测试激励"] || [title containsString:@"评论区模糊液态玻璃"]) return;
     FQXSettingRow *row = [FQXSettingRow new];
     row.title = title;
     row.originalTitle = title;
     row.path = PathForTitle(group, title);
+    if (!row.path.length) return;
     row.keywords = [NSString stringWithFormat:@"%@ %@ %@", title, row.path, view.accessibilityIdentifier ?: @""];
     for (UIView *child in view.subviews) {
         if ([child isKindOfClass:UISwitch.class]) {
@@ -158,6 +162,48 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     [menu.catalog addObject:row];
 }
 
+static NSInteger CurrentSavedCommentMaterialMode(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id stored = [ud objectForKey:CommentMaterialModeKey];
+    if (!stored) {
+        if ([ud objectForKey:@"FanqieX.CommentGlassFrosted.1"]) {
+            return [ud boolForKey:@"FanqieX.CommentGlassFrosted.1"] ? 2 : 0;
+        }
+        return 0;
+    }
+    NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
+    return (val >= 0 && val <= 2) ? val : 0;
+}
+
+static FQXSettingRow *MakeCommentMaterialRow(NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *row = [FQXSettingRow new];
+    row.title = @"评论区材质风格";
+    row.path = route;
+    row.hiddenFromSearch = hiddenFromSearch;
+    row.keywords = @"评论区 评价 短剧评论 看书评论 小说评论 段评 材质 风格 浅色液态玻璃 深色液态玻璃 iOS18 高斯模糊 毛玻璃 液态玻璃";
+    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 86)];
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 310, 22)];
+    label.font = [UIFont systemFontOfSize:16];
+    label.text = @"评论区材质（短剧与看书评价同步）";
+    label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [container addSubview:label];
+
+    UISegmentedControl *seg = [[UISegmentedControl alloc] initWithItems:@[@"深色液态玻璃", @"浅色液态玻璃", @"iOS18高斯模糊"]];
+    seg.frame = CGRectMake(20, 40, 310, 34);
+    seg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    seg.accessibilityIdentifier = CommentMaterialModeKey;
+    seg.accessibilityLabel = row.title;
+    NSDictionary *segAttrs = @{NSFontAttributeName: [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium]};
+    [seg setTitleTextAttributes:segAttrs forState:UIControlStateNormal];
+    [seg setTitleTextAttributes:segAttrs forState:UIControlStateSelected];
+    seg.selectedSegmentIndex = CurrentSavedCommentMaterialMode();
+    [container addSubview:seg];
+
+    row.content = container;
+    row.height = 86;
+    return row;
+}
+
 @implementation FQXSettingsMenu
 
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads {
@@ -170,8 +216,9 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     menu.router = router;
     menu.adsOwner = ads;
     menu.path = @"";
-    menu.legacyPanels = @[legacy.tableHeaderView ?: [UIView new], legacy.tableFooterView ?: [UIView new]];
-    for (UIView *group in legacy.tableHeaderView.subviews) {
+    UIView *legacyHeader = legacy.tableHeaderView;
+    UIView *legacyFooter = legacy.tableFooterView;
+    for (UIView *group in legacyHeader.subviews) {
         if ([group isKindOfClass:UISearchBar.class]) continue;
         NSString *title = ControlTitle(group);
         for (NSUInteger index = 1; index < group.subviews.count; ++index) AddView(menu, group.subviews[index], title);
@@ -187,7 +234,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
                 NSIndexPath *path = [NSIndexPath indexPathForRow:index inSection:section];
                 UITableViewCell *cell = [page tableView:page.tableView cellForRowAtIndexPath:path];
                 NSString *title = cell.textLabel.text ?: ((UIListContentConfiguration *)cell.contentConfiguration).text;
-                if (!title.length) continue;
+                if (!title.length || [title containsString:@"评论区模糊液态玻璃"] ||
+                    [title isEqualToString:@"Telegram 频道"]) continue;
                 FQXSettingRow *row = [FQXSettingRow new];
                 row.title = title;
                 row.path = page == (id)owner ? @"外观/玻璃效果" : [@"广告与福利/" stringByAppendingString:group];
@@ -198,6 +246,12 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             }
         }
     }
+    // Add 3-way Comment Material selector across Drama, Reading, Comment Cleanup, and Appearance.
+    [menu.catalog addObject:MakeCommentMaterialRow(@"短剧/播放设置", NO)];
+    [menu.catalog addObject:MakeCommentMaterialRow(@"阅读/阅读设置", YES)];
+    [menu.catalog addObject:MakeCommentMaterialRow(@"评论区净化", YES)];
+    [menu.catalog addObject:MakeCommentMaterialRow(@"外观/玻璃效果", YES)];
+
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
@@ -233,7 +287,6 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             @"FanqieX.DramaDoubleTapComment.1":@"短剧 双击 打开评论区 评论 关闭双击点赞 点赞 手势",
             @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
             @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
-            @"FanqieX.CommentGlassFrosted.1":@"评论区 液态玻璃 清透液态玻璃 模糊液态玻璃 磨砂 短剧评论 小说评论 外观",
             @"FanqieX.CommentActivityBanner.1":@"评论区 公告 活动 社区公约 文明发言 活动横幅 激励 创作者计划 段评 顶部 隐藏 关闭",
             @"FanqieX.CommentSearchEntrance.1":@"评论区 大家都在搜 大家在搜 热搜 搜索 推荐 顶部 隐藏 关闭",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓",
@@ -272,15 +325,24 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     diagnostics.height = 58;
     diagnostics.diagnosticExport = YES;
     [menu.catalog addObject:diagnostics];
+    FQXSettingRow *purgeRow = [FQXSettingRow new];
+    purgeRow.title = @"清理历史残留与缓存";
+    purgeRow.path = @"诊断与其他";
+    purgeRow.keywords = @"清理 历史残留 缓存 内存 占用 释放 优化 旧设置 诊断残留";
+    purgeRow.destination = @"FQXCleanup";
+    purgeRow.height = 52;
+    [menu.catalog addObject:purgeRow];
     // The diagnostics card contains separate labels and controls. Give each
     // native action its own row while retaining the installed router.
-    UIView *card = legacy.tableFooterView.subviews.firstObject;
+    UIView *card = legacyFooter.subviews.firstObject;
     for (UIView *view in card.subviews) {
         if ([view isKindOfClass:UIButton.class] && ![view.accessibilityLabel isEqualToString:diagnostics.title])
             AddView(menu, view, @"诊断与其他");
         if ([view isKindOfClass:UISwitch.class]) {
+            NSString *swTitle = view.accessibilityLabel ?: @"";
+            if (!swTitle.length || [swTitle containsString:@"本地激励"] || [swTitle containsString:@"测试激励"]) continue;
             FQXSettingRow *row = [FQXSettingRow new];
-            row.title = view.accessibilityLabel;
+            row.title = swTitle;
             row.path = @"诊断与其他";
             row.keywords = row.title;
             UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 52)];
@@ -296,6 +358,14 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             row.height = 52;
             [menu.catalog addObject:row];
         }
+    }
+    // Release dead legacy flat header/footer containers so only active harvested controls remain in memory.
+    legacy.tableHeaderView = nil;
+    legacy.tableFooterView = nil;
+    UITableView *adsTable = Invoke(ads, @"tableView");
+    if ([adsTable isKindOfClass:UITableView.class]) {
+        adsTable.tableHeaderView = nil;
+        adsTable.tableFooterView = nil;
     }
     for (FQXSettingRow *row in menu.catalog) {
         row.searchText = SearchText(row.keywords);
@@ -335,6 +405,10 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
 
 - (void)dismissSettings:(UIBarButtonItem *)sender {
     (void)sender;
+    if (self.diagnosticFile.isFileURL) {
+        [NSFileManager.defaultManager removeItemAtURL:self.diagnosticFile error:NULL];
+        self.diagnosticFile = nil;
+    }
     [self.navigationController dismissViewControllerAnimated:YES completion:nil];
 }
 
@@ -391,6 +465,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     for (FQXSettingRow *row in self.catalog) {
         if (row.requiresCompact && !compact && !query.length) continue;
         if (query.length) {
+            if (row.hiddenFromSearch) continue;
             NSInteger score = MatchScore(row.searchText, terms);
             if (score >= 0) {
                 row.matchScore = score + MAX(0, MatchScore(row.searchTitle, terms)) * 2;
@@ -530,6 +605,16 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
             [button addTarget:self action:@selector(performStoredAction:) forControlEvents:UIControlEventTouchUpInside];
         }
         for (UIView *control in row.content.subviews) {
+            if ([control isKindOfClass:UISegmentedControl.class] &&
+                [control.accessibilityIdentifier isEqualToString:CommentMaterialModeKey]) {
+                UISegmentedControl *seg = (UISegmentedControl *)control;
+                seg.selectedSegmentIndex = CurrentSavedCommentMaterialMode();
+                for (id target in seg.allTargets.allObjects) {
+                    [seg removeTarget:target action:@selector(commentMaterialChanged:) forControlEvents:UIControlEventValueChanged];
+                }
+                [seg addTarget:self action:@selector(commentMaterialChanged:) forControlEvents:UIControlEventValueChanged];
+                continue;
+            }
             if (![control isKindOfClass:UISwitch.class]) continue;
             UISwitch *sw = (UISwitch *)control;
             if ([sw.accessibilityLabel isEqualToString:@"短剧滚动自动收缩"]) {
@@ -570,6 +655,30 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         } else cell.detailTextLabel.text = unavailable ? [@"先开启自动收缩 · " stringByAppendingString:row.path] : row.path;
     }
     return cell;
+}
+
+- (void)commentMaterialChanged:(UISegmentedControl *)sender {
+    NSInteger mode = sender.selectedSegmentIndex;
+    if (mode < 0 || mode > 2) mode = 0;
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    [ud setInteger:mode forKey:CommentMaterialModeKey];
+    [ud removeObjectForKey:@"FanqieX.CommentGlassFrosted.1"];
+    for (FQXSettingRow *row in self.catalog) {
+        for (UIView *sub in row.content.subviews) {
+            if ([sub isKindOfClass:UISegmentedControl.class] &&
+                [sub.accessibilityIdentifier isEqualToString:CommentMaterialModeKey]) {
+                UISegmentedControl *other = (UISegmentedControl *)sub;
+                if (other != sender && other.selectedSegmentIndex != mode) {
+                    other.selectedSegmentIndex = mode;
+                }
+            }
+        }
+    }
+    Class cleanup = NSClassFromString(@"FQXCleanup");
+    SEL selector = NSSelectorFromString(@"refreshForKey:");
+    if ([cleanup respondsToSelector:selector]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, CommentMaterialModeKey);
+    }
 }
 
 - (void)nativeToggleChanged:(UISwitch *)toggle {
@@ -662,6 +771,10 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         CGRect bounds = self.view.bounds;
         share.popoverPresentationController.sourceView = self.view;
         share.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds), 1, 1);
+        share.completionWithItemsHandler = ^(UIActivityType type, BOOL completed, NSArray *items, NSError *error) {
+            (void)type; (void)completed; (void)items; (void)error;
+            if (file.isFileURL) [NSFileManager.defaultManager removeItemAtURL:file error:NULL];
+        };
         [self presentViewController:share animated:YES completion:^{
             self.diagnosticFile = nil;
             [self.tableView reloadData];
