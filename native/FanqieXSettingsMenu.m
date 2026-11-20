@@ -78,6 +78,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL requiresCompact;
 @property(nonatomic) BOOL inverted;
 @property(nonatomic) BOOL diagnosticExport;
+@property(nonatomic) BOOL authorInformation;
 @property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic) NSInteger commentMaterialChoice;
 @property(nonatomic) BOOL commentAppearanceRow;
@@ -112,46 +113,44 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.clearColor;
-    CGFloat width = 236.0;
-    CGFloat padX = 14.0;
-    CGFloat headerY = 16.0;
-    CGFloat headerH = 24.0;
-    CGFloat btnH = 44.0;
-    CGFloat gap = 8.0;
-    CGFloat topY = headerY + headerH + 12.0;
-
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(padX, headerY, width - padX * 2.0, headerH)];
-    titleLabel.text = self.pickerTitle ?: @"";
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.text = self.pickerTitle;
     titleLabel.textAlignment = NSTextAlignmentCenter;
     titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightSemibold];
     titleLabel.textColor = UIColor.labelColor;
-    titleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [self.view addSubview:titleLabel];
+    titleLabel.numberOfLines = 2;
+    titleLabel.accessibilityTraits |= UIAccessibilityTraitHeader;
+
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[titleLabel]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 8.0;
+    [stack setCustomSpacing:12.0 afterView:titleLabel];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:stack];
+    UILayoutGuide *area = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:area.leadingAnchor constant:14.0],
+        [stack.trailingAnchor constraintEqualToAnchor:area.trailingAnchor constant:-14.0],
+        [stack.topAnchor constraintEqualToAnchor:area.topAnchor constant:14.0],
+        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:area.bottomAnchor constant:-14.0]
+    ]];
 
     for (NSUInteger i = 0; i < self.options.count; ++i) {
-        CGFloat y = topY + (CGFloat)i * (btnH + gap);
-        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.frame = CGRectMake(padX, y, width - padX * 2.0, btnH);
-        btn.tag = (NSInteger)i;
-        btn.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.tag = (NSInteger)i;
         BOOL selected = ((NSInteger)i == self.selectedIndex);
-        NSString *labelText = selected ? [NSString stringWithFormat:@"%@  ✓", self.options[i]] : self.options[i];
-        [btn setTitle:labelText forState:UIControlStateNormal];
-        [btn setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:(selected ? UIFontWeightSemibold : UIFontWeightMedium)];
-        btn.backgroundColor = selected ? UIColor.secondarySystemFillColor : UIColor.tertiarySystemFillColor;
-        btn.layer.cornerRadius = btnH * 0.5;
-        btn.layer.cornerCurve = kCACornerCurveContinuous;
-        if (selected) {
-            btn.layer.borderWidth = 1.0;
-            btn.layer.borderColor = [UIColor.labelColor colorWithAlphaComponent:0.18].CGColor;
-        }
-        [btn addTarget:self action:@selector(optionTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self.view addSubview:btn];
+        NSString *label = selected ? [self.options[i] stringByAppendingString:@"  ✓"] : self.options[i];
+        [button setTitle:label forState:UIControlStateNormal];
+        [button setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:(selected ? UIFontWeightSemibold : UIFontWeightMedium)];
+        button.backgroundColor = selected ? UIColor.secondarySystemFillColor : UIColor.tertiarySystemFillColor;
+        button.layer.cornerRadius = 22.0;
+        button.layer.cornerCurve = kCACornerCurveContinuous;
+        if (selected) button.accessibilityTraits |= UIAccessibilityTraitSelected;
+        [button addTarget:self action:@selector(optionTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:button];
+        [[button.heightAnchor constraintEqualToConstant:44.0] setActive:YES];
     }
-
-    CGFloat totalH = topY + (CGFloat)self.options.count * btnH + MAX(0.0, (CGFloat)self.options.count - 1.0) * gap + 14.0;
-    self.preferredContentSize = CGSizeMake(width, totalH);
 }
 
 - (void)optionTapped:(UIButton *)sender {
@@ -504,6 +503,14 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     video.destination = @"FQXVideoExport";
     video.height = 52;
     [menu.catalog addObject:video];
+    FQXSettingRow *author = [FQXSettingRow new];
+    author.title = @"作者信息";
+    author.path = @"";
+    author.keywords = @"Telegram TG GitHub 频道 仓库";
+    author.height = 54.0;
+    author.authorInformation = YES;
+    [menu.catalog addObject:author];
+
     FQXSettingRow *diagnostics = [FQXSettingRow new];
     diagnostics.title = @"导出日志";
     diagnostics.path = @"诊断与其他";
@@ -834,6 +841,10 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             objc_setAssociatedObject(toggle, RowKey, row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [toggle addTarget:self action:@selector(commentMaterialSwitchChanged:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = toggle;
+        } else if (row.authorInformation) {
+            cell.accessibilityTraits |= UIAccessibilityTraitButton;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else if (row.commentAppearanceRow) {
             UISegmentedControl *seg = [[UISegmentedControl alloc] initWithItems:@[@"跟随软件", @"浅色", @"深色"]];
             seg.frame = CGRectMake(0, 0, 186, 32);
@@ -1037,6 +1048,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             picker.pickerTitle = row.title;
             picker.options = row.popoverOptions;
             picker.selectedIndex = curIdx;
+            picker.preferredContentSize = CGSizeMake(236.0, 72.0 + row.popoverOptions.count * 52.0);
             picker.modalPresentationStyle = UIModalPresentationPopover;
             UIPopoverPresentationController *pop = picker.popoverPresentationController;
             pop.delegate = picker;
@@ -1067,6 +1079,22 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             };
             UIViewController *presenter = self.presentedViewController ?: self;
             [presenter presentViewController:picker animated:YES completion:nil];
+            return;
+        }
+        if (row.authorInformation) {
+            NSString *telegram = @"https://t.me/Naloiafeed";
+            NSString *repository = @"https://github.com/SOLHK/FanqieX";
+            UIAlertController *info = [UIAlertController alertControllerWithTitle:row.title
+                message:[NSString stringWithFormat:@"%@\n%@", telegram, repository]
+                preferredStyle:UIAlertControllerStyleAlert];
+            for (NSArray<NSString *> *link in @[@[@"Telegram 频道", telegram], @[@"GitHub", repository]]) {
+                [info addAction:[UIAlertAction actionWithTitle:link[0] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+                    [UIApplication.sharedApplication openURL:[NSURL URLWithString:link[1]] options:@{} completionHandler:nil];
+                }]];
+            }
+            [info addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+            UIViewController *presenter = self.presentedViewController ?: self;
+            [presenter presentViewController:info animated:YES completion:nil];
             return;
         }
         if (row.diagnosticExport) {

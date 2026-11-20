@@ -138,6 +138,8 @@ def leaf_return_path(words, target):
             continue
         if (word & 0x7FE0001F) == 0x52800000:  # movz w0/x0, #imm16
             continue
+        if (word & 0xFFFFFC1F) == 0x13001C00:  # sxtb w0, wN
+            continue
         if (word & 0xFFE00C00) == 0x1A800400 and word & 31 < 18:  # cset wD, cond
             continue
         return False
@@ -153,12 +155,16 @@ def frame_encoding(words):
         if word == 0xD503201F:  # Alignment NOP, never a frame save.
             continue
         if sp == 0 and not saves:
+            if (word & 0x7FE00000) == 0x52800000 and word & 31 < 18:  # movz wD/xD, #imm16
+                continue
             # Clang may emit comparisons and CSETs before the frame, followed
             # by multiple conditional branches to a tiny leaf return block.
             # These paths must not touch the stack or execute a call.
             if (word & 0xFF00001F) == 0xF100001F:  # cmp xN, #imm
                 continue
             if (word & 0xFFE0FC1F) == 0xEB00001F:  # cmp xN, xM
+                continue
+            if word & 0x7FE00C10 in (0x7A400000, 0x7A400800):  # ccmp wN/xN, register/immediate
                 continue
             if (word & 0xFFE00C00) == 0x1A800400 and word & 31 < 18:  # cset wD, cond
                 continue
@@ -174,10 +180,13 @@ def frame_encoding(words):
                 target = index + delta
                 if not leaf_return_path(words, target):
                     # The inverse guard falls through to a leaf return and
-                    # branches directly to a pre-indexed FP/LR save.
+                    # branches directly to the first stack save. The rest of
+                    # the prologue is still checked against the unwind entry.
+                    first_save = words[target] if 0 <= target < len(words) else 0
                     need(index + 1 < target < min(len(words), 32) and
                          leaf_return_path(words[:target], index + 1) and
-                         words[target] & 0xFFC07FFF == 0xA9807BFD and words[target] & (1 << 21),
+                         first_save & 0xFFC003E0 in (0xA98003E0, 0x6D8003E0) and
+                         first_save & (1 << 21),
                          'unsupported pre-frame conditional path')
                     frame_entry = target
                 continue
@@ -231,7 +240,7 @@ def check_native_unwind(baseline: bytes, candidate: bytes) -> dict:
     need(current[:len(old)] == old, 'original 63 entries changed')
     need(current[len(old)] == (old_end, 0), 'old sentinel must become a zero range')
     version, = read(candidate, 0x818, '<I')
-    expected_kind = 3 if version in (0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f, 0x14e10, 0x14e19, 0x14e1a, 0x14e1b, 0x14e1c, 0x14e1d, 0x14e1e, 0x14e1f, 0x14e20, 0x14e21, 0x14e22, 0x14e23, 0x14e24, 0x14f01, 0x14f02, 0x14f03, 0x14f04, 0x14f05, 0x15001, 0x15002, 0x15003, 0x15004, 0x15005, 0x15006, 0x15007, 0x15008, 0x15009, 0x1500A, 0x1500B, 0x1500C, 0x1500D, 0x1500E, 0x1500F, 0x15010, 0x15011, 0x15012, 0x15012, 0x15011, 0x15012, 0x15012, 0x15013, 0x15101, 0x15102, 0x15103, 0x15104, 0x15105, 0x15106, 0x15107, 0x15108, 0x15109) and len(current) > 511 else 2
+    expected_kind = 3 if version in (0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f, 0x14e10, 0x14e19, 0x14e1a, 0x14e1b, 0x14e1c, 0x14e1d, 0x14e1e, 0x14e1f, 0x14e20, 0x14e21, 0x14e22, 0x14e23, 0x14e24, 0x14f01, 0x14f02, 0x14f03, 0x14f04, 0x14f05, 0x15001, 0x15002, 0x15003, 0x15004, 0x15005, 0x15006, 0x15007, 0x15008, 0x15009, 0x1500A, 0x1500B, 0x1500C, 0x1500D, 0x1500E, 0x1500F, 0x15010, 0x15011, 0x15012, 0x15012, 0x15011, 0x15012, 0x15012, 0x15013, 0x15101, 0x15102, 0x15103, 0x15104, 0x15105, 0x15106, 0x15107, 0x15108, 0x15109, 0x1510A) and len(current) > 511 else 2
     need(kinds == [expected_kind], 'expected the version-specific bounded unwind page')
     need('__FQPATCH' in segments, 'missing executable extension')
     vm, vm_size, fileoff, filesize, maximum, initial = segments['__FQPATCH']
