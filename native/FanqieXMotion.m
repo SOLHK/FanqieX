@@ -3604,6 +3604,7 @@ static void FQXStyleSeriesCommentList(UIViewController *controller);
 static void FQXStyleCommentSearchEntrance(UIView *entrance);
 static BOOL FQXStyleDramaCommentList(UIViewController *controller);
 static void FQXStyleReaderCommentList(UIViewController *controller);
+static void FQXScanAndStyleCommentTopBanners(UIView *root);
 
 static void FQXStyleDramaPanel(UIViewController *controller) {
     if (!controller) return;
@@ -3668,8 +3669,6 @@ static void HookDramaPanelDarkChange(UIViewController *controller, SEL cmd, BOOL
     OrigDramaPanelDarkChange(controller, cmd, FQXGlassEnabled() ? YES : dark);
     FQXStyleDramaPanel(controller);
 }
-
-static void FQXScanAndStyleCommentTopBanners(UIView *root);
 
 static BOOL FQXStyleDramaCommentList(UIViewController *controller) {
     if (!controller) return NO;
