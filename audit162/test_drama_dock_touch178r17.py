@@ -86,8 +86,23 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
         send(cpu, runtime, entry, "renderWithModel:", model)
 
     proxy_state = runtime.objects[proxy].state
-    r24 = release_version(runtime.data) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19")
+    version = release_version(runtime.data)
+    r24 = version in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19")
+    follow_opt_in = version in ("1.8R19",)
     bar = proxy_state["superview"]
+    if follow_opt_in:
+        proxy_state.update(frame=(34., 0., 372., 62.), bounds=(0., 0., 372., 62.))
+        if entry:
+            send(cpu, runtime, entry, "layoutSubviews")
+        call(cpu, labels, "LFQH_FQHDramaSpacing178R2", controls)
+        require(runtime.origin(track) == (16., 873.) and runtime.objects[track].state["frame"][2] == 408.,
+                f"{kind} rail keeps native width by default when follow-bottom-width is off")
+        if entry_content:
+            state = runtime.objects[entry_content].state
+            material = next(child for child in state["subviews"] if runtime.objects[child].state.get("configuration"))
+            require(runtime.origin(material)[0] == 8. and runtime.objects[material].state["frame"][2] == 424.
+                    and state["nativeAction"] == "open series", "CTA keeps native width when follow-bottom-width is off")
+        runtime.objects[runtime.DEFAULTS].state["values"]["FanqieX.DramaFollowBottomWidth.1"] = True
     for dock_x, dock_width, expected_x, expected_width in ((20., 400., 20., 400.),
                                                            (34., 372., 34., 372.),
                                                            (370., 50., 16., 408.)):
@@ -114,6 +129,8 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
         runtime.associations.pop((proxy, labels[BASE]), None)
         runtime.associations.pop((proxy, labels[BUTTONS]), None)
         runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieX.BottomLengthScale.1")
+    if follow_opt_in:
+        runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieX.DramaFollowBottomWidth.1", None)
     proxy_state.update(frame=(20., 0., 400., 62.), bounds=(0., 0., 400., 62.))
 
 def verify_novel_clearance(cpu, runtime, labels, controls, proxy):

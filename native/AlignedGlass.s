@@ -1,4 +1,4 @@
-// Source SHA-256: c57c631d6c8765d73c7441b3b9734eff919204ec62cb13ce7380c9b90421edf4
+// Source SHA-256: 0a898767bb585fc2a1f0d40f99c25c6baf5a2f9221136026c4d67a56c0af62a5
 .p2align	2
 LFQH_FQHHostBundle:
 .cfi_startproc
@@ -63494,7 +63494,7 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset b8, -40
 .cfi_offset b9, -48
-cbz	x0, LFQH_LBB573_11
+cbz	x0, LFQH_LBB573_2
 mov.16b	v9, v2
 mov.16b	v8, v0
 fmov	x8, d8
@@ -63507,102 +63507,119 @@ cmp	x10, #2046
 mov	w10, #2046
 ccmp	x9, x10, #2, ls
 ccmp	x8, x10, #2, ls
-b.hi	LFQH_LBB573_11
+b.ls	LFQH_LBB573_3
+LFQH_LBB573_2:
+ldp	x29, x30, [sp, #32]
+ldp	x20, x19, [sp, #16]
+ldp	d9, d8, [sp], #48
+ret
+LFQH_LBB573_3:
 fmov	x8, d3
 ubfx	x8, x8, #52, #11
 cmp	x8, #2046
-b.hi	LFQH_LBB573_11
+b.hi	LFQH_LBB573_2
 fcmp	d9, #0.0
-b.le	LFQH_LBB573_11
+b.le	LFQH_LBB573_2
 fcmp	d3, #0.0
-b.le	LFQH_LBB573_11
+b.le	LFQH_LBB573_2
 mov	x19, x0
-cbz	w1, LFQH_LBB573_8
+cbz	w1, LFQH_LBB573_13
 LFQH_Lloh11032:
 adr x1, LFQH_DramaClampBusyKey
 LFQH_Lloh11033:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
-cbnz	x0, LFQH_LBB573_8
+cbnz	x0, LFQH_LBB573_13
 LFQH_Lloh11034:
-adr x20, LFQH_DramaClampBusyKey
+adr x1, LFQH_DramaClampBusyKey
 LFQH_Lloh11035:
 nop
 mov	x0, x19
-mov	x1, x20
 mov	x2, x19
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_Lloh11036:
-adr x0, LFQH_l_.str.87
+adr x0, LFQH_l_.str.501
 LFQH_Lloh11037:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x20, x0
 LFQH_Lloh11038:
-adr x0, LFQH_l_.str.88
+adr x0, LFQH_l_.str.87
 LFQH_Lloh11039:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x2, x0
+mov	x0, x19
+mov	x1, x20
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+cbz	w0, LFQH_LBB573_10
+LFQH_Lloh11040:
+adr x0, LFQH_l_.str.87
+LFQH_Lloh11041:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
+LFQH_LBB573_10:
+LFQH_Lloh11042:
+adr x0, LFQH_l_.str.501
+LFQH_Lloh11043:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x20, x0
+LFQH_Lloh11044:
+adr x0, LFQH_l_.str.88
+LFQH_Lloh11045:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x2, x0
 mov	x0, x19
 mov	x1, x20
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+cbz	w0, LFQH_LBB573_12
+LFQH_Lloh11046:
+adr x0, LFQH_l_.str.88
+LFQH_Lloh11047:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+LFQH_LBB573_12:
+LFQH_Lloh11048:
+adr x1, LFQH_DramaClampBusyKey
+LFQH_Lloh11049:
+nop
+mov	x0, x19
 mov	x2, #0
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_LBB573_8:
-LFQH_Lloh11040:
+LFQH_LBB573_13:
+LFQH_Lloh11050:
 adr x1, LFQH_DramaGlassKey
-LFQH_Lloh11041:
+LFQH_Lloh11051:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 fadd	d0, d8, d9
-fmov	d1, #-12.00000000
+fmov	d1, #-8.00000000
 fadd	d0, d0, d1
 mov	x8, #4629700416936869888
 fmov	d1, x8
 fadd	d1, d8, d1
 fcmp	d0, d1
-b.le	LFQH_LBB573_10
+b.le	LFQH_LBB573_2
 mov	x2, x0
 mov	x0, x19
 mov	x1, x19
 mov	w3, #0
-bl	LFQH_DramaClampSubviews
-LFQH_LBB573_10:
-LFQH_Lloh11042:
-adr x0, LFQH_l_.str.468
-LFQH_Lloh11043:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-cbz	w0, LFQH_LBB573_12
-LFQH_LBB573_11:
 ldp	x29, x30, [sp, #32]
 ldp	x20, x19, [sp, #16]
 ldp	d9, d8, [sp], #48
-ret
-LFQH_LBB573_12:
-LFQH_Lloh11044:
-adr x0, LFQH_l_.str.460
-LFQH_Lloh11045:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-mov	w2, #1
-ldp	x29, x30, [sp, #32]
-ldp	x20, x19, [sp, #16]
-ldp	d9, d8, [sp], #48
-b Lpatch + (0xa5d4 - PATCH_BASE)
+b	LFQH_DramaClampSubviews
 .cfi_endproc
 .p2align	2
 LFQH_DramaWatchArrowKey:
@@ -63617,6 +63634,8 @@ ret
 .p2align	2
 LFQH_DramaClampSubviews:
 .cfi_startproc
+cmp	w3, #3
+b.hi	LFQH_LBB576_32
 sub	sp, sp, #192
 stp	d15, d14, [sp, #32]
 stp	d13, d12, [sp, #48]
@@ -63650,21 +63669,19 @@ add	x29, sp, #176
 .cfi_offset b13, -144
 .cfi_offset b14, -152
 .cfi_offset b15, -160
-str	x1, [sp, #24]
-cmp	w3, #3
-b.hi	LFQH_LBB576_27
 mov	x19, x3
 mov.16b	v8, v0
 mov	x20, x2
-LFQH_Lloh11046:
+mov	x21, x1
+LFQH_Lloh11052:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh11047:
+LFQH_Lloh11053:
 nop
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh11048:
+LFQH_Lloh11054:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11049:
+LFQH_Lloh11055:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63672,30 +63689,30 @@ mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, #32
 mov	w8, #32
-csel	x21, x0, x8, lo
-cbz	x0, LFQH_LBB576_27
+csel	x27, x0, x8, lo
+cbz	x0, LFQH_LBB576_31
 mov	x23, #0
 fmov	d13, #0.50000000
 fadd	d14, d8, d13
 fmov	d0, #-16.00000000
-LFQH_Lloh11050:
-adr x24, LFQH_l_.str.568
-LFQH_Lloh11051:
-nop
 fadd	d15, d8, d0
-LFQH_Lloh11052:
-adr x25, LFQH_l_.str.41
-LFQH_Lloh11053:
+LFQH_Lloh11056:
+adr x24, LFQH_l_.str.568
+LFQH_Lloh11057:
 nop
-LFQH_Lloh11054:
-adr x26, LFQH_l_.str.502
-LFQH_Lloh11055:
+LFQH_Lloh11058:
+adr x25, LFQH_l_.str.41
+LFQH_Lloh11059:
 nop
 fmov	d0, #-24.00000000
+LFQH_Lloh11060:
+adr x26, LFQH_l_.str.15
+LFQH_Lloh11061:
+nop
 fadd	d0, d8, d0
-str	d0, [sp, #16]
+str	d0, [sp, #24]
 mov	x8, #-4588042120383692800
-str	x8, [sp, #8]
+str	x8, [sp, #16]
 LFQH_LBB576_3:
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -63705,52 +63722,36 @@ mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, x20
 ccmp	x0, #0, #4, ne
-b.eq	LFQH_LBB576_6
+b.eq	LFQH_LBB576_17
 mov	x28, x0
 mov	x0, x25
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-cbnz	w0, LFQH_LBB576_6
-mov	x0, x26
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x27, x0
-LFQH_Lloh11056:
-adr x0, LFQH_l_.str.15
-LFQH_Lloh11057:
-nop
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x2, x0
+cbnz	w0, LFQH_LBB576_17
 mov	x0, x28
-mov	x1, x27
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-cbz	w0, LFQH_LBB576_7
-LFQH_LBB576_6:
-add	x23, x23, #1
-cmp	x21, x23
-b.ne	LFQH_LBB576_3
-b	LFQH_LBB576_27
-LFQH_LBB576_7:
-LFQH_Lloh11058:
+mov	x1, x26
+bl	LFQH_Kind
+tbnz	w0, #0, LFQH_LBB576_17
+LFQH_Lloh11062:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11059:
+LFQH_Lloh11063:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d2, d13
-b.ls	LFQH_LBB576_6
-mov.16b	v12, v3
-fcmp	d3, d13
-b.ls	LFQH_LBB576_6
+fccmp	d3, d13, #0, hi
+b.ls	LFQH_LBB576_17
 mov.16b	v9, v0
 mov.16b	v10, v1
 mov.16b	v11, v2
-LFQH_Lloh11060:
+mov.16b	v12, v3
+LFQH_Lloh11064:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11061:
+LFQH_Lloh11065:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63759,57 +63760,50 @@ mov.16b	v0, v9
 mov.16b	v1, v10
 mov.16b	v2, v11
 mov.16b	v3, v12
-ldr	x2, [sp, #24]
+mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v9, v0
 mov.16b	v10, v2
-mov	x0, x26
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x27, x0
-LFQH_Lloh11062:
-adr x0, LFQH_l_.str.35
-LFQH_Lloh11063:
-nop
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x2, x0
 mov	x0, x28
-mov	x1, x27
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-cbnz	w0, LFQH_LBB576_11
-LFQH_Lloh11064:
-adr x0, LFQH_l_.str.501
-LFQH_Lloh11065:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x27, x0
 LFQH_Lloh11066:
-adr x0, LFQH_l_.str.1174
+adr x1, LFQH_l_.str.35
 LFQH_Lloh11067:
 nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x2, x0
+bl	LFQH_Kind
+tbnz	w0, #0, LFQH_LBB576_9
 mov	x0, x28
-mov	x1, x27
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-cbz	w0, LFQH_LBB576_16
-LFQH_LBB576_11:
-fcmp	d9, d15
-b.pl	LFQH_LBB576_6
-fadd	d12, d9, d10
-fcmp	d12, d14
-b.le	LFQH_LBB576_6
 LFQH_Lloh11068:
-adr x0, LFQH_l_.str.1174
+adr x1, LFQH_l_.str.1174
 LFQH_Lloh11069:
 nop
+bl	LFQH_Responds
+cbz	w0, LFQH_LBB576_18
+LFQH_LBB576_9:
+fcmp	d9, d15
+b.pl	LFQH_LBB576_17
+fadd	d12, d9, d10
+fcmp	d12, d14
+b.le	LFQH_LBB576_17
+str	x21, [sp, #8]
+mov	x21, x26
+mov	x0, x28
+LFQH_Lloh11070:
+adr x26, LFQH_l_.str.1174
+LFQH_Lloh11071:
+nop
+mov	x1, x26
+bl	LFQH_Responds
+cbz	w0, LFQH_LBB576_13
+mov	x0, x26
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x28
 mov	w2, #4
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11070:
+LFQH_LBB576_13:
+LFQH_Lloh11072:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11071:
+LFQH_Lloh11073:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63825,11 +63819,11 @@ fcsel	d12, d1, d0, mi
 fmov	d0, #-0.50000000
 fadd	d0, d2, d0
 fcmp	d12, d0
-b.pl	LFQH_LBB576_6
+b.pl	LFQH_LBB576_15
 mov.16b	v11, v3
-LFQH_Lloh11072:
+LFQH_Lloh11074:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh11073:
+LFQH_Lloh11075:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63837,38 +63831,54 @@ mov	x0, x28
 mov.16b	v0, v9
 mov.16b	v1, v10
 mov.16b	v2, v12
-LFQH_LBB576_15:
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-b	LFQH_LBB576_6
-LFQH_LBB576_16:
-mov	x0, x26
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x27, x0
-LFQH_Lloh11074:
-adr x0, LFQH_l_.str.68
-LFQH_Lloh11075:
-nop
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x2, x0
+LFQH_LBB576_15:
 mov	x0, x28
-mov	x1, x27
+LFQH_Lloh11076:
+adr x1, LFQH_l_.str.460
+LFQH_Lloh11077:
+nop
+bl	LFQH_Responds
+mov	x26, x21
+ldr	x21, [sp, #8]
+cbz	w0, LFQH_LBB576_17
+LFQH_Lloh11078:
+adr x0, LFQH_l_.str.460
+LFQH_Lloh11079:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x28
+mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
+LFQH_LBB576_17:
+add	x23, x23, #1
+cmp	x27, x23
+b.ne	LFQH_LBB576_3
+b	LFQH_LBB576_31
+LFQH_LBB576_18:
+mov	x0, x28
+LFQH_Lloh11080:
+adr x1, LFQH_l_.str.68
+LFQH_Lloh11081:
+nop
+bl	LFQH_Kind
 fadd	d12, d9, d10
-cbz	w0, LFQH_LBB576_22
+cbz	w0, LFQH_LBB576_24
 fmov	d0, #28.00000000
 fcmp	d10, d0
-b.hi	LFQH_LBB576_6
+b.hi	LFQH_LBB576_17
 fcmp	d12, d14
-b.le	LFQH_LBB576_6
+b.le	LFQH_LBB576_17
 fsub	d0, d8, d10
-ldr	d1, [sp, #8]
+ldr	d1, [sp, #16]
 fadd	d1, d9, d1
 fcmp	d0, d1
-b.le	LFQH_LBB576_6
-LFQH_Lloh11076:
+b.le	LFQH_LBB576_17
+LFQH_Lloh11082:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11077:
+LFQH_Lloh11083:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63878,12 +63888,12 @@ mov.16b	v9, v1
 fsub	d1, d12, d8
 fsub	d12, d0, d1
 fcmp	d12, #0.0
-b.lt	LFQH_LBB576_6
+b.lt	LFQH_LBB576_17
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh11078:
+LFQH_Lloh11084:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh11079:
+LFQH_Lloh11085:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63891,16 +63901,18 @@ mov	x0, x28
 mov.16b	v0, v12
 mov.16b	v1, v9
 mov.16b	v2, v10
-b	LFQH_LBB576_15
-LFQH_LBB576_22:
-ldr	d0, [sp, #16]
+mov.16b	v3, v11
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+b	LFQH_LBB576_17
+LFQH_LBB576_24:
+ldr	d0, [sp, #24]
 fcmp	d9, d0
-b.pl	LFQH_LBB576_26
+b.pl	LFQH_LBB576_30
 fcmp	d12, d14
-b.le	LFQH_LBB576_26
-LFQH_Lloh11080:
+b.le	LFQH_LBB576_30
+LFQH_Lloh11086:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11081:
+LFQH_Lloh11087:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63915,11 +63927,11 @@ fadd	d0, d2, d0
 fmov	d1, #24.00000000
 fcmp	d12, d1
 fccmp	d12, d0, #0, ge
-b.pl	LFQH_LBB576_26
+b.pl	LFQH_LBB576_28
 mov.16b	v11, v3
-LFQH_Lloh11082:
+LFQH_Lloh11088:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh11083:
+LFQH_Lloh11089:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -63929,15 +63941,32 @@ mov.16b	v1, v10
 mov.16b	v2, v12
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_LBB576_26:
+LFQH_LBB576_28:
+mov	x0, x28
+LFQH_Lloh11090:
+adr x1, LFQH_l_.str.460
+LFQH_Lloh11091:
+nop
+bl	LFQH_Responds
+cbz	w0, LFQH_LBB576_30
+LFQH_Lloh11092:
+adr x0, LFQH_l_.str.460
+LFQH_Lloh11093:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x28
+mov	w2, #1
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+LFQH_LBB576_30:
 add	w3, w19, #1
 mov	x0, x28
-ldr	x1, [sp, #24]
+mov	x1, x21
 mov	x2, x20
 mov.16b	v0, v8
 bl	LFQH_DramaClampSubviews
-b	LFQH_LBB576_6
-LFQH_LBB576_27:
+b	LFQH_LBB576_17
+LFQH_LBB576_31:
 ldp	x29, x30, [sp, #176]
 ldp	x20, x19, [sp, #160]
 ldp	x22, x21, [sp, #144]
@@ -63949,6 +63978,7 @@ ldp	d11, d10, [sp, #64]
 ldp	d13, d12, [sp, #48]
 ldp	d15, d14, [sp, #32]
 add	sp, sp, #192
+LFQH_LBB576_32:
 ret
 .cfi_endproc
 .p2align	2
@@ -63972,13 +64002,13 @@ ldp	d0, d1, [sp]
 ldp	d2, d3, [sp, #16]
 b	LFQH_LBB577_3
 LFQH_LBB577_2:
-LFQH_Lloh11084:
+LFQH_Lloh11094:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11085:
+LFQH_Lloh11095:
 nop
-LFQH_Lloh11086:
+LFQH_Lloh11096:
 adr x1, LFQH_l_.str.1193
-LFQH_Lloh11087:
+LFQH_Lloh11097:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -64004,22 +64034,22 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh11088:
+LFQH_Lloh11098:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11089:
+LFQH_Lloh11099:
 nop
-LFQH_Lloh11090:
+LFQH_Lloh11100:
 adr x1, LFQH_l_.str.1194
-LFQH_Lloh11091:
+LFQH_Lloh11101:
 nop
 bl	LFQH_Original
 mov	x8, x0
 mov	x0, x19
 mov	x1, x20
 blr	x8
-LFQH_Lloh11092:
+LFQH_Lloh11102:
 adr x0, LFQH_l_.str.651
-LFQH_Lloh11093:
+LFQH_Lloh11103:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64028,9 +64058,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB578_2
 bl	LFQH_FullscreenPlayers
 mov	x20, x0
-LFQH_Lloh11094:
+LFQH_Lloh11104:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh11095:
+LFQH_Lloh11105:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64061,13 +64091,13 @@ mov	x20, x1
 mov	x19, x0
 cbz	w2, LFQH_LBB579_3
 mov	x21, x2
-LFQH_Lloh11096:
+LFQH_Lloh11106:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11097:
+LFQH_Lloh11107:
 nop
-LFQH_Lloh11098:
+LFQH_Lloh11108:
 adr x1, LFQH_l_.str.1195
-LFQH_Lloh11099:
+LFQH_Lloh11109:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -64078,9 +64108,9 @@ blr	x8
 mov	w0, #9
 bl	LFQH_PageOptionEnabled
 cbz	w0, LFQH_LBB579_4
-LFQH_Lloh11100:
+LFQH_Lloh11110:
 adr x0, LFQH_l_.str.87
-LFQH_Lloh11101:
+LFQH_Lloh11111:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64090,9 +64120,9 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB579_3:
-LFQH_Lloh11102:
+LFQH_Lloh11112:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11103:
+LFQH_Lloh11113:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64100,13 +64130,13 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	w1, #0
 bl	LFQH_FullscreenScale
-LFQH_Lloh11104:
+LFQH_Lloh11114:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11105:
+LFQH_Lloh11115:
 nop
-LFQH_Lloh11106:
+LFQH_Lloh11116:
 adr x1, LFQH_l_.str.1195
-LFQH_Lloh11107:
+LFQH_Lloh11117:
 nop
 bl	LFQH_Original
 mov	x3, x0
@@ -64140,9 +64170,9 @@ add	x29, sp, #32
 mov	x20, x2
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh11108:
+LFQH_Lloh11118:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11109:
+LFQH_Lloh11119:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64153,13 +64183,13 @@ b.eq	LFQH_LBB580_2
 mov	w1, #0
 bl	LFQH_FullscreenScale
 LFQH_LBB580_2:
-LFQH_Lloh11110:
+LFQH_Lloh11120:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11111:
+LFQH_Lloh11121:
 nop
-LFQH_Lloh11112:
+LFQH_Lloh11122:
 adr x1, LFQH_l_.str.1196
-LFQH_Lloh11113:
+LFQH_Lloh11123:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -64195,9 +64225,9 @@ mov	x19, x3
 mov	x20, x2
 mov	x21, x1
 mov	x22, x0
-LFQH_Lloh11114:
+LFQH_Lloh11124:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11115:
+LFQH_Lloh11125:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64210,13 +64240,13 @@ bl	LFQH_FullscreenFillViewport
 mov	x1, x0
 mov	x0, x23
 bl	LFQH_FullscreenScale
-LFQH_Lloh11116:
+LFQH_Lloh11126:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11117:
+LFQH_Lloh11127:
 nop
-LFQH_Lloh11118:
+LFQH_Lloh11128:
 adr x1, LFQH_l_.str.1197
-LFQH_Lloh11119:
+LFQH_Lloh11129:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -64251,9 +64281,9 @@ mov	x21, x1
 mov	x19, x0
 cbz	x2, LFQH_LBB582_5
 mov	x20, x2
-LFQH_Lloh11120:
+LFQH_Lloh11130:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11121:
+LFQH_Lloh11131:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64264,13 +64294,13 @@ b.ne	LFQH_LBB582_3
 mov	x0, x19
 bl	LFQH_FullscreenRefresh
 LFQH_LBB582_3:
-LFQH_Lloh11122:
+LFQH_Lloh11132:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11123:
+LFQH_Lloh11133:
 nop
-LFQH_Lloh11124:
+LFQH_Lloh11134:
 adr x1, LFQH_l_.str.1198
-LFQH_Lloh11125:
+LFQH_Lloh11135:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -64278,9 +64308,9 @@ mov	x0, x19
 mov	x1, x21
 mov	x2, x20
 blr	x8
-LFQH_Lloh11126:
+LFQH_Lloh11136:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11127:
+LFQH_Lloh11137:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64293,13 +64323,13 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB582_5:
-LFQH_Lloh11128:
+LFQH_Lloh11138:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11129:
+LFQH_Lloh11139:
 nop
-LFQH_Lloh11130:
+LFQH_Lloh11140:
 adr x1, LFQH_l_.str.1198
-LFQH_Lloh11131:
+LFQH_Lloh11141:
 nop
 bl	LFQH_Original
 mov	x3, x0
@@ -64330,22 +64360,22 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh11132:
+LFQH_Lloh11142:
 adr x0, LFQH_l_.str.1176
-LFQH_Lloh11133:
+LFQH_Lloh11143:
 nop
-LFQH_Lloh11134:
+LFQH_Lloh11144:
 adr x1, LFQH_l_.str.1199
-LFQH_Lloh11135:
+LFQH_Lloh11145:
 nop
 bl	LFQH_Original
 mov	x8, x0
 mov	x0, x20
 mov	x1, x19
 blr	x8
-LFQH_Lloh11136:
+LFQH_Lloh11146:
 adr x0, LFQH_l_.str.649
-LFQH_Lloh11137:
+LFQH_Lloh11147:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64395,9 +64425,9 @@ add	x29, sp, #144
 .cfi_offset b15, -144
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh11138:
+LFQH_Lloh11148:
 adr x0, LFQH_l_.str.651
-LFQH_Lloh11139:
+LFQH_Lloh11149:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64407,9 +64437,9 @@ cbz	w0, LFQH_LBB584_18
 mov	w0, #9
 bl	LFQH_PageOptionEnabled
 cbz	w0, LFQH_LBB584_18
-LFQH_Lloh11140:
+LFQH_Lloh11150:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh11141:
+LFQH_Lloh11151:
 nop
 mov	x0, x20
 mov	x1, x21
@@ -64418,16 +64448,16 @@ mov	x22, x0
 mov	x1, x21
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11142:
+LFQH_Lloh11152:
 adr x1, LFQH_l_.str.1176
-LFQH_Lloh11143:
+LFQH_Lloh11153:
 nop
 bl	LFQH_Kind
 mov	x23, x0
 cbz	w0, LFQH_LBB584_5
-LFQH_Lloh11144:
+LFQH_Lloh11154:
 adr x0, LFQH_l_.str.1186
-LFQH_Lloh11145:
+LFQH_Lloh11155:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64438,17 +64468,17 @@ LFQH_LBB584_4:
 mov	w0, #0
 b	LFQH_LBB584_18
 LFQH_LBB584_5:
-LFQH_Lloh11146:
+LFQH_Lloh11156:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh11147:
+LFQH_Lloh11157:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cbz	x0, LFQH_LBB584_18
 mov	x24, x0
-LFQH_Lloh11148:
+LFQH_Lloh11158:
 adr x25, LFQH_l_.str.23
-LFQH_Lloh11149:
+LFQH_Lloh11159:
 nop
 mov	x0, x25
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -64473,9 +64503,9 @@ mov.16b	v13, v0
 mov.16b	v12, v1
 mov.16b	v15, v2
 mov.16b	v14, v3
-LFQH_Lloh11150:
+LFQH_Lloh11160:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11151:
+LFQH_Lloh11161:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64494,17 +64524,17 @@ fabd	d2, d3, d14
 fcmp	d2, d4
 b.gt	LFQH_LBB584_4
 cbz	w23, LFQH_LBB584_15
-LFQH_Lloh11152:
+LFQH_Lloh11162:
 adr x1, LFQH_l_.str.1185
-LFQH_Lloh11153:
+LFQH_Lloh11163:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x22
 b.ne	LFQH_LBB584_4
-LFQH_Lloh11154:
+LFQH_Lloh11164:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11155:
+LFQH_Lloh11165:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64518,9 +64548,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 stp	d0, d1, [sp]
 mov.16b	v15, v2
 mov.16b	v14, v3
-LFQH_Lloh11156:
+LFQH_Lloh11166:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11157:
+LFQH_Lloh11167:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64571,37 +64601,37 @@ add	x29, sp, #16
 .cfi_offset w29, -16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
-LFQH_Lloh11158:
+LFQH_Lloh11168:
 adr x0, LFQH_l_.str.1175
-LFQH_Lloh11159:
+LFQH_Lloh11169:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh11160:
+LFQH_Lloh11170:
 adr x1, LFQH_FullscreenPlayersKey
-LFQH_Lloh11161:
+LFQH_Lloh11171:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
 cbnz	x0, LFQH_LBB585_2
-LFQH_Lloh11162:
+LFQH_Lloh11172:
 adr x0, LFQH_l_.str.111
-LFQH_Lloh11163:
+LFQH_Lloh11173:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11164:
+LFQH_Lloh11174:
 adr x0, LFQH_l_.str.112
-LFQH_Lloh11165:
+LFQH_Lloh11175:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11166:
+LFQH_Lloh11176:
 adr x1, LFQH_FullscreenPlayersKey
-LFQH_Lloh11167:
+LFQH_Lloh11177:
 nop
 mov	x0, x19
 mov	x2, x20
@@ -64650,9 +64680,9 @@ mov	x20, x0
 add	x1, sp, #16
 bl	LFQH_FullscreenFillViewport
 mov	x19, x0
-LFQH_Lloh11168:
+LFQH_Lloh11178:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11169:
+LFQH_Lloh11179:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64662,16 +64692,16 @@ mov	x1, x19
 bl	LFQH_FullscreenScale
 bl LDiagnosticsEnabled
 cbz	w0, LFQH_LBB586_17
-LFQH_Lloh11170:
+LFQH_Lloh11180:
 adr x1, LFQH_FullscreenLogStateKey
-LFQH_Lloh11171:
+LFQH_Lloh11181:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11172:
+LFQH_Lloh11182:
 adr x0, LFQH_l_.str.651
-LFQH_Lloh11173:
+LFQH_Lloh11183:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64687,26 +64717,26 @@ mov	x24, x0
 cbnz	x25, LFQH_LBB586_5
 cbz	w24, LFQH_LBB586_17
 LFQH_LBB586_5:
-LFQH_Lloh11174:
+LFQH_Lloh11184:
 adr x0, LFQH_l_.str.1177
-LFQH_Lloh11175:
+LFQH_Lloh11185:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh11176:
+LFQH_Lloh11186:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh11177:
+LFQH_Lloh11187:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x22, x0
 cbz	x26, LFQH_LBB586_7
-LFQH_Lloh11178:
+LFQH_Lloh11188:
 adr x0, LFQH_l_.str.1189
-LFQH_Lloh11179:
+LFQH_Lloh11189:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64732,9 +64762,9 @@ orr	x8, x8, x9
 cmp	x22, #0
 cinc	x8, x8, ne
 add	x21, x8, #16
-LFQH_Lloh11180:
+LFQH_Lloh11190:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11181:
+LFQH_Lloh11191:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64744,17 +64774,17 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh11182:
+LFQH_Lloh11192:
 adr x1, LFQH_FullscreenLogBoundsKey
-LFQH_Lloh11183:
+LFQH_Lloh11193:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x25, LFQH_LBB586_14
 mov	x27, x0
-LFQH_Lloh11184:
+LFQH_Lloh11194:
 adr x0, LFQH_l_.str.29
-LFQH_Lloh11185:
+LFQH_Lloh11195:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64763,9 +64793,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x27, #0
 ccmp	x0, x21, #0, ne
 b.ne	LFQH_LBB586_14
-LFQH_Lloh11186:
+LFQH_Lloh11196:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11187:
+LFQH_Lloh11197:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64781,15 +64811,15 @@ fcmp	d3, d11
 b.eq	LFQH_LBB586_17
 LFQH_LBB586_14:
 scvtf	d12, x21
-LFQH_Lloh11188:
+LFQH_Lloh11198:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh11189:
+LFQH_Lloh11199:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11190:
+LFQH_Lloh11200:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh11191:
+LFQH_Lloh11201:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64797,22 +64827,22 @@ mov	x0, x25
 mov.16b	v0, v12
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11192:
+LFQH_Lloh11202:
 adr x1, LFQH_FullscreenLogStateKey
-LFQH_Lloh11193:
+LFQH_Lloh11203:
 nop
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11194:
+LFQH_Lloh11204:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh11195:
+LFQH_Lloh11205:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11196:
+LFQH_Lloh11206:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh11197:
+LFQH_Lloh11207:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64823,22 +64853,22 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11198:
+LFQH_Lloh11208:
 adr x1, LFQH_FullscreenLogBoundsKey
-LFQH_Lloh11199:
+LFQH_Lloh11209:
 nop
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11200:
+LFQH_Lloh11210:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh11201:
+LFQH_Lloh11211:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11202:
+LFQH_Lloh11212:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh11203:
+LFQH_Lloh11213:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64847,30 +64877,30 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
 str	x28, [sp, #8]
 str	w24, [sp]
-LFQH_Lloh11204:
+LFQH_Lloh11214:
 adr x24, LFQH_l_.str.445
-LFQH_Lloh11205:
+LFQH_Lloh11215:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11206:
+LFQH_Lloh11216:
 adr x27, LFQH_l_.str.517
-LFQH_Lloh11207:
+LFQH_Lloh11217:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11208:
+LFQH_Lloh11218:
 adr x2, LFQH_l_.str.1200
-LFQH_Lloh11209:
+LFQH_Lloh11219:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11210:
+LFQH_Lloh11220:
 adr x1, LFQH_l_.str.119
-LFQH_Lloh11211:
+LFQH_Lloh11221:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -64878,13 +64908,13 @@ cmp	x26, #0
 csel	w8, wzr, w19, eq
 cmp	x28, #2
 cset	w9, eq
-LFQH_Lloh11212:
+LFQH_Lloh11222:
 adr x10, LFQH_l_.str.484
-LFQH_Lloh11213:
+LFQH_Lloh11223:
 nop
-LFQH_Lloh11214:
+LFQH_Lloh11224:
 adr x11, LFQH_l_.str.1202
-LFQH_Lloh11215:
+LFQH_Lloh11225:
 nop
 ands	w8, w8, w9
 str	w8, [sp, #4]
@@ -64899,22 +64929,22 @@ mov	x0, x28
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11216:
+LFQH_Lloh11226:
 adr x1, LFQH_l_.str.1201
-LFQH_Lloh11217:
+LFQH_Lloh11227:
 nop
 mov	x0, x25
 bl	LFQH_Put
-LFQH_Lloh11218:
+LFQH_Lloh11228:
 adr x24, LFQH_l_.str.493
-LFQH_Lloh11219:
+LFQH_Lloh11229:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11220:
+LFQH_Lloh11230:
 adr x28, LFQH_l_.str.602
-LFQH_Lloh11221:
+LFQH_Lloh11231:
 nop
 mov	x0, x28
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -64923,9 +64953,9 @@ mov	x0, x21
 ldr	w2, [sp]
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11222:
+LFQH_Lloh11232:
 adr x1, LFQH_l_.str.1203
-LFQH_Lloh11223:
+LFQH_Lloh11233:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -64939,9 +64969,9 @@ mov	x0, x21
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11224:
+LFQH_Lloh11234:
 adr x1, LFQH_l_.str.1204
-LFQH_Lloh11225:
+LFQH_Lloh11235:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -64955,9 +64985,9 @@ mov	x0, x21
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11226:
+LFQH_Lloh11236:
 adr x1, LFQH_l_.str.1205
-LFQH_Lloh11227:
+LFQH_Lloh11237:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -64971,9 +65001,9 @@ mov	x0, x21
 ldr	w2, [sp, #4]
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11228:
+LFQH_Lloh11238:
 adr x1, LFQH_l_.str.1206
-LFQH_Lloh11229:
+LFQH_Lloh11239:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -64982,9 +65012,9 @@ scvtf	d12, x8
 mov	x0, x24
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11230:
+LFQH_Lloh11240:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh11231:
+LFQH_Lloh11241:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -64992,9 +65022,9 @@ mov	x0, x21
 mov.16b	v0, v12
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11232:
+LFQH_Lloh11242:
 adr x1, LFQH_l_.str.1189
-LFQH_Lloh11233:
+LFQH_Lloh11243:
 nop
 mov	x0, x25
 bl	LFQH_Put
@@ -65004,16 +65034,16 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh11234:
+LFQH_Lloh11244:
 adr x1, LFQH_l_.str.1207
-LFQH_Lloh11235:
+LFQH_Lloh11245:
 nop
 mov	x0, x25
 bl	LFQH_Put
 cbz	x22, LFQH_LBB586_16
-LFQH_Lloh11236:
+LFQH_Lloh11246:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11237:
+LFQH_Lloh11247:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65021,15 +65051,15 @@ mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh11238:
+LFQH_Lloh11248:
 adr x1, LFQH_l_.str.1208
-LFQH_Lloh11239:
+LFQH_Lloh11249:
 nop
 mov	x0, x25
 bl	LFQH_Put
-LFQH_Lloh11240:
+LFQH_Lloh11250:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11241:
+LFQH_Lloh11251:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65042,16 +65072,16 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh11242:
+LFQH_Lloh11252:
 adr x1, LFQH_l_.str.1209
-LFQH_Lloh11243:
+LFQH_Lloh11253:
 nop
 mov	x0, x25
 bl	LFQH_Put
 LFQH_LBB586_16:
-LFQH_Lloh11244:
+LFQH_Lloh11254:
 adr x0, LFQH_l_.str.1210
-LFQH_Lloh11245:
+LFQH_Lloh11255:
 nop
 mov	x1, x25
 bl Lrecord_named
@@ -65088,31 +65118,31 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh11246:
+LFQH_Lloh11256:
 adr x2, LFQH_FullscreenAlignBaselineKey
-LFQH_Lloh11247:
+LFQH_Lloh11257:
 nop
-LFQH_Lloh11248:
+LFQH_Lloh11258:
 adr x3, LFQH_l_.str.1191
-LFQH_Lloh11249:
+LFQH_Lloh11259:
 nop
-LFQH_Lloh11250:
+LFQH_Lloh11260:
 adr x4, LFQH_l_.str.1192
-LFQH_Lloh11251:
+LFQH_Lloh11261:
 nop
 mov	w5, #5
 bl	LFQH_FullscreenOverrideMode
-LFQH_Lloh11252:
+LFQH_Lloh11262:
 adr x2, LFQH_FullscreenScaleBaselineKey
-LFQH_Lloh11253:
+LFQH_Lloh11263:
 nop
-LFQH_Lloh11254:
+LFQH_Lloh11264:
 adr x3, LFQH_l_.str.1189
-LFQH_Lloh11255:
+LFQH_Lloh11265:
 nop
-LFQH_Lloh11256:
+LFQH_Lloh11266:
 adr x4, LFQH_l_.str.1190
-LFQH_Lloh11257:
+LFQH_Lloh11267:
 nop
 mov	x0, x20
 mov	x1, x19
@@ -65165,9 +65195,9 @@ cmp	x0, x19
 ccmp	w25, #0, #4, ne
 b.ne	LFQH_LBB589_7
 cbnz	w25, LFQH_LBB589_6
-LFQH_Lloh11258:
+LFQH_Lloh11268:
 adr x0, LFQH_l_.str.29
-LFQH_Lloh11259:
+LFQH_Lloh11269:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65191,15 +65221,15 @@ ldp	x24, x23, [sp, #16]
 ldp	x26, x25, [sp], #80
 ret
 LFQH_LBB589_7:
-LFQH_Lloh11260:
+LFQH_Lloh11270:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh11261:
+LFQH_Lloh11271:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh11262:
+LFQH_Lloh11272:
 adr x0, LFQH_l_.str.860
-LFQH_Lloh11263:
+LFQH_Lloh11273:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65256,9 +65286,9 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh11264:
+LFQH_Lloh11274:
 adr x0, LFQH_l_.str.651
-LFQH_Lloh11265:
+LFQH_Lloh11275:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65267,9 +65297,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB594_2
 bl	LFQH_FullscreenPlayers
 mov	x20, x0
-LFQH_Lloh11266:
+LFQH_Lloh11276:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh11267:
+LFQH_Lloh11277:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65280,9 +65310,9 @@ LFQH_LBB594_2:
 mov	x0, x19
 bl	LFQH_FullscreenApplyPlayer
 cbz	w0, LFQH_LBB594_4
-LFQH_Lloh11268:
+LFQH_Lloh11278:
 adr x0, LFQH_l_.str.1182
-LFQH_Lloh11269:
+LFQH_Lloh11279:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65312,40 +65342,40 @@ add	x29, sp, #32
 mov	x19, x0
 bl	LFQH_ReaderBottomBackgroundEnabled
 mov	x20, x0
-LFQH_Lloh11270:
+LFQH_Lloh11280:
 adr x1, LFQH_l_.str.1211
-LFQH_Lloh11271:
+LFQH_Lloh11281:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11272:
+LFQH_Lloh11282:
 adr x1, LFQH_l_.str.1212
-LFQH_Lloh11273:
+LFQH_Lloh11283:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB595_5
-LFQH_Lloh11274:
+LFQH_Lloh11284:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh11275:
+LFQH_Lloh11285:
 nop
 mov	x0, x21
 bl	LFQH_Get
-LFQH_Lloh11276:
+LFQH_Lloh11286:
 adr x1, LFQH_l_.str.36
-LFQH_Lloh11277:
+LFQH_Lloh11287:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB595_5
 mov	x0, x21
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh11278:
+LFQH_Lloh11288:
 adr x1, LFQH_l_.str.1213
-LFQH_Lloh11279:
+LFQH_Lloh11289:
 nop
-LFQH_Lloh11280:
+LFQH_Lloh11290:
 adr x2, LFQH_l_.str.8
-LFQH_Lloh11281:
+LFQH_Lloh11291:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB595_5
@@ -65353,26 +65383,26 @@ mov	x0, x21
 mov	x1, x20
 bl	LFQH_ReaderBackdropFill
 cbz	w0, LFQH_LBB595_5
-LFQH_Lloh11282:
+LFQH_Lloh11292:
 adr x0, LFQH_l_.str.1213
-LFQH_Lloh11283:
+LFQH_Lloh11293:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB595_5:
-LFQH_Lloh11284:
+LFQH_Lloh11294:
 adr x1, LFQH_l_.str.1214
-LFQH_Lloh11285:
+LFQH_Lloh11295:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x20
 bl	LFQH_ReaderBackdrop
-LFQH_Lloh11286:
+LFQH_Lloh11296:
 adr x1, LFQH_l_.str.1215
-LFQH_Lloh11287:
+LFQH_Lloh11297:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -65396,21 +65426,21 @@ add	x29, sp, #16
 .cfi_offset w29, -16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
-LFQH_Lloh11288:
+LFQH_Lloh11298:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh11289:
+LFQH_Lloh11299:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh11290:
+LFQH_Lloh11300:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh11291:
+LFQH_Lloh11301:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11292:
+LFQH_Lloh11302:
 adr x2, LFQH_l_.str.756
-LFQH_Lloh11293:
+LFQH_Lloh11303:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -65434,18 +65464,18 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh11294:
+LFQH_Lloh11304:
 adr x1, LFQH_ReaderBackdropColorKey
-LFQH_Lloh11295:
+LFQH_Lloh11305:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
 cbz	w21, LFQH_LBB597_2
 cbz	x20, LFQH_LBB597_9
 LFQH_LBB597_2:
-LFQH_Lloh11296:
+LFQH_Lloh11306:
 adr x0, LFQH_l_.str.467
-LFQH_Lloh11297:
+LFQH_Lloh11307:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65454,9 +65484,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
 cbz	w21, LFQH_LBB597_6
 cbnz	x2, LFQH_LBB597_5
-LFQH_Lloh11298:
+LFQH_Lloh11308:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh11299:
+LFQH_Lloh11309:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65464,9 +65494,9 @@ mov	x0, x19
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB597_5:
-LFQH_Lloh11300:
+LFQH_Lloh11310:
 adr x1, LFQH_ReaderBackdropColorKey
-LFQH_Lloh11301:
+LFQH_Lloh11311:
 nop
 mov	w20, #1
 mov	x0, x19
@@ -65476,17 +65506,17 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 b	LFQH_LBB597_9
 LFQH_LBB597_6:
 cbz	x2, LFQH_LBB597_8
-LFQH_Lloh11302:
+LFQH_Lloh11312:
 adr x1, LFQH_ReaderBackdropColorKey
-LFQH_Lloh11303:
+LFQH_Lloh11313:
 nop
 mov	w20, #1
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11304:
+LFQH_Lloh11314:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh11305:
+LFQH_Lloh11315:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65523,24 +65553,24 @@ add	x29, sp, #48
 cbz	x0, LFQH_LBB598_13
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh11306:
+LFQH_Lloh11316:
 adr x1, LFQH_ReaderBackdropAppliedKey
-LFQH_Lloh11307:
+LFQH_Lloh11317:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
 cbz	w19, LFQH_LBB598_3
 cbz	x21, LFQH_LBB598_13
 LFQH_LBB598_3:
-LFQH_Lloh11308:
+LFQH_Lloh11318:
 adr x0, LFQH_l_.str.502
-LFQH_Lloh11309:
+LFQH_Lloh11319:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh11310:
+LFQH_Lloh11320:
 adr x0, LFQH_l_.str.240
-LFQH_Lloh11311:
+LFQH_Lloh11321:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -65549,15 +65579,15 @@ mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
 cbnz	w0, LFQH_LBB598_5
-LFQH_Lloh11312:
+LFQH_Lloh11322:
 adr x0, LFQH_l_.str.502
-LFQH_Lloh11313:
+LFQH_Lloh11323:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh11314:
+LFQH_Lloh11324:
 adr x0, LFQH_l_.str.51
-LFQH_Lloh11315:
+LFQH_Lloh11325:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -65566,9 +65596,9 @@ mov	x1, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB598_13
 LFQH_LBB598_5:
-LFQH_Lloh11316:
+LFQH_Lloh11326:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11317:
+LFQH_Lloh11327:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65578,16 +65608,16 @@ mov	x23, x0
 mov	x0, x20
 mov	x1, x19
 bl	LFQH_ReaderBackdropFill
-LFQH_Lloh11318:
+LFQH_Lloh11328:
 adr x1, LFQH_l_.str.1216
-LFQH_Lloh11319:
+LFQH_Lloh11329:
 nop
 mov	x0, x23
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB598_8
-LFQH_Lloh11320:
+LFQH_Lloh11330:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh11321:
+LFQH_Lloh11331:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -65603,30 +65633,30 @@ cmp	w19, w8
 b.ne	LFQH_LBB598_10
 cmp	w19, #0
 csel	x2, x20, xzr, eq
-LFQH_Lloh11322:
+LFQH_Lloh11332:
 adr x1, LFQH_ReaderBackdropAppliedKey
-LFQH_Lloh11323:
+LFQH_Lloh11333:
 nop
 mov	x0, x20
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB598_10:
-LFQH_Lloh11324:
+LFQH_Lloh11334:
 adr x8, LFQH_l_.str.1217
-LFQH_Lloh11325:
+LFQH_Lloh11335:
 nop
-LFQH_Lloh11326:
+LFQH_Lloh11336:
 adr x9, LFQH_l_.str.743
-LFQH_Lloh11327:
+LFQH_Lloh11337:
 nop
 cmp	w22, #0
 csel	x1, x9, x8, eq
 mov	x0, x20
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11328:
+LFQH_Lloh11338:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11329:
+LFQH_Lloh11339:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65634,9 +65664,9 @@ mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, x20
 b.ne	LFQH_LBB598_13
-LFQH_Lloh11330:
+LFQH_Lloh11340:
 adr x1, LFQH_ReaderBackdropAlphaKey
-LFQH_Lloh11331:
+LFQH_Lloh11341:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -65650,9 +65680,9 @@ ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 ret
 LFQH_LBB598_14:
-LFQH_Lloh11332:
+LFQH_Lloh11342:
 adr x0, LFQH_l_.str.581
-LFQH_Lloh11333:
+LFQH_Lloh11343:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65661,15 +65691,15 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w19, LFQH_LBB598_18
 fcmp	d0, #0.0
 b.ne	LFQH_LBB598_17
-LFQH_Lloh11334:
+LFQH_Lloh11344:
 adr x0, LFQH_l_.str.1013
-LFQH_Lloh11335:
+LFQH_Lloh11345:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh11336:
+LFQH_Lloh11346:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh11337:
+LFQH_Lloh11347:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65679,9 +65709,9 @@ mov	x0, x21
 mov	x1, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB598_17:
-LFQH_Lloh11338:
+LFQH_Lloh11348:
 adr x1, LFQH_ReaderBackdropAlphaKey
-LFQH_Lloh11339:
+LFQH_Lloh11349:
 nop
 mov	x0, x21
 mov	x2, #0
@@ -65696,16 +65726,16 @@ fcmp	d0, #0.0
 b.le	LFQH_LBB598_13
 bl	LFQH_Number
 mov	x2, x0
-LFQH_Lloh11340:
+LFQH_Lloh11350:
 adr x1, LFQH_ReaderBackdropAlphaKey
-LFQH_Lloh11341:
+LFQH_Lloh11351:
 nop
 mov	x0, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11342:
+LFQH_Lloh11352:
 adr x0, LFQH_l_.str.1013
-LFQH_Lloh11343:
+LFQH_Lloh11353:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65743,40 +65773,40 @@ add	x29, sp, #112
 .cfi_offset w28, -96
 mov	x27, x1
 mov	x20, x0
-LFQH_Lloh11344:
+LFQH_Lloh11354:
 adr x1, LFQH_l_.str.1218
-LFQH_Lloh11345:
+LFQH_Lloh11355:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh11346:
+LFQH_Lloh11356:
 adr x1, LFQH_l_.str.1216
-LFQH_Lloh11347:
+LFQH_Lloh11357:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB599_17
-LFQH_Lloh11348:
+LFQH_Lloh11358:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh11349:
+LFQH_Lloh11359:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x23, x0
-LFQH_Lloh11350:
+LFQH_Lloh11360:
 adr x1, LFQH_l_.str.1219
-LFQH_Lloh11351:
+LFQH_Lloh11361:
 nop
 mov	x0, x20
 bl	LFQH_Get
-LFQH_Lloh11352:
+LFQH_Lloh11362:
 adr x1, LFQH_l_.str.699
-LFQH_Lloh11353:
+LFQH_Lloh11363:
 nop
 bl	LFQH_Get
 mov	x24, x0
-LFQH_Lloh11354:
+LFQH_Lloh11364:
 adr x22, LFQH_l_.str.19
-LFQH_Lloh11355:
+LFQH_Lloh11365:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -65790,9 +65820,9 @@ mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh11356:
+LFQH_Lloh11366:
 adr x1, LFQH_l_.str.1220
-LFQH_Lloh11357:
+LFQH_Lloh11367:
 nop
 mov	x0, x24
 bl	LFQH_Kind
@@ -65801,16 +65831,16 @@ cmp	x21, x23
 ccmp	x22, x19, #0, eq
 ccmp	x21, x19, #4, ne
 b.ne	LFQH_LBB599_13
-LFQH_Lloh11358:
+LFQH_Lloh11368:
 adr x1, LFQH_l_.str.1221
-LFQH_Lloh11359:
+LFQH_Lloh11369:
 nop
 mov	x0, x24
 bl	LFQH_Get
 mov	x25, x0
-LFQH_Lloh11360:
+LFQH_Lloh11370:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11361:
+LFQH_Lloh11371:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65823,17 +65853,17 @@ str	w27, [sp, #12]
 stp	x23, x20, [sp, #16]
 mov	x27, #0
 mov	w20, #0
-LFQH_Lloh11362:
+LFQH_Lloh11372:
 adr x28, LFQH_l_.str.568
-LFQH_Lloh11363:
+LFQH_Lloh11373:
 nop
-LFQH_Lloh11364:
+LFQH_Lloh11374:
 adr x22, LFQH_l_.str.237
-LFQH_Lloh11365:
+LFQH_Lloh11375:
 nop
-LFQH_Lloh11366:
+LFQH_Lloh11376:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh11367:
+LFQH_Lloh11377:
 nop
 LFQH_LBB599_5:
 mov	x0, x28
@@ -65885,16 +65915,16 @@ mov	x0, x23
 mov	x1, x24
 bl	LFQH_ReaderBackdropFill
 LFQH_LBB599_16:
-LFQH_Lloh11368:
+LFQH_Lloh11378:
 adr x1, LFQH_l_.str.1222
-LFQH_Lloh11369:
+LFQH_Lloh11379:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11370:
+LFQH_Lloh11380:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11371:
+LFQH_Lloh11381:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -65953,26 +65983,26 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh11372:
+LFQH_Lloh11382:
 adr x1, LFQH_l_.str.540
-LFQH_Lloh11373:
+LFQH_Lloh11383:
 nop
 bl	LFQH_Get
-LFQH_Lloh11374:
+LFQH_Lloh11384:
 adr x1, LFQH_l_.str.603
-LFQH_Lloh11375:
+LFQH_Lloh11385:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11376:
+LFQH_Lloh11386:
 adr x1, LFQH_l_.str.1223
-LFQH_Lloh11377:
+LFQH_Lloh11387:
 nop
 bl	LFQH_Equal
 tbnz	w0, #0, LFQH_LBB603_2
-LFQH_Lloh11378:
+LFQH_Lloh11388:
 adr x1, LFQH_l_.str.1224
-LFQH_Lloh11379:
+LFQH_Lloh11389:
 nop
 mov	x0, x20
 bl	LFQH_Equal
@@ -65986,9 +66016,9 @@ ldp	x29, x30, [sp, #16]
 ldp	x20, x19, [sp], #32
 ret
 LFQH_LBB603_4:
-LFQH_Lloh11380:
+LFQH_Lloh11390:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11381:
+LFQH_Lloh11391:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -66032,27 +66062,27 @@ add	x29, sp, #176
 .cfi_offset b12, -136
 .cfi_offset b13, -144
 mov	x28, x0
-LFQH_Lloh11382:
+LFQH_Lloh11392:
 adr x0, LFQH_l_.str.462
-LFQH_Lloh11383:
+LFQH_Lloh11393:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11384:
+LFQH_Lloh11394:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11385:
+LFQH_Lloh11395:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11386:
+LFQH_Lloh11396:
 adr x19, LFQH_l_.str.23
-LFQH_Lloh11387:
+LFQH_Lloh11397:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -66071,21 +66101,21 @@ mov.16b	v8, v0
 mov	x19, #0
 mov	x8, #4635048441494372352
 fadd	d10, d0, d2
-LFQH_Lloh11388:
+LFQH_Lloh11398:
 adr x22, LFQH_l_.str.568
-LFQH_Lloh11389:
+LFQH_Lloh11399:
 nop
-LFQH_Lloh11390:
+LFQH_Lloh11400:
 adr x23, LFQH_l_.str.41
-LFQH_Lloh11391:
+LFQH_Lloh11401:
 nop
 fmov	d9, x8
 mov	w27, #2046
 fmov	d11, #0.50000000
 fmov	d12, #-8.00000000
-LFQH_Lloh11392:
+LFQH_Lloh11402:
 adr x24, LFQH_l_.str.480
-LFQH_Lloh11393:
+LFQH_Lloh11403:
 nop
 LFQH_LBB604_2:
 mov	x0, x22
@@ -66195,21 +66225,21 @@ b	LFQH_LBB604_5
 LFQH_LBB604_18:
 mov	x22, #0
 mov	w9, #1
-LFQH_Lloh11394:
+LFQH_Lloh11404:
 adr x26, LFQH_l_.str.50
-LFQH_Lloh11395:
+LFQH_Lloh11405:
 nop
-LFQH_Lloh11396:
+LFQH_Lloh11406:
 adr x24, LFQH_CatalogTapKey
-LFQH_Lloh11397:
+LFQH_Lloh11407:
 nop
 str	x28, [sp, #8]
 LFQH_LBB604_19:
 str	x9, [sp]
 LFQH_LBB604_20:
-LFQH_Lloh11398:
+LFQH_Lloh11408:
 adr x0, LFQH_l_.str.568
-LFQH_Lloh11399:
+LFQH_Lloh11409:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66229,9 +66259,9 @@ LFQH_LBB604_22:
 mov	x0, x19
 bl	LFQH_ReaderBottomGlass
 mov	x0, x19
-LFQH_Lloh11400:
+LFQH_Lloh11410:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11401:
+LFQH_Lloh11411:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x28, x0
@@ -66261,105 +66291,105 @@ csinc	w8, w8, wzr, eq
 tbnz	w8, #0, LFQH_LBB604_34
 mov	x0, x19
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh11402:
+LFQH_Lloh11412:
 adr x1, LFQH_l_.str.1227
-LFQH_Lloh11403:
+LFQH_Lloh11413:
 nop
-LFQH_Lloh11404:
+LFQH_Lloh11414:
 adr x2, LFQH_l_.str.213
-LFQH_Lloh11405:
+LFQH_Lloh11415:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB604_34
-LFQH_Lloh11406:
+LFQH_Lloh11416:
 adr x0, LFQH_l_.str.1228
-LFQH_Lloh11407:
+LFQH_Lloh11417:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x27, x0
 cbnz	x0, LFQH_LBB604_32
-LFQH_Lloh11408:
+LFQH_Lloh11418:
 adr x0, LFQH_l_.str.217
-LFQH_Lloh11409:
+LFQH_Lloh11419:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh11410:
+LFQH_Lloh11420:
 adr x1, LFQH_l_.str.1228
-LFQH_Lloh11411:
+LFQH_Lloh11421:
 nop
 mov	x2, #0
 bl Lpatch + (0xa61c - PATCH_BASE)
 cbz	x0, LFQH_LBB604_34
 mov	x27, x0
-LFQH_Lloh11412:
+LFQH_Lloh11422:
 adr x0, LFQH_l_.str.1229
-LFQH_Lloh11413:
+LFQH_Lloh11423:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x27
-LFQH_Lloh11414:
+LFQH_Lloh11424:
 adr x2, LFQH_CatalogTapped
-LFQH_Lloh11415:
+LFQH_Lloh11425:
 nop
-LFQH_Lloh11416:
+LFQH_Lloh11426:
 adr x3, LFQH_l_.str.213
-LFQH_Lloh11417:
+LFQH_Lloh11427:
 nop
 bl Lpatch + (0xa58c - PATCH_BASE)
-LFQH_Lloh11418:
+LFQH_Lloh11428:
 adr x0, LFQH_l_.str.1230
-LFQH_Lloh11419:
+LFQH_Lloh11429:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x27
-LFQH_Lloh11420:
+LFQH_Lloh11430:
 adr x2, LFQH_CatalogTouch
-LFQH_Lloh11421:
+LFQH_Lloh11431:
 nop
-LFQH_Lloh11422:
+LFQH_Lloh11432:
 adr x3, LFQH_l_.str.1231
-LFQH_Lloh11423:
+LFQH_Lloh11433:
 nop
 bl Lpatch + (0xa58c - PATCH_BASE)
 mov	x0, x27
 bl Lpatch + (0xa610 - PATCH_BASE)
 LFQH_LBB604_32:
-LFQH_Lloh11424:
+LFQH_Lloh11434:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh11425:
+LFQH_Lloh11435:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh11426:
+LFQH_Lloh11436:
 adr x0, LFQH_l_.str.1232
-LFQH_Lloh11427:
+LFQH_Lloh11437:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11428:
+LFQH_Lloh11438:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh11429:
+LFQH_Lloh11439:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11430:
+LFQH_Lloh11440:
 adr x0, LFQH_l_.str.1233
-LFQH_Lloh11431:
+LFQH_Lloh11441:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x27, x26
 mov	x26, x0
-LFQH_Lloh11432:
+LFQH_Lloh11442:
 adr x0, LFQH_l_.str.1229
-LFQH_Lloh11433:
+LFQH_Lloh11443:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -66370,18 +66400,18 @@ mov	x27, x24
 mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11434:
+LFQH_Lloh11444:
 adr x0, LFQH_l_.str.1234
-LFQH_Lloh11435:
+LFQH_Lloh11445:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11436:
+LFQH_Lloh11446:
 adr x0, LFQH_l_.str.1235
-LFQH_Lloh11437:
+LFQH_Lloh11447:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66398,18 +66428,18 @@ mov	x1, x23
 mov	x2, x25
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11438:
+LFQH_Lloh11448:
 adr x0, LFQH_l_.str.1236
-LFQH_Lloh11439:
+LFQH_Lloh11449:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11440:
+LFQH_Lloh11450:
 adr x19, LFQH_l_.str.185
-LFQH_Lloh11441:
+LFQH_Lloh11451:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -66425,9 +66455,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 b	LFQH_LBB604_34
 LFQH_LBB604_33:
 mov	x27, x0
-LFQH_Lloh11442:
+LFQH_Lloh11452:
 adr x0, LFQH_l_.str.1226
-LFQH_Lloh11443:
+LFQH_Lloh11453:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66502,18 +66532,18 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh11444:
+LFQH_Lloh11454:
 adr x1, LFQH_l_.str.244
-LFQH_Lloh11445:
+LFQH_Lloh11455:
 nop
 bl	LFQH_Kind
 tbz	w0, #0, LFQH_LBB605_2
 mov	w0, #1
 b	LFQH_LBB605_4
 LFQH_LBB605_2:
-LFQH_Lloh11446:
+LFQH_Lloh11456:
 adr x1, LFQH_l_.str.50
-LFQH_Lloh11447:
+LFQH_Lloh11457:
 nop
 mov	x0, x19
 bl	LFQH_Kind
@@ -66553,9 +66583,9 @@ add	x29, sp, #80
 .cfi_offset b15, -96
 mov.16b	v8, v0
 mov	x19, x0
-LFQH_Lloh11448:
+LFQH_Lloh11458:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11449:
+LFQH_Lloh11459:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66588,9 +66618,9 @@ fcmp	d11, #0.0
 b.le	LFQH_LBB606_6
 fcmp	d12, #0.0
 b.le	LFQH_LBB606_6
-LFQH_Lloh11450:
+LFQH_Lloh11460:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11451:
+LFQH_Lloh11461:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66631,9 +66661,9 @@ mov.16b	v2, v8
 mov.16b	v3, v15
 mov	w1, #0
 bl	LFQH_ApplySurface
-LFQH_Lloh11452:
+LFQH_Lloh11462:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11453:
+LFQH_Lloh11463:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -66648,9 +66678,9 @@ mov.16b	v1, v14
 mov.16b	v2, v8
 mov.16b	v3, v15
 bl	LFQH_EnsureHit
-LFQH_Lloh11454:
+LFQH_Lloh11464:
 adr x2, LFQH_l_.str.1225
-LFQH_Lloh11455:
+LFQH_Lloh11465:
 nop
 mov	x0, x19
 mov	x1, x20
@@ -66697,41 +66727,41 @@ add	x29, sp, #96
 .cfi_offset w28, -96
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh11456:
+LFQH_Lloh11466:
 adr x1, LFQH_ReaderOpticalChildrenKey
-LFQH_Lloh11457:
+LFQH_Lloh11467:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
 str	w20, [sp, #12]
 cbz	w20, LFQH_LBB607_21
-LFQH_Lloh11458:
+LFQH_Lloh11468:
 adr x0, LFQH_l_.str.146
-LFQH_Lloh11459:
+LFQH_Lloh11469:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11460:
+LFQH_Lloh11470:
 adr x0, LFQH_l_.str.526
-LFQH_Lloh11461:
+LFQH_Lloh11471:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh11462:
+LFQH_Lloh11472:
 adr x0, LFQH_l_.str.462
-LFQH_Lloh11463:
+LFQH_Lloh11473:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh11464:
+LFQH_Lloh11474:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11465:
+LFQH_Lloh11475:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66742,13 +66772,13 @@ mov	w8, #16
 csel	x27, x0, x8, lo
 cbz	x0, LFQH_LBB607_22
 mov	x24, #0
-LFQH_Lloh11466:
+LFQH_Lloh11476:
 adr x25, LFQH_l_.str.568
-LFQH_Lloh11467:
+LFQH_Lloh11477:
 nop
-LFQH_Lloh11468:
+LFQH_Lloh11478:
 adr x26, LFQH_l_.str.41
-LFQH_Lloh11469:
+LFQH_Lloh11479:
 nop
 LFQH_LBB607_3:
 mov	x0, x25
@@ -66771,17 +66801,17 @@ b.ne	LFQH_LBB607_3
 b	LFQH_LBB607_22
 LFQH_LBB607_5:
 mov	x0, x19
-LFQH_Lloh11470:
+LFQH_Lloh11480:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11471:
+LFQH_Lloh11481:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x28, x0
 b.eq	LFQH_LBB607_4
 mov	x0, x28
-LFQH_Lloh11472:
+LFQH_Lloh11482:
 adr x1, LFQH_l_.str.35
-LFQH_Lloh11473:
+LFQH_Lloh11483:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB607_9
@@ -66789,9 +66819,9 @@ fmov	d0, #11.00000000
 mov	x0, x28
 bl	LFQH_AppearanceFont
 LFQH_LBB607_8:
-LFQH_Lloh11474:
+LFQH_Lloh11484:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh11475:
+LFQH_Lloh11485:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66801,23 +66831,23 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 b	LFQH_LBB607_4
 LFQH_LBB607_9:
 mov	x0, x28
-LFQH_Lloh11476:
+LFQH_Lloh11486:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh11477:
+LFQH_Lloh11487:
 nop
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB607_13
 mov	x0, x28
-LFQH_Lloh11478:
+LFQH_Lloh11488:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh11479:
+LFQH_Lloh11489:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB607_12
 mov	x0, x28
-LFQH_Lloh11480:
+LFQH_Lloh11490:
 adr x1, LFQH_l_.str.531
-LFQH_Lloh11481:
+LFQH_Lloh11491:
 nop
 bl	LFQH_Get
 mov	x28, x0
@@ -66826,9 +66856,9 @@ LFQH_LBB607_12:
 mov	x28, #0
 LFQH_LBB607_13:
 mov	x0, x28
-LFQH_Lloh11482:
+LFQH_Lloh11492:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh11483:
+LFQH_Lloh11493:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB607_4
@@ -66838,9 +66868,9 @@ mov	x0, x28
 LFQH_LBB607_16:
 cmp	x0, x19
 b.eq	LFQH_LBB607_19
-LFQH_Lloh11484:
+LFQH_Lloh11494:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11485:
+LFQH_Lloh11495:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB607_4
@@ -66862,9 +66892,9 @@ b	LFQH_LBB607_8
 LFQH_LBB607_21:
 mov	x22, #0
 LFQH_LBB607_22:
-LFQH_Lloh11486:
+LFQH_Lloh11496:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11487:
+LFQH_Lloh11497:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66873,13 +66903,13 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
 cbz	x0, LFQH_LBB607_30
 mov	x23, #0
-LFQH_Lloh11488:
+LFQH_Lloh11498:
 adr x24, LFQH_l_.str.568
-LFQH_Lloh11489:
+LFQH_Lloh11499:
 nop
-LFQH_Lloh11490:
+LFQH_Lloh11500:
 adr x25, LFQH_l_.str.33
-LFQH_Lloh11491:
+LFQH_Lloh11501:
 nop
 LFQH_LBB607_24:
 mov	x0, x24
@@ -66919,9 +66949,9 @@ add	x23, x23, #1
 cmp	x23, x20
 b.ne	LFQH_LBB607_24
 LFQH_LBB607_30:
-LFQH_Lloh11492:
+LFQH_Lloh11502:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11493:
+LFQH_Lloh11503:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -66933,9 +66963,9 @@ ccmp	x0, #0, #4, eq
 b.eq	LFQH_LBB607_35
 mov	x23, x0
 mov	w27, #1
-LFQH_Lloh11494:
+LFQH_Lloh11504:
 adr x24, LFQH_l_.str.568
-LFQH_Lloh11495:
+LFQH_Lloh11505:
 nop
 LFQH_LBB607_32:
 mov	x0, x24
@@ -66976,9 +67006,9 @@ ldp	x28, x27, [sp, #16]
 add	sp, sp, #112
 ret
 LFQH_LBB607_38:
-LFQH_Lloh11496:
+LFQH_Lloh11506:
 adr x1, LFQH_ReaderOpticalChildrenKey
-LFQH_Lloh11497:
+LFQH_Lloh11507:
 nop
 mov	x0, x19
 mov	x2, x22
@@ -67026,15 +67056,15 @@ add	x29, sp, #128
 .cfi_offset b15, -112
 mov.16b	v12, v0
 mov	x19, x0
-LFQH_Lloh11498:
+LFQH_Lloh11508:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh11499:
+LFQH_Lloh11509:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB609_10
-LFQH_Lloh11500:
+LFQH_Lloh11510:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11501:
+LFQH_Lloh11511:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67044,16 +67074,16 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v15, v2
 mov.16b	v11, v3
-LFQH_Lloh11502:
+LFQH_Lloh11512:
 adr x1, LFQH_OpticalFrameAppliedKey
-LFQH_Lloh11503:
+LFQH_Lloh11513:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11504:
+LFQH_Lloh11514:
 adr x1, LFQH_OpticalFrameStockKey
-LFQH_Lloh11505:
+LFQH_Lloh11515:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -67062,9 +67092,9 @@ str	d11, [sp, #24]
 cbz	x20, LFQH_LBB609_8
 mov	x21, x0
 cbz	x0, LFQH_LBB609_8
-LFQH_Lloh11506:
+LFQH_Lloh11516:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11507:
+LFQH_Lloh11517:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67082,9 +67112,9 @@ mov.16b	v13, v8
 mov.16b	v14, v9
 mov.16b	v10, v15
 b.ne	LFQH_LBB609_9
-LFQH_Lloh11508:
+LFQH_Lloh11518:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11509:
+LFQH_Lloh11519:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67144,16 +67174,16 @@ fmul	d12, d11, d0
 fsub	d0, d11, d12
 fmul	d0, d0, d2
 tbnz	w8, #0, LFQH_LBB609_17
-LFQH_Lloh11510:
+LFQH_Lloh11520:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh11511:
+LFQH_Lloh11521:
 nop
 stp	d0, d1, [sp]
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11512:
+LFQH_Lloh11522:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh11513:
+LFQH_Lloh11523:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67164,9 +67194,9 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11514:
+LFQH_Lloh11524:
 adr x1, LFQH_OpticalFrameStockKey
-LFQH_Lloh11515:
+LFQH_Lloh11525:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -67177,9 +67207,9 @@ fadd	d10, d13, d1
 fadd	d11, d14, d0
 ldr	d13, [sp, #16]
 cbz	x20, LFQH_LBB609_19
-LFQH_Lloh11516:
+LFQH_Lloh11526:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11517:
+LFQH_Lloh11527:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67191,15 +67221,15 @@ fccmp	d13, d2, #0, eq
 fccmp	d12, d3, #0, eq
 b.eq	LFQH_LBB609_20
 LFQH_LBB609_19:
-LFQH_Lloh11518:
+LFQH_Lloh11528:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh11519:
+LFQH_Lloh11529:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11520:
+LFQH_Lloh11530:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh11521:
+LFQH_Lloh11531:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67210,9 +67240,9 @@ mov.16b	v2, v13
 mov.16b	v3, v12
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11522:
+LFQH_Lloh11532:
 adr x1, LFQH_OpticalFrameAppliedKey
-LFQH_Lloh11523:
+LFQH_Lloh11533:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -67224,9 +67254,9 @@ fccmp	d15, d13, #0, eq
 ldr	d0, [sp, #24]
 fccmp	d0, d12, #0, eq
 b.eq	LFQH_LBB609_10
-LFQH_Lloh11524:
+LFQH_Lloh11534:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh11525:
+LFQH_Lloh11535:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67277,15 +67307,15 @@ add	x29, sp, #64
 .cfi_offset b10, -72
 .cfi_offset b11, -80
 mov	x19, x0
-LFQH_Lloh11526:
+LFQH_Lloh11536:
 adr x1, LFQH_OpticalFrameAppliedKey
-LFQH_Lloh11527:
+LFQH_Lloh11537:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11528:
+LFQH_Lloh11538:
 adr x1, LFQH_OpticalFrameStockKey
-LFQH_Lloh11529:
+LFQH_Lloh11539:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -67293,9 +67323,9 @@ cmp	x21, #0
 ccmp	x0, #0, #4, ne
 b.eq	LFQH_LBB610_3
 mov	x20, x0
-LFQH_Lloh11530:
+LFQH_Lloh11540:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11531:
+LFQH_Lloh11541:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67305,9 +67335,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh11532:
+LFQH_Lloh11542:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11533:
+LFQH_Lloh11543:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67318,9 +67348,9 @@ fccmp	d9, d1, #0, eq
 fccmp	d10, d2, #0, eq
 fccmp	d11, d3, #0, eq
 b.ne	LFQH_LBB610_3
-LFQH_Lloh11534:
+LFQH_Lloh11544:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh11535:
+LFQH_Lloh11545:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67330,9 +67360,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh11536:
+LFQH_Lloh11546:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh11537:
+LFQH_Lloh11547:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67343,17 +67373,17 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB610_3:
-LFQH_Lloh11538:
+LFQH_Lloh11548:
 adr x1, LFQH_OpticalFrameStockKey
-LFQH_Lloh11539:
+LFQH_Lloh11549:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11540:
+LFQH_Lloh11550:
 adr x1, LFQH_OpticalFrameAppliedKey
-LFQH_Lloh11541:
+LFQH_Lloh11551:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -67392,9 +67422,9 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x2
-LFQH_Lloh11542:
+LFQH_Lloh11552:
 adr x0, LFQH_l_.str.1237
-LFQH_Lloh11543:
+LFQH_Lloh11553:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67402,18 +67432,18 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, #3
 b.ne	LFQH_LBB614_4
-LFQH_Lloh11544:
+LFQH_Lloh11554:
 adr x0, LFQH_l_.str.1096
-LFQH_Lloh11545:
+LFQH_Lloh11555:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11546:
+LFQH_Lloh11556:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11547:
+LFQH_Lloh11557:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB614_4
@@ -67421,9 +67451,9 @@ mov	x0, x20
 bl	LFQH_ReaderBottomType
 cmp	w0, #1
 b.ne	LFQH_LBB614_4
-LFQH_Lloh11548:
+LFQH_Lloh11558:
 adr x0, LFQH_l_.str.1227
-LFQH_Lloh11549:
+LFQH_Lloh11559:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67456,25 +67486,25 @@ add	x29, sp, #48
 .cfi_offset b9, -64
 mov	x19, x3
 mov	x20, x2
-LFQH_Lloh11550:
+LFQH_Lloh11560:
 adr x0, LFQH_l_.str.1096
-LFQH_Lloh11551:
+LFQH_Lloh11561:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11552:
+LFQH_Lloh11562:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11553:
+LFQH_Lloh11563:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB615_4
 mov	x20, x0
-LFQH_Lloh11554:
+LFQH_Lloh11564:
 adr x0, LFQH_l_.str.1096
-LFQH_Lloh11555:
+LFQH_Lloh11565:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67485,9 +67515,9 @@ b.eq	LFQH_LBB615_3
 mov	w0, #0
 b	LFQH_LBB615_4
 LFQH_LBB615_3:
-LFQH_Lloh11556:
+LFQH_Lloh11566:
 adr x0, LFQH_l_.str.449
-LFQH_Lloh11557:
+LFQH_Lloh11567:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67496,9 +67526,9 @@ mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh11558:
+LFQH_Lloh11568:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11559:
+LFQH_Lloh11569:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67544,29 +67574,29 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh11560:
+LFQH_Lloh11570:
 adr x1, LFQH_l_.str.1238
-LFQH_Lloh11561:
+LFQH_Lloh11571:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11562:
+LFQH_Lloh11572:
 adr x1, LFQH_l_.str.1239
-LFQH_Lloh11563:
+LFQH_Lloh11573:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11564:
+LFQH_Lloh11574:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh11565:
+LFQH_Lloh11575:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB616_3
-LFQH_Lloh11566:
+LFQH_Lloh11576:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11567:
+LFQH_Lloh11577:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67578,16 +67608,16 @@ mov	x0, x21
 mov	w1, #7
 bl	LFQH_Icon
 LFQH_LBB616_3:
-LFQH_Lloh11568:
+LFQH_Lloh11578:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh11569:
+LFQH_Lloh11579:
 nop
 mov	x0, x20
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB616_6
-LFQH_Lloh11570:
+LFQH_Lloh11580:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11571:
+LFQH_Lloh11581:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67599,35 +67629,35 @@ mov	x0, x20
 mov	w1, #7
 bl	LFQH_Icon
 LFQH_LBB616_6:
-LFQH_Lloh11572:
+LFQH_Lloh11582:
 adr x1, LFQH_l_.str.715
-LFQH_Lloh11573:
+LFQH_Lloh11583:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11574:
+LFQH_Lloh11584:
 adr x1, LFQH_l_.str.1240
-LFQH_Lloh11575:
+LFQH_Lloh11585:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB616_12
-LFQH_Lloh11576:
+LFQH_Lloh11586:
 adr x1, LFQH_l_.str.1241
-LFQH_Lloh11577:
+LFQH_Lloh11587:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh11578:
+LFQH_Lloh11588:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh11579:
+LFQH_Lloh11589:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB616_9
-LFQH_Lloh11580:
+LFQH_Lloh11590:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11581:
+LFQH_Lloh11591:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67645,9 +67675,9 @@ b	LFQH_ReaderProgressFill
 LFQH_LBB616_10:
 mov	x0, x19
 bl	LFQH_FQHApply
-LFQH_Lloh11582:
+LFQH_Lloh11592:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11583:
+LFQH_Lloh11593:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -67657,17 +67687,17 @@ cset	w1, ne
 mov	x0, x20
 bl	LFQH_ReaderProgressFill
 cbz	x21, LFQH_LBB616_12
-LFQH_Lloh11584:
+LFQH_Lloh11594:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11585:
+LFQH_Lloh11595:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11586:
+LFQH_Lloh11596:
 adr x2, LFQH_l_.str.1242
-LFQH_Lloh11587:
+LFQH_Lloh11597:
 nop
 mov	x0, x19
 mov	x1, x21
@@ -67700,21 +67730,21 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x23, x1
 mov	x20, x0
-LFQH_Lloh11588:
+LFQH_Lloh11598:
 adr x1, LFQH_l_.str.83
-LFQH_Lloh11589:
+LFQH_Lloh11599:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh11590:
+LFQH_Lloh11600:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh11591:
+LFQH_Lloh11601:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB617_4
-LFQH_Lloh11592:
+LFQH_Lloh11602:
 adr x0, LFQH_l_.str.19
-LFQH_Lloh11593:
+LFQH_Lloh11603:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67722,9 +67752,9 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, x20
 b.ne	LFQH_LBB617_4
-LFQH_Lloh11594:
+LFQH_Lloh11604:
 adr x1, LFQH_ReaderProgressColorKey
-LFQH_Lloh11595:
+LFQH_Lloh11605:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -67738,18 +67768,18 @@ ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 ret
 LFQH_LBB617_5:
-LFQH_Lloh11596:
+LFQH_Lloh11606:
 adr x0, LFQH_l_.str.467
-LFQH_Lloh11597:
+LFQH_Lloh11607:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11598:
+LFQH_Lloh11608:
 adr x1, LFQH_ReaderProgressStockKey
-LFQH_Lloh11599:
+LFQH_Lloh11609:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -67757,9 +67787,9 @@ mov	x22, x0
 cbz	w23, LFQH_LBB617_12
 cmp	x21, x20
 b.eq	LFQH_LBB617_4
-LFQH_Lloh11600:
+LFQH_Lloh11610:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh11601:
+LFQH_Lloh11611:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67768,15 +67798,15 @@ mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB617_4
 cbz	x21, LFQH_LBB617_11
-LFQH_Lloh11602:
+LFQH_Lloh11612:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh11603:
+LFQH_Lloh11613:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh11604:
+LFQH_Lloh11614:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh11605:
+LFQH_Lloh11615:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67785,9 +67815,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x21, x0
 b.eq	LFQH_LBB617_11
 mov	x23, x0
-LFQH_Lloh11606:
+LFQH_Lloh11616:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh11607:
+LFQH_Lloh11617:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67802,9 +67832,9 @@ LFQH_LBB617_12:
 cbz	x20, LFQH_LBB617_4
 cmp	x21, x20
 b.eq	LFQH_LBB617_15
-LFQH_Lloh11608:
+LFQH_Lloh11618:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh11609:
+LFQH_Lloh11619:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67813,9 +67843,9 @@ mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB617_16
 LFQH_LBB617_15:
-LFQH_Lloh11610:
+LFQH_Lloh11620:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh11611:
+LFQH_Lloh11621:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67823,17 +67853,17 @@ mov	x0, x19
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB617_16:
-LFQH_Lloh11612:
+LFQH_Lloh11622:
 adr x1, LFQH_ReaderProgressStockKey
-LFQH_Lloh11613:
+LFQH_Lloh11623:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11614:
+LFQH_Lloh11624:
 adr x1, LFQH_ReaderProgressColorKey
-LFQH_Lloh11615:
+LFQH_Lloh11625:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -67847,9 +67877,9 @@ LFQH_LBB617_17:
 cbz	x20, LFQH_LBB617_20
 cmp	x21, x22
 b.eq	LFQH_LBB617_22
-LFQH_Lloh11616:
+LFQH_Lloh11626:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh11617:
+LFQH_Lloh11627:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67858,9 +67888,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB617_22
 LFQH_LBB617_20:
-LFQH_Lloh11618:
+LFQH_Lloh11628:
 adr x0, LFQH_l_.str.1243
-LFQH_Lloh11619:
+LFQH_Lloh11629:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67869,26 +67899,26 @@ mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB617_4
 mov	x20, x0
-LFQH_Lloh11620:
+LFQH_Lloh11630:
 adr x1, LFQH_ReaderProgressStockKey
-LFQH_Lloh11621:
+LFQH_Lloh11631:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11622:
+LFQH_Lloh11632:
 adr x1, LFQH_ReaderProgressColorKey
-LFQH_Lloh11623:
+LFQH_Lloh11633:
 nop
 mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB617_22:
-LFQH_Lloh11624:
+LFQH_Lloh11634:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh11625:
+LFQH_Lloh11635:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -67928,21 +67958,21 @@ add	x29, sp, #48
 .cfi_offset w23, -56
 .cfi_offset w24, -64
 mov	x19, x1
-LFQH_Lloh11626:
+LFQH_Lloh11636:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11627:
+LFQH_Lloh11637:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB620_5
 mov	x20, x0
 mov	w24, #0
-LFQH_Lloh11628:
+LFQH_Lloh11638:
 adr x21, LFQH_l_.str.502
-LFQH_Lloh11629:
+LFQH_Lloh11639:
 nop
-LFQH_Lloh11630:
+LFQH_Lloh11640:
 adr x22, LFQH_l_.str.19
-LFQH_Lloh11631:
+LFQH_Lloh11641:
 nop
 LFQH_LBB620_2:
 mov	x0, x21
@@ -68006,16 +68036,16 @@ add	x29, sp, #112
 mov	x19, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11632:
+LFQH_Lloh11642:
 adr x0, LFQH_l_.str.22
-LFQH_Lloh11633:
+LFQH_Lloh11643:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 cmp	x20, x0
 b.ne	LFQH_LBB621_17
-LFQH_Lloh11634:
+LFQH_Lloh11644:
 adr x0, LFQH_l_.str.462
-LFQH_Lloh11635:
+LFQH_Lloh11645:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68023,9 +68053,9 @@ str	x19, [sp, #8]
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11636:
+LFQH_Lloh11646:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh11637:
+LFQH_Lloh11647:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68035,25 +68065,25 @@ cbz	x0, LFQH_LBB621_11
 mov	x21, x0
 mov	x28, #0
 mov	w19, #1
-LFQH_Lloh11638:
+LFQH_Lloh11648:
 adr x22, LFQH_l_.str.568
-LFQH_Lloh11639:
+LFQH_Lloh11649:
 nop
-LFQH_Lloh11640:
+LFQH_Lloh11650:
 adr x23, LFQH_l_.str.35
-LFQH_Lloh11641:
+LFQH_Lloh11651:
 nop
-LFQH_Lloh11642:
+LFQH_Lloh11652:
 adr x24, LFQH_l_.str.603
-LFQH_Lloh11643:
+LFQH_Lloh11653:
 nop
-LFQH_Lloh11644:
+LFQH_Lloh11654:
 adr x25, LFQH_l_.str.1248
-LFQH_Lloh11645:
+LFQH_Lloh11655:
 nop
-LFQH_Lloh11646:
+LFQH_Lloh11656:
 adr x26, LFQH_l_.str.1249
-LFQH_Lloh11647:
+LFQH_Lloh11657:
 nop
 LFQH_LBB621_3:
 mov	x0, x22
@@ -68092,9 +68122,9 @@ b	LFQH_LBB621_3
 LFQH_LBB621_9:
 cbz	w0, LFQH_LBB621_11
 LFQH_LBB621_10:
-LFQH_Lloh11648:
+LFQH_Lloh11658:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11649:
+LFQH_Lloh11659:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68102,9 +68132,9 @@ ldr	x0, [sp, #8]
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB621_13
 LFQH_LBB621_11:
-LFQH_Lloh11650:
+LFQH_Lloh11660:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11651:
+LFQH_Lloh11661:
 nop
 ldr	x19, [sp, #8]
 mov	x0, x19
@@ -68118,34 +68148,34 @@ ldr	x19, [sp, #8]
 mov	x0, x19
 bl	LFQH_FQHApply
 LFQH_LBB621_14:
-LFQH_Lloh11652:
+LFQH_Lloh11662:
 adr x1, LFQH_CoverGuideBorderKey
-LFQH_Lloh11653:
+LFQH_Lloh11663:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11654:
+LFQH_Lloh11664:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11655:
+LFQH_Lloh11665:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 orr	x8, x0, x21
 cbz	x8, LFQH_LBB621_17
 mov	x22, x0
-LFQH_Lloh11656:
+LFQH_Lloh11666:
 adr x0, LFQH_l_.str.451
-LFQH_Lloh11657:
+LFQH_Lloh11667:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11658:
+LFQH_Lloh11668:
 adr x0, LFQH_l_.str.1250
-LFQH_Lloh11659:
+LFQH_Lloh11669:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68168,15 +68198,15 @@ ret
 LFQH_LBB621_18:
 fcmp	d8, #0.0
 b.ne	LFQH_LBB621_20
-LFQH_Lloh11660:
+LFQH_Lloh11670:
 adr x0, LFQH_l_.str.1251
-LFQH_Lloh11661:
+LFQH_Lloh11671:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh11662:
+LFQH_Lloh11672:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh11663:
+LFQH_Lloh11673:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68186,9 +68216,9 @@ mov	x0, x20
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB621_20:
-LFQH_Lloh11664:
+LFQH_Lloh11674:
 adr x1, LFQH_CoverGuideBorderKey
-LFQH_Lloh11665:
+LFQH_Lloh11675:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -68203,15 +68233,15 @@ ldp	d9, d8, [sp, #16]
 add	sp, sp, #128
 b Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB621_21:
-LFQH_Lloh11666:
+LFQH_Lloh11676:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh11667:
+LFQH_Lloh11677:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh11668:
+LFQH_Lloh11678:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh11669:
+LFQH_Lloh11679:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68219,16 +68249,16 @@ mov	x0, x21
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11670:
+LFQH_Lloh11680:
 adr x1, LFQH_CoverGuideBorderKey
-LFQH_Lloh11671:
+LFQH_Lloh11681:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh11672:
+LFQH_Lloh11682:
 adr x0, LFQH_l_.str.1251
-LFQH_Lloh11673:
+LFQH_Lloh11683:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68266,41 +68296,41 @@ add	x29, sp, #32
 mov	x19, x2
 mov	x21, x1
 mov	x20, x0
-LFQH_Lloh11674:
+LFQH_Lloh11684:
 adr x1, LFQH_l_.str.257
-LFQH_Lloh11675:
+LFQH_Lloh11685:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB623_2
-LFQH_Lloh11676:
+LFQH_Lloh11686:
 adr x1, LFQH_l_.str.261
-LFQH_Lloh11677:
+LFQH_Lloh11687:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB623_5
 LFQH_LBB623_2:
-LFQH_Lloh11678:
+LFQH_Lloh11688:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11679:
+LFQH_Lloh11689:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB623_5
-LFQH_Lloh11680:
+LFQH_Lloh11690:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11681:
+LFQH_Lloh11691:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x20
 b.ne	LFQH_LBB623_5
-LFQH_Lloh11682:
+LFQH_Lloh11692:
 adr x1, LFQH_l_.str.1253
-LFQH_Lloh11683:
+LFQH_Lloh11693:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -68314,27 +68344,27 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB623_7:
-LFQH_Lloh11684:
+LFQH_Lloh11694:
 adr x1, LFQH_l_.str.618
-LFQH_Lloh11685:
+LFQH_Lloh11695:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x21, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh11686:
+LFQH_Lloh11696:
 adr x1, LFQH_l_.str.1254
-LFQH_Lloh11687:
+LFQH_Lloh11697:
 nop
-LFQH_Lloh11688:
+LFQH_Lloh11698:
 adr x2, LFQH_l_.str.655
-LFQH_Lloh11689:
+LFQH_Lloh11699:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB623_5
-LFQH_Lloh11690:
+LFQH_Lloh11700:
 adr x0, LFQH_l_.str.1254
-LFQH_Lloh11691:
+LFQH_Lloh11701:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68344,41 +68374,41 @@ cmp	x0, #1
 b.eq	LFQH_LBB623_6
 cmp	x0, #2
 b.ne	LFQH_LBB623_5
-LFQH_Lloh11692:
+LFQH_Lloh11702:
 adr x0, LFQH_l_.str.13
-LFQH_Lloh11693:
+LFQH_Lloh11703:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh11694:
+LFQH_Lloh11704:
 adr x1, LFQH_l_.str.1255
-LFQH_Lloh11695:
+LFQH_Lloh11705:
 nop
 bl	LFQH_Responds
 tbz	w0, #0, LFQH_LBB623_5
-LFQH_Lloh11696:
+LFQH_Lloh11706:
 adr x1, LFQH_l_.str.1256
-LFQH_Lloh11697:
+LFQH_Lloh11707:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11698:
+LFQH_Lloh11708:
 adr x1, LFQH_l_.str.1257
-LFQH_Lloh11699:
+LFQH_Lloh11709:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB623_5
-LFQH_Lloh11700:
+LFQH_Lloh11710:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11701:
+LFQH_Lloh11711:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB623_5
-LFQH_Lloh11702:
+LFQH_Lloh11712:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11703:
+LFQH_Lloh11713:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68419,29 +68449,29 @@ add	x29, sp, #112
 .cfi_offset b10, -120
 .cfi_offset b11, -128
 mov	x21, x0
-LFQH_Lloh11704:
+LFQH_Lloh11714:
 adr x1, LFQH_ChapterDiscussionKey
-LFQH_Lloh11705:
+LFQH_Lloh11715:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh11706:
+LFQH_Lloh11716:
 adr x1, LFQH_ChapterCardBackingKey
-LFQH_Lloh11707:
+LFQH_Lloh11717:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh11708:
+LFQH_Lloh11718:
 adr x1, LFQH_l_.str.1252
-LFQH_Lloh11709:
+LFQH_Lloh11719:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh11710:
+LFQH_Lloh11720:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11711:
+LFQH_Lloh11721:
 nop
 bl	LFQH_Get
 mov	x20, x0
@@ -68451,9 +68481,9 @@ mov	x2, x20
 bl	LFQH_ChapterDiscussionMode
 mov	x24, x0
 cbz	x0, LFQH_LBB624_7
-LFQH_Lloh11712:
+LFQH_Lloh11722:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11713:
+LFQH_Lloh11723:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -68463,9 +68493,9 @@ bl	LFQH_PageRestore
 LFQH_LBB624_3:
 mov	x0, x20
 bl	LFQH_FQHApply
-LFQH_Lloh11714:
+LFQH_Lloh11724:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11715:
+LFQH_Lloh11725:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -68473,9 +68503,9 @@ cbz	x0, LFQH_LBB624_7
 mov	x25, x0
 cmp	x24, #2
 cset	w27, eq
-LFQH_Lloh11716:
+LFQH_Lloh11726:
 adr x1, LFQH_ChapterCardRoundedKey
-LFQH_Lloh11717:
+LFQH_Lloh11727:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, #0
@@ -68483,17 +68513,17 @@ cset	w8, eq
 mov	x26, x20
 eor	w8, w27, w8
 tbnz	w8, #0, LFQH_LBB624_10
-LFQH_Lloh11718:
+LFQH_Lloh11728:
 adr x0, LFQH_l_.str.13
-LFQH_Lloh11719:
+LFQH_Lloh11729:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x26, x0
 cmp	x24, #2
 b.ne	LFQH_LBB624_8
-LFQH_Lloh11720:
+LFQH_Lloh11730:
 adr x0, LFQH_l_.str.1255
-LFQH_Lloh11721:
+LFQH_Lloh11731:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68507,9 +68537,9 @@ LFQH_LBB624_7:
 mov	x26, #0
 b	LFQH_LBB624_10
 LFQH_LBB624_8:
-LFQH_Lloh11722:
+LFQH_Lloh11732:
 adr x0, LFQH_l_.str.14
-LFQH_Lloh11723:
+LFQH_Lloh11733:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68518,18 +68548,18 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x27, x0
 mov	x26, #0
 LFQH_LBB624_9:
-LFQH_Lloh11724:
+LFQH_Lloh11734:
 adr x0, LFQH_l_.str.16
-LFQH_Lloh11725:
+LFQH_Lloh11735:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 mov	x2, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11726:
+LFQH_Lloh11736:
 adr x1, LFQH_ChapterCardRoundedKey
-LFQH_Lloh11727:
+LFQH_Lloh11737:
 nop
 mov	x0, x25
 mov	x2, x26
@@ -68541,9 +68571,9 @@ cmp	x23, x26
 b.eq	LFQH_LBB624_12
 mov	x0, x23
 bl	LFQH_PageRestore
-LFQH_Lloh11728:
+LFQH_Lloh11738:
 adr x1, LFQH_ChapterCardBackingKey
-LFQH_Lloh11729:
+LFQH_Lloh11739:
 nop
 mov	x0, x21
 mov	x2, x26
@@ -68557,9 +68587,9 @@ cmp	x22, x23
 b.eq	LFQH_LBB624_14
 mov	x0, x22
 bl	LFQH_RestoreHit
-LFQH_Lloh11730:
+LFQH_Lloh11740:
 adr x1, LFQH_ChapterDiscussionKey
-LFQH_Lloh11731:
+LFQH_Lloh11741:
 nop
 mov	x0, x21
 mov	x2, x23
@@ -68567,9 +68597,9 @@ mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB624_14:
 cbz	x23, LFQH_LBB624_16
-LFQH_Lloh11732:
+LFQH_Lloh11742:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11733:
+LFQH_Lloh11743:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68579,9 +68609,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh11734:
+LFQH_Lloh11744:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11735:
+LFQH_Lloh11745:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68643,45 +68673,45 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh11736:
+LFQH_Lloh11746:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11737:
+LFQH_Lloh11747:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11738:
+LFQH_Lloh11748:
 adr x1, LFQH_l_.str.1258
-LFQH_Lloh11739:
+LFQH_Lloh11749:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11740:
+LFQH_Lloh11750:
 adr x1, LFQH_l_.str.263
-LFQH_Lloh11741:
+LFQH_Lloh11751:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB628_2
-LFQH_Lloh11742:
+LFQH_Lloh11752:
 adr x1, LFQH_l_.str.1259
-LFQH_Lloh11743:
+LFQH_Lloh11753:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB628_4
 LFQH_LBB628_2:
-LFQH_Lloh11744:
+LFQH_Lloh11754:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11745:
+LFQH_Lloh11755:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB628_4
-LFQH_Lloh11746:
+LFQH_Lloh11756:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11747:
+LFQH_Lloh11757:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68689,9 +68719,9 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB628_9
 LFQH_LBB628_4:
-LFQH_Lloh11748:
+LFQH_Lloh11758:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11749:
+LFQH_Lloh11759:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -68699,25 +68729,25 @@ cbz	x0, LFQH_LBB628_6
 mov	x0, x20
 bl	LFQH_PageRestore
 LFQH_LBB628_6:
-LFQH_Lloh11750:
+LFQH_Lloh11760:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11751:
+LFQH_Lloh11761:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB628_8
-LFQH_Lloh11752:
+LFQH_Lloh11762:
 adr x0, LFQH_l_.str.468
-LFQH_Lloh11753:
+LFQH_Lloh11763:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh11754:
+LFQH_Lloh11764:
 adr x0, LFQH_l_.str.504
-LFQH_Lloh11755:
+LFQH_Lloh11765:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68762,21 +68792,21 @@ add	x29, sp, #64
 .cfi_offset b8, -72
 .cfi_offset b9, -80
 mov	x19, x0
-LFQH_Lloh11756:
+LFQH_Lloh11766:
 adr x1, LFQH_l_.str.1260
-LFQH_Lloh11757:
+LFQH_Lloh11767:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB629_11
 mov	x0, x19
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh11758:
+LFQH_Lloh11768:
 adr x1, LFQH_l_.str.1261
-LFQH_Lloh11759:
+LFQH_Lloh11769:
 nop
-LFQH_Lloh11760:
+LFQH_Lloh11770:
 adr x2, LFQH_l_.str.903
-LFQH_Lloh11761:
+LFQH_Lloh11771:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB629_11
@@ -68784,89 +68814,64 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB629_12
 bl	LFQH_FQHGlassAvailable
 tbz	w0, #0, LFQH_LBB629_12
-LFQH_Lloh11762:
+LFQH_Lloh11772:
 adr x1, LFQH_ShelfTabModelStockKey
-LFQH_Lloh11763:
+LFQH_Lloh11773:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbnz	x0, LFQH_LBB629_8
-LFQH_Lloh11764:
-adr x0, LFQH_l_.str.115
-LFQH_Lloh11765:
-nop
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x20, x0
-LFQH_Lloh11766:
-adr x0, LFQH_l_.str.116
-LFQH_Lloh11767:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x20
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x20, x0
-LFQH_Lloh11768:
-adr x0, LFQH_l_.str.1263
-LFQH_Lloh11769:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x23, x0
-LFQH_Lloh11770:
-adr x21, LFQH_l_.str.493
-LFQH_Lloh11771:
-nop
-mov	x0, x21
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x24, x0
-LFQH_Lloh11772:
-adr x22, LFQH_l_.str.602
-LFQH_Lloh11773:
-nop
-mov	x0, x22
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x24
-mov	x2, x23
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x2, x0
 LFQH_Lloh11774:
-adr x1, LFQH_l_.str.1262
+adr x0, LFQH_l_.str.115
 LFQH_Lloh11775:
 nop
-mov	x0, x20
-bl	LFQH_Put
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x20, x0
 LFQH_Lloh11776:
-adr x0, LFQH_l_.str.1265
+adr x0, LFQH_l_.str.116
 LFQH_Lloh11777:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-mov	x0, x19
+mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x23, x0
-mov	x0, x21
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x24, x0
-mov	x0, x22
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x24
-mov	x2, x23
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x2, x0
+mov	x20, x0
 LFQH_Lloh11778:
-adr x1, LFQH_l_.str.1264
+adr x0, LFQH_l_.str.1263
 LFQH_Lloh11779:
 nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x23, x0
+LFQH_Lloh11780:
+adr x21, LFQH_l_.str.493
+LFQH_Lloh11781:
+nop
+mov	x0, x21
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x24, x0
+LFQH_Lloh11782:
+adr x22, LFQH_l_.str.602
+LFQH_Lloh11783:
+nop
+mov	x0, x22
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x24
+mov	x2, x23
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x2, x0
+LFQH_Lloh11784:
+adr x1, LFQH_l_.str.1262
+LFQH_Lloh11785:
+nop
 mov	x0, x20
 bl	LFQH_Put
-LFQH_Lloh11780:
-adr x0, LFQH_l_.str.1267
-LFQH_Lloh11781:
+LFQH_Lloh11786:
+adr x0, LFQH_l_.str.1265
+LFQH_Lloh11787:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68881,70 +68886,41 @@ bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	x2, x23
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x2, x0
-LFQH_Lloh11782:
-adr x1, LFQH_l_.str.1266
-LFQH_Lloh11783:
-nop
-mov	x0, x20
-bl	LFQH_Put
-LFQH_Lloh11784:
-adr x0, LFQH_l_.str.1269
-LFQH_Lloh11785:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov.16b	v8, v0
-mov	x0, x21
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x23, x0
-LFQH_Lloh11786:
-adr x22, LFQH_l_.str.717
-LFQH_Lloh11787:
-nop
-mov	x0, x22
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x23
-mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
 LFQH_Lloh11788:
-adr x1, LFQH_l_.str.1268
+adr x1, LFQH_l_.str.1264
 LFQH_Lloh11789:
 nop
 mov	x0, x20
 bl	LFQH_Put
 LFQH_Lloh11790:
-adr x0, LFQH_l_.str.1271
+adr x0, LFQH_l_.str.1267
 LFQH_Lloh11791:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov.16b	v8, v0
+mov	x23, x0
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x23, x0
+mov	x24, x0
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-mov	x0, x23
-mov.16b	v0, v8
+mov	x0, x24
+mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
 LFQH_Lloh11792:
-adr x1, LFQH_l_.str.1270
+adr x1, LFQH_l_.str.1266
 LFQH_Lloh11793:
 nop
 mov	x0, x20
 bl	LFQH_Put
 LFQH_Lloh11794:
-adr x0, LFQH_l_.str.1273
+adr x0, LFQH_l_.str.1269
 LFQH_Lloh11795:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -68955,6 +68931,10 @@ mov.16b	v8, v0
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
+LFQH_Lloh11796:
+adr x22, LFQH_l_.str.717
+LFQH_Lloh11797:
+nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68962,15 +68942,15 @@ mov	x0, x23
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11796:
-adr x1, LFQH_l_.str.1272
-LFQH_Lloh11797:
+LFQH_Lloh11798:
+adr x1, LFQH_l_.str.1268
+LFQH_Lloh11799:
 nop
 mov	x0, x20
 bl	LFQH_Put
-LFQH_Lloh11798:
-adr x0, LFQH_l_.str.1275
-LFQH_Lloh11799:
+LFQH_Lloh11800:
+adr x0, LFQH_l_.str.1271
+LFQH_Lloh11801:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -68987,15 +68967,65 @@ mov	x0, x23
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11800:
-adr x1, LFQH_l_.str.1274
-LFQH_Lloh11801:
+LFQH_Lloh11802:
+adr x1, LFQH_l_.str.1270
+LFQH_Lloh11803:
 nop
 mov	x0, x20
 bl	LFQH_Put
-LFQH_Lloh11802:
+LFQH_Lloh11804:
+adr x0, LFQH_l_.str.1273
+LFQH_Lloh11805:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov.16b	v8, v0
+mov	x0, x21
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x23, x0
+mov	x0, x22
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x23
+mov.16b	v0, v8
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x2, x0
+LFQH_Lloh11806:
+adr x1, LFQH_l_.str.1272
+LFQH_Lloh11807:
+nop
+mov	x0, x20
+bl	LFQH_Put
+LFQH_Lloh11808:
+adr x0, LFQH_l_.str.1275
+LFQH_Lloh11809:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov.16b	v8, v0
+mov	x0, x21
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x23, x0
+mov	x0, x22
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x23
+mov.16b	v0, v8
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x2, x0
+LFQH_Lloh11810:
+adr x1, LFQH_l_.str.1274
+LFQH_Lloh11811:
+nop
+mov	x0, x20
+bl	LFQH_Put
+LFQH_Lloh11812:
 adr x0, LFQH_l_.str.1277
-LFQH_Lloh11803:
+LFQH_Lloh11813:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -69012,146 +69042,146 @@ mov	x0, x21
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh11804:
+LFQH_Lloh11814:
 adr x1, LFQH_l_.str.1276
-LFQH_Lloh11805:
+LFQH_Lloh11815:
 nop
 mov	x0, x20
 bl	LFQH_Put
-LFQH_Lloh11806:
+LFQH_Lloh11816:
 adr x1, LFQH_l_.str.1278
-LFQH_Lloh11807:
+LFQH_Lloh11817:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB629_7
 mov	x2, x0
-LFQH_Lloh11808:
+LFQH_Lloh11818:
 adr x1, LFQH_l_.str.605
-LFQH_Lloh11809:
+LFQH_Lloh11819:
 nop
 mov	x0, x20
 bl	LFQH_Put
 LFQH_LBB629_7:
-LFQH_Lloh11810:
+LFQH_Lloh11820:
 adr x1, LFQH_ShelfTabModelStockKey
-LFQH_Lloh11811:
+LFQH_Lloh11821:
 nop
 mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB629_8:
-LFQH_Lloh11812:
-adr x0, LFQH_l_.str.1279
-LFQH_Lloh11813:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-mov	w2, #0
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11814:
-adr x0, LFQH_l_.str.1280
-LFQH_Lloh11815:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-mov	w2, #0
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11816:
-adr x0, LFQH_l_.str.1281
-LFQH_Lloh11817:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x19
-mov	w2, #0
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11818:
-adr x1, LFQH_l_.str.1269
-LFQH_Lloh11819:
-nop
-LFQH_Lloh11820:
-adr x2, LFQH_l_.str.1282
-LFQH_Lloh11821:
-nop
-fmov	d0, #1.00000000
-mov	x0, x19
-bl	LFQH_ShelfSetModelDouble
 LFQH_Lloh11822:
-adr x1, LFQH_l_.str.1283
+adr x0, LFQH_l_.str.1279
 LFQH_Lloh11823:
 nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+mov	w2, #0
+bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_Lloh11824:
-adr x2, LFQH_l_.str.1284
+adr x0, LFQH_l_.str.1280
 LFQH_Lloh11825:
 nop
-fmov	d0, #1.00000000
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
 mov	x0, x19
-bl	LFQH_ShelfSetModelDouble
+mov	w2, #0
+bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_Lloh11826:
-adr x1, LFQH_l_.str.1271
+adr x0, LFQH_l_.str.1281
 LFQH_Lloh11827:
 nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x19
+mov	w2, #0
+bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_Lloh11828:
-adr x2, LFQH_l_.str.1285
+adr x1, LFQH_l_.str.1269
 LFQH_Lloh11829:
+nop
+LFQH_Lloh11830:
+adr x2, LFQH_l_.str.1282
+LFQH_Lloh11831:
 nop
 fmov	d0, #1.00000000
 mov	x0, x19
 bl	LFQH_ShelfSetModelDouble
-LFQH_Lloh11830:
-adr x1, LFQH_l_.str.1273
-LFQH_Lloh11831:
-nop
 LFQH_Lloh11832:
-adr x2, LFQH_l_.str.1286
+adr x1, LFQH_l_.str.1283
 LFQH_Lloh11833:
 nop
-fmov	d0, xzr
-mov	x0, x19
-bl	LFQH_ShelfSetModelDouble
 LFQH_Lloh11834:
-adr x1, LFQH_l_.str.1275
+adr x2, LFQH_l_.str.1284
 LFQH_Lloh11835:
 nop
+fmov	d0, #1.00000000
+mov	x0, x19
+bl	LFQH_ShelfSetModelDouble
 LFQH_Lloh11836:
-adr x2, LFQH_l_.str.1287
+adr x1, LFQH_l_.str.1271
 LFQH_Lloh11837:
+nop
+LFQH_Lloh11838:
+adr x2, LFQH_l_.str.1285
+LFQH_Lloh11839:
+nop
+fmov	d0, #1.00000000
+mov	x0, x19
+bl	LFQH_ShelfSetModelDouble
+LFQH_Lloh11840:
+adr x1, LFQH_l_.str.1273
+LFQH_Lloh11841:
+nop
+LFQH_Lloh11842:
+adr x2, LFQH_l_.str.1286
+LFQH_Lloh11843:
 nop
 fmov	d0, xzr
 mov	x0, x19
 bl	LFQH_ShelfSetModelDouble
-LFQH_Lloh11838:
+LFQH_Lloh11844:
+adr x1, LFQH_l_.str.1275
+LFQH_Lloh11845:
+nop
+LFQH_Lloh11846:
+adr x2, LFQH_l_.str.1287
+LFQH_Lloh11847:
+nop
+fmov	d0, xzr
+mov	x0, x19
+bl	LFQH_ShelfSetModelDouble
+LFQH_Lloh11848:
 adr x0, LFQH_l_.str.1261
-LFQH_Lloh11839:
+LFQH_Lloh11849:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11840:
+LFQH_Lloh11850:
 adr x1, LFQH_l_.str.1288
-LFQH_Lloh11841:
+LFQH_Lloh11851:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB629_11
 mov	x20, x0
-LFQH_Lloh11842:
+LFQH_Lloh11852:
 adr x1, LFQH_l_.str.1278
-LFQH_Lloh11843:
+LFQH_Lloh11853:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x20
 b.eq	LFQH_LBB629_11
-LFQH_Lloh11844:
+LFQH_Lloh11854:
 adr x0, LFQH_l_.str.1289
-LFQH_Lloh11845:
+LFQH_Lloh11855:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -69203,43 +69233,43 @@ add	x29, sp, #80
 .cfi_offset w27, -88
 .cfi_offset w28, -96
 mov	x19, x0
-LFQH_Lloh11846:
+LFQH_Lloh11856:
 adr x1, LFQH_ShelfTabModelStockKey
-LFQH_Lloh11847:
+LFQH_Lloh11857:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB630_2
 mov	x20, x0
-LFQH_Lloh11848:
+LFQH_Lloh11858:
 adr x0, LFQH_l_.str.1279
-LFQH_Lloh11849:
+LFQH_Lloh11859:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh11850:
+LFQH_Lloh11860:
 adr x21, LFQH_l_.str.73
-LFQH_Lloh11851:
+LFQH_Lloh11861:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh11852:
+LFQH_Lloh11862:
 adr x22, LFQH_l_.str.445
-LFQH_Lloh11853:
+LFQH_Lloh11863:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh11854:
+LFQH_Lloh11864:
 adr x23, LFQH_l_.str.517
-LFQH_Lloh11855:
+LFQH_Lloh11865:
 nop
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11856:
+LFQH_Lloh11866:
 adr x2, LFQH_l_.str.1262
-LFQH_Lloh11857:
+LFQH_Lloh11867:
 nop
 mov	x0, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -69248,9 +69278,9 @@ mov	x0, x20
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh11858:
+LFQH_Lloh11868:
 adr x24, LFQH_l_.str.40
-LFQH_Lloh11859:
+LFQH_Lloh11869:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -69261,9 +69291,9 @@ mov	x2, x0
 mov	x0, x19
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11860:
+LFQH_Lloh11870:
 adr x0, LFQH_l_.str.1280
-LFQH_Lloh11861:
+LFQH_Lloh11871:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
@@ -69276,9 +69306,9 @@ mov	x27, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11862:
+LFQH_Lloh11872:
 adr x2, LFQH_l_.str.1264
-LFQH_Lloh11863:
+LFQH_Lloh11873:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -69296,9 +69326,9 @@ mov	x2, x0
 mov	x0, x19
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11864:
+LFQH_Lloh11874:
 adr x0, LFQH_l_.str.1281
-LFQH_Lloh11865:
+LFQH_Lloh11875:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
@@ -69311,9 +69341,9 @@ mov	x27, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11866:
+LFQH_Lloh11876:
 adr x2, LFQH_l_.str.1266
-LFQH_Lloh11867:
+LFQH_Lloh11877:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -69340,9 +69370,9 @@ mov	x26, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11868:
+LFQH_Lloh11878:
 adr x25, LFQH_l_.str.1268
-LFQH_Lloh11869:
+LFQH_Lloh11879:
 nop
 mov	x0, x26
 mov	x2, x25
@@ -69352,22 +69382,22 @@ mov	x0, x20
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh11870:
+LFQH_Lloh11880:
 adr x24, LFQH_l_.str.495
-LFQH_Lloh11871:
+LFQH_Lloh11881:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11872:
+LFQH_Lloh11882:
 adr x1, LFQH_l_.str.1269
-LFQH_Lloh11873:
+LFQH_Lloh11883:
 nop
-LFQH_Lloh11874:
+LFQH_Lloh11884:
 adr x2, LFQH_l_.str.1282
-LFQH_Lloh11875:
+LFQH_Lloh11885:
 nop
 mov	x0, x19
 bl	LFQH_ShelfSetModelDouble
@@ -69380,9 +69410,9 @@ mov	x27, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11876:
+LFQH_Lloh11886:
 adr x28, LFQH_l_.str.1270
-LFQH_Lloh11877:
+LFQH_Lloh11887:
 nop
 mov	x0, x27
 mov	x2, x28
@@ -69397,22 +69427,22 @@ bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11878:
+LFQH_Lloh11888:
 adr x1, LFQH_l_.str.1271
-LFQH_Lloh11879:
+LFQH_Lloh11889:
 nop
-LFQH_Lloh11880:
+LFQH_Lloh11890:
 adr x2, LFQH_l_.str.1285
-LFQH_Lloh11881:
+LFQH_Lloh11891:
 nop
 mov	x0, x19
 bl	LFQH_ShelfSetModelDouble
 mov	x0, x21
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh11882:
+LFQH_Lloh11892:
 adr x0, LFQH_l_.str.534
-LFQH_Lloh11883:
+LFQH_Lloh11893:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -69439,64 +69469,29 @@ bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11884:
-adr x1, LFQH_l_.str.1283
-LFQH_Lloh11885:
-nop
-LFQH_Lloh11886:
-adr x2, LFQH_l_.str.1284
-LFQH_Lloh11887:
-nop
-mov	x0, x19
-bl	LFQH_ShelfSetModelDouble
-mov	x0, x21
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x25, x0
-mov	x0, x22
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x26, x0
-mov	x0, x23
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-LFQH_Lloh11888:
-adr x2, LFQH_l_.str.1272
-LFQH_Lloh11889:
-nop
-mov	x0, x26
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x2, x0
-mov	x0, x20
-mov	x1, x25
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-mov	x25, x0
-mov	x0, x24
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-mov	x0, x25
-bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11890:
-adr x1, LFQH_l_.str.1273
-LFQH_Lloh11891:
-nop
-LFQH_Lloh11892:
-adr x2, LFQH_l_.str.1286
-LFQH_Lloh11893:
-nop
-mov	x0, x19
-bl	LFQH_ShelfSetModelDouble
-mov	x0, x21
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x25, x0
-mov	x0, x22
-bl Lpatch + (0xa5b0 - PATCH_BASE)
-mov	x26, x0
-mov	x0, x23
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
 LFQH_Lloh11894:
-adr x2, LFQH_l_.str.1274
+adr x1, LFQH_l_.str.1283
 LFQH_Lloh11895:
 nop
+LFQH_Lloh11896:
+adr x2, LFQH_l_.str.1284
+LFQH_Lloh11897:
+nop
+mov	x0, x19
+bl	LFQH_ShelfSetModelDouble
+mov	x0, x21
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x25, x0
+mov	x0, x22
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x26, x0
+mov	x0, x23
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh11898:
+adr x2, LFQH_l_.str.1272
+LFQH_Lloh11899:
+nop
 mov	x0, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
@@ -69509,19 +69504,54 @@ bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11896:
-adr x1, LFQH_l_.str.1275
-LFQH_Lloh11897:
+LFQH_Lloh11900:
+adr x1, LFQH_l_.str.1273
+LFQH_Lloh11901:
 nop
-LFQH_Lloh11898:
-adr x2, LFQH_l_.str.1287
-LFQH_Lloh11899:
+LFQH_Lloh11902:
+adr x2, LFQH_l_.str.1286
+LFQH_Lloh11903:
 nop
 mov	x0, x19
 bl	LFQH_ShelfSetModelDouble
-LFQH_Lloh11900:
+mov	x0, x21
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x25, x0
+mov	x0, x22
+bl Lpatch + (0xa5b0 - PATCH_BASE)
+mov	x26, x0
+mov	x0, x23
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh11904:
+adr x2, LFQH_l_.str.1274
+LFQH_Lloh11905:
+nop
+mov	x0, x26
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x2, x0
+mov	x0, x20
+mov	x1, x25
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+mov	x25, x0
+mov	x0, x24
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+mov	x0, x25
+bl Lpatch + (0xa5d4 - PATCH_BASE)
+LFQH_Lloh11906:
+adr x1, LFQH_l_.str.1275
+LFQH_Lloh11907:
+nop
+LFQH_Lloh11908:
+adr x2, LFQH_l_.str.1287
+LFQH_Lloh11909:
+nop
+mov	x0, x19
+bl	LFQH_ShelfSetModelDouble
+LFQH_Lloh11910:
 adr x0, LFQH_l_.str.1261
-LFQH_Lloh11901:
+LFQH_Lloh11911:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
@@ -69534,9 +69564,9 @@ mov	x27, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11902:
+LFQH_Lloh11912:
 adr x2, LFQH_l_.str.1276
-LFQH_Lloh11903:
+LFQH_Lloh11913:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -69554,9 +69584,9 @@ fcvtzs	x2, d0
 mov	x0, x19
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11904:
+LFQH_Lloh11914:
 adr x0, LFQH_l_.str.1289
-LFQH_Lloh11905:
+LFQH_Lloh11915:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
@@ -69569,9 +69599,9 @@ mov	x22, x0
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh11906:
+LFQH_Lloh11916:
 adr x2, LFQH_l_.str.605
-LFQH_Lloh11907:
+LFQH_Lloh11917:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -69583,9 +69613,9 @@ mov	x2, x0
 mov	x0, x19
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11908:
+LFQH_Lloh11918:
 adr x1, LFQH_ShelfTabModelStockKey
-LFQH_Lloh11909:
+LFQH_Lloh11919:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -69667,13 +69697,13 @@ mov	x19, x3
 mov	x20, x2
 mov	x23, x1
 mov	x21, x0
-LFQH_Lloh11910:
+LFQH_Lloh11920:
 adr x0, LFQH_l_.str.280
-LFQH_Lloh11911:
+LFQH_Lloh11921:
 nop
-LFQH_Lloh11912:
+LFQH_Lloh11922:
 adr x1, LFQH_l_.str.1292
-LFQH_Lloh11913:
+LFQH_Lloh11923:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -69687,9 +69717,9 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB632_3
 bl	LFQH_FQHGlassAvailable
 cbz	w0, LFQH_LBB632_3
-LFQH_Lloh11914:
+LFQH_Lloh11924:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh11915:
+LFQH_Lloh11925:
 nop
 mov	x0, x21
 bl	LFQH_Get
@@ -69702,31 +69732,31 @@ ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 ret
 LFQH_LBB632_4:
-LFQH_Lloh11916:
+LFQH_Lloh11926:
 adr x1, LFQH_l_.str.272
-LFQH_Lloh11917:
+LFQH_Lloh11927:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB632_3
-LFQH_Lloh11918:
+LFQH_Lloh11928:
 adr x0, LFQH_l_.str.88
-LFQH_Lloh11919:
+LFQH_Lloh11929:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11920:
+LFQH_Lloh11930:
 adr x1, LFQH_l_.str.186
-LFQH_Lloh11921:
+LFQH_Lloh11931:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11922:
+LFQH_Lloh11932:
 adr x1, LFQH_l_.str.534
-LFQH_Lloh11923:
+LFQH_Lloh11933:
 nop
 bl	LFQH_BoolProp
 mov	x0, x19
@@ -69761,22 +69791,22 @@ add	x29, sp, #80
 .cfi_offset b10, -88
 .cfi_offset b11, -96
 mov	x19, x0
-LFQH_Lloh11924:
+LFQH_Lloh11934:
 adr x1, LFQH_l_.str.305
-LFQH_Lloh11925:
+LFQH_Lloh11935:
 nop
 bl	LFQH_HasAncestor
 cbz	w0, LFQH_LBB633_4
-LFQH_Lloh11926:
+LFQH_Lloh11936:
 adr x1, LFQH_l_.str.139
-LFQH_Lloh11927:
+LFQH_Lloh11937:
 nop
 mov	x0, x19
 bl	LFQH_HasAncestor
 tbz	w0, #0, LFQH_LBB633_4
-LFQH_Lloh11928:
+LFQH_Lloh11938:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh11929:
+LFQH_Lloh11939:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -69801,17 +69831,17 @@ mov.16b	v2, v10
 mov.16b	v3, v8
 mov	w1, #0
 bl	LFQH_ApplySurface
-LFQH_Lloh11930:
+LFQH_Lloh11940:
 adr x1, LFQH_l_.str.1294
-LFQH_Lloh11931:
+LFQH_Lloh11941:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB633_5
 mov	x20, x0
-LFQH_Lloh11932:
+LFQH_Lloh11942:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh11933:
+LFQH_Lloh11943:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -69821,9 +69851,9 @@ cmp	w0, #0
 cset	w23, ne
 b	LFQH_LBB633_6
 LFQH_LBB633_4:
-LFQH_Lloh11934:
+LFQH_Lloh11944:
 adr x20, LFQH_l_.str.1293
-LFQH_Lloh11935:
+LFQH_Lloh11945:
 nop
 mov	x0, x19
 mov	x1, x20
@@ -69851,35 +69881,35 @@ b	LFQH_PageRestore
 LFQH_LBB633_5:
 mov	w23, #1
 LFQH_LBB633_6:
-LFQH_Lloh11936:
+LFQH_Lloh11946:
 adr x1, LFQH_l_.str.1293
-LFQH_Lloh11937:
+LFQH_Lloh11947:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh11938:
+LFQH_Lloh11948:
 adr x1, LFQH_l_.str.603
-LFQH_Lloh11939:
+LFQH_Lloh11949:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11940:
+LFQH_Lloh11950:
 adr x1, LFQH_l_.str.1295
-LFQH_Lloh11941:
+LFQH_Lloh11951:
 nop
 bl	LFQH_Equal
 tbnz	w0, #0, LFQH_LBB633_9
-LFQH_Lloh11942:
+LFQH_Lloh11952:
 adr x1, LFQH_l_.str.1296
-LFQH_Lloh11943:
+LFQH_Lloh11953:
 nop
 mov	x0, x21
 bl	LFQH_Equal
 tbnz	w0, #0, LFQH_LBB633_9
-LFQH_Lloh11944:
+LFQH_Lloh11954:
 adr x1, LFQH_l_.str.1297
-LFQH_Lloh11945:
+LFQH_Lloh11955:
 nop
 mov	x0, x21
 bl	LFQH_Equal
@@ -69887,9 +69917,9 @@ tbz	w0, #0, LFQH_LBB633_11
 LFQH_LBB633_9:
 mov	w21, #1
 LFQH_LBB633_10:
-LFQH_Lloh11946:
+LFQH_Lloh11956:
 adr x22, LFQH_SurfaceKey
-LFQH_Lloh11947:
+LFQH_Lloh11957:
 nop
 mov	x0, x19
 mov	x1, x22
@@ -69924,9 +69954,9 @@ ldp	d9, d8, [sp, #16]
 ldp	d11, d10, [sp], #96
 b	LFQH_CenterCaption
 LFQH_LBB633_11:
-LFQH_Lloh11948:
+LFQH_Lloh11958:
 adr x1, LFQH_l_.str.1298
-LFQH_Lloh11949:
+LFQH_Lloh11959:
 nop
 mov	x0, x21
 bl	LFQH_Equal
@@ -69964,17 +69994,17 @@ add	x29, sp, #176
 .cfi_offset b14, -120
 .cfi_offset b15, -128
 mov	x19, x0
-LFQH_Lloh11950:
+LFQH_Lloh11960:
 adr x1, LFQH_l_.str.137
-LFQH_Lloh11951:
+LFQH_Lloh11961:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB634_22
 mov	x20, x0
 mov	w22, #0
-LFQH_Lloh11952:
+LFQH_Lloh11962:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh11953:
+LFQH_Lloh11963:
 nop
 LFQH_LBB634_2:
 cmp	x0, x19
@@ -70002,93 +70032,93 @@ b	LFQH_LBB634_8
 LFQH_LBB634_7:
 mov	w22, #0
 LFQH_LBB634_8:
-LFQH_Lloh11954:
+LFQH_Lloh11964:
 adr x1, LFQH_l_.str.1299
-LFQH_Lloh11955:
+LFQH_Lloh11965:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh11956:
+LFQH_Lloh11966:
 adr x1, LFQH_l_.str.1300
-LFQH_Lloh11957:
+LFQH_Lloh11967:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x22
 bl	LFQH_ShelfFilterFade
-LFQH_Lloh11958:
+LFQH_Lloh11968:
 adr x1, LFQH_l_.str.1301
-LFQH_Lloh11959:
+LFQH_Lloh11969:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x22
 bl	LFQH_ShelfFilterFade
-LFQH_Lloh11960:
+LFQH_Lloh11970:
 adr x1, LFQH_l_.str.1302
-LFQH_Lloh11961:
+LFQH_Lloh11971:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x22
 bl	LFQH_ShelfFilterFade
-LFQH_Lloh11962:
+LFQH_Lloh11972:
 adr x1, LFQH_l_.str.1303
-LFQH_Lloh11963:
+LFQH_Lloh11973:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB634_10
-LFQH_Lloh11964:
+LFQH_Lloh11974:
 adr x1, LFQH_l_.str.1304
-LFQH_Lloh11965:
+LFQH_Lloh11975:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x1, x22
 bl	LFQH_ShelfFilterFade
-LFQH_Lloh11966:
+LFQH_Lloh11976:
 adr x1, LFQH_l_.str.1305
-LFQH_Lloh11967:
+LFQH_Lloh11977:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x1, x22
 bl	LFQH_ShelfFilterFade
 LFQH_LBB634_10:
-LFQH_Lloh11968:
+LFQH_Lloh11978:
 adr x1, LFQH_l_.str.305
-LFQH_Lloh11969:
+LFQH_Lloh11979:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB634_19
-LFQH_Lloh11970:
+LFQH_Lloh11980:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11971:
+LFQH_Lloh11981:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB634_19
-LFQH_Lloh11972:
+LFQH_Lloh11982:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11973:
+LFQH_Lloh11983:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh11974:
+LFQH_Lloh11984:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh11975:
+LFQH_Lloh11985:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh11976:
+LFQH_Lloh11986:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11977:
+LFQH_Lloh11987:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70106,9 +70136,9 @@ mov.16b	v15, v2
 mov.16b	v12, v3
 mov.16b	v8, v2
 cbz	x23, LFQH_LBB634_14
-LFQH_Lloh11978:
+LFQH_Lloh11988:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh11979:
+LFQH_Lloh11989:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70118,9 +70148,9 @@ mov.16b	v8, v0
 stp	d2, d9, [sp, #40]
 mov.16b	v9, v1
 str	d3, [sp, #32]
-LFQH_Lloh11980:
+LFQH_Lloh11990:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh11981:
+LFQH_Lloh11991:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70162,48 +70192,48 @@ b.ne	LFQH_LBB634_18
 fcmp	d9, d12
 b.eq	LFQH_LBB634_19
 LFQH_LBB634_18:
-LFQH_Lloh11982:
+LFQH_Lloh11992:
 adr x0, LFQH_l_.str.87
-LFQH_Lloh11983:
+LFQH_Lloh11993:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh11984:
+LFQH_Lloh11994:
 adr x1, LFQH_l_.str.746
-LFQH_Lloh11985:
+LFQH_Lloh11995:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh11986:
+LFQH_Lloh11996:
 adr x0, LFQH_l_.str.747
-LFQH_Lloh11987:
+LFQH_Lloh11997:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB634_19:
-LFQH_Lloh11988:
+LFQH_Lloh11998:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh11989:
+LFQH_Lloh11999:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB634_22
-LFQH_Lloh11990:
+LFQH_Lloh12000:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11991:
+LFQH_Lloh12001:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB634_22
-LFQH_Lloh11992:
+LFQH_Lloh12002:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh11993:
+LFQH_Lloh12003:
 nop
 mov	x0, x21
 bl	LFQH_Get
@@ -70221,22 +70251,22 @@ ldp	d15, d14, [sp, #64]
 add	sp, sp, #192
 ret
 LFQH_LBB634_23:
-LFQH_Lloh11994:
+LFQH_Lloh12004:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh11995:
+LFQH_Lloh12005:
 nop
 mov	x0, x19
 bl	LFQH_Get
-LFQH_Lloh11996:
+LFQH_Lloh12006:
 adr x1, LFQH_l_.str.463
-LFQH_Lloh11997:
+LFQH_Lloh12007:
 nop
 bl	LFQH_Get
 cmp	x0, x20
 b.eq	LFQH_LBB634_22
-LFQH_Lloh11998:
+LFQH_Lloh12008:
 adr x0, LFQH_l_.str.464
-LFQH_Lloh11999:
+LFQH_Lloh12009:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70265,9 +70295,9 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh12000:
+LFQH_Lloh12010:
 adr x1, LFQH_ShelfFilterHeadersKey
-LFQH_Lloh12001:
+LFQH_Lloh12011:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB635_2
@@ -70277,18 +70307,18 @@ ret
 LFQH_LBB635_2:
 bl	LFQH_ShelfFilterHeaders
 mov	x20, x0
-LFQH_Lloh12002:
+LFQH_Lloh12012:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh12003:
+LFQH_Lloh12013:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12004:
+LFQH_Lloh12014:
 adr x1, LFQH_ShelfFilterHeadersKey
-LFQH_Lloh12005:
+LFQH_Lloh12015:
 nop
 mov	x0, x19
 mov	x2, x19
@@ -70310,9 +70340,9 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12006:
+LFQH_Lloh12016:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh12007:
+LFQH_Lloh12017:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB636_3
@@ -70325,26 +70355,26 @@ ldp	x29, x30, [sp, #16]
 ldp	x20, x19, [sp], #32
 ret
 LFQH_LBB636_4:
-LFQH_Lloh12008:
+LFQH_Lloh12018:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12009:
+LFQH_Lloh12019:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB636_6
-LFQH_Lloh12010:
+LFQH_Lloh12020:
 adr x1, LFQH_ShelfFilterHiddenKey
-LFQH_Lloh12011:
+LFQH_Lloh12021:
 nop
 mov	x0, x19
 mov	x2, x19
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12012:
+LFQH_Lloh12022:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12013:
+LFQH_Lloh12023:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70371,30 +70401,30 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12014:
+LFQH_Lloh12024:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12015:
+LFQH_Lloh12025:
 nop
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB637_2
-LFQH_Lloh12016:
+LFQH_Lloh12026:
 adr x1, LFQH_l_.str.784
-LFQH_Lloh12017:
+LFQH_Lloh12027:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB637_8
 LFQH_LBB637_2:
-LFQH_Lloh12018:
+LFQH_Lloh12028:
 adr x1, LFQH_ShelfFilterFadeHiddenKey
-LFQH_Lloh12019:
+LFQH_Lloh12029:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	w20, LFQH_LBB637_5
-LFQH_Lloh12020:
+LFQH_Lloh12030:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12021:
+LFQH_Lloh12031:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70409,16 +70439,16 @@ cbz	x0, LFQH_LBB637_8
 mov	x2, #0
 mov	w20, #0
 LFQH_LBB637_7:
-LFQH_Lloh12022:
+LFQH_Lloh12032:
 adr x1, LFQH_ShelfFilterFadeHiddenKey
-LFQH_Lloh12023:
+LFQH_Lloh12033:
 nop
 mov	x0, x19
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12024:
+LFQH_Lloh12034:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12025:
+LFQH_Lloh12035:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70448,31 +70478,31 @@ add	x29, sp, #16
 .cfi_offset w29, -16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
-LFQH_Lloh12026:
+LFQH_Lloh12036:
 adr x0, LFQH_l_.str.111
-LFQH_Lloh12027:
+LFQH_Lloh12037:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12028:
+LFQH_Lloh12038:
 adr x1, LFQH_ShelfFilterHeadersKey
-LFQH_Lloh12029:
+LFQH_Lloh12039:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
 cbnz	x0, LFQH_LBB639_2
-LFQH_Lloh12030:
+LFQH_Lloh12040:
 adr x0, LFQH_l_.str.112
-LFQH_Lloh12031:
+LFQH_Lloh12041:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12032:
+LFQH_Lloh12042:
 adr x1, LFQH_ShelfFilterHeadersKey
-LFQH_Lloh12033:
+LFQH_Lloh12043:
 nop
 mov	x0, x19
 mov	x2, x20
@@ -70496,32 +70526,32 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh12034:
+LFQH_Lloh12044:
 adr x1, LFQH_ShelfFilterHiddenKey
-LFQH_Lloh12035:
+LFQH_Lloh12045:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB640_3
-LFQH_Lloh12036:
+LFQH_Lloh12046:
 adr x1, LFQH_ShelfFilterHiddenKey
-LFQH_Lloh12037:
+LFQH_Lloh12047:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12038:
+LFQH_Lloh12048:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12039:
+LFQH_Lloh12049:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB640_3
-LFQH_Lloh12040:
+LFQH_Lloh12050:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12041:
+LFQH_Lloh12051:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70590,9 +70620,9 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB643_4
 bl	LFQH_FQHGlassAvailable
 cbz	w0, LFQH_LBB643_4
-LFQH_Lloh12042:
+LFQH_Lloh12052:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh12043:
+LFQH_Lloh12053:
 nop
 mov	x0, x24
 bl	LFQH_Get
@@ -70617,9 +70647,9 @@ LFQH_LBB643_5:
 mov	x0, x22
 bl	LFQH_ShelfQuickFilterCount
 mov	x23, x0
-LFQH_Lloh12044:
+LFQH_Lloh12054:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12045:
+LFQH_Lloh12055:
 nop
 mov	x0, x24
 bl	LFQH_Get
@@ -70627,44 +70657,44 @@ str	x23, [sp, #8]
 cmp	x23, #5
 b.ne	LFQH_LBB643_8
 mov	x25, x0
-LFQH_Lloh12046:
+LFQH_Lloh12056:
 adr x1, LFQH_l_.str.139
-LFQH_Lloh12047:
+LFQH_Lloh12057:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB643_8
-LFQH_Lloh12048:
+LFQH_Lloh12058:
 adr x1, LFQH_l_.str.1299
-LFQH_Lloh12049:
+LFQH_Lloh12059:
 nop
 mov	x0, x25
 bl	LFQH_Get
 cmp	x0, x24
 b.eq	LFQH_LBB643_26
 LFQH_LBB643_8:
-LFQH_Lloh12050:
+LFQH_Lloh12060:
 adr x1, LFQH_l_.str.676
-LFQH_Lloh12051:
+LFQH_Lloh12061:
 nop
 mov	x0, x24
 bl	LFQH_Get
 mov	x24, x0
 cbz	x0, LFQH_LBB643_14
-LFQH_Lloh12052:
+LFQH_Lloh12062:
 adr x25, LFQH_l_.str.502
-LFQH_Lloh12053:
+LFQH_Lloh12063:
 nop
-LFQH_Lloh12054:
+LFQH_Lloh12064:
 adr x26, LFQH_l_.str.1307
-LFQH_Lloh12055:
+LFQH_Lloh12065:
 nop
-LFQH_Lloh12056:
+LFQH_Lloh12066:
 adr x27, LFQH_l_.str.361
-LFQH_Lloh12057:
+LFQH_Lloh12067:
 nop
-LFQH_Lloh12058:
+LFQH_Lloh12068:
 adr x28, LFQH_l_.str.676
-LFQH_Lloh12059:
+LFQH_Lloh12069:
 nop
 LFQH_LBB643_10:
 mov	x0, x25
@@ -70696,58 +70726,58 @@ b	LFQH_LBB643_14
 LFQH_LBB643_13:
 mov	x24, #0
 LFQH_LBB643_14:
-LFQH_Lloh12060:
+LFQH_Lloh12070:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh12061:
+LFQH_Lloh12071:
 nop
 mov	x0, x24
 bl	LFQH_Get
 mov	x25, x0
-LFQH_Lloh12062:
+LFQH_Lloh12072:
 adr x1, LFQH_l_.str.397
-LFQH_Lloh12063:
+LFQH_Lloh12073:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB643_4
-LFQH_Lloh12064:
+LFQH_Lloh12074:
 adr x1, LFQH_l_.str.766
-LFQH_Lloh12065:
+LFQH_Lloh12075:
 nop
 mov	x0, x25
 bl	LFQH_Get
 cmp	x0, x24
 b.ne	LFQH_LBB643_3
-LFQH_Lloh12066:
+LFQH_Lloh12076:
 adr x1, LFQH_l_.str.768
-LFQH_Lloh12067:
+LFQH_Lloh12077:
 nop
 mov	x0, x25
 bl	LFQH_Get
-LFQH_Lloh12068:
+LFQH_Lloh12078:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh12069:
+LFQH_Lloh12079:
 nop
 bl	LFQH_Get
 mov	x24, x0
-LFQH_Lloh12070:
+LFQH_Lloh12080:
 adr x1, LFQH_l_.str.746
-LFQH_Lloh12071:
+LFQH_Lloh12081:
 nop
 bl	LFQH_Get
 mov	x25, x0
 mov	w0, #0
 cbz	x24, LFQH_LBB643_4
 cbz	x25, LFQH_LBB643_4
-LFQH_Lloh12072:
+LFQH_Lloh12082:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh12073:
+LFQH_Lloh12083:
 nop
 mov	x0, x22
 bl	LFQH_Get
 cbz	x0, LFQH_LBB643_4
-LFQH_Lloh12074:
+LFQH_Lloh12084:
 adr x23, LFQH_l_.str.69
-LFQH_Lloh12075:
+LFQH_Lloh12085:
 nop
 mov	x0, x24
 mov	x1, x23
@@ -70764,21 +70794,21 @@ ldr	x8, [sp, #8]
 cmp	x8, #4
 ccmp	x0, #4, #0, eq
 b.ne	LFQH_LBB643_3
-LFQH_Lloh12076:
+LFQH_Lloh12086:
 adr x0, LFQH_l_.str.998
-LFQH_Lloh12077:
+LFQH_Lloh12087:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12078:
+LFQH_Lloh12088:
 adr x0, LFQH_l_.str.999
-LFQH_Lloh12079:
+LFQH_Lloh12089:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh12080:
+LFQH_Lloh12090:
 adr x27, LFQH_l_.str.1008
-LFQH_Lloh12081:
+LFQH_Lloh12091:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -70793,9 +70823,9 @@ mov	x0, x25
 mov	x1, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x28, x0
-LFQH_Lloh12082:
+LFQH_Lloh12092:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12083:
+LFQH_Lloh12093:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70818,9 +70848,9 @@ mov	x0, x25
 mov	x1, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12084:
+LFQH_Lloh12094:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12085:
+LFQH_Lloh12095:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70842,9 +70872,9 @@ mov.16b	v2, v14
 mov.16b	v3, v15
 bl	LFQH_VisibleRect
 cbz	w0, LFQH_LBB643_4
-LFQH_Lloh12086:
+LFQH_Lloh12096:
 adr x23, LFQH_l_.str.695
-LFQH_Lloh12087:
+LFQH_Lloh12097:
 nop
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -70876,9 +70906,9 @@ fmul	d1, d10, d1
 fsub	d0, d0, d1
 fmov	d13, #3.00000000
 fdiv	d12, d0, d13
-LFQH_Lloh12088:
+LFQH_Lloh12098:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12089:
+LFQH_Lloh12099:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70886,9 +70916,9 @@ mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v11, v0
 mov.16b	v8, v2
-LFQH_Lloh12090:
+LFQH_Lloh12100:
 adr x0, LFQH_l_.str.1306
-LFQH_Lloh12091:
+LFQH_Lloh12101:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70920,21 +70950,21 @@ fcmp	d0, d1
 cset	w0, ls
 b	LFQH_LBB643_4
 LFQH_LBB643_26:
-LFQH_Lloh12092:
+LFQH_Lloh12102:
 adr x1, LFQH_l_.str.137
-LFQH_Lloh12093:
+LFQH_Lloh12103:
 nop
 mov	x0, x25
 bl	LFQH_Get
-LFQH_Lloh12094:
+LFQH_Lloh12104:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12095:
+LFQH_Lloh12105:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB643_8
-LFQH_Lloh12096:
+LFQH_Lloh12106:
 adr x0, LFQH_l_.str.1306
-LFQH_Lloh12097:
+LFQH_Lloh12107:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70949,9 +70979,9 @@ fmaxnm	d0, d0, d1
 str	d0, [x21]
 mov	x8, #4620693217682128896
 str	x8, [x20]
-LFQH_Lloh12098:
+LFQH_Lloh12108:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12099:
+LFQH_Lloh12109:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -70988,15 +71018,15 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh12100:
+LFQH_Lloh12110:
 adr x1, LFQH_l_.str.1308
-LFQH_Lloh12101:
+LFQH_Lloh12111:
 nop
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB644_2
-LFQH_Lloh12102:
+LFQH_Lloh12112:
 adr x0, LFQH_l_.str.1308
-LFQH_Lloh12103:
+LFQH_Lloh12113:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71043,9 +71073,9 @@ mov	x19, x0
 mov	x1, x2
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12104:
+LFQH_Lloh12114:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh12105:
+LFQH_Lloh12115:
 nop
 mov	x0, x23
 bl	LFQH_Kind
@@ -71072,9 +71102,9 @@ ccmp	x9, x10, #2, ls
 ccmp	x8, x10, #2, ls
 b.ls	LFQH_LBB645_14
 LFQH_LBB645_4:
-LFQH_Lloh12106:
+LFQH_Lloh12116:
 adr x0, LFQH_l_.str.541
-LFQH_Lloh12107:
+LFQH_Lloh12117:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71095,14 +71125,14 @@ ldp	d11, d10, [sp], #112
 b Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB645_6:
 mov	w26, #0
-LFQH_Lloh12108:
+LFQH_Lloh12118:
 adr x24, LFQH_l_.str.41
-LFQH_Lloh12109:
+LFQH_Lloh12119:
 nop
 mov	x21, x23
-LFQH_Lloh12110:
+LFQH_Lloh12120:
 adr x25, LFQH_l_.str.19
-LFQH_Lloh12111:
+LFQH_Lloh12121:
 nop
 LFQH_LBB645_7:
 mov	x0, x24
@@ -71125,17 +71155,17 @@ LFQH_LBB645_11:
 mov	x21, x0
 cbz	x0, LFQH_LBB645_2
 LFQH_LBB645_12:
-LFQH_Lloh12112:
+LFQH_Lloh12122:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12113:
+LFQH_Lloh12123:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB645_2
-LFQH_Lloh12114:
+LFQH_Lloh12124:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12115:
+LFQH_Lloh12125:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71145,9 +71175,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh12116:
+LFQH_Lloh12126:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh12117:
+LFQH_Lloh12127:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71181,9 +71211,9 @@ mov	x1, x22
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12118:
+LFQH_Lloh12128:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh12119:
+LFQH_Lloh12129:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71199,9 +71229,9 @@ fadd	d10, d11, d1
 fadd	d0, d8, d0
 fmul	d0, d0, d2
 fadd	d8, d9, d0
-LFQH_Lloh12120:
+LFQH_Lloh12130:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12121:
+LFQH_Lloh12131:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71214,9 +71244,9 @@ fmov	d0, x8
 fccmp	d2, d0, #0, eq
 fccmp	d3, d0, #0, eq
 b.eq	LFQH_LBB645_22
-LFQH_Lloh12122:
+LFQH_Lloh12132:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh12123:
+LFQH_Lloh12133:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71228,26 +71258,26 @@ mov.16b	v1, v8
 mov.16b	v3, v2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB645_22:
-LFQH_Lloh12124:
+LFQH_Lloh12134:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12125:
+LFQH_Lloh12135:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB645_24
-LFQH_Lloh12126:
+LFQH_Lloh12136:
 adr x1, LFQH_ProfileAnchorKey
-LFQH_Lloh12127:
+LFQH_Lloh12137:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, x21
 b.eq	LFQH_LBB645_25
 LFQH_LBB645_24:
-LFQH_Lloh12128:
+LFQH_Lloh12138:
 adr x0, LFQH_l_.str.536
-LFQH_Lloh12129:
+LFQH_Lloh12139:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71255,9 +71285,9 @@ mov	x0, x19
 mov	x2, x20
 mov	x3, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12130:
+LFQH_Lloh12140:
 adr x1, LFQH_ProfileAnchorKey
-LFQH_Lloh12131:
+LFQH_Lloh12141:
 nop
 mov	x0, x20
 mov	x2, x21
@@ -71310,41 +71340,41 @@ add	x29, sp, #48
 .cfi_offset w23, -56
 .cfi_offset w24, -64
 mov	x19, x0
-LFQH_Lloh12132:
+LFQH_Lloh12142:
 adr x1, LFQH_PublishOwnerKey
-LFQH_Lloh12133:
+LFQH_Lloh12143:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB650_9
-LFQH_Lloh12134:
+LFQH_Lloh12144:
 adr x1, LFQH_l_.str.315
-LFQH_Lloh12135:
+LFQH_Lloh12145:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 mov	x22, x0
 mov	x20, x19
 cbz	w0, LFQH_LBB650_3
-LFQH_Lloh12136:
+LFQH_Lloh12146:
 adr x1, LFQH_l_.str.1317
-LFQH_Lloh12137:
+LFQH_Lloh12147:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
 LFQH_LBB650_3:
-LFQH_Lloh12138:
+LFQH_Lloh12148:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12139:
+LFQH_Lloh12149:
 nop
 mov	x0, x20
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB650_9
 cbz	x20, LFQH_LBB650_9
 mov	w23, #0
-LFQH_Lloh12140:
+LFQH_Lloh12150:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh12141:
+LFQH_Lloh12151:
 nop
 mov	x0, x20
 LFQH_LBB650_6:
@@ -71365,63 +71395,63 @@ ret
 LFQH_LBB650_10:
 mov	x0, x20
 bl	LFQH_FQHApply
-LFQH_Lloh12142:
+LFQH_Lloh12152:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12143:
+LFQH_Lloh12153:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, #0
 cset	w21, ne
 cbz	w22, LFQH_LBB650_12
-LFQH_Lloh12144:
+LFQH_Lloh12154:
 adr x1, LFQH_l_.str.1318
-LFQH_Lloh12145:
+LFQH_Lloh12155:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x21
 bl	LFQH_PublishGradient
-LFQH_Lloh12146:
+LFQH_Lloh12156:
 adr x22, LFQH_l_.str.1320
-LFQH_Lloh12147:
+LFQH_Lloh12157:
 nop
-LFQH_Lloh12148:
+LFQH_Lloh12158:
 adr x1, LFQH_l_.str.1319
-LFQH_Lloh12149:
+LFQH_Lloh12159:
 nop
 b	LFQH_LBB650_18
 LFQH_LBB650_12:
-LFQH_Lloh12150:
+LFQH_Lloh12160:
 adr x1, LFQH_l_.str.783
-LFQH_Lloh12151:
+LFQH_Lloh12161:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x21
 bl	LFQH_PublishGradient
-LFQH_Lloh12152:
+LFQH_Lloh12162:
 adr x1, LFQH_l_.str.618
-LFQH_Lloh12153:
+LFQH_Lloh12163:
 nop
 mov	x0, x19
 bl	LFQH_Get
-LFQH_Lloh12154:
+LFQH_Lloh12164:
 adr x1, LFQH_l_.str.1321
-LFQH_Lloh12155:
+LFQH_Lloh12165:
 nop
 bl	LFQH_BoolProp
 cbz	w0, LFQH_LBB650_15
-LFQH_Lloh12156:
+LFQH_Lloh12166:
 adr x1, LFQH_l_.str.1322
-LFQH_Lloh12157:
+LFQH_Lloh12167:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh12158:
+LFQH_Lloh12168:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12159:
+LFQH_Lloh12169:
 nop
 bl	LFQH_Get
 cmp	x0, x20
@@ -71430,16 +71460,16 @@ mov	x0, x22
 mov	x1, x21
 bl	LFQH_PublishBacking
 LFQH_LBB650_15:
-LFQH_Lloh12160:
+LFQH_Lloh12170:
 adr x1, LFQH_l_.str.1323
-LFQH_Lloh12161:
+LFQH_Lloh12171:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh12162:
+LFQH_Lloh12172:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12163:
+LFQH_Lloh12173:
 nop
 bl	LFQH_Get
 cmp	x0, x20
@@ -71448,13 +71478,13 @@ mov	x0, x22
 mov	x1, x21
 bl	LFQH_PublishBacking
 LFQH_LBB650_17:
-LFQH_Lloh12164:
+LFQH_Lloh12174:
 adr x22, LFQH_l_.str.1325
-LFQH_Lloh12165:
+LFQH_Lloh12175:
 nop
-LFQH_Lloh12166:
+LFQH_Lloh12176:
 adr x1, LFQH_l_.str.1324
-LFQH_Lloh12167:
+LFQH_Lloh12177:
 nop
 LFQH_LBB650_18:
 mov	x0, x19
@@ -71494,39 +71524,39 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12168:
+LFQH_Lloh12178:
 adr x1, LFQH_l_.str.784
-LFQH_Lloh12169:
+LFQH_Lloh12179:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB652_9
-LFQH_Lloh12170:
+LFQH_Lloh12180:
 adr x1, LFQH_l_.str.785
-LFQH_Lloh12171:
+LFQH_Lloh12181:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12172:
+LFQH_Lloh12182:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12173:
+LFQH_Lloh12183:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
 cbz	w20, LFQH_LBB652_4
 cbz	x21, LFQH_LBB652_4
-LFQH_Lloh12174:
+LFQH_Lloh12184:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12175:
+LFQH_Lloh12185:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12176:
+LFQH_Lloh12186:
 adr x0, LFQH_l_.str.788
-LFQH_Lloh12177:
+LFQH_Lloh12187:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71540,9 +71570,9 @@ LFQH_LBB652_4:
 cbnz	w20, LFQH_LBB652_9
 cbz	x22, LFQH_LBB652_9
 cbnz	x21, LFQH_LBB652_8
-LFQH_Lloh12178:
+LFQH_Lloh12188:
 adr x0, LFQH_l_.str.788
-LFQH_Lloh12179:
+LFQH_Lloh12189:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71550,9 +71580,9 @@ mov	x0, x19
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB652_8:
-LFQH_Lloh12180:
+LFQH_Lloh12190:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12181:
+LFQH_Lloh12191:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -71589,9 +71619,9 @@ mov	x20, x2
 mov	x21, x1
 mov	x19, x0
 mov	w23, #0
-LFQH_Lloh12182:
+LFQH_Lloh12192:
 adr x22, LFQH_l_.str.19
-LFQH_Lloh12183:
+LFQH_Lloh12193:
 nop
 LFQH_LBB653_2:
 cmp	x0, x21
@@ -71604,61 +71634,61 @@ add	w23, w23, #1
 b.lo	LFQH_LBB653_2
 b	LFQH_LBB653_16
 LFQH_LBB653_5:
-LFQH_Lloh12184:
+LFQH_Lloh12194:
 adr x0, LFQH_l_.str.502
-LFQH_Lloh12185:
+LFQH_Lloh12195:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12186:
+LFQH_Lloh12196:
 adr x0, LFQH_l_.str.35
-LFQH_Lloh12187:
+LFQH_Lloh12197:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
 mov	x0, x19
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12188:
+LFQH_Lloh12198:
 adr x8, LFQH_l_.str.45
-LFQH_Lloh12189:
+LFQH_Lloh12199:
 nop
-LFQH_Lloh12190:
+LFQH_Lloh12200:
 adr x9, LFQH_l_.str.171
-LFQH_Lloh12191:
+LFQH_Lloh12201:
 nop
 cmp	w0, #0
 csel	x21, x9, x8, eq
-LFQH_Lloh12192:
+LFQH_Lloh12202:
 adr x8, LFQH_l_.str.46
-LFQH_Lloh12193:
+LFQH_Lloh12203:
 nop
-LFQH_Lloh12194:
+LFQH_Lloh12204:
 adr x9, LFQH_l_.str.170
-LFQH_Lloh12195:
+LFQH_Lloh12205:
 nop
 csel	x1, x9, x8, eq
 mov	x0, x19
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh12196:
+LFQH_Lloh12206:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12197:
+LFQH_Lloh12207:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12198:
+LFQH_Lloh12208:
 adr x0, LFQH_l_.str.48
-LFQH_Lloh12199:
+LFQH_Lloh12209:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12200:
+LFQH_Lloh12210:
 adr x1, LFQH_PublishColorKey
-LFQH_Lloh12201:
+LFQH_Lloh12211:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -71667,9 +71697,9 @@ cbz	w20, LFQH_LBB653_10
 cbz	x22, LFQH_LBB653_10
 cmp	x22, x23
 b.eq	LFQH_LBB653_16
-LFQH_Lloh12202:
+LFQH_Lloh12212:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12203:
+LFQH_Lloh12213:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71677,9 +71707,9 @@ mov	x0, x22
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB653_16
-LFQH_Lloh12204:
+LFQH_Lloh12214:
 adr x1, LFQH_PublishColorKey
-LFQH_Lloh12205:
+LFQH_Lloh12215:
 nop
 mov	x0, x19
 mov	x2, x22
@@ -71700,9 +71730,9 @@ cbnz	w20, LFQH_LBB653_16
 cbz	x24, LFQH_LBB653_16
 cmp	x22, x23
 b.eq	LFQH_LBB653_14
-LFQH_Lloh12206:
+LFQH_Lloh12216:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12207:
+LFQH_Lloh12217:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71718,9 +71748,9 @@ mov	x0, x19
 mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB653_15:
-LFQH_Lloh12208:
+LFQH_Lloh12218:
 adr x1, LFQH_PublishColorKey
-LFQH_Lloh12209:
+LFQH_Lloh12219:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -71754,15 +71784,15 @@ add	x29, sp, #32
 cbz	x0, LFQH_LBB654_11
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12210:
+LFQH_Lloh12220:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12211:
+LFQH_Lloh12221:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12212:
+LFQH_Lloh12222:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12213:
+LFQH_Lloh12223:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71771,15 +71801,15 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w20, LFQH_LBB654_6
 cbnz	w0, LFQH_LBB654_6
 cbnz	x21, LFQH_LBB654_5
-LFQH_Lloh12214:
+LFQH_Lloh12224:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12215:
+LFQH_Lloh12225:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12216:
+LFQH_Lloh12226:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh12217:
+LFQH_Lloh12227:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71787,17 +71817,17 @@ mov	x0, x20
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12218:
+LFQH_Lloh12228:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12219:
+LFQH_Lloh12229:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB654_5:
-LFQH_Lloh12220:
+LFQH_Lloh12230:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12221:
+LFQH_Lloh12231:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71811,9 +71841,9 @@ LFQH_LBB654_6:
 cbnz	w20, LFQH_LBB654_11
 cbz	x21, LFQH_LBB654_11
 cbz	w0, LFQH_LBB654_10
-LFQH_Lloh12222:
+LFQH_Lloh12232:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12223:
+LFQH_Lloh12233:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71821,9 +71851,9 @@ mov	x0, x19
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB654_10:
-LFQH_Lloh12224:
+LFQH_Lloh12234:
 adr x1, LFQH_PublishBackingKey
-LFQH_Lloh12225:
+LFQH_Lloh12235:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -71860,36 +71890,36 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh12226:
+LFQH_Lloh12236:
 adr x1, LFQH_l_.str.311
-LFQH_Lloh12227:
+LFQH_Lloh12237:
 nop
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB657_2
-LFQH_Lloh12228:
+LFQH_Lloh12238:
 adr x1, LFQH_l_.str.315
-LFQH_Lloh12229:
+LFQH_Lloh12239:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB657_5
 LFQH_LBB657_2:
-LFQH_Lloh12230:
+LFQH_Lloh12240:
 adr x1, LFQH_PublishOwnerKey
-LFQH_Lloh12231:
+LFQH_Lloh12241:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbnz	x0, LFQH_LBB657_4
-LFQH_Lloh12232:
+LFQH_Lloh12242:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12233:
+LFQH_Lloh12243:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12234:
+LFQH_Lloh12244:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh12235:
+LFQH_Lloh12245:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -71897,9 +71927,9 @@ mov	x0, x20
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12236:
+LFQH_Lloh12246:
 adr x1, LFQH_PublishOwnerKey
-LFQH_Lloh12237:
+LFQH_Lloh12247:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -71949,32 +71979,32 @@ mov	x20, x3
 mov	x23, x2
 mov	x22, x1
 mov	x19, x0
-LFQH_Lloh12238:
+LFQH_Lloh12248:
 adr x1, LFQH_TopChromeOwnerKey
-LFQH_Lloh12239:
+LFQH_Lloh12249:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
 cbz	w24, LFQH_LBB658_19
-LFQH_Lloh12240:
+LFQH_Lloh12250:
 adr x1, LFQH_l_.str.1332
-LFQH_Lloh12241:
+LFQH_Lloh12251:
 nop
 mov	x0, x20
 bl	LFQH_Kind
 mov	x25, x0
-LFQH_Lloh12242:
+LFQH_Lloh12252:
 adr x1, LFQH_TopChromeSurfaceKey
-LFQH_Lloh12243:
+LFQH_Lloh12253:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x24, x0
 cbz	x19, LFQH_LBB658_20
 cbz	w25, LFQH_LBB658_20
-LFQH_Lloh12244:
+LFQH_Lloh12254:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12245:
+LFQH_Lloh12255:
 nop
 mov	x0, x22
 bl	LFQH_Get
@@ -72001,18 +72031,18 @@ fcmp	d8, #0.0
 b.le	LFQH_LBB658_20
 cbz	x24, LFQH_LBB658_32
 LFQH_LBB658_9:
-LFQH_Lloh12246:
+LFQH_Lloh12256:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12247:
+LFQH_Lloh12257:
 nop
 mov	x0, x23
 bl	LFQH_Get
 mov	x25, x0
 cmp	x0, x19
 b.eq	LFQH_LBB658_11
-LFQH_Lloh12248:
+LFQH_Lloh12258:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh12249:
+LFQH_Lloh12259:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72028,9 +72058,9 @@ mov.16b	v10, v1
 mov.16b	v9, v2
 mov.16b	v8, v3
 LFQH_LBB658_11:
-LFQH_Lloh12250:
+LFQH_Lloh12260:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12251:
+LFQH_Lloh12261:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72045,9 +72075,9 @@ b.ne	LFQH_LBB658_15
 fcmp	d3, d8
 b.eq	LFQH_LBB658_16
 LFQH_LBB658_15:
-LFQH_Lloh12252:
+LFQH_Lloh12262:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh12253:
+LFQH_Lloh12263:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72058,26 +72088,26 @@ mov.16b	v2, v9
 mov.16b	v3, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB658_16:
-LFQH_Lloh12254:
+LFQH_Lloh12264:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12255:
+LFQH_Lloh12265:
 nop
 mov	x0, x24
 bl	LFQH_Get
 cmp	x0, x25
 b.ne	LFQH_LBB658_18
-LFQH_Lloh12256:
+LFQH_Lloh12266:
 adr x1, LFQH_TopChromeAnchorKey
-LFQH_Lloh12257:
+LFQH_Lloh12267:
 nop
 mov	x0, x24
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, x23
 b.eq	LFQH_LBB658_36
 LFQH_LBB658_18:
-LFQH_Lloh12258:
+LFQH_Lloh12268:
 adr x0, LFQH_l_.str.536
-LFQH_Lloh12259:
+LFQH_Lloh12269:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72085,9 +72115,9 @@ mov	x0, x25
 mov	x2, x24
 mov	x3, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12260:
+LFQH_Lloh12270:
 adr x1, LFQH_TopChromeAnchorKey
-LFQH_Lloh12261:
+LFQH_Lloh12271:
 nop
 mov	w25, #1
 mov	x0, x24
@@ -72097,34 +72127,34 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 mov	w23, #0
 b	LFQH_LBB658_21
 LFQH_LBB658_19:
-LFQH_Lloh12262:
+LFQH_Lloh12272:
 adr x1, LFQH_TopChromeSurfaceKey
-LFQH_Lloh12263:
+LFQH_Lloh12273:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x24, x0
 LFQH_LBB658_20:
-LFQH_Lloh12264:
+LFQH_Lloh12274:
 adr x0, LFQH_l_.str.541
-LFQH_Lloh12265:
+LFQH_Lloh12275:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12266:
+LFQH_Lloh12276:
 adr x1, LFQH_TopChromeAnchorKey
-LFQH_Lloh12267:
+LFQH_Lloh12277:
 nop
 mov	w23, #1
 mov	x0, x24
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12268:
+LFQH_Lloh12278:
 adr x1, LFQH_TopChromeSurfaceKey
-LFQH_Lloh12269:
+LFQH_Lloh12279:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -72138,9 +72168,9 @@ b.eq	LFQH_LBB658_23
 mov	x0, x21
 mov	w1, #0
 bl	LFQH_TopChromeFill
-LFQH_Lloh12270:
+LFQH_Lloh12280:
 adr x1, LFQH_TopChromeOwnerKey
-LFQH_Lloh12271:
+LFQH_Lloh12281:
 nop
 mov	x0, x19
 mov	x2, x22
@@ -72151,17 +72181,17 @@ tbz	w23, #0, LFQH_LBB658_25
 mov	x20, #0
 b	LFQH_LBB658_26
 LFQH_LBB658_25:
-LFQH_Lloh12272:
+LFQH_Lloh12282:
 adr x1, LFQH_l_.str.1333
-LFQH_Lloh12273:
+LFQH_Lloh12283:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x20, x0
 LFQH_LBB658_26:
-LFQH_Lloh12274:
+LFQH_Lloh12284:
 adr x1, LFQH_TopChromeEdgeHiddenKey
-LFQH_Lloh12275:
+LFQH_Lloh12285:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -72169,51 +72199,51 @@ cmp	x0, x20
 ccmp	x0, #0, #4, ne
 b.eq	LFQH_LBB658_28
 mov	x21, x0
-LFQH_Lloh12276:
+LFQH_Lloh12286:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12277:
+LFQH_Lloh12287:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12278:
+LFQH_Lloh12288:
 adr x1, LFQH_TopChromeEdgeHiddenKey
-LFQH_Lloh12279:
+LFQH_Lloh12289:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB658_28:
-LFQH_Lloh12280:
+LFQH_Lloh12290:
 adr x1, LFQH_l_.str.75
-LFQH_Lloh12281:
+LFQH_Lloh12291:
 nop
 mov	x0, x20
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB658_31
-LFQH_Lloh12282:
+LFQH_Lloh12292:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12283:
+LFQH_Lloh12293:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB658_31
-LFQH_Lloh12284:
+LFQH_Lloh12294:
 adr x1, LFQH_TopChromeEdgeHiddenKey
-LFQH_Lloh12285:
+LFQH_Lloh12295:
 nop
 mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12286:
+LFQH_Lloh12296:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12287:
+LFQH_Lloh12297:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72231,15 +72261,15 @@ ldp	d9, d8, [sp, #16]
 ldp	d11, d10, [sp], #112
 ret
 LFQH_LBB658_32:
-LFQH_Lloh12288:
+LFQH_Lloh12298:
 adr x0, LFQH_l_.str.1334
-LFQH_Lloh12289:
+LFQH_Lloh12299:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh12290:
+LFQH_Lloh12300:
 adr x0, LFQH_l_.str.12
-LFQH_Lloh12291:
+LFQH_Lloh12301:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72248,24 +72278,24 @@ mov	w2, #6
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB658_35
 mov	x24, x0
-LFQH_Lloh12292:
+LFQH_Lloh12302:
 adr x0, LFQH_l_.str.15
-LFQH_Lloh12293:
+LFQH_Lloh12303:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh12294:
+LFQH_Lloh12304:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh12295:
+LFQH_Lloh12305:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh12296:
+LFQH_Lloh12306:
 adr x0, LFQH_l_.str.512
-LFQH_Lloh12297:
+LFQH_Lloh12307:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72274,51 +72304,51 @@ mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB658_35
 mov	x24, x0
-LFQH_Lloh12298:
+LFQH_Lloh12308:
 adr x0, LFQH_l_.str.513
-LFQH_Lloh12299:
+LFQH_Lloh12309:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12300:
+LFQH_Lloh12310:
 adr x0, LFQH_l_.str.514
-LFQH_Lloh12301:
+LFQH_Lloh12311:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12302:
+LFQH_Lloh12312:
 adr x0, LFQH_l_.str.516
-LFQH_Lloh12303:
+LFQH_Lloh12313:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12304:
+LFQH_Lloh12314:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12305:
+LFQH_Lloh12315:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh12306:
+LFQH_Lloh12316:
 adr x0, LFQH_l_.str.1335
-LFQH_Lloh12307:
+LFQH_Lloh12317:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh12308:
+LFQH_Lloh12318:
 adr x0, LFQH_l_.str.1243
-LFQH_Lloh12309:
+LFQH_Lloh12319:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72327,41 +72357,41 @@ fmov	d0, x8
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh12310:
+LFQH_Lloh12320:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh12311:
+LFQH_Lloh12321:
 nop
 mov	x0, x24
 bl	LFQH_Get
 mov	x26, x0
-LFQH_Lloh12312:
+LFQH_Lloh12322:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12313:
+LFQH_Lloh12323:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
 mov	x2, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12314:
+LFQH_Lloh12324:
 adr x1, LFQH_TopChromeTintKey
-LFQH_Lloh12315:
+LFQH_Lloh12325:
 nop
 mov	x0, x24
 mov	x2, x25
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12316:
+LFQH_Lloh12326:
 adr x1, LFQH_TopChromeSurfaceKey
-LFQH_Lloh12317:
+LFQH_Lloh12327:
 nop
 mov	x0, x19
 mov	x2, x24
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12318:
+LFQH_Lloh12328:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh12319:
+LFQH_Lloh12329:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72397,68 +72427,68 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x23, x1
 mov	x19, x0
-LFQH_Lloh12320:
+LFQH_Lloh12330:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12321:
+LFQH_Lloh12331:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB659_14
-LFQH_Lloh12322:
+LFQH_Lloh12332:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12323:
+LFQH_Lloh12333:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12324:
+LFQH_Lloh12334:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh12325:
+LFQH_Lloh12335:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12326:
+LFQH_Lloh12336:
 adr x0, LFQH_l_.str.467
-LFQH_Lloh12327:
+LFQH_Lloh12337:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12328:
+LFQH_Lloh12338:
 adr x1, LFQH_TopChromeColorKey
-LFQH_Lloh12329:
+LFQH_Lloh12339:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12330:
+LFQH_Lloh12340:
 adr x1, LFQH_TopChromeOpaqueKey
-LFQH_Lloh12331:
+LFQH_Lloh12341:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	w23, LFQH_LBB659_7
-LFQH_Lloh12332:
+LFQH_Lloh12342:
 adr x0, LFQH_l_.str.504
-LFQH_Lloh12333:
+LFQH_Lloh12343:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB659_4
-LFQH_Lloh12334:
+LFQH_Lloh12344:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12335:
+LFQH_Lloh12345:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12336:
+LFQH_Lloh12346:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh12337:
+LFQH_Lloh12347:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72466,16 +72496,16 @@ mov	x0, x22
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12338:
+LFQH_Lloh12348:
 adr x1, LFQH_TopChromeOpaqueKey
-LFQH_Lloh12339:
+LFQH_Lloh12349:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12340:
+LFQH_Lloh12350:
 adr x0, LFQH_l_.str.516
-LFQH_Lloh12341:
+LFQH_Lloh12351:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72486,9 +72516,9 @@ LFQH_LBB659_4:
 cmp	x21, x20
 ccmp	x21, #0, #4, ne
 b.eq	LFQH_LBB659_14
-LFQH_Lloh12342:
+LFQH_Lloh12352:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12343:
+LFQH_Lloh12353:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72496,17 +72526,17 @@ mov	x0, x21
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB659_14
-LFQH_Lloh12344:
+LFQH_Lloh12354:
 adr x1, LFQH_TopChromeColorKey
-LFQH_Lloh12345:
+LFQH_Lloh12355:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12346:
+LFQH_Lloh12356:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12347:
+LFQH_Lloh12357:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72519,18 +72549,18 @@ ldp	x24, x23, [sp], #64
 b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB659_7:
 cbz	x0, LFQH_LBB659_9
-LFQH_Lloh12348:
+LFQH_Lloh12358:
 adr x0, LFQH_l_.str.516
-LFQH_Lloh12349:
+LFQH_Lloh12359:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12350:
+LFQH_Lloh12360:
 adr x1, LFQH_TopChromeOpaqueKey
-LFQH_Lloh12351:
+LFQH_Lloh12361:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -72540,9 +72570,9 @@ LFQH_LBB659_9:
 cbz	x22, LFQH_LBB659_14
 cmp	x21, x20
 b.eq	LFQH_LBB659_12
-LFQH_Lloh12352:
+LFQH_Lloh12362:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12353:
+LFQH_Lloh12363:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72551,9 +72581,9 @@ mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB659_13
 LFQH_LBB659_12:
-LFQH_Lloh12354:
+LFQH_Lloh12364:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12355:
+LFQH_Lloh12365:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72561,9 +72591,9 @@ mov	x0, x19
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB659_13:
-LFQH_Lloh12356:
+LFQH_Lloh12366:
 adr x1, LFQH_TopChromeColorKey
-LFQH_Lloh12357:
+LFQH_Lloh12367:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -72614,15 +72644,15 @@ mov	x22, x2
 mov.16b	v11, v0
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh12358:
+LFQH_Lloh12368:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12359:
+LFQH_Lloh12369:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB660_27
-LFQH_Lloh12360:
+LFQH_Lloh12370:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12361:
+LFQH_Lloh12371:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72637,9 +72667,9 @@ mov.16b	v8, v0
 mov.16b	v15, v1
 mov.16b	v9, v2
 mov.16b	v10, v3
-LFQH_Lloh12362:
+LFQH_Lloh12372:
 adr x1, LFQH_TopChromeFrameKey
-LFQH_Lloh12363:
+LFQH_Lloh12373:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -72673,9 +72703,9 @@ fsub	d0, d15, d11
 fmov	d1, xzr
 fmaxnm	d13, d0, d1
 LFQH_LBB660_8:
-LFQH_Lloh12364:
+LFQH_Lloh12374:
 adr x1, LFQH_TopChromeScrollKey
-LFQH_Lloh12365:
+LFQH_Lloh12375:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -72702,18 +72732,18 @@ cmp	x22, x19
 b.eq	LFQH_LBB660_15
 cmp	x19, x20
 csel	x2, xzr, x19, eq
-LFQH_Lloh12366:
+LFQH_Lloh12376:
 adr x1, LFQH_TopChromeScrollKey
-LFQH_Lloh12367:
+LFQH_Lloh12377:
 nop
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB660_15:
 cbz	x21, LFQH_LBB660_18
-LFQH_Lloh12368:
+LFQH_Lloh12378:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh12369:
+LFQH_Lloh12379:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72726,16 +72756,16 @@ fccmp	d2, d9, #0, eq
 fccmp	d3, d11, #0, eq
 b.eq	LFQH_LBB660_22
 LFQH_LBB660_18:
-LFQH_Lloh12370:
+LFQH_Lloh12380:
 adr x21, LFQH_l_.str.455
-LFQH_Lloh12371:
+LFQH_Lloh12381:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12372:
+LFQH_Lloh12382:
 adr x23, LFQH_l_.str.724
-LFQH_Lloh12373:
+LFQH_Lloh12383:
 nop
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -72747,9 +72777,9 @@ mov.16b	v2, v9
 mov.16b	v3, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12374:
+LFQH_Lloh12384:
 adr x1, LFQH_TopChromeStockFrameKey
-LFQH_Lloh12375:
+LFQH_Lloh12385:
 nop
 mov	x0, x20
 mov	w3, #1
@@ -72767,33 +72797,33 @@ mov.16b	v2, v9
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12376:
+LFQH_Lloh12386:
 adr x1, LFQH_TopChromeFrameKey
-LFQH_Lloh12377:
+LFQH_Lloh12387:
 nop
 mov	x0, x20
 b	LFQH_LBB660_21
 LFQH_LBB660_19:
 cbz	x21, LFQH_LBB660_22
-LFQH_Lloh12378:
+LFQH_Lloh12388:
 adr x1, LFQH_TopChromeStockFrameKey
-LFQH_Lloh12379:
+LFQH_Lloh12389:
 nop
 mov	x0, x20
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12380:
+LFQH_Lloh12390:
 adr x1, LFQH_TopChromeFrameKey
-LFQH_Lloh12381:
+LFQH_Lloh12391:
 nop
 mov	x0, x20
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12382:
+LFQH_Lloh12392:
 adr x1, LFQH_TopChromeScrollKey
-LFQH_Lloh12383:
+LFQH_Lloh12393:
 nop
 mov	x0, x20
 mov	x2, #0
@@ -72810,9 +72840,9 @@ fccmp	d1, d9, #0, eq
 fccmp	d0, d11, #0, eq
 b.eq	LFQH_LBB660_25
 LFQH_LBB660_24:
-LFQH_Lloh12384:
+LFQH_Lloh12394:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh12385:
+LFQH_Lloh12395:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72867,38 +72897,38 @@ add	x29, sp, #48
 .cfi_offset b8, -56
 .cfi_offset b9, -64
 mov	x22, x1
-LFQH_Lloh12386:
+LFQH_Lloh12396:
 adr x1, LFQH_l_.str.1096
-LFQH_Lloh12387:
+LFQH_Lloh12397:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12388:
+LFQH_Lloh12398:
 adr x1, LFQH_TopChromeSurfaceKey
-LFQH_Lloh12389:
+LFQH_Lloh12399:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12390:
+LFQH_Lloh12400:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh12391:
+LFQH_Lloh12401:
 nop
 bl	LFQH_Get
 cbz	x22, LFQH_LBB661_14
 mov	x19, x0
 cbz	x0, LFQH_LBB661_14
-LFQH_Lloh12392:
+LFQH_Lloh12402:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh12393:
+LFQH_Lloh12403:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v1
-LFQH_Lloh12394:
+LFQH_Lloh12404:
 adr x0, LFQH_l_.str.1338
-LFQH_Lloh12395:
+LFQH_Lloh12405:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72913,31 +72943,31 @@ fmov	d1, #-24.00000000
 fdiv	d0, d0, d1
 fmov	d1, #1.00000000
 fadd	d8, d0, d1
-LFQH_Lloh12396:
+LFQH_Lloh12406:
 adr x1, LFQH_TopChromeTintKey
-LFQH_Lloh12397:
+LFQH_Lloh12407:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 fcmp	d8, #0.0
 b.le	LFQH_LBB661_11
-LFQH_Lloh12398:
+LFQH_Lloh12408:
 adr x1, LFQH_l_.str.467
-LFQH_Lloh12399:
+LFQH_Lloh12409:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh12400:
+LFQH_Lloh12410:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12401:
+LFQH_Lloh12411:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
 cbz	x20, LFQH_LBB661_7
-LFQH_Lloh12402:
+LFQH_Lloh12412:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh12403:
+LFQH_Lloh12413:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72946,9 +72976,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x20, x0
 b.eq	LFQH_LBB661_7
 mov	x22, x0
-LFQH_Lloh12404:
+LFQH_Lloh12414:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12405:
+LFQH_Lloh12415:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72957,9 +72987,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB661_8
 LFQH_LBB661_7:
-LFQH_Lloh12406:
+LFQH_Lloh12416:
 adr x0, LFQH_l_.str.1335
-LFQH_Lloh12407:
+LFQH_Lloh12417:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72970,9 +73000,9 @@ LFQH_LBB661_8:
 fmov	d0, #1.00000000
 fcmp	d8, d0
 b.eq	LFQH_LBB661_12
-LFQH_Lloh12408:
+LFQH_Lloh12418:
 adr x0, LFQH_l_.str.1243
-LFQH_Lloh12409:
+LFQH_Lloh12419:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -72985,27 +73015,27 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 b	LFQH_LBB661_11
 LFQH_LBB661_10:
-LFQH_Lloh12410:
+LFQH_Lloh12420:
 adr x1, LFQH_TopChromeTintKey
-LFQH_Lloh12411:
+LFQH_Lloh12421:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 LFQH_LBB661_11:
 mov	x20, x0
 LFQH_LBB661_12:
-LFQH_Lloh12412:
+LFQH_Lloh12422:
 adr x1, LFQH_l_.str.467
-LFQH_Lloh12413:
+LFQH_Lloh12423:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x20
 b.eq	LFQH_LBB661_14
 mov	x21, x0
-LFQH_Lloh12414:
+LFQH_Lloh12424:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12415:
+LFQH_Lloh12425:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73020,9 +73050,9 @@ ldp	x22, x21, [sp, #16]
 ldp	d9, d8, [sp], #64
 ret
 LFQH_LBB661_15:
-LFQH_Lloh12416:
+LFQH_Lloh12426:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12417:
+LFQH_Lloh12427:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73080,16 +73110,16 @@ bl LDiagnosticsEnabled
 cbz	w0, LFQH_LBB662_15
 cbz	x22, LFQH_LBB662_15
 cbz	x24, LFQH_LBB662_15
-LFQH_Lloh12418:
+LFQH_Lloh12428:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh12419:
+LFQH_Lloh12429:
 nop
 mov	x0, x22
 bl	LFQH_Get
 cbz	x0, LFQH_LBB662_15
-LFQH_Lloh12420:
+LFQH_Lloh12430:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12421:
+LFQH_Lloh12431:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73099,9 +73129,9 @@ mov	x0, x24
 bl	LFQH_TopChromeStockFrame
 stp	d1, d0, [sp, #32]
 stp	d3, d2, [sp, #16]
-LFQH_Lloh12422:
+LFQH_Lloh12432:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12423:
+LFQH_Lloh12433:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73111,9 +73141,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh12424:
+LFQH_Lloh12434:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh12425:
+LFQH_Lloh12435:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73127,9 +73157,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 stp	d2, d0, [sp]
 stp	d1, d3, [sp, #48]
 cbz	x23, LFQH_LBB662_11
-LFQH_Lloh12426:
+LFQH_Lloh12436:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12427:
+LFQH_Lloh12437:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73139,9 +73169,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh12428:
+LFQH_Lloh12438:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh12429:
+LFQH_Lloh12439:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73156,9 +73186,9 @@ mov.16b	v11, v0
 mov.16b	v10, v1
 mov.16b	v9, v2
 mov.16b	v14, v3
-LFQH_Lloh12430:
+LFQH_Lloh12440:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12431:
+LFQH_Lloh12441:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -73166,21 +73196,21 @@ cmp	x0, x22
 ccmp	x0, #0, #4, ne
 b.eq	LFQH_LBB662_12
 mov	x23, x0
-LFQH_Lloh12432:
+LFQH_Lloh12442:
 adr x24, LFQH_l_.str.468
-LFQH_Lloh12433:
+LFQH_Lloh12443:
 nop
-LFQH_Lloh12434:
+LFQH_Lloh12444:
 adr x25, LFQH_l_.str.19
-LFQH_Lloh12435:
+LFQH_Lloh12445:
 nop
-LFQH_Lloh12436:
+LFQH_Lloh12446:
 adr x26, LFQH_l_.str.23
-LFQH_Lloh12437:
+LFQH_Lloh12447:
 nop
-LFQH_Lloh12438:
+LFQH_Lloh12448:
 adr x27, LFQH_l_.str.695
-LFQH_Lloh12439:
+LFQH_Lloh12449:
 nop
 LFQH_LBB662_7:
 mov	x0, x24
@@ -73239,18 +73269,18 @@ fmov	d11, xzr
 LFQH_LBB662_12:
 and	w8, w19, #0xff
 ucvtf	d12, w8
-LFQH_Lloh12440:
+LFQH_Lloh12450:
 adr x1, LFQH_TopChromeGeometryKey
-LFQH_Lloh12441:
+LFQH_Lloh12451:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
 ldr	d8, [sp, #48]
 cbz	x0, LFQH_LBB662_14
 mov	x22, x0
-LFQH_Lloh12442:
+LFQH_Lloh12452:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh12443:
+LFQH_Lloh12453:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73263,15 +73293,15 @@ fccmp	d0, d2, #0, eq
 fccmp	d3, d12, #0, eq
 b.eq	LFQH_LBB662_15
 LFQH_LBB662_14:
-LFQH_Lloh12444:
+LFQH_Lloh12454:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh12445:
+LFQH_Lloh12455:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12446:
+LFQH_Lloh12456:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh12447:
+LFQH_Lloh12457:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73283,38 +73313,38 @@ mov.16b	v2, v13
 mov.16b	v3, v12
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12448:
+LFQH_Lloh12458:
 adr x1, LFQH_TopChromeGeometryKey
-LFQH_Lloh12449:
+LFQH_Lloh12459:
 nop
 mov	x0, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12450:
+LFQH_Lloh12460:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh12451:
+LFQH_Lloh12461:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12452:
+LFQH_Lloh12462:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh12453:
+LFQH_Lloh12463:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12454:
+LFQH_Lloh12464:
 adr x22, LFQH_l_.str.445
-LFQH_Lloh12455:
+LFQH_Lloh12465:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12456:
+LFQH_Lloh12466:
 adr x24, LFQH_l_.str.517
-LFQH_Lloh12457:
+LFQH_Lloh12467:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -73323,19 +73353,19 @@ mov	x0, x23
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12458:
+LFQH_Lloh12468:
 adr x1, LFQH_l_.str.521
-LFQH_Lloh12459:
+LFQH_Lloh12469:
 nop
 mov	x0, x21
 bl	LFQH_Put
-LFQH_Lloh12460:
+LFQH_Lloh12470:
 adr x8, LFQH_l_.str.1344
-LFQH_Lloh12461:
+LFQH_Lloh12471:
 nop
-LFQH_Lloh12462:
+LFQH_Lloh12472:
 adr x9, LFQH_l_.str.1345
-LFQH_Lloh12463:
+LFQH_Lloh12473:
 nop
 cmp	w19, #0
 csel	x19, x9, x8, eq
@@ -73349,9 +73379,9 @@ mov	x0, x20
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12464:
+LFQH_Lloh12474:
 adr x1, LFQH_l_.str.1343
-LFQH_Lloh12465:
+LFQH_Lloh12475:
 nop
 mov	x0, x21
 bl	LFQH_Put
@@ -73359,9 +73389,9 @@ ldp	d1, d0, [sp, #32]
 ldp	d3, d2, [sp, #16]
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh12466:
+LFQH_Lloh12476:
 adr x1, LFQH_l_.str.1346
-LFQH_Lloh12467:
+LFQH_Lloh12477:
 nop
 mov	x0, x21
 bl	LFQH_Put
@@ -73370,9 +73400,9 @@ mov.16b	v1, v8
 mov.16b	v3, v13
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh12468:
+LFQH_Lloh12478:
 adr x1, LFQH_l_.str.1347
-LFQH_Lloh12469:
+LFQH_Lloh12479:
 nop
 mov	x0, x21
 bl	LFQH_Put
@@ -73382,15 +73412,15 @@ mov.16b	v2, v9
 mov.16b	v3, v14
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh12470:
+LFQH_Lloh12480:
 adr x1, LFQH_l_.str.1348
-LFQH_Lloh12471:
+LFQH_Lloh12481:
 nop
 mov	x0, x21
 bl	LFQH_Put
-LFQH_Lloh12472:
+LFQH_Lloh12482:
 adr x0, LFQH_l_.str.1349
-LFQH_Lloh12473:
+LFQH_Lloh12483:
 nop
 mov	x1, x21
 ldp	x29, x30, [sp, #208]
@@ -73476,16 +73506,16 @@ mov.16b	v9, v2
 mov.16b	v11, v1
 mov.16b	v10, v0
 mov	x19, x0
-LFQH_Lloh12474:
+LFQH_Lloh12484:
 adr x1, LFQH_TopChromeFrameKey
-LFQH_Lloh12475:
+LFQH_Lloh12485:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB670_3
 mov	x20, x0
-LFQH_Lloh12476:
+LFQH_Lloh12486:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh12477:
+LFQH_Lloh12487:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73493,16 +73523,16 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d11, d1
 b.ne	LFQH_LBB670_3
-LFQH_Lloh12478:
+LFQH_Lloh12488:
 adr x1, LFQH_TopChromeStockFrameKey
-LFQH_Lloh12479:
+LFQH_Lloh12489:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12480:
+LFQH_Lloh12490:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh12481:
+LFQH_Lloh12491:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73544,9 +73574,9 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12482:
+LFQH_Lloh12492:
 adr x1, LFQH_l_.str.1332
-LFQH_Lloh12483:
+LFQH_Lloh12493:
 nop
 mov	x0, x20
 bl	LFQH_Kind
@@ -73554,9 +73584,9 @@ mov	x8, x0
 mov	w0, #0
 cbz	w8, LFQH_LBB672_7
 cbz	x20, LFQH_LBB672_7
-LFQH_Lloh12484:
+LFQH_Lloh12494:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh12485:
+LFQH_Lloh12495:
 nop
 LFQH_LBB672_4:
 cmp	x20, x19
@@ -73611,9 +73641,9 @@ add	x29, sp, #112
 cbz	x0, LFQH_LBB674_20
 mov.16b	v11, v0
 mov	x19, x0
-LFQH_Lloh12486:
+LFQH_Lloh12496:
 adr x0, LFQH_l_.str.1306
-LFQH_Lloh12487:
+LFQH_Lloh12497:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73622,23 +73652,23 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v12, v0
 stp	d2, d1, [sp]
 mov.16b	v10, v3
-LFQH_Lloh12488:
+LFQH_Lloh12498:
 adr x1, LFQH_TopChromeInsetKey
-LFQH_Lloh12489:
+LFQH_Lloh12499:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12490:
+LFQH_Lloh12500:
 adr x1, LFQH_TopChromeStockInsetKey
-LFQH_Lloh12491:
+LFQH_Lloh12501:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12492:
+LFQH_Lloh12502:
 adr x22, LFQH_l_.str.495
-LFQH_Lloh12493:
+LFQH_Lloh12503:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -73658,22 +73688,22 @@ cset	w22, ne
 cmp	w22, #0
 fccmp	d12, d13, #4, ne
 b.eq	LFQH_LBB674_5
-LFQH_Lloh12494:
+LFQH_Lloh12504:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh12495:
+LFQH_Lloh12505:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12496:
+LFQH_Lloh12506:
 adr x1, LFQH_l_.str.316
-LFQH_Lloh12497:
+LFQH_Lloh12507:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB674_4
-LFQH_Lloh12498:
+LFQH_Lloh12508:
 adr x1, LFQH_l_.str.1336
-LFQH_Lloh12499:
+LFQH_Lloh12509:
 nop
 mov	x0, x21
 bl	LFQH_Get
@@ -73694,15 +73724,15 @@ fcsel	d15, d8, d0, ne
 fcmp	d11, #0.0
 b.le	LFQH_LBB674_8
 cbz	w8, LFQH_LBB674_8
-LFQH_Lloh12500:
+LFQH_Lloh12510:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12501:
+LFQH_Lloh12511:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12502:
+LFQH_Lloh12512:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh12503:
+LFQH_Lloh12513:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73710,9 +73740,9 @@ mov	x0, x21
 mov.16b	v0, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12504:
+LFQH_Lloh12514:
 adr x1, LFQH_TopChromeStockInsetKey
-LFQH_Lloh12505:
+LFQH_Lloh12515:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -73724,15 +73754,15 @@ cset	w8, ne
 fcmp	d11, #0.0
 b.le	LFQH_LBB674_11
 tbnz	w8, #0, LFQH_LBB674_11
-LFQH_Lloh12506:
+LFQH_Lloh12516:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12507:
+LFQH_Lloh12517:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12508:
+LFQH_Lloh12518:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh12509:
+LFQH_Lloh12519:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73740,9 +73770,9 @@ mov	x0, x21
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12510:
+LFQH_Lloh12520:
 adr x1, LFQH_TopChromeInsetKey
-LFQH_Lloh12511:
+LFQH_Lloh12521:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -73751,17 +73781,17 @@ LFQH_LBB674_11:
 fcmp	d11, #0.0
 b.ne	LFQH_LBB674_14
 cbz	x20, LFQH_LBB674_14
-LFQH_Lloh12512:
+LFQH_Lloh12522:
 adr x1, LFQH_TopChromeStockInsetKey
-LFQH_Lloh12513:
+LFQH_Lloh12523:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12514:
+LFQH_Lloh12524:
 adr x1, LFQH_TopChromeInsetKey
-LFQH_Lloh12515:
+LFQH_Lloh12525:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -73774,9 +73804,9 @@ tbnz	w8, #0, LFQH_LBB674_16
 fcmp	d15, d12
 b.eq	LFQH_LBB674_20
 LFQH_LBB674_16:
-LFQH_Lloh12516:
+LFQH_Lloh12526:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh12517:
+LFQH_Lloh12527:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73784,9 +73814,9 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh12518:
+LFQH_Lloh12528:
 adr x0, LFQH_l_.str.1338
-LFQH_Lloh12519:
+LFQH_Lloh12529:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73803,9 +73833,9 @@ tst	w22, w8
 fcsel	d11, d1, d0, ne
 fcmp	d15, d12
 b.eq	LFQH_LBB674_18
-LFQH_Lloh12520:
+LFQH_Lloh12530:
 adr x0, LFQH_l_.str.1339
-LFQH_Lloh12521:
+LFQH_Lloh12531:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73816,9 +73846,9 @@ mov.16b	v3, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB674_18:
 fsub	d9, d9, d11
-LFQH_Lloh12522:
+LFQH_Lloh12532:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh12523:
+LFQH_Lloh12533:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73839,9 +73869,9 @@ ldp	d15, d14, [sp, #16]
 add	sp, sp, #128
 ret
 LFQH_LBB674_21:
-LFQH_Lloh12524:
+LFQH_Lloh12534:
 adr x0, LFQH_l_.str.1340
-LFQH_Lloh12525:
+LFQH_Lloh12535:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73876,21 +73906,21 @@ add	x29, sp, #48
 .cfi_offset b8, -56
 .cfi_offset b9, -64
 mov	x20, x0
-LFQH_Lloh12526:
+LFQH_Lloh12536:
 adr x1, LFQH_l_.str.1341
-LFQH_Lloh12527:
+LFQH_Lloh12537:
 nop
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh12528:
+LFQH_Lloh12538:
 adr x1, LFQH_l_.str.429
-LFQH_Lloh12529:
+LFQH_Lloh12539:
 nop
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB675_2
-LFQH_Lloh12530:
+LFQH_Lloh12540:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12531:
+LFQH_Lloh12541:
 nop
 mov	x0, x22
 bl	LFQH_Get
@@ -73903,44 +73933,44 @@ ldp	x22, x21, [sp, #16]
 ldp	d9, d8, [sp], #64
 ret
 LFQH_LBB675_3:
-LFQH_Lloh12532:
+LFQH_Lloh12542:
 adr x1, LFQH_l_.str.426
-LFQH_Lloh12533:
+LFQH_Lloh12543:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh12534:
+LFQH_Lloh12544:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12535:
+LFQH_Lloh12545:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB675_2
-LFQH_Lloh12536:
+LFQH_Lloh12546:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12537:
+LFQH_Lloh12547:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x22
 b.ne	LFQH_LBB675_2
-LFQH_Lloh12538:
+LFQH_Lloh12548:
 adr x1, LFQH_TopChromeRefreshHiddenKey
-LFQH_Lloh12539:
+LFQH_Lloh12549:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12540:
+LFQH_Lloh12550:
 adr x1, LFQH_TopChromeInsetKey
-LFQH_Lloh12541:
+LFQH_Lloh12551:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB675_7
-LFQH_Lloh12542:
+LFQH_Lloh12552:
 adr x0, LFQH_l_.str.427
-LFQH_Lloh12543:
+LFQH_Lloh12553:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73949,26 +73979,26 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB675_10
 LFQH_LBB675_7:
 cbz	x21, LFQH_LBB675_2
-LFQH_Lloh12544:
+LFQH_Lloh12554:
 adr x0, LFQH_l_.str.40
-LFQH_Lloh12545:
+LFQH_Lloh12555:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12546:
+LFQH_Lloh12556:
 adr x1, LFQH_TopChromeRefreshHiddenKey
-LFQH_Lloh12547:
+LFQH_Lloh12557:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12548:
+LFQH_Lloh12558:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12549:
+LFQH_Lloh12559:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73977,9 +74007,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	w0, w20
 b.eq	LFQH_LBB675_2
 LFQH_LBB675_9:
-LFQH_Lloh12550:
+LFQH_Lloh12560:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh12551:
+LFQH_Lloh12561:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -73991,27 +74021,27 @@ ldp	x22, x21, [sp, #16]
 ldp	d9, d8, [sp], #64
 b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB675_10:
-LFQH_Lloh12552:
+LFQH_Lloh12562:
 adr x0, LFQH_l_.str.1342
-LFQH_Lloh12553:
+LFQH_Lloh12563:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB675_12
-LFQH_Lloh12554:
+LFQH_Lloh12564:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh12555:
+LFQH_Lloh12565:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v1
-LFQH_Lloh12556:
+LFQH_Lloh12566:
 adr x0, LFQH_l_.str.1338
-LFQH_Lloh12557:
+LFQH_Lloh12567:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74021,9 +74051,9 @@ fneg	d0, d0
 fcmp	d8, d0
 b.lt	LFQH_LBB675_7
 LFQH_LBB675_12:
-LFQH_Lloh12558:
+LFQH_Lloh12568:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12559:
+LFQH_Lloh12569:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74034,9 +74064,9 @@ cbnz	x21, LFQH_LBB675_14
 mov	x0, x20
 bl	LFQH_BoolBox
 mov	x2, x0
-LFQH_Lloh12560:
+LFQH_Lloh12570:
 adr x1, LFQH_TopChromeRefreshHiddenKey
-LFQH_Lloh12561:
+LFQH_Lloh12571:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -74109,18 +74139,18 @@ add	x29, sp, #352
 .cfi_offset b15, -160
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12562:
+LFQH_Lloh12572:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh12563:
+LFQH_Lloh12573:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB681_23
 stur	x0, [x29, #-160]
 mov	x0, x19
 bl	LFQH_RestoreHit
-LFQH_Lloh12564:
+LFQH_Lloh12574:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12565:
+LFQH_Lloh12575:
 nop
 stur	x19, [x29, #-168]
 mov	x0, x19
@@ -74129,21 +74159,21 @@ cbz	x0, LFQH_LBB681_12
 mov	x24, x0
 str	w20, [sp, #176]
 mov	w25, #0
-LFQH_Lloh12566:
+LFQH_Lloh12576:
 adr x26, LFQH_l_.str.502
-LFQH_Lloh12567:
+LFQH_Lloh12577:
 nop
-LFQH_Lloh12568:
+LFQH_Lloh12578:
 adr x27, LFQH_l_.str.335
-LFQH_Lloh12569:
+LFQH_Lloh12579:
 nop
-LFQH_Lloh12570:
+LFQH_Lloh12580:
 adr x28, LFQH_l_.str.339
-LFQH_Lloh12571:
+LFQH_Lloh12581:
 nop
-LFQH_Lloh12572:
+LFQH_Lloh12582:
 adr x19, LFQH_l_.str.19
-LFQH_Lloh12573:
+LFQH_Lloh12583:
 nop
 LFQH_LBB681_3:
 mov	x0, x26
@@ -74166,15 +74196,15 @@ mov	x0, x24
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB681_6
-LFQH_Lloh12574:
+LFQH_Lloh12584:
 adr x0, LFQH_l_.str.501
-LFQH_Lloh12575:
+LFQH_Lloh12585:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12576:
+LFQH_Lloh12586:
 adr x0, LFQH_l_.str.1356
-LFQH_Lloh12577:
+LFQH_Lloh12587:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x2, x0
@@ -74201,13 +74231,13 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB681_13
 bl	LFQH_FQHGlassAvailable
 cbz	w0, LFQH_LBB681_13
-LFQH_Lloh12578:
+LFQH_Lloh12588:
 adr x8, LFQH_l_.str.1351
-LFQH_Lloh12579:
+LFQH_Lloh12589:
 nop
-LFQH_Lloh12580:
+LFQH_Lloh12590:
 adr x9, LFQH_l_.str.635
-LFQH_Lloh12581:
+LFQH_Lloh12591:
 nop
 ldr	w20, [sp, #176]
 cmp	w20, #0
@@ -74217,13 +74247,13 @@ mov	x0, x19
 bl	LFQH_Get
 mov	x21, x0
 cbz	x0, LFQH_LBB681_14
-LFQH_Lloh12582:
+LFQH_Lloh12592:
 adr x8, LFQH_l_.str.1352
-LFQH_Lloh12583:
+LFQH_Lloh12593:
 nop
-LFQH_Lloh12584:
+LFQH_Lloh12594:
 adr x9, LFQH_l_.str.1353
-LFQH_Lloh12585:
+LFQH_Lloh12595:
 nop
 cmp	w20, #0
 csel	x1, x9, x8, eq
@@ -74250,25 +74280,25 @@ LFQH_LBB681_16:
 mov	x23, x21
 mov	x22, x21
 LFQH_LBB681_17:
-LFQH_Lloh12586:
+LFQH_Lloh12596:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh12587:
+LFQH_Lloh12597:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 ldur	x19, [x29, #-160]
 cbz	w0, LFQH_LBB681_20
-LFQH_Lloh12588:
+LFQH_Lloh12598:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12589:
+LFQH_Lloh12599:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB681_20
-LFQH_Lloh12590:
+LFQH_Lloh12600:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12591:
+LFQH_Lloh12601:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74312,31 +74342,31 @@ ldp	d15, d14, [sp, #208]
 add	sp, sp, #368
 b	LFQH_ProfileShortcutCardGlass
 LFQH_LBB681_25:
-LFQH_Lloh12592:
+LFQH_Lloh12602:
 adr x1, LFQH_l_.str.35
-LFQH_Lloh12593:
+LFQH_Lloh12603:
 nop
 mov	x0, x22
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB681_20
-LFQH_Lloh12594:
+LFQH_Lloh12604:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12595:
+LFQH_Lloh12605:
 nop
 mov	x0, x22
 bl	LFQH_Get
 cmp	x0, x19
 b.ne	LFQH_LBB681_20
-LFQH_Lloh12596:
+LFQH_Lloh12606:
 adr x1, LFQH_GlyphViewKey
-LFQH_Lloh12597:
+LFQH_Lloh12607:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh12598:
+LFQH_Lloh12608:
 adr x1, LFQH_ProfileCaptionKey
-LFQH_Lloh12599:
+LFQH_Lloh12609:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -74344,9 +74374,9 @@ mov	x20, x0
 str	x24, [sp, #64]
 cmp	x24, x21
 b.eq	LFQH_LBB681_29
-LFQH_Lloh12600:
+LFQH_Lloh12610:
 adr x1, LFQH_GlyphViewKey
-LFQH_Lloh12601:
+LFQH_Lloh12611:
 nop
 mov	x0, x19
 bl	LFQH_RestoreProfileEntryFrame
@@ -74355,16 +74385,16 @@ str	x20, [sp, #72]
 cmp	x20, x22
 ldur	x24, [x29, #-168]
 b.eq	LFQH_LBB681_31
-LFQH_Lloh12602:
+LFQH_Lloh12612:
 adr x1, LFQH_ProfileCaptionKey
-LFQH_Lloh12603:
+LFQH_Lloh12613:
 nop
 mov	x0, x19
 bl	LFQH_RestoreProfileEntryFrame
 LFQH_LBB681_31:
-LFQH_Lloh12604:
+LFQH_Lloh12614:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12605:
+LFQH_Lloh12615:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74373,9 +74403,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 stp	d0, d3, [sp, #160]
 str	d1, [sp, #144]
 str	d2, [sp, #176]
-LFQH_Lloh12606:
+LFQH_Lloh12616:
 adr x19, LFQH_l_.str.480
-LFQH_Lloh12607:
+LFQH_Lloh12617:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -74415,39 +74445,39 @@ mov.16b	v3, v8
 bl	LFQH_ProfileStockFrame
 stp	d1, d0, [sp, #112]
 stp	d3, d2, [sp, #128]
-LFQH_Lloh12608:
+LFQH_Lloh12618:
 adr x0, LFQH_l_.str.71
-LFQH_Lloh12609:
+LFQH_Lloh12619:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12610:
+LFQH_Lloh12620:
 adr x0, LFQH_l_.str.72
-LFQH_Lloh12611:
+LFQH_Lloh12621:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12612:
+LFQH_Lloh12622:
 adr x0, LFQH_l_.str.73
-LFQH_Lloh12613:
+LFQH_Lloh12623:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12614:
+LFQH_Lloh12624:
 adr x0, LFQH_l_.str.1354
-LFQH_Lloh12615:
+LFQH_Lloh12625:
 nop
 bl	LFQH_Text
 mov	x2, x0
 mov	x0, x19
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12616:
+LFQH_Lloh12626:
 adr x1, LFQH_l_.str.40
-LFQH_Lloh12617:
+LFQH_Lloh12627:
 nop
 bl	LFQH_BoolProp
 str	w0, [sp, #156]
@@ -74462,9 +74492,9 @@ fminnm	d14, d0, d1
 fmov	d0, #0.50000000
 fmul	d0, d11, d0
 fadd	d9, d12, d0
-LFQH_Lloh12618:
+LFQH_Lloh12628:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12619:
+LFQH_Lloh12629:
 nop
 mov	x0, x24
 bl	LFQH_Get
@@ -74472,24 +74502,24 @@ cmp	x0, x23
 ccmp	x0, #0, #4, ne
 b.eq	LFQH_LBB681_43
 mov	x27, x0
-LFQH_Lloh12620:
+LFQH_Lloh12630:
 adr x28, LFQH_l_.str.502
-LFQH_Lloh12621:
+LFQH_Lloh12631:
 nop
 mov.16b	v10, v12
 fadd	d15, d12, d11
-LFQH_Lloh12622:
+LFQH_Lloh12632:
 adr x24, LFQH_l_.str.1332
-LFQH_Lloh12623:
+LFQH_Lloh12633:
 nop
-LFQH_Lloh12624:
+LFQH_Lloh12634:
 adr x26, LFQH_l_.str.19
-LFQH_Lloh12625:
+LFQH_Lloh12635:
 nop
 mov	w20, #2046
-LFQH_Lloh12626:
+LFQH_Lloh12636:
 adr x25, LFQH_l_.str.695
-LFQH_Lloh12627:
+LFQH_Lloh12637:
 nop
 LFQH_LBB681_33:
 mov	x0, x28
@@ -74505,9 +74535,9 @@ cbnz	w0, LFQH_LBB681_35
 mov	x0, x28
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12628:
+LFQH_Lloh12638:
 adr x0, LFQH_l_.str.1355
-LFQH_Lloh12629:
+LFQH_Lloh12639:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -74516,9 +74546,9 @@ mov	x1, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB681_36
 LFQH_LBB681_35:
-LFQH_Lloh12630:
+LFQH_Lloh12640:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12631:
+LFQH_Lloh12641:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74644,9 +74674,9 @@ fmul	d0, d0, d12
 fadd	d8, d13, d0
 fmul	d0, d14, d12
 fsub	d10, d9, d0
-LFQH_Lloh12632:
+LFQH_Lloh12642:
 adr x19, LFQH_SurfaceKey
-LFQH_Lloh12633:
+LFQH_Lloh12643:
 nop
 mov	x0, x24
 mov	x1, x19
@@ -74667,9 +74697,9 @@ mov	x1, x20
 bl	LFQH_ApplyMaxCapsuleStyle
 bl	LFQH_ProfileShortcutOwners
 mov	x19, x0
-LFQH_Lloh12634:
+LFQH_Lloh12644:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh12635:
+LFQH_Lloh12645:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74686,9 +74716,9 @@ bl	LFQH_ProfileCaptionInk
 ldp	d3, d2, [sp, #128]
 fmaxnm	d0, d2, d3
 fdiv	d0, d11, d0
-LFQH_Lloh12636:
+LFQH_Lloh12646:
 adr x8, LFQH_lCPI681_0
-LFQH_Lloh12637:
+LFQH_Lloh12647:
 ldr d1, [x8]
 and x8, x8, #0xfffffffffffff000
 fminnm	d0, d0, d1
@@ -74706,9 +74736,9 @@ fmul	d12, d0, d12
 ldr	x8, [sp, #64]
 cmp	x8, x21
 b.eq	LFQH_LBB681_50
-LFQH_Lloh12638:
+LFQH_Lloh12648:
 adr x1, LFQH_GlyphViewKey
-LFQH_Lloh12639:
+LFQH_Lloh12649:
 nop
 mov	x0, x24
 mov	x2, x21
@@ -74720,9 +74750,9 @@ fadd	d11, d13, d12
 ldr	x8, [sp, #72]
 cmp	x8, x22
 b.eq	LFQH_LBB681_52
-LFQH_Lloh12640:
+LFQH_Lloh12650:
 adr x1, LFQH_ProfileCaptionKey
-LFQH_Lloh12641:
+LFQH_Lloh12651:
 nop
 mov	x0, x24
 mov	x2, x22
@@ -74798,21 +74828,21 @@ mov	x19, x0
 fmov	d0, xzr
 mov	x1, #0
 bl	LFQH_TrackAppearanceLabel
-LFQH_Lloh12642:
+LFQH_Lloh12652:
 adr x1, LFQH_GlyphViewKey
-LFQH_Lloh12643:
+LFQH_Lloh12653:
 nop
 mov	x0, x19
 bl	LFQH_RestoreProfileEntryFrame
-LFQH_Lloh12644:
+LFQH_Lloh12654:
 adr x1, LFQH_ProfileCaptionKey
-LFQH_Lloh12645:
+LFQH_Lloh12655:
 nop
 mov	x0, x19
 bl	LFQH_RestoreProfileEntryFrame
-LFQH_Lloh12646:
+LFQH_Lloh12656:
 adr x20, LFQH_l_.str.19
-LFQH_Lloh12647:
+LFQH_Lloh12657:
 nop
 mov	x0, x19
 mov	x1, x20
@@ -74878,15 +74908,15 @@ add	x29, sp, #256
 cbz	x0, LFQH_LBB683_71
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh12648:
+LFQH_Lloh12658:
 adr x0, LFQH_l_.str.502
-LFQH_Lloh12649:
+LFQH_Lloh12659:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12650:
+LFQH_Lloh12660:
 adr x0, LFQH_l_.str.22
-LFQH_Lloh12651:
+LFQH_Lloh12661:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -74894,22 +74924,22 @@ mov	x0, x19
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB683_71
-LFQH_Lloh12652:
+LFQH_Lloh12662:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh12653:
+LFQH_Lloh12663:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh12654:
+LFQH_Lloh12664:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12655:
+LFQH_Lloh12665:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB683_4
-LFQH_Lloh12656:
+LFQH_Lloh12666:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12657:
+LFQH_Lloh12667:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -74918,9 +74948,9 @@ b.eq	LFQH_LBB683_5
 LFQH_LBB683_4:
 mov	x20, x19
 LFQH_LBB683_5:
-LFQH_Lloh12658:
+LFQH_Lloh12668:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12659:
+LFQH_Lloh12669:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -74930,15 +74960,15 @@ mov.16b	v11, v0
 mov.16b	v12, v1
 mov.16b	v13, v2
 mov.16b	v14, v3
-LFQH_Lloh12660:
+LFQH_Lloh12670:
 adr x0, LFQH_l_.str.502
-LFQH_Lloh12661:
+LFQH_Lloh12671:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12662:
+LFQH_Lloh12672:
 adr x0, LFQH_l_.str.339
-LFQH_Lloh12663:
+LFQH_Lloh12673:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -74946,15 +74976,15 @@ mov	x0, x19
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB683_8
-LFQH_Lloh12664:
+LFQH_Lloh12674:
 adr x0, LFQH_l_.str.501
-LFQH_Lloh12665:
+LFQH_Lloh12675:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12666:
+LFQH_Lloh12676:
 adr x0, LFQH_l_.str.1356
-LFQH_Lloh12667:
+LFQH_Lloh12677:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x2, x0
@@ -74988,16 +75018,16 @@ b.ls	LFQH_LBB683_22
 LFQH_LBB683_12:
 mov	x0, x20
 bl	LFQH_PageRestore
-LFQH_Lloh12668:
+LFQH_Lloh12678:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh12669:
+LFQH_Lloh12679:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12670:
+LFQH_Lloh12680:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh12671:
+LFQH_Lloh12681:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75006,9 +75036,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB683_15
 mov	x22, x0
 mov	x23, #0
-LFQH_Lloh12672:
+LFQH_Lloh12682:
 adr x24, LFQH_l_.str.568
-LFQH_Lloh12673:
+LFQH_Lloh12683:
 nop
 LFQH_LBB683_14:
 mov	x0, x24
@@ -75023,26 +75053,26 @@ add	x23, x23, #1
 cmp	x22, x23
 b.ne	LFQH_LBB683_14
 LFQH_LBB683_15:
-LFQH_Lloh12674:
+LFQH_Lloh12684:
 adr x1, LFQH_ProfileCardTrackedKey
-LFQH_Lloh12675:
+LFQH_Lloh12685:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB683_20
 mov	x21, x0
-LFQH_Lloh12676:
+LFQH_Lloh12686:
 adr x0, LFQH_l_.str.76
-LFQH_Lloh12677:
+LFQH_Lloh12687:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12678:
+LFQH_Lloh12688:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh12679:
+LFQH_Lloh12689:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75051,9 +75081,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB683_19
 mov	x22, x0
 mov	x23, #0
-LFQH_Lloh12680:
+LFQH_Lloh12690:
 adr x24, LFQH_l_.str.568
-LFQH_Lloh12681:
+LFQH_Lloh12691:
 nop
 LFQH_LBB683_18:
 mov	x0, x24
@@ -75068,9 +75098,9 @@ add	x23, x23, #1
 cmp	x22, x23
 b.ne	LFQH_LBB683_18
 LFQH_LBB683_19:
-LFQH_Lloh12682:
+LFQH_Lloh12692:
 adr x1, LFQH_ProfileCardTrackedKey
-LFQH_Lloh12683:
+LFQH_Lloh12693:
 nop
 mov	x0, x20
 mov	x2, #0
@@ -75108,16 +75138,16 @@ fcmp	d14, #0.0
 b.le	LFQH_LBB683_12
 stp	d2, d1, [sp, #24]
 str	d0, [sp, #40]
-LFQH_Lloh12684:
+LFQH_Lloh12694:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh12685:
+LFQH_Lloh12695:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12686:
+LFQH_Lloh12696:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh12687:
+LFQH_Lloh12697:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75125,9 +75155,9 @@ str	x21, [sp, #64]
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12688:
+LFQH_Lloh12698:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12689:
+LFQH_Lloh12699:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -75145,13 +75175,13 @@ fmov	d0, #-4.00000000
 fadd	d8, d13, d0
 fmov	d0, xzr
 stp	d0, d0, [sp, #8]
-LFQH_Lloh12690:
+LFQH_Lloh12700:
 adr x25, LFQH_l_.str.568
-LFQH_Lloh12691:
+LFQH_Lloh12701:
 nop
-LFQH_Lloh12692:
+LFQH_Lloh12702:
 adr x26, LFQH_l_.str.480
-LFQH_Lloh12693:
+LFQH_Lloh12703:
 nop
 mov	w27, #2046
 str	d0, [sp, #48]
@@ -75255,13 +75285,13 @@ ldr	d0, [sp, #48]
 str	d0, [sp, #24]
 cbz	x23, LFQH_LBB683_53
 mov	x24, #0
-LFQH_Lloh12694:
+LFQH_Lloh12704:
 adr x25, LFQH_l_.str.568
-LFQH_Lloh12695:
+LFQH_Lloh12705:
 nop
-LFQH_Lloh12696:
+LFQH_Lloh12706:
 adr x22, LFQH_l_.str.22
-LFQH_Lloh12697:
+LFQH_Lloh12707:
 nop
 LFQH_LBB683_46:
 mov	x0, x25
@@ -75274,9 +75304,9 @@ mov	x28, x0
 mov	x1, x22
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB683_51
-LFQH_Lloh12698:
+LFQH_Lloh12708:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12699:
+LFQH_Lloh12709:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75293,15 +75323,15 @@ mov.16b	v3, v14
 mov	x3, x20
 bl	LFQH_ProfileShortcutExtendForIndicator
 mov	x0, x28
-LFQH_Lloh12700:
+LFQH_Lloh12710:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh12701:
+LFQH_Lloh12711:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12702:
+LFQH_Lloh12712:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh12703:
+LFQH_Lloh12713:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75351,14 +75381,14 @@ ldr	d10, [sp, #32]
 cbz	x23, LFQH_LBB683_70
 mov	x24, #0
 fmov	d0, #4.00000000
-LFQH_Lloh12704:
+LFQH_Lloh12714:
 adr x25, LFQH_l_.str.568
-LFQH_Lloh12705:
+LFQH_Lloh12715:
 nop
 fmul	d8, d10, d0
-LFQH_Lloh12706:
+LFQH_Lloh12716:
 adr x26, LFQH_l_.str.480
-LFQH_Lloh12707:
+LFQH_Lloh12717:
 nop
 fmov	d9, #5.00000000
 LFQH_LBB683_57:
@@ -75386,16 +75416,16 @@ mov	x0, x20
 mov	x1, x28
 bl	LFQH_ProfileCardTrackClear
 mov	x0, x28
-LFQH_Lloh12708:
+LFQH_Lloh12718:
 adr x1, LFQH_l_.str.1332
-LFQH_Lloh12709:
+LFQH_Lloh12719:
 nop
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB683_63
 mov	x0, x28
-LFQH_Lloh12710:
+LFQH_Lloh12720:
 adr x1, LFQH_l_.str.1355
-LFQH_Lloh12711:
+LFQH_Lloh12721:
 nop
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB683_63
@@ -75404,15 +75434,15 @@ mov	w1, #1
 bl	LFQH_ProfileCardSetUnclipped
 LFQH_LBB683_63:
 mov	x0, x28
-LFQH_Lloh12712:
+LFQH_Lloh12722:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh12713:
+LFQH_Lloh12723:
 nop
 bl	LFQH_Get
 mov	x28, x0
-LFQH_Lloh12714:
+LFQH_Lloh12724:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh12715:
+LFQH_Lloh12725:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75458,9 +75488,9 @@ mov.16b	v2, v10
 ldr	d3, [sp, #24]
 mov	w1, #1
 bl	LFQH_ApplySurface
-LFQH_Lloh12716:
+LFQH_Lloh12726:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12717:
+LFQH_Lloh12727:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -75469,9 +75499,9 @@ ldr	x1, [sp, #56]
 bl	LFQH_ApplyMaxCapsuleStyle
 bl	LFQH_ProfileShortcutOwners
 mov	x20, x0
-LFQH_Lloh12718:
+LFQH_Lloh12728:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh12719:
+LFQH_Lloh12729:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75528,9 +75558,9 @@ mov	x20, x0
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB685_6
 mov	x21, x0
-LFQH_Lloh12720:
+LFQH_Lloh12730:
 adr x8, LFQH_ProfileCaptionKey
-LFQH_Lloh12721:
+LFQH_Lloh12731:
 nop
 cmp	x19, x8
 b.ne	LFQH_LBB685_3
@@ -75547,9 +75577,9 @@ mov	w2, #0
 mov	w3, #0
 bl	LFQH_CenterCaption
 LFQH_LBB685_3:
-LFQH_Lloh12722:
+LFQH_Lloh12732:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12723:
+LFQH_Lloh12733:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75570,9 +75600,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh12724:
+LFQH_Lloh12734:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh12725:
+LFQH_Lloh12735:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75583,17 +75613,17 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB685_5:
-LFQH_Lloh12726:
+LFQH_Lloh12736:
 adr x1, LFQH_GlyphOriginalKey
-LFQH_Lloh12727:
+LFQH_Lloh12737:
 nop
 mov	x0, x21
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12728:
+LFQH_Lloh12738:
 adr x1, LFQH_GlyphAppliedKey
-LFQH_Lloh12729:
+LFQH_Lloh12739:
 nop
 mov	x0, x21
 mov	x2, #0
@@ -75641,30 +75671,30 @@ add	x29, sp, #48
 cbz	x0, LFQH_LBB686_11
 mov	x23, x1
 mov	x19, x0
-LFQH_Lloh12730:
+LFQH_Lloh12740:
 adr x1, LFQH_l_.str.467
-LFQH_Lloh12731:
+LFQH_Lloh12741:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh12732:
+LFQH_Lloh12742:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12733:
+LFQH_Lloh12743:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12734:
+LFQH_Lloh12744:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh12735:
+LFQH_Lloh12745:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12736:
+LFQH_Lloh12746:
 adr x1, LFQH_ProfileCardSavedBgKey
-LFQH_Lloh12737:
+LFQH_Lloh12747:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -75672,9 +75702,9 @@ cbz	w23, LFQH_LBB686_5
 cmp	x20, x21
 ccmp	x20, #0, #4, ne
 b.eq	LFQH_LBB686_11
-LFQH_Lloh12738:
+LFQH_Lloh12748:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12739:
+LFQH_Lloh12749:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75682,25 +75712,25 @@ mov	x0, x20
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB686_11
-LFQH_Lloh12740:
+LFQH_Lloh12750:
 adr x1, LFQH_ProfileCardSavedBgKey
-LFQH_Lloh12741:
+LFQH_Lloh12751:
 nop
 mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12742:
+LFQH_Lloh12752:
 adr x1, LFQH_ProfileCardClearKey
-LFQH_Lloh12743:
+LFQH_Lloh12753:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12744:
+LFQH_Lloh12754:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12745:
+LFQH_Lloh12755:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75713,16 +75743,16 @@ ldp	x24, x23, [sp], #64
 b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB686_5:
 mov	x22, x0
-LFQH_Lloh12746:
+LFQH_Lloh12756:
 adr x1, LFQH_ProfileCardClearKey
-LFQH_Lloh12747:
+LFQH_Lloh12757:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB686_11
-LFQH_Lloh12748:
+LFQH_Lloh12758:
 adr x1, LFQH_ProfileCardClearKey
-LFQH_Lloh12749:
+LFQH_Lloh12759:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -75730,9 +75760,9 @@ cbz	x22, LFQH_LBB686_10
 mov	x21, x0
 cmp	x20, x0
 b.eq	LFQH_LBB686_9
-LFQH_Lloh12750:
+LFQH_Lloh12760:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12751:
+LFQH_Lloh12761:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75741,9 +75771,9 @@ mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB686_10
 LFQH_LBB686_9:
-LFQH_Lloh12752:
+LFQH_Lloh12762:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh12753:
+LFQH_Lloh12763:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75751,17 +75781,17 @@ mov	x0, x19
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB686_10:
-LFQH_Lloh12754:
+LFQH_Lloh12764:
 adr x1, LFQH_ProfileCardSavedBgKey
-LFQH_Lloh12755:
+LFQH_Lloh12765:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12756:
+LFQH_Lloh12766:
 adr x1, LFQH_ProfileCardClearKey
-LFQH_Lloh12757:
+LFQH_Lloh12767:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -75795,30 +75825,30 @@ add	x29, sp, #32
 cbz	x0, LFQH_LBB687_8
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh12758:
+LFQH_Lloh12768:
 adr x1, LFQH_ProfileCardClipsKey
-LFQH_Lloh12759:
+LFQH_Lloh12769:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	w21, LFQH_LBB687_4
-LFQH_Lloh12760:
+LFQH_Lloh12770:
 adr x0, LFQH_l_.str.468
-LFQH_Lloh12761:
+LFQH_Lloh12771:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB687_8
-LFQH_Lloh12762:
+LFQH_Lloh12772:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12763:
+LFQH_Lloh12773:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12764:
+LFQH_Lloh12774:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh12765:
+LFQH_Lloh12775:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75826,16 +75856,16 @@ mov	x0, x20
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12766:
+LFQH_Lloh12776:
 adr x1, LFQH_ProfileCardClipsKey
-LFQH_Lloh12767:
+LFQH_Lloh12777:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12768:
+LFQH_Lloh12778:
 adr x0, LFQH_l_.str.460
-LFQH_Lloh12769:
+LFQH_Lloh12779:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75848,24 +75878,24 @@ b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB687_4:
 mov	x20, x0
 cbz	x0, LFQH_LBB687_8
-LFQH_Lloh12770:
+LFQH_Lloh12780:
 adr x0, LFQH_l_.str.468
-LFQH_Lloh12771:
+LFQH_Lloh12781:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB687_7
-LFQH_Lloh12772:
+LFQH_Lloh12782:
 adr x0, LFQH_l_.str.460
-LFQH_Lloh12773:
+LFQH_Lloh12783:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12774:
+LFQH_Lloh12784:
 adr x0, LFQH_l_.str.40
-LFQH_Lloh12775:
+LFQH_Lloh12785:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75876,9 +75906,9 @@ mov	x0, x19
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB687_7:
-LFQH_Lloh12776:
+LFQH_Lloh12786:
 adr x1, LFQH_ProfileCardClipsKey
-LFQH_Lloh12777:
+LFQH_Lloh12787:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -75914,21 +75944,21 @@ add	x29, sp, #32
 .cfi_offset b9, -48
 mov.16b	v8, v0
 mov	x19, x0
-LFQH_Lloh12778:
+LFQH_Lloh12788:
 adr x0, LFQH_l_.str.13
-LFQH_Lloh12779:
+LFQH_Lloh12789:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12780:
+LFQH_Lloh12790:
 adr x1, LFQH_l_.str.1255
-LFQH_Lloh12781:
+LFQH_Lloh12791:
 nop
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB688_5
-LFQH_Lloh12782:
+LFQH_Lloh12792:
 adr x0, LFQH_l_.str.1255
-LFQH_Lloh12783:
+LFQH_Lloh12793:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75937,9 +75967,9 @@ mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB688_5
 mov	x20, x0
-LFQH_Lloh12784:
+LFQH_Lloh12794:
 adr x0, LFQH_l_.str.16
-LFQH_Lloh12785:
+LFQH_Lloh12795:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75947,9 +75977,9 @@ mov	x0, x19
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB688_5:
-LFQH_Lloh12786:
+LFQH_Lloh12796:
 adr x0, LFQH_l_.str.163
-LFQH_Lloh12787:
+LFQH_Lloh12797:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -75979,30 +76009,30 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x23, x1
 mov	x19, x0
-LFQH_Lloh12788:
+LFQH_Lloh12798:
 adr x1, LFQH_ProfileCaptionColorKey
-LFQH_Lloh12789:
+LFQH_Lloh12799:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12790:
+LFQH_Lloh12800:
 adr x0, LFQH_l_.str.46
-LFQH_Lloh12791:
+LFQH_Lloh12801:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12792:
+LFQH_Lloh12802:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh12793:
+LFQH_Lloh12803:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12794:
+LFQH_Lloh12804:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh12795:
+LFQH_Lloh12805:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76012,9 +76042,9 @@ mov	x22, x0
 cbz	w23, LFQH_LBB689_4
 cmp	x21, x22
 b.eq	LFQH_LBB689_9
-LFQH_Lloh12796:
+LFQH_Lloh12806:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12797:
+LFQH_Lloh12807:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76022,17 +76052,17 @@ mov	x0, x21
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB689_9
-LFQH_Lloh12798:
+LFQH_Lloh12808:
 adr x1, LFQH_ProfileCaptionColorKey
-LFQH_Lloh12799:
+LFQH_Lloh12809:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh12800:
+LFQH_Lloh12810:
 adr x0, LFQH_l_.str.45
-LFQH_Lloh12801:
+LFQH_Lloh12811:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76047,9 +76077,9 @@ LFQH_LBB689_4:
 cbz	x20, LFQH_LBB689_9
 cmp	x21, x22
 b.eq	LFQH_LBB689_7
-LFQH_Lloh12802:
+LFQH_Lloh12812:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh12803:
+LFQH_Lloh12813:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76058,9 +76088,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB689_8
 LFQH_LBB689_7:
-LFQH_Lloh12804:
+LFQH_Lloh12814:
 adr x0, LFQH_l_.str.45
-LFQH_Lloh12805:
+LFQH_Lloh12815:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76068,9 +76098,9 @@ mov	x0, x19
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB689_8:
-LFQH_Lloh12806:
+LFQH_Lloh12816:
 adr x1, LFQH_ProfileCaptionColorKey
-LFQH_Lloh12807:
+LFQH_Lloh12817:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -76099,38 +76129,38 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh12808:
+LFQH_Lloh12818:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12809:
+LFQH_Lloh12819:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB690_6
-LFQH_Lloh12810:
+LFQH_Lloh12820:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12811:
+LFQH_Lloh12821:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB690_5
-LFQH_Lloh12812:
+LFQH_Lloh12822:
 adr x1, LFQH_l_.str.35
-LFQH_Lloh12813:
+LFQH_Lloh12823:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB690_5
-LFQH_Lloh12814:
+LFQH_Lloh12824:
 adr x1, LFQH_l_.str.68
-LFQH_Lloh12815:
+LFQH_Lloh12825:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB690_5
-LFQH_Lloh12816:
+LFQH_Lloh12826:
 adr x1, LFQH_l_.str.42
-LFQH_Lloh12817:
+LFQH_Lloh12827:
 nop
 mov	x0, x19
 bl	LFQH_Kind
@@ -76142,9 +76172,9 @@ ldp	x29, x30, [sp, #16]
 ldp	x20, x19, [sp], #32
 ret
 LFQH_LBB690_7:
-LFQH_Lloh12818:
+LFQH_Lloh12828:
 adr x1, LFQH_l_.str.331
-LFQH_Lloh12819:
+LFQH_Lloh12829:
 nop
 mov	x0, x19
 bl	LFQH_Kind
@@ -76180,33 +76210,33 @@ mov	x21, x2
 mov	x22, x1
 mov.16b	v8, v3
 mov	x19, x0
-LFQH_Lloh12820:
+LFQH_Lloh12830:
 adr x1, LFQH_l_.str.1357
-LFQH_Lloh12821:
+LFQH_Lloh12831:
 nop
 mov	x0, x22
 bl	LFQH_Kind
 tbnz	w0, #0, LFQH_LBB691_2
-LFQH_Lloh12822:
+LFQH_Lloh12832:
 adr x1, LFQH_l_.str.1358
-LFQH_Lloh12823:
+LFQH_Lloh12833:
 nop
 mov	x0, x22
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB691_6
 LFQH_LBB691_2:
-LFQH_Lloh12824:
+LFQH_Lloh12834:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh12825:
+LFQH_Lloh12835:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB691_6
-LFQH_Lloh12826:
+LFQH_Lloh12836:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12827:
+LFQH_Lloh12837:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76218,9 +76248,9 @@ mov.16b	v12, v2
 mov.16b	v10, v3
 cmp	x21, x20
 b.eq	LFQH_LBB691_5
-LFQH_Lloh12828:
+LFQH_Lloh12838:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh12829:
+LFQH_Lloh12839:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76312,48 +76342,48 @@ mov	x20, x0
 mov	x0, x1
 mov	w1, #1
 bl	LFQH_ProfileCardSetPaint
-LFQH_Lloh12830:
+LFQH_Lloh12840:
 adr x1, LFQH_ProfileCardClearKey
-LFQH_Lloh12831:
+LFQH_Lloh12841:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB692_5
-LFQH_Lloh12832:
+LFQH_Lloh12842:
 adr x1, LFQH_ProfileCardTrackedKey
-LFQH_Lloh12833:
+LFQH_Lloh12843:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
 cbnz	x0, LFQH_LBB692_4
-LFQH_Lloh12834:
+LFQH_Lloh12844:
 adr x0, LFQH_l_.str.111
-LFQH_Lloh12835:
+LFQH_Lloh12845:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12836:
+LFQH_Lloh12846:
 adr x0, LFQH_l_.str.112
-LFQH_Lloh12837:
+LFQH_Lloh12847:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12838:
+LFQH_Lloh12848:
 adr x1, LFQH_ProfileCardTrackedKey
-LFQH_Lloh12839:
+LFQH_Lloh12849:
 nop
 mov	x0, x20
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB692_4:
-LFQH_Lloh12840:
+LFQH_Lloh12850:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh12841:
+LFQH_Lloh12851:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76413,68 +76443,68 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x23, x1
 mov	x22, x0
-LFQH_Lloh12842:
+LFQH_Lloh12852:
 adr x1, LFQH_l_.str.343
-LFQH_Lloh12843:
+LFQH_Lloh12853:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh12844:
+LFQH_Lloh12854:
 adr x1, LFQH_l_.str.344
-LFQH_Lloh12845:
+LFQH_Lloh12855:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh12846:
+LFQH_Lloh12856:
 adr x1, LFQH_l_.str.345
-LFQH_Lloh12847:
+LFQH_Lloh12857:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12848:
+LFQH_Lloh12858:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12849:
+LFQH_Lloh12859:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB698_12
-LFQH_Lloh12850:
+LFQH_Lloh12860:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12851:
+LFQH_Lloh12861:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x22
 b.ne	LFQH_LBB698_12
 cbz	w23, LFQH_LBB698_6
-LFQH_Lloh12852:
+LFQH_Lloh12862:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh12853:
+LFQH_Lloh12863:
 nop
 mov	x0, x22
 bl	LFQH_Get
 cbz	x0, LFQH_LBB698_6
-LFQH_Lloh12854:
+LFQH_Lloh12864:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh12855:
+LFQH_Lloh12865:
 nop
 mov	x0, x20
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB698_6
-LFQH_Lloh12856:
+LFQH_Lloh12866:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12857:
+LFQH_Lloh12867:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x0, x19
 b.eq	LFQH_LBB698_14
 LFQH_LBB698_6:
-LFQH_Lloh12858:
+LFQH_Lloh12868:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12859:
+LFQH_Lloh12869:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -76483,9 +76513,9 @@ LFQH_LBB698_7:
 mov	x0, x19
 bl	LFQH_PageRestore
 LFQH_LBB698_8:
-LFQH_Lloh12860:
+LFQH_Lloh12870:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12861:
+LFQH_Lloh12871:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -76493,21 +76523,21 @@ mov	x21, x0
 cbz	x0, LFQH_LBB698_11
 cmp	x21, x22
 b.eq	LFQH_LBB698_11
-LFQH_Lloh12862:
+LFQH_Lloh12872:
 adr x0, LFQH_l_.str.16
-LFQH_Lloh12863:
+LFQH_Lloh12873:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh12864:
+LFQH_Lloh12874:
 adr x0, LFQH_l_.str.13
-LFQH_Lloh12865:
+LFQH_Lloh12875:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12866:
+LFQH_Lloh12876:
 adr x0, LFQH_l_.str.14
-LFQH_Lloh12867:
+LFQH_Lloh12877:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76517,9 +76547,9 @@ mov	x2, x0
 mov	x0, x21
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh12868:
+LFQH_Lloh12878:
 adr x0, LFQH_l_.str.163
-LFQH_Lloh12869:
+LFQH_Lloh12879:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76527,9 +76557,9 @@ mov	x0, x21
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB698_11:
-LFQH_Lloh12870:
+LFQH_Lloh12880:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12871:
+LFQH_Lloh12881:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -76551,32 +76581,32 @@ ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 b	LFQH_DramaVisibilitySet
 LFQH_LBB698_14:
-LFQH_Lloh12872:
+LFQH_Lloh12882:
 adr x1, LFQH_l_.str.15
-LFQH_Lloh12873:
+LFQH_Lloh12883:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 tbz	w0, #0, LFQH_LBB698_6
-LFQH_Lloh12874:
+LFQH_Lloh12884:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh12875:
+LFQH_Lloh12885:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh12876:
+LFQH_Lloh12886:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh12877:
+LFQH_Lloh12887:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
 cmp	x21, x20
 b.ne	LFQH_LBB698_7
-LFQH_Lloh12878:
+LFQH_Lloh12888:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12879:
+LFQH_Lloh12889:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76611,20 +76641,20 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh12880:
+LFQH_Lloh12890:
 adr x0, LFQH_l_.str.20
-LFQH_Lloh12881:
+LFQH_Lloh12891:
 nop
-LFQH_Lloh12882:
+LFQH_Lloh12892:
 adr x1, LFQH_l_.str.356
-LFQH_Lloh12883:
+LFQH_Lloh12893:
 nop
 bl	LFQH_Original
 cbz	x0, LFQH_LBB701_2
 str	x0, [sp, #8]
-LFQH_Lloh12884:
+LFQH_Lloh12894:
 adr x0, LFQH_l_.str.355
-LFQH_Lloh12885:
+LFQH_Lloh12895:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76671,13 +76701,13 @@ mov	x21, x3
 mov	x22, x2
 mov	x23, x1
 mov	x19, x0
-LFQH_Lloh12886:
+LFQH_Lloh12896:
 adr x0, LFQH_l_.str.361
-LFQH_Lloh12887:
+LFQH_Lloh12897:
 nop
-LFQH_Lloh12888:
+LFQH_Lloh12898:
 adr x1, LFQH_l_.str.1384
-LFQH_Lloh12889:
+LFQH_Lloh12899:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -76689,9 +76719,9 @@ mov	x4, x20
 blr	x8
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh12890:
+LFQH_Lloh12900:
 adr x1, LFQH_ShelfCompactKey
-LFQH_Lloh12891:
+LFQH_Lloh12901:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -76699,9 +76729,9 @@ cbz	x0, LFQH_LBB703_5
 fmov	d0, #1.00000000
 fcmp	d9, d0
 b.le	LFQH_LBB703_5
-LFQH_Lloh12892:
+LFQH_Lloh12902:
 adr x0, LFQH_l_.str.1387
-LFQH_Lloh12893:
+LFQH_Lloh12903:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76711,26 +76741,26 @@ mov	x1, x0
 mov	x0, x19
 bl	LFQH_ShelfFunctionSection
 cbz	w0, LFQH_LBB703_5
-LFQH_Lloh12894:
+LFQH_Lloh12904:
 adr x0, LFQH_l_.str.1378
-LFQH_Lloh12895:
+LFQH_Lloh12905:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh12896:
+LFQH_Lloh12906:
 adr x1, LFQH_l_.str.1382
-LFQH_Lloh12897:
+LFQH_Lloh12907:
 nop
-LFQH_Lloh12898:
+LFQH_Lloh12908:
 adr x2, LFQH_l_.str.1383
-LFQH_Lloh12899:
+LFQH_Lloh12909:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB703_5
-LFQH_Lloh12900:
+LFQH_Lloh12910:
 adr x0, LFQH_l_.str.1382
-LFQH_Lloh12901:
+LFQH_Lloh12911:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76783,13 +76813,13 @@ mov	x21, x3
 mov	x22, x2
 mov	x23, x1
 mov	x20, x0
-LFQH_Lloh12902:
+LFQH_Lloh12912:
 adr x0, LFQH_l_.str.361
-LFQH_Lloh12903:
+LFQH_Lloh12913:
 nop
-LFQH_Lloh12904:
+LFQH_Lloh12914:
 adr x1, LFQH_l_.str.1385
-LFQH_Lloh12905:
+LFQH_Lloh12915:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -76803,28 +76833,28 @@ mov.16b	v10, v0
 mov.16b	v8, v1
 mov.16b	v11, v2
 mov.16b	v9, v3
-LFQH_Lloh12906:
+LFQH_Lloh12916:
 adr x1, LFQH_ShelfCompactKey
-LFQH_Lloh12907:
+LFQH_Lloh12917:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB704_4
 mov	x21, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh12908:
+LFQH_Lloh12918:
 adr x1, LFQH_l_.str.1381
-LFQH_Lloh12909:
+LFQH_Lloh12919:
 nop
-LFQH_Lloh12910:
+LFQH_Lloh12920:
 adr x2, LFQH_l_.str.179
-LFQH_Lloh12911:
+LFQH_Lloh12921:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB704_4
-LFQH_Lloh12912:
+LFQH_Lloh12922:
 adr x0, LFQH_l_.str.1381
-LFQH_Lloh12913:
+LFQH_Lloh12923:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76873,28 +76903,28 @@ add	x29, sp, #64
 .cfi_offset b13, -80
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12914:
+LFQH_Lloh12924:
 adr x0, LFQH_l_.str.1378
-LFQH_Lloh12915:
+LFQH_Lloh12925:
 nop
-LFQH_Lloh12916:
+LFQH_Lloh12926:
 adr x1, LFQH_l_.str.742
-LFQH_Lloh12917:
+LFQH_Lloh12927:
 nop
 bl	LFQH_Original
 mov	x8, x0
 mov	x0, x19
 mov	x1, x20
 blr	x8
-LFQH_Lloh12918:
+LFQH_Lloh12928:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh12919:
+LFQH_Lloh12929:
 nop
 mov	x0, x19
 bl	LFQH_Get
-LFQH_Lloh12920:
+LFQH_Lloh12930:
 adr x1, LFQH_ShelfCompactKey
-LFQH_Lloh12921:
+LFQH_Lloh12931:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, x19
@@ -76909,26 +76939,26 @@ ret
 LFQH_LBB705_2:
 mov	x0, x19
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh12922:
+LFQH_Lloh12932:
 adr x1, LFQH_l_.str.1381
-LFQH_Lloh12923:
+LFQH_Lloh12933:
 nop
-LFQH_Lloh12924:
+LFQH_Lloh12934:
 adr x2, LFQH_l_.str.179
-LFQH_Lloh12925:
+LFQH_Lloh12935:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB705_1
-LFQH_Lloh12926:
+LFQH_Lloh12936:
 adr x1, LFQH_l_.str.1389
-LFQH_Lloh12927:
+LFQH_Lloh12937:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh12928:
+LFQH_Lloh12938:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh12929:
+LFQH_Lloh12939:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76938,9 +76968,9 @@ mov.16b	v8, v0
 mov.16b	v12, v1
 mov.16b	v9, v2
 mov.16b	v10, v3
-LFQH_Lloh12930:
+LFQH_Lloh12940:
 adr x0, LFQH_l_.str.1381
-LFQH_Lloh12931:
+LFQH_Lloh12941:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76952,9 +76982,9 @@ fmov	d1, #13.00000000
 fcsel	d11, d1, d0, eq
 fcmp	d12, d11
 b.le	LFQH_LBB705_1
-LFQH_Lloh12932:
+LFQH_Lloh12942:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh12933:
+LFQH_Lloh12943:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -76982,26 +77012,26 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x1
-LFQH_Lloh12934:
+LFQH_Lloh12944:
 adr x1, LFQH_l_.str.1388
-LFQH_Lloh12935:
+LFQH_Lloh12945:
 nop
 bl	LFQH_Get
 mov	x20, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh12936:
+LFQH_Lloh12946:
 adr x1, LFQH_l_.str.1379
-LFQH_Lloh12937:
+LFQH_Lloh12947:
 nop
-LFQH_Lloh12938:
+LFQH_Lloh12948:
 adr x2, LFQH_l_.str.1380
-LFQH_Lloh12939:
+LFQH_Lloh12949:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB706_2
-LFQH_Lloh12940:
+LFQH_Lloh12950:
 adr x0, LFQH_l_.str.1379
-LFQH_Lloh12941:
+LFQH_Lloh12951:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77052,30 +77082,30 @@ mov.16b	v12, v0
 mov	x19, x1
 mov	x20, x0
 mov.16b	v9, v3
-LFQH_Lloh12942:
+LFQH_Lloh12952:
 adr x1, LFQH_DramaDockControlApplied178R4Key
-LFQH_Lloh12943:
+LFQH_Lloh12953:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
 mov	x0, x20
 bl	LFQH_DramaDockControlConfig
 mov	x22, x0
-LFQH_Lloh12944:
+LFQH_Lloh12954:
 adr x1, LFQH_l_.str.682
-LFQH_Lloh12945:
+LFQH_Lloh12955:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB707_2
 mov	x0, x22
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh12946:
+LFQH_Lloh12956:
 adr x1, LFQH_l_.str.777
-LFQH_Lloh12947:
+LFQH_Lloh12957:
 nop
-LFQH_Lloh12948:
+LFQH_Lloh12958:
 adr x2, LFQH_l_.str.778
-LFQH_Lloh12949:
+LFQH_Lloh12959:
 nop
 bl	LFQH_ClassABI
 cmp	w0, #0
@@ -77099,9 +77129,9 @@ mov	x2, #0
 b	LFQH_LBB707_10
 LFQH_LBB707_7:
 cbz	x21, LFQH_LBB707_9
-LFQH_Lloh12950:
+LFQH_Lloh12960:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh12951:
+LFQH_Lloh12961:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77113,15 +77143,15 @@ fccmp	d10, d2, #0, eq
 fccmp	d9, d3, #0, eq
 b.eq	LFQH_LBB707_20
 LFQH_LBB707_9:
-LFQH_Lloh12952:
+LFQH_Lloh12962:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh12953:
+LFQH_Lloh12963:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh12954:
+LFQH_Lloh12964:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh12955:
+LFQH_Lloh12965:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77133,22 +77163,22 @@ mov.16b	v3, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
 LFQH_LBB707_10:
-LFQH_Lloh12956:
+LFQH_Lloh12966:
 adr x1, LFQH_DramaDockControlApplied178R4Key
-LFQH_Lloh12957:
+LFQH_Lloh12967:
 nop
 mov	w21, #1
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB707_11:
-LFQH_Lloh12958:
+LFQH_Lloh12968:
 adr x0, LFQH_l_.str.78
-LFQH_Lloh12959:
+LFQH_Lloh12969:
 nop
-LFQH_Lloh12960:
+LFQH_Lloh12970:
 adr x1, LFQH_l_.str.1392
-LFQH_Lloh12961:
+LFQH_Lloh12971:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -77164,43 +77194,43 @@ cmp	w0, #0
 eor	w8, w21, #0x1
 csinc	w8, w8, wzr, ne
 tbnz	w8, #0, LFQH_LBB707_13
-LFQH_Lloh12962:
+LFQH_Lloh12972:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh12963:
+LFQH_Lloh12973:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12964:
+LFQH_Lloh12974:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh12965:
+LFQH_Lloh12975:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh12966:
+LFQH_Lloh12976:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh12967:
+LFQH_Lloh12977:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12968:
+LFQH_Lloh12978:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh12969:
+LFQH_Lloh12979:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh12970:
+LFQH_Lloh12980:
 adr x2, LFQH_l_.str.1394
-LFQH_Lloh12971:
+LFQH_Lloh12981:
 nop
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12972:
+LFQH_Lloh12982:
 adr x1, LFQH_l_.str.119
-LFQH_Lloh12973:
+LFQH_Lloh12983:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -77210,9 +77240,9 @@ mov.16b	v2, v10
 mov.16b	v3, v8
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh12974:
+LFQH_Lloh12984:
 adr x1, LFQH_l_.str.1397
-LFQH_Lloh12975:
+LFQH_Lloh12985:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -77222,22 +77252,22 @@ mov.16b	v2, v10
 mov.16b	v3, v9
 bl	LFQH_RectArray
 mov	x2, x0
-LFQH_Lloh12976:
+LFQH_Lloh12986:
 adr x1, LFQH_l_.str.1398
-LFQH_Lloh12977:
+LFQH_Lloh12987:
 nop
 mov	x0, x19
 bl	LFQH_Put
 fsub	d8, d8, d9
-LFQH_Lloh12978:
+LFQH_Lloh12988:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh12979:
+LFQH_Lloh12989:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh12980:
+LFQH_Lloh12990:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh12981:
+LFQH_Lloh12991:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77245,15 +77275,15 @@ mov	x0, x20
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh12982:
+LFQH_Lloh12992:
 adr x1, LFQH_l_.str.1399
-LFQH_Lloh12983:
+LFQH_Lloh12993:
 nop
 mov	x0, x19
 bl	LFQH_Put
-LFQH_Lloh12984:
+LFQH_Lloh12994:
 adr x0, LFQH_l_.str.1400
-LFQH_Lloh12985:
+LFQH_Lloh12995:
 nop
 mov	x1, x19
 ldp	x29, x30, [sp, #144]
@@ -77282,19 +77312,19 @@ fcmp	d8, d10
 b.le	LFQH_LBB707_2
 fcmp	d10, #0.0
 b.le	LFQH_LBB707_2
-LFQH_Lloh12986:
+LFQH_Lloh12996:
 adr x0, LFQH_l_.str.682
-LFQH_Lloh12987:
+LFQH_Lloh12997:
 nop
-LFQH_Lloh12988:
+LFQH_Lloh12998:
 adr x1, LFQH_l_.str.777
-LFQH_Lloh12989:
+LFQH_Lloh12999:
 nop
 bl	LFQH_Original
 mov	x23, x0
-LFQH_Lloh12990:
+LFQH_Lloh13000:
 adr x0, LFQH_l_.str.779
-LFQH_Lloh12991:
+LFQH_Lloh13001:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77302,24 +77332,24 @@ mov	x0, x22
 blr	x23
 str	d0, [sp, #8]
 mov.16b	v13, v1
-LFQH_Lloh12992:
+LFQH_Lloh13002:
 adr x0, LFQH_l_.str.780
-LFQH_Lloh12993:
+LFQH_Lloh13003:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12994:
+LFQH_Lloh13004:
 adr x0, LFQH_l_.str.781
-LFQH_Lloh12995:
+LFQH_Lloh13005:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh12996:
+LFQH_Lloh13006:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh12997:
+LFQH_Lloh13007:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77371,13 +77401,13 @@ add	x29, sp, #80
 .cfi_offset b11, -80
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh12998:
+LFQH_Lloh13008:
 adr x0, LFQH_l_.str.682
-LFQH_Lloh12999:
+LFQH_Lloh13009:
 nop
-LFQH_Lloh13000:
+LFQH_Lloh13010:
 adr x1, LFQH_l_.str.777
-LFQH_Lloh13001:
+LFQH_Lloh13011:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -77393,9 +77423,9 @@ mov	x20, x0
 bl LDiagnosticsEnabled
 ldp	d8, d9, [sp]
 cbz	w0, LFQH_LBB708_9
-LFQH_Lloh13002:
+LFQH_Lloh13012:
 adr x1, LFQH_DramaDockViewport178R4Key
-LFQH_Lloh13003:
+LFQH_Lloh13013:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -77404,9 +77434,9 @@ tbnz	w20, #0, LFQH_LBB708_3
 cbz	x21, LFQH_LBB708_9
 LFQH_LBB708_3:
 cbz	x21, LFQH_LBB708_8
-LFQH_Lloh13004:
+LFQH_Lloh13014:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh13005:
+LFQH_Lloh13015:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77421,15 +77451,15 @@ b.ne	LFQH_LBB708_8
 fcmp	d9, d3
 b.eq	LFQH_LBB708_9
 LFQH_LBB708_8:
-LFQH_Lloh13006:
+LFQH_Lloh13016:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh13007:
+LFQH_Lloh13017:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13008:
+LFQH_Lloh13018:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh13009:
+LFQH_Lloh13019:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77440,63 +77470,63 @@ mov.16b	v2, v8
 mov.16b	v3, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13010:
+LFQH_Lloh13020:
 adr x1, LFQH_DramaDockViewport178R4Key
-LFQH_Lloh13011:
+LFQH_Lloh13021:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13012:
+LFQH_Lloh13022:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh13013:
+LFQH_Lloh13023:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13014:
+LFQH_Lloh13024:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh13015:
+LFQH_Lloh13025:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13016:
+LFQH_Lloh13026:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13017:
+LFQH_Lloh13027:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13018:
+LFQH_Lloh13028:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13019:
+LFQH_Lloh13029:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13020:
+LFQH_Lloh13030:
 adr x2, LFQH_l_.str.1394
-LFQH_Lloh13021:
+LFQH_Lloh13031:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13022:
+LFQH_Lloh13032:
 adr x1, LFQH_l_.str.119
-LFQH_Lloh13023:
+LFQH_Lloh13033:
 nop
 mov	x0, x19
 bl	LFQH_Put
-LFQH_Lloh13024:
+LFQH_Lloh13034:
 adr x21, LFQH_l_.str.493
-LFQH_Lloh13025:
+LFQH_Lloh13035:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13026:
+LFQH_Lloh13036:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh13027:
+LFQH_Lloh13037:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77504,18 +77534,18 @@ mov	x0, x22
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13028:
+LFQH_Lloh13038:
 adr x1, LFQH_l_.str.1206
-LFQH_Lloh13029:
+LFQH_Lloh13039:
 nop
 mov	x0, x19
 bl	LFQH_Put
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13030:
+LFQH_Lloh13040:
 adr x20, LFQH_l_.str.717
-LFQH_Lloh13031:
+LFQH_Lloh13041:
 nop
 mov	x0, x20
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -77524,9 +77554,9 @@ mov	x0, x22
 mov.16b	v0, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13032:
+LFQH_Lloh13042:
 adr x1, LFQH_l_.str.1401
-LFQH_Lloh13033:
+LFQH_Lloh13043:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -77540,9 +77570,9 @@ mov	x0, x22
 mov.16b	v0, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13034:
+LFQH_Lloh13044:
 adr x1, LFQH_l_.str.1402
-LFQH_Lloh13035:
+LFQH_Lloh13045:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -77556,9 +77586,9 @@ mov	x0, x22
 mov.16b	v0, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13036:
+LFQH_Lloh13046:
 adr x1, LFQH_l_.str.1403
-LFQH_Lloh13037:
+LFQH_Lloh13047:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -77573,15 +77603,15 @@ mov	x0, x21
 mov.16b	v0, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13038:
+LFQH_Lloh13048:
 adr x1, LFQH_l_.str.1404
-LFQH_Lloh13039:
+LFQH_Lloh13049:
 nop
 mov	x0, x19
 bl	LFQH_Put
-LFQH_Lloh13040:
+LFQH_Lloh13050:
 adr x0, LFQH_l_.str.1405
-LFQH_Lloh13041:
+LFQH_Lloh13051:
 nop
 mov	x1, x19
 bl Lrecord_named
@@ -77616,13 +77646,13 @@ add	x29, sp, #96
 .cfi_offset b9, -64
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh13042:
+LFQH_Lloh13052:
 adr x0, LFQH_l_.str.682
-LFQH_Lloh13043:
+LFQH_Lloh13053:
 nop
-LFQH_Lloh13044:
+LFQH_Lloh13054:
 adr x1, LFQH_l_.str.1390
-LFQH_Lloh13045:
+LFQH_Lloh13055:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -77631,9 +77661,9 @@ mov	x1, x19
 blr	x8
 mov	x19, x0
 cbz	x0, LFQH_LBB709_19
-LFQH_Lloh13046:
+LFQH_Lloh13056:
 adr x0, LFQH_l_.str.683
-LFQH_Lloh13047:
+LFQH_Lloh13057:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77644,9 +77674,9 @@ b.ne	LFQH_LBB709_19
 str	xzr, [sp]
 stp	xzr, xzr, [sp, #32]
 str	xzr, [sp, #24]
-LFQH_Lloh13048:
+LFQH_Lloh13058:
 adr x0, LFQH_l_.str.160
-LFQH_Lloh13049:
+LFQH_Lloh13059:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77688,9 +77718,9 @@ ldr	d1, [sp, #32]
 b	LFQH_LBB709_10
 LFQH_LBB709_7:
 str	xzr, [sp, #16]
-LFQH_Lloh13050:
+LFQH_Lloh13060:
 adr x0, LFQH_l_.str.161
-LFQH_Lloh13051:
+LFQH_Lloh13061:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77720,29 +77750,29 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB709_19
 mov	x0, x20
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh13052:
+LFQH_Lloh13062:
 adr x1, LFQH_l_.str.777
-LFQH_Lloh13053:
+LFQH_Lloh13063:
 nop
-LFQH_Lloh13054:
+LFQH_Lloh13064:
 adr x2, LFQH_l_.str.778
-LFQH_Lloh13055:
+LFQH_Lloh13065:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB709_19
-LFQH_Lloh13056:
+LFQH_Lloh13066:
 adr x0, LFQH_l_.str.682
-LFQH_Lloh13057:
+LFQH_Lloh13067:
 nop
-LFQH_Lloh13058:
+LFQH_Lloh13068:
 adr x1, LFQH_l_.str.777
-LFQH_Lloh13059:
+LFQH_Lloh13069:
 nop
 bl	LFQH_Original
 mov	x21, x0
-LFQH_Lloh13060:
+LFQH_Lloh13070:
 adr x0, LFQH_l_.str.779
-LFQH_Lloh13061:
+LFQH_Lloh13071:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77757,9 +77787,9 @@ tbz	w0, #0, LFQH_LBB709_18
 LFQH_LBB709_14:
 bl LDiagnosticsEnabled
 cbz	w0, LFQH_LBB709_17
-LFQH_Lloh13062:
+LFQH_Lloh13072:
 adr x1, LFQH_DramaDockLogKey
-LFQH_Lloh13063:
+LFQH_Lloh13073:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -77767,22 +77797,22 @@ cbnz	x0, LFQH_LBB709_17
 mov	w0, #1
 bl	LFQH_BoolBox
 mov	x2, x0
-LFQH_Lloh13064:
+LFQH_Lloh13074:
 adr x1, LFQH_DramaDockLogKey
-LFQH_Lloh13065:
+LFQH_Lloh13075:
 nop
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13066:
+LFQH_Lloh13076:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh13067:
+LFQH_Lloh13077:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13068:
+LFQH_Lloh13078:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh13069:
+LFQH_Lloh13079:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77792,52 +77822,52 @@ mov	x19, x0
 fmov	d0, #4.00000000
 bl	LFQH_Number
 mov	x2, x0
-LFQH_Lloh13070:
-adr x1, LFQH_l_.str.683
-LFQH_Lloh13071:
-nop
-mov	x0, x19
-bl	LFQH_Put
-LFQH_Lloh13072:
-adr x0, LFQH_l_.str.1406
-LFQH_Lloh13073:
-nop
-bl	LFQH_Text
-mov	x2, x0
-LFQH_Lloh13074:
-adr x1, LFQH_l_.str.1345
-LFQH_Lloh13075:
-nop
-mov	x0, x19
-bl	LFQH_Put
-LFQH_Lloh13076:
-adr x0, LFQH_l_.str.1407
-LFQH_Lloh13077:
-nop
-bl	LFQH_Text
-mov	x2, x0
-LFQH_Lloh13078:
-adr x1, LFQH_l_.str.1206
-LFQH_Lloh13079:
-nop
-mov	x0, x19
-bl	LFQH_Put
 LFQH_Lloh13080:
-adr x0, LFQH_l_.str.1408
+adr x1, LFQH_l_.str.683
 LFQH_Lloh13081:
+nop
+mov	x0, x19
+bl	LFQH_Put
+LFQH_Lloh13082:
+adr x0, LFQH_l_.str.1406
+LFQH_Lloh13083:
+nop
+bl	LFQH_Text
+mov	x2, x0
+LFQH_Lloh13084:
+adr x1, LFQH_l_.str.1345
+LFQH_Lloh13085:
+nop
+mov	x0, x19
+bl	LFQH_Put
+LFQH_Lloh13086:
+adr x0, LFQH_l_.str.1407
+LFQH_Lloh13087:
+nop
+bl	LFQH_Text
+mov	x2, x0
+LFQH_Lloh13088:
+adr x1, LFQH_l_.str.1206
+LFQH_Lloh13089:
+nop
+mov	x0, x19
+bl	LFQH_Put
+LFQH_Lloh13090:
+adr x0, LFQH_l_.str.1408
+LFQH_Lloh13091:
 nop
 mov	x1, x19
 bl Lrecord_named
 LFQH_LBB709_17:
-LFQH_Lloh13082:
+LFQH_Lloh13092:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh13083:
+LFQH_Lloh13093:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13084:
+LFQH_Lloh13094:
 adr x0, LFQH_l_.str.459
-LFQH_Lloh13085:
+LFQH_Lloh13095:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77846,24 +77876,24 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
 b	LFQH_LBB709_19
 LFQH_LBB709_18:
-LFQH_Lloh13086:
+LFQH_Lloh13096:
 adr x0, LFQH_l_.str.780
-LFQH_Lloh13087:
+LFQH_Lloh13097:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13088:
+LFQH_Lloh13098:
 adr x0, LFQH_l_.str.781
-LFQH_Lloh13089:
+LFQH_Lloh13099:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13090:
+LFQH_Lloh13100:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13091:
+LFQH_Lloh13101:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -77945,47 +77975,47 @@ add	x29, sp, #48
 .cfi_offset w23, -56
 .cfi_offset w24, -64
 mov	x19, x0
-LFQH_Lloh13092:
+LFQH_Lloh13102:
 adr x1, LFQH_l_.str.680
-LFQH_Lloh13093:
+LFQH_Lloh13103:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh13094:
+LFQH_Lloh13104:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13095:
+LFQH_Lloh13105:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13096:
+LFQH_Lloh13106:
 adr x1, LFQH_TabRecoveryKey
-LFQH_Lloh13097:
+LFQH_Lloh13107:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13098:
+LFQH_Lloh13108:
 adr x1, LFQH_l_.str.1096
-LFQH_Lloh13099:
+LFQH_Lloh13109:
 nop
 bl	LFQH_Get
 mov	x23, x0
 cbz	x20, LFQH_LBB713_3
-LFQH_Lloh13100:
+LFQH_Lloh13110:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13101:
+LFQH_Lloh13111:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh13102:
+LFQH_Lloh13112:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13103:
+LFQH_Lloh13113:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13104:
+LFQH_Lloh13114:
 adr x2, LFQH_l_.str.751
-LFQH_Lloh13105:
+LFQH_Lloh13115:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -78004,18 +78034,18 @@ cmp	x23, x20
 cset	w8, eq
 and	w8, w8, w24
 tbnz	w8, #0, LFQH_LBB713_13
-LFQH_Lloh13106:
+LFQH_Lloh13116:
 adr x0, LFQH_l_.str.1226
-LFQH_Lloh13107:
+LFQH_Lloh13117:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13108:
+LFQH_Lloh13118:
 adr x1, LFQH_TabRecoveryKey
-LFQH_Lloh13109:
+LFQH_Lloh13119:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -78023,87 +78053,87 @@ mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 cbz	w24, LFQH_LBB713_13
 LFQH_LBB713_6:
-LFQH_Lloh13110:
+LFQH_Lloh13120:
 adr x0, LFQH_l_.str.1416
-LFQH_Lloh13111:
+LFQH_Lloh13121:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
 cbnz	x0, LFQH_LBB713_9
-LFQH_Lloh13112:
+LFQH_Lloh13122:
 adr x0, LFQH_l_.str.217
-LFQH_Lloh13113:
+LFQH_Lloh13123:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13114:
+LFQH_Lloh13124:
 adr x1, LFQH_l_.str.1416
-LFQH_Lloh13115:
+LFQH_Lloh13125:
 nop
 mov	x2, #0
 bl Lpatch + (0xa61c - PATCH_BASE)
 mov	x22, x0
 cbz	x0, LFQH_LBB713_9
-LFQH_Lloh13116:
-adr x0, LFQH_l_.str.1417
-LFQH_Lloh13117:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-LFQH_Lloh13118:
-adr x2, LFQH_ToggleChanged
-LFQH_Lloh13119:
-nop
-LFQH_Lloh13120:
-adr x23, LFQH_l_.str.213
-LFQH_Lloh13121:
-nop
-mov	x0, x22
-mov	x3, x23
-bl Lpatch + (0xa58c - PATCH_BASE)
-LFQH_Lloh13122:
-adr x0, LFQH_l_.str.1414
-LFQH_Lloh13123:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-LFQH_Lloh13124:
-adr x2, LFQH_RecoverOptions
-LFQH_Lloh13125:
-nop
-mov	x0, x22
-mov	x3, x23
-bl Lpatch + (0xa58c - PATCH_BASE)
 LFQH_Lloh13126:
-adr x0, LFQH_l_.str.1230
+adr x0, LFQH_l_.str.1417
 LFQH_Lloh13127:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 LFQH_Lloh13128:
-adr x2, LFQH_RecoveryTouch
+adr x2, LFQH_ToggleChanged
 LFQH_Lloh13129:
 nop
 LFQH_Lloh13130:
-adr x3, LFQH_l_.str.1231
+adr x23, LFQH_l_.str.213
 LFQH_Lloh13131:
+nop
+mov	x0, x22
+mov	x3, x23
+bl Lpatch + (0xa58c - PATCH_BASE)
+LFQH_Lloh13132:
+adr x0, LFQH_l_.str.1414
+LFQH_Lloh13133:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh13134:
+adr x2, LFQH_RecoverOptions
+LFQH_Lloh13135:
+nop
+mov	x0, x22
+mov	x3, x23
+bl Lpatch + (0xa58c - PATCH_BASE)
+LFQH_Lloh13136:
+adr x0, LFQH_l_.str.1230
+LFQH_Lloh13137:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh13138:
+adr x2, LFQH_RecoveryTouch
+LFQH_Lloh13139:
+nop
+LFQH_Lloh13140:
+adr x3, LFQH_l_.str.1231
+LFQH_Lloh13141:
 nop
 mov	x0, x22
 bl Lpatch + (0xa58c - PATCH_BASE)
 mov	x0, x22
 bl Lpatch + (0xa610 - PATCH_BASE)
 LFQH_LBB713_9:
-LFQH_Lloh13132:
+LFQH_Lloh13142:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh13133:
+LFQH_Lloh13143:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13134:
+LFQH_Lloh13144:
 adr x0, LFQH_l_.str.1412
-LFQH_Lloh13135:
+LFQH_Lloh13145:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78111,62 +78141,62 @@ mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB713_13
 mov	x22, x0
-LFQH_Lloh13136:
+LFQH_Lloh13146:
 adr x0, LFQH_l_.str.111
-LFQH_Lloh13137:
+LFQH_Lloh13147:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13138:
+LFQH_Lloh13148:
 adr x0, LFQH_l_.str.112
-LFQH_Lloh13139:
+LFQH_Lloh13149:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13140:
+LFQH_Lloh13150:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh13141:
+LFQH_Lloh13151:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13142:
+LFQH_Lloh13152:
 adr x1, LFQH_RecoveryBarKey
-LFQH_Lloh13143:
+LFQH_Lloh13153:
 nop
 mov	x0, x22
 mov	x2, x23
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13144:
+LFQH_Lloh13154:
 adr x0, LFQH_l_.str.1413
-LFQH_Lloh13145:
+LFQH_Lloh13155:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13146:
+LFQH_Lloh13156:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh13147:
+LFQH_Lloh13157:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13148:
+LFQH_Lloh13158:
 adr x0, LFQH_l_.str.1233
-LFQH_Lloh13149:
+LFQH_Lloh13159:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13150:
+LFQH_Lloh13160:
 adr x0, LFQH_l_.str.1414
-LFQH_Lloh13151:
+LFQH_Lloh13161:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -78176,61 +78206,61 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB713_12
 mov	x21, x0
-LFQH_Lloh13152:
+LFQH_Lloh13162:
 adr x0, LFQH_l_.str.1415
-LFQH_Lloh13153:
+LFQH_Lloh13163:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 fmov	d0, #0.75000000
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13154:
+LFQH_Lloh13164:
 adr x0, LFQH_l_.str.1234
-LFQH_Lloh13155:
+LFQH_Lloh13165:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13156:
+LFQH_Lloh13166:
 adr x1, LFQH_ToggleObserverKey
-LFQH_Lloh13157:
+LFQH_Lloh13167:
 nop
 mov	x0, x21
 mov	x2, x22
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13158:
+LFQH_Lloh13168:
 adr x1, LFQH_TabRecoveryKey
-LFQH_Lloh13159:
+LFQH_Lloh13169:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13160:
+LFQH_Lloh13170:
 adr x0, LFQH_l_.str.1236
-LFQH_Lloh13161:
+LFQH_Lloh13171:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13162:
+LFQH_Lloh13172:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh13163:
+LFQH_Lloh13173:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB713_12:
-LFQH_Lloh13164:
+LFQH_Lloh13174:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh13165:
+LFQH_Lloh13175:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78291,9 +78321,9 @@ add	x29, sp, #80
 .cfi_offset w27, -88
 .cfi_offset w28, -96
 mov	x22, x2
-LFQH_Lloh13166:
+LFQH_Lloh13176:
 adr x0, LFQH_l_.str.489
-LFQH_Lloh13167:
+LFQH_Lloh13177:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78303,9 +78333,9 @@ mov	x21, x0
 bl	LFQH_PagePreference
 cbz	x0, LFQH_LBB718_38
 mov	x20, x0
-LFQH_Lloh13168:
+LFQH_Lloh13178:
 adr x1, LFQH_l_.str.490
-LFQH_Lloh13169:
+LFQH_Lloh13179:
 nop
 mov	x0, x22
 bl	LFQH_BoolProp
@@ -78321,35 +78351,35 @@ cmp	x21, #6
 b.eq	LFQH_LBB718_27
 cmp	x21, #7
 b.ne	LFQH_LBB718_25
-LFQH_Lloh13170:
+LFQH_Lloh13180:
 adr x0, LFQH_l_.str.1418
-LFQH_Lloh13171:
+LFQH_Lloh13181:
 nop
 b	LFQH_LBB718_11
 LFQH_LBB718_6:
-LFQH_Lloh13172:
+LFQH_Lloh13182:
 adr x0, LFQH_l_.str.1423
-LFQH_Lloh13173:
+LFQH_Lloh13183:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13174:
+LFQH_Lloh13184:
 adr x0, LFQH_l_.str.1424
-LFQH_Lloh13175:
+LFQH_Lloh13185:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh13176:
+LFQH_Lloh13186:
 adr x1, LFQH_l_.str.1425
-LFQH_Lloh13177:
+LFQH_Lloh13187:
 nop
 bl	LFQH_Get
-LFQH_Lloh13178:
+LFQH_Lloh13188:
 adr x1, LFQH_l_.str.1426
-LFQH_Lloh13179:
+LFQH_Lloh13189:
 nop
 bl	LFQH_Get
 mov	w1, #5
@@ -78363,9 +78393,9 @@ cmp	x21, #10
 b.eq	LFQH_LBB718_33
 cmp	x21, #16
 b.ne	LFQH_LBB718_25
-LFQH_Lloh13180:
+LFQH_Lloh13190:
 adr x0, LFQH_l_.str.1419
-LFQH_Lloh13181:
+LFQH_Lloh13191:
 nop
 LFQH_LBB718_11:
 ldp	x29, x30, [sp, #80]
@@ -78376,16 +78406,16 @@ ldp	x26, x25, [sp, #16]
 ldp	x28, x27, [sp], #96
 b	LFQH_RefreshMineList
 LFQH_LBB718_12:
-LFQH_Lloh13182:
+LFQH_Lloh13192:
 adr x1, LFQH_l_.str.1427
-LFQH_Lloh13183:
+LFQH_Lloh13193:
 nop
 mov	x0, x24
 bl	LFQH_Get
 mov	x24, x0
-LFQH_Lloh13184:
+LFQH_Lloh13194:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13185:
+LFQH_Lloh13195:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78394,13 +78424,13 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB718_16
 mov	x25, x0
 mov	x26, #0
-LFQH_Lloh13186:
+LFQH_Lloh13196:
 adr x27, LFQH_l_.str.568
-LFQH_Lloh13187:
+LFQH_Lloh13197:
 nop
-LFQH_Lloh13188:
+LFQH_Lloh13198:
 adr x28, LFQH_l_.str.1426
-LFQH_Lloh13189:
+LFQH_Lloh13199:
 nop
 LFQH_LBB718_14:
 mov	x0, x27
@@ -78420,17 +78450,17 @@ b.ne	LFQH_LBB718_14
 LFQH_LBB718_16:
 mov	x23, #0
 LFQH_LBB718_17:
-LFQH_Lloh13190:
+LFQH_Lloh13200:
 adr x1, LFQH_l_.str.685
-LFQH_Lloh13191:
+LFQH_Lloh13201:
 nop
 mov	x0, x23
 bl	LFQH_Get
 cbnz	w19, LFQH_LBB718_21
 mov	x24, x0
-LFQH_Lloh13192:
+LFQH_Lloh13202:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13193:
+LFQH_Lloh13203:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78438,9 +78468,9 @@ mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, #1
 b.ne	LFQH_LBB718_21
-LFQH_Lloh13194:
+LFQH_Lloh13204:
 adr x0, LFQH_l_.str.568
-LFQH_Lloh13195:
+LFQH_Lloh13205:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78452,9 +78482,9 @@ mov	x0, x23
 bl	LFQH_TabOption
 cmp	x0, x21
 b.ne	LFQH_LBB718_21
-LFQH_Lloh13196:
+LFQH_Lloh13206:
 adr x0, LFQH_l_.str.499
-LFQH_Lloh13197:
+LFQH_Lloh13207:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78473,9 +78503,9 @@ mov	x0, x20
 mov	x1, x19
 bl	LFQH_SetDefault
 cbz	x23, LFQH_LBB718_23
-LFQH_Lloh13198:
+LFQH_Lloh13208:
 adr x0, LFQH_l_.str.1420
-LFQH_Lloh13199:
+LFQH_Lloh13209:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78486,63 +78516,63 @@ bl	LFQH_InstallTabRecovery
 LFQH_LBB718_23:
 bl LDiagnosticsEnabled
 cbz	w0, LFQH_LBB718_38
-LFQH_Lloh13200:
+LFQH_Lloh13210:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh13201:
+LFQH_Lloh13211:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13202:
+LFQH_Lloh13212:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh13203:
+LFQH_Lloh13213:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13204:
+LFQH_Lloh13214:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13205:
+LFQH_Lloh13215:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13206:
+LFQH_Lloh13216:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13207:
+LFQH_Lloh13217:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13208:
+LFQH_Lloh13218:
 adr x23, LFQH_l_.str.1421
-LFQH_Lloh13209:
+LFQH_Lloh13219:
 nop
 mov	x0, x22
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13210:
+LFQH_Lloh13220:
 adr x1, LFQH_l_.str.730
-LFQH_Lloh13211:
+LFQH_Lloh13221:
 nop
 mov	x0, x21
 bl	LFQH_Put
-LFQH_Lloh13212:
+LFQH_Lloh13222:
 adr x1, LFQH_l_.str.1422
-LFQH_Lloh13213:
+LFQH_Lloh13223:
 nop
 mov	x0, x21
 mov	x2, x20
 bl	LFQH_Put
-LFQH_Lloh13214:
+LFQH_Lloh13224:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13215:
+LFQH_Lloh13225:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13216:
+LFQH_Lloh13226:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh13217:
+LFQH_Lloh13227:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78550,9 +78580,9 @@ mov	x0, x20
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13218:
+LFQH_Lloh13228:
 adr x1, LFQH_l_.str.1203
-LFQH_Lloh13219:
+LFQH_Lloh13229:
 nop
 mov	x0, x21
 bl	LFQH_Put
@@ -78577,29 +78607,29 @@ ldp	x26, x25, [sp, #16]
 ldp	x28, x27, [sp], #96
 b	LFQH_FQHApplyReaderThemeIsolation
 LFQH_LBB718_27:
-LFQH_Lloh13220:
+LFQH_Lloh13230:
 adr x0, LFQH_l_.str.20
-LFQH_Lloh13221:
+LFQH_Lloh13231:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13222:
+LFQH_Lloh13232:
 adr x1, LFQH_ShelfDurationHeadersKey
-LFQH_Lloh13223:
+LFQH_Lloh13233:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13224:
+LFQH_Lloh13234:
 adr x0, LFQH_l_.str.76
-LFQH_Lloh13225:
+LFQH_Lloh13235:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13226:
+LFQH_Lloh13236:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13227:
+LFQH_Lloh13237:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78608,21 +78638,21 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB718_38
 mov	x21, x0
 mov	x22, #0
-LFQH_Lloh13228:
+LFQH_Lloh13238:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13229:
+LFQH_Lloh13239:
 nop
-LFQH_Lloh13230:
+LFQH_Lloh13240:
 adr x24, LFQH_ShelfDurationRequestedKey
-LFQH_Lloh13231:
+LFQH_Lloh13241:
 nop
-LFQH_Lloh13232:
+LFQH_Lloh13242:
 adr x25, LFQH_l_.str.87
-LFQH_Lloh13233:
+LFQH_Lloh13243:
 nop
-LFQH_Lloh13234:
+LFQH_Lloh13244:
 adr x26, LFQH_l_.str.40
-LFQH_Lloh13235:
+LFQH_Lloh13245:
 nop
 LFQH_LBB718_29:
 mov	x0, x23
@@ -78657,18 +78687,18 @@ b	LFQH_LBB718_38
 LFQH_LBB718_33:
 bl	LFQH_ShelfFilterHeaders
 mov	x19, x0
-LFQH_Lloh13236:
+LFQH_Lloh13246:
 adr x0, LFQH_l_.str.76
-LFQH_Lloh13237:
+LFQH_Lloh13247:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13238:
+LFQH_Lloh13248:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13239:
+LFQH_Lloh13249:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78680,21 +78710,21 @@ bl	LFQH_PageOptionEnabled
 cbz	x20, LFQH_LBB718_38
 mov	x21, x0
 mov	x22, #0
-LFQH_Lloh13240:
+LFQH_Lloh13250:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13241:
+LFQH_Lloh13251:
 nop
-LFQH_Lloh13242:
+LFQH_Lloh13252:
 adr x24, LFQH_l_.str.137
-LFQH_Lloh13243:
+LFQH_Lloh13253:
 nop
-LFQH_Lloh13244:
+LFQH_Lloh13254:
 adr x25, LFQH_l_.str.138
-LFQH_Lloh13245:
+LFQH_Lloh13255:
 nop
-LFQH_Lloh13246:
+LFQH_Lloh13256:
 adr x26, LFQH_l_.str.87
-LFQH_Lloh13247:
+LFQH_Lloh13257:
 nop
 LFQH_LBB718_35:
 mov	x0, x23
@@ -78754,9 +78784,9 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x20, x2
 mov	x19, x0
-LFQH_Lloh13248:
+LFQH_Lloh13258:
 adr x0, LFQH_l_.str.1237
-LFQH_Lloh13249:
+LFQH_Lloh13259:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78764,36 +78794,36 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, #1
 b.ne	LFQH_LBB719_3
-LFQH_Lloh13250:
+LFQH_Lloh13260:
 adr x1, LFQH_RecoveryBarKey
-LFQH_Lloh13251:
+LFQH_Lloh13261:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13252:
+LFQH_Lloh13262:
 adr x0, LFQH_l_.str.107
-LFQH_Lloh13253:
+LFQH_Lloh13263:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13254:
+LFQH_Lloh13264:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh13255:
+LFQH_Lloh13265:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh13256:
+LFQH_Lloh13266:
 adr x1, LFQH_l_.str.5
-LFQH_Lloh13257:
+LFQH_Lloh13267:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB719_3
-LFQH_Lloh13258:
+LFQH_Lloh13268:
 adr x1, LFQH_l_.str.1429
-LFQH_Lloh13259:
+LFQH_Lloh13269:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -78803,15 +78833,15 @@ ldp	x29, x30, [sp, #16]
 ldp	x20, x19, [sp], #32
 ret
 LFQH_LBB719_4:
-LFQH_Lloh13260:
+LFQH_Lloh13270:
 adr x0, LFQH_l_.str.1430
-LFQH_Lloh13261:
+LFQH_Lloh13271:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13262:
+LFQH_Lloh13272:
 adr x0, LFQH_l_.str.1431
-LFQH_Lloh13263:
+LFQH_Lloh13273:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x1, x20
@@ -78843,15 +78873,15 @@ add	x29, sp, #48
 .cfi_offset b8, -56
 .cfi_offset b9, -64
 mov	x19, x3
-LFQH_Lloh13264:
+LFQH_Lloh13274:
 adr x1, LFQH_RecoveryBarKey
-LFQH_Lloh13265:
+LFQH_Lloh13275:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13266:
+LFQH_Lloh13276:
 adr x0, LFQH_l_.str.107
-LFQH_Lloh13267:
+LFQH_Lloh13277:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78859,30 +78889,30 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB720_4
 mov	x20, x0
-LFQH_Lloh13268:
+LFQH_Lloh13278:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh13269:
+LFQH_Lloh13279:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB720_3
-LFQH_Lloh13270:
+LFQH_Lloh13280:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13271:
+LFQH_Lloh13281:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13272:
+LFQH_Lloh13282:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13273:
+LFQH_Lloh13283:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13274:
+LFQH_Lloh13284:
 adr x2, LFQH_l_.str.751
-LFQH_Lloh13275:
+LFQH_Lloh13285:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -78897,9 +78927,9 @@ ldp	x22, x21, [sp, #16]
 ldp	d9, d8, [sp], #64
 ret
 LFQH_LBB720_5:
-LFQH_Lloh13276:
+LFQH_Lloh13286:
 adr x0, LFQH_l_.str.449
-LFQH_Lloh13277:
+LFQH_Lloh13287:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78908,9 +78938,9 @@ mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh13278:
+LFQH_Lloh13288:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13279:
+LFQH_Lloh13289:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -78949,59 +78979,59 @@ add	x29, sp, #64
 .cfi_offset w25, -72
 .cfi_offset w26, -80
 mov	x20, x0
-LFQH_Lloh13280:
+LFQH_Lloh13290:
 adr x0, LFQH_l_.str.324
-LFQH_Lloh13281:
+LFQH_Lloh13291:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13282:
+LFQH_Lloh13292:
 adr x1, LFQH_l_.str.274
-LFQH_Lloh13283:
+LFQH_Lloh13293:
 nop
-LFQH_Lloh13284:
+LFQH_Lloh13294:
 adr x2, LFQH_l_.str.213
-LFQH_Lloh13285:
+LFQH_Lloh13295:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB721_4
-LFQH_Lloh13286:
+LFQH_Lloh13296:
 adr x0, LFQH_l_.str.324
-LFQH_Lloh13287:
+LFQH_Lloh13297:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13288:
+LFQH_Lloh13298:
 adr x1, LFQH_MineControllersKey
-LFQH_Lloh13289:
+LFQH_Lloh13299:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13290:
+LFQH_Lloh13300:
 adr x0, LFQH_l_.str.76
-LFQH_Lloh13291:
+LFQH_Lloh13301:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13292:
+LFQH_Lloh13302:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13293:
+LFQH_Lloh13303:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13294:
+LFQH_Lloh13304:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13295:
+LFQH_Lloh13305:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13296:
+LFQH_Lloh13306:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13297:
+LFQH_Lloh13307:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79011,13 +79041,13 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x21, LFQH_LBB721_4
 mov	x20, x0
 mov	x22, #0
-LFQH_Lloh13298:
+LFQH_Lloh13308:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13299:
+LFQH_Lloh13309:
 nop
-LFQH_Lloh13300:
+LFQH_Lloh13310:
 adr x24, LFQH_l_.str.274
-LFQH_Lloh13301:
+LFQH_Lloh13311:
 nop
 LFQH_LBB721_3:
 mov	x0, x23
@@ -79066,18 +79096,18 @@ add	x29, sp, #64
 .cfi_offset w26, -80
 bl	LFQH_FullscreenPlayers
 mov	x19, x0
-LFQH_Lloh13302:
+LFQH_Lloh13312:
 adr x0, LFQH_l_.str.76
-LFQH_Lloh13303:
+LFQH_Lloh13313:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13304:
+LFQH_Lloh13314:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13305:
+LFQH_Lloh13315:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79086,17 +79116,17 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB722_5
 mov	x20, x0
 mov	x21, #0
-LFQH_Lloh13306:
+LFQH_Lloh13316:
 adr x22, LFQH_l_.str.568
-LFQH_Lloh13307:
+LFQH_Lloh13317:
 nop
-LFQH_Lloh13308:
+LFQH_Lloh13318:
 adr x23, LFQH_l_.str.69
-LFQH_Lloh13309:
+LFQH_Lloh13319:
 nop
-LFQH_Lloh13310:
+LFQH_Lloh13320:
 adr x24, LFQH_l_.str.1182
-LFQH_Lloh13311:
+LFQH_Lloh13321:
 nop
 LFQH_LBB722_2:
 mov	x0, x22
@@ -79147,9 +79177,9 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh13312:
+LFQH_Lloh13322:
 adr x1, LFQH_l_.str.5
-LFQH_Lloh13313:
+LFQH_Lloh13323:
 nop
 bl	LFQH_Kind
 tbz	w0, #0, LFQH_LBB723_3
@@ -79164,16 +79194,16 @@ LFQH_LBB723_3:
 mov	x0, #0
 cbz	x19, LFQH_LBB723_2
 cbz	w20, LFQH_LBB723_2
-LFQH_Lloh13314:
+LFQH_Lloh13324:
 adr x1, LFQH_l_.str.1428
-LFQH_Lloh13315:
+LFQH_Lloh13325:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh13316:
+LFQH_Lloh13326:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13317:
+LFQH_Lloh13327:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79183,9 +79213,9 @@ cbz	x0, LFQH_LBB723_2
 mov	x21, x0
 mov	x22, #0
 sub	w20, w20, #1
-LFQH_Lloh13318:
+LFQH_Lloh13328:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13319:
+LFQH_Lloh13329:
 nop
 LFQH_LBB723_7:
 mov	x0, x23
@@ -79224,15 +79254,15 @@ add	x29, sp, #64
 .cfi_offset w25, -72
 .cfi_offset w26, -80
 mov	x20, x0
-LFQH_Lloh13320:
+LFQH_Lloh13330:
 adr x1, LFQH_l_.str.1432
-LFQH_Lloh13321:
+LFQH_Lloh13331:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh13322:
+LFQH_Lloh13332:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh13323:
+LFQH_Lloh13333:
 nop
 bl	LFQH_Kind
 cmp	w0, #0
@@ -79247,9 +79277,9 @@ ldp	x26, x25, [sp], #80
 ret
 LFQH_LBB724_2:
 mov	w22, #0
-LFQH_Lloh13324:
+LFQH_Lloh13334:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh13325:
+LFQH_Lloh13335:
 nop
 mov	x0, x19
 LFQH_LBB724_3:
@@ -79263,16 +79293,16 @@ add	w22, w22, #1
 b.lo	LFQH_LBB724_3
 b	LFQH_LBB724_1
 LFQH_LBB724_6:
-LFQH_Lloh13326:
+LFQH_Lloh13336:
 adr x1, LFQH_l_.str.531
-LFQH_Lloh13327:
+LFQH_Lloh13337:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13328:
+LFQH_Lloh13338:
 adr x0, LFQH_l_.str.1433
-LFQH_Lloh13329:
+LFQH_Lloh13339:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79280,38 +79310,38 @@ mov	x0, x19
 mov	x2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13330:
+LFQH_Lloh13340:
 adr x1, LFQH_SpeechGlyphKey
-LFQH_Lloh13331:
+LFQH_Lloh13341:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13332:
+LFQH_Lloh13342:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh13333:
+LFQH_Lloh13343:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13334:
+LFQH_Lloh13344:
 adr x0, LFQH_l_.str.48
-LFQH_Lloh13335:
+LFQH_Lloh13345:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13336:
+LFQH_Lloh13346:
 adr x1, LFQH_l_.str.170
-LFQH_Lloh13337:
+LFQH_Lloh13347:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x25, x0
-LFQH_Lloh13338:
+LFQH_Lloh13348:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh13339:
+LFQH_Lloh13349:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79323,9 +79353,9 @@ bl	LFQH_Enabled
 cbz	w0, LFQH_LBB724_9
 bl	LFQH_FQHGlassAvailable
 cbz	w0, LFQH_LBB724_9
-LFQH_Lloh13340:
+LFQH_Lloh13350:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13341:
+LFQH_Lloh13351:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79346,16 +79376,16 @@ LFQH_LBB724_9:
 cbz	x22, LFQH_LBB724_16
 cmp	x21, x22
 b.ne	LFQH_LBB724_12
-LFQH_Lloh13342:
+LFQH_Lloh13352:
 adr x1, LFQH_SpeechImageKey
-LFQH_Lloh13343:
+LFQH_Lloh13353:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13344:
+LFQH_Lloh13354:
 adr x0, LFQH_l_.str.1436
-LFQH_Lloh13345:
+LFQH_Lloh13355:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79364,18 +79394,18 @@ mov	x2, x21
 mov	x3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB724_12:
-LFQH_Lloh13346:
+LFQH_Lloh13356:
 adr x1, LFQH_SpeechTintKey
-LFQH_Lloh13347:
+LFQH_Lloh13357:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	w24, LFQH_LBB724_15
 mov	x21, x0
 cbz	x0, LFQH_LBB724_15
-LFQH_Lloh13348:
+LFQH_Lloh13358:
 adr x0, LFQH_l_.str.171
-LFQH_Lloh13349:
+LFQH_Lloh13359:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79383,25 +79413,25 @@ mov	x0, x19
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB724_15:
-LFQH_Lloh13350:
+LFQH_Lloh13360:
 adr x1, LFQH_SpeechImageKey
-LFQH_Lloh13351:
+LFQH_Lloh13361:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13352:
+LFQH_Lloh13362:
 adr x1, LFQH_SpeechGlyphKey
-LFQH_Lloh13353:
+LFQH_Lloh13363:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13354:
+LFQH_Lloh13364:
 adr x1, LFQH_SpeechTintKey
-LFQH_Lloh13355:
+LFQH_Lloh13365:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -79410,9 +79440,9 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB724_16:
 mov	x0, x20
 bl	LFQH_RestoreOpticalFrame
-LFQH_Lloh13356:
+LFQH_Lloh13366:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh13357:
+LFQH_Lloh13367:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -79434,20 +79464,20 @@ b.le	LFQH_LBB724_9
 fcmp	d3, #0.0
 b.le	LFQH_LBB724_9
 cbnz	x22, LFQH_LBB724_22
-LFQH_Lloh13358:
+LFQH_Lloh13368:
 adr x0, LFQH_l_.str.1434
-LFQH_Lloh13359:
+LFQH_Lloh13369:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13360:
+LFQH_Lloh13370:
 adr x1, LFQH_l_.str.1435
-LFQH_Lloh13361:
+LFQH_Lloh13371:
 nop
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh13362:
+LFQH_Lloh13372:
 adr x0, LFQH_l_.str.628
-LFQH_Lloh13363:
+LFQH_Lloh13373:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79459,25 +79489,25 @@ cbz	x0, LFQH_LBB724_1
 LFQH_LBB724_22:
 mov	x0, x19
 bl	LFQH_ApplyReaderListenSurface
-LFQH_Lloh13364:
+LFQH_Lloh13374:
 adr x1, LFQH_SurfaceKey
-LFQH_Lloh13365:
+LFQH_Lloh13375:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB724_1
 cbnz	w24, LFQH_LBB724_25
-LFQH_Lloh13366:
+LFQH_Lloh13376:
 adr x1, LFQH_SpeechTintKey
-LFQH_Lloh13367:
+LFQH_Lloh13377:
 nop
 mov	x0, x19
 mov	x2, x25
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13368:
+LFQH_Lloh13378:
 adr x0, LFQH_l_.str.171
-LFQH_Lloh13369:
+LFQH_Lloh13379:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79487,25 +79517,25 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB724_25:
 cmp	x21, x22
 b.eq	LFQH_LBB724_27
-LFQH_Lloh13370:
+LFQH_Lloh13380:
 adr x1, LFQH_SpeechImageKey
-LFQH_Lloh13371:
+LFQH_Lloh13381:
 nop
 mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13372:
+LFQH_Lloh13382:
 adr x1, LFQH_SpeechGlyphKey
-LFQH_Lloh13373:
+LFQH_Lloh13383:
 nop
 mov	x0, x19
 mov	x2, x22
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13374:
+LFQH_Lloh13384:
 adr x0, LFQH_l_.str.1436
-LFQH_Lloh13375:
+LFQH_Lloh13385:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79576,21 +79606,21 @@ add	x29, sp, #176
 .cfi_offset b14, -152
 .cfi_offset b15, -160
 mov	x19, x0
-LFQH_Lloh13376:
+LFQH_Lloh13386:
 adr x1, LFQH_l_.str.1437
-LFQH_Lloh13377:
+LFQH_Lloh13387:
 nop
 bl	LFQH_Get
 mov	x27, x0
-LFQH_Lloh13378:
+LFQH_Lloh13388:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13379:
+LFQH_Lloh13389:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13380:
+LFQH_Lloh13390:
 adr x1, LFQH_l_.str.699
-LFQH_Lloh13381:
+LFQH_Lloh13391:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -79599,16 +79629,16 @@ mov	x0, x19
 mov	x1, x25
 bl	LFQH_BookstoreCurrentTab
 mov	x23, x0
-LFQH_Lloh13382:
+LFQH_Lloh13392:
 adr x1, LFQH_l_.str.995
-LFQH_Lloh13383:
+LFQH_Lloh13393:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x26, x0
-LFQH_Lloh13384:
+LFQH_Lloh13394:
 adr x1, LFQH_l_.str.1441
-LFQH_Lloh13385:
+LFQH_Lloh13395:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -79617,9 +79647,9 @@ mov	x0, x25
 mov	x1, x21
 bl	LFQH_TopChromeContains
 tbnz	w0, #0, LFQH_LBB728_4
-LFQH_Lloh13386:
+LFQH_Lloh13396:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh13387:
+LFQH_Lloh13397:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -79628,9 +79658,9 @@ mov	x0, x25
 mov	x1, x21
 bl	LFQH_TopChromeContains
 tbnz	w0, #0, LFQH_LBB728_4
-LFQH_Lloh13388:
+LFQH_Lloh13398:
 adr x1, LFQH_l_.str.1442
-LFQH_Lloh13389:
+LFQH_Lloh13399:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -79639,9 +79669,9 @@ mov	x0, x25
 mov	x1, x21
 bl	LFQH_TopChromeContains
 tbnz	w0, #0, LFQH_LBB728_4
-LFQH_Lloh13390:
+LFQH_Lloh13400:
 adr x1, LFQH_l_.str.1443
-LFQH_Lloh13391:
+LFQH_Lloh13401:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -79652,16 +79682,16 @@ bl	LFQH_TopChromeContains
 cmp	w0, #0
 csel	x21, xzr, x21, eq
 LFQH_LBB728_4:
-LFQH_Lloh13392:
+LFQH_Lloh13402:
 adr x1, LFQH_l_.str.1444
-LFQH_Lloh13393:
+LFQH_Lloh13403:
 nop
 mov	x0, x23
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh13394:
+LFQH_Lloh13404:
 adr x1, LFQH_l_.str.316
-LFQH_Lloh13395:
+LFQH_Lloh13405:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB728_6
@@ -79670,24 +79700,24 @@ mov	x1, x21
 bl	LFQH_TopChromeContains
 tbnz	w0, #0, LFQH_LBB728_10
 LFQH_LBB728_6:
-LFQH_Lloh13396:
+LFQH_Lloh13406:
 adr x1, LFQH_l_.str.379
-LFQH_Lloh13397:
+LFQH_Lloh13407:
 nop
 mov	x0, x23
 bl	LFQH_Kind
 cbz	x21, LFQH_LBB728_9
 cbz	w0, LFQH_LBB728_9
-LFQH_Lloh13398:
+LFQH_Lloh13408:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13399:
+LFQH_Lloh13409:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh13400:
+LFQH_Lloh13410:
 adr x1, LFQH_l_.str.684
-LFQH_Lloh13401:
+LFQH_Lloh13411:
 nop
 mov	x0, x23
 bl	LFQH_Get
@@ -79696,17 +79726,17 @@ b.eq	LFQH_LBB728_55
 LFQH_LBB728_9:
 mov	x22, x25
 LFQH_LBB728_10:
-LFQH_Lloh13402:
+LFQH_Lloh13412:
 adr x24, LFQH_l_.str.19
-LFQH_Lloh13403:
+LFQH_Lloh13413:
 nop
 mov	x0, x22
 mov	x1, x24
 bl	LFQH_Get
 str	x0, [sp, #24]
-LFQH_Lloh13404:
+LFQH_Lloh13414:
 adr x28, LFQH_l_.str.480
-LFQH_Lloh13405:
+LFQH_Lloh13415:
 nop
 mov	x0, x28
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -79715,9 +79745,9 @@ mov	x0, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v12, v1
 mov.16b	v13, v3
-LFQH_Lloh13406:
+LFQH_Lloh13416:
 adr x23, LFQH_l_.str.23
-LFQH_Lloh13407:
+LFQH_Lloh13417:
 nop
 mov	x0, x23
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -79736,9 +79766,9 @@ mov.16b	v14, v0
 mov.16b	v15, v1
 mov.16b	v8, v2
 mov.16b	v9, v3
-LFQH_Lloh13408:
+LFQH_Lloh13418:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13409:
+LFQH_Lloh13419:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79806,17 +79836,17 @@ mov	x24, x0
 mov	x0, x27
 mov	x1, x24
 bl	LFQH_TopChromeFill
-LFQH_Lloh13410:
+LFQH_Lloh13420:
 adr x1, LFQH_l_.str.994
-LFQH_Lloh13411:
+LFQH_Lloh13421:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x1, x24
 bl	LFQH_TopChromeFill
-LFQH_Lloh13412:
+LFQH_Lloh13422:
 adr x1, LFQH_l_.str.1438
-LFQH_Lloh13413:
+LFQH_Lloh13423:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -79825,30 +79855,30 @@ bl	LFQH_TopChromeFill
 mov	x0, x26
 mov	x1, x24
 bl	LFQH_TopChromeFill
-LFQH_Lloh13414:
+LFQH_Lloh13424:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh13415:
+LFQH_Lloh13425:
 nop
 mov	x0, x26
 bl	LFQH_Get
 mov	x1, x24
 bl	LFQH_TopChromeFill
-LFQH_Lloh13416:
+LFQH_Lloh13426:
 adr x1, LFQH_l_.str.344
-LFQH_Lloh13417:
+LFQH_Lloh13427:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x26, x0
-LFQH_Lloh13418:
+LFQH_Lloh13428:
 adr x1, LFQH_l_.str.22
-LFQH_Lloh13419:
+LFQH_Lloh13429:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB728_38
-LFQH_Lloh13420:
+LFQH_Lloh13430:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13421:
+LFQH_Lloh13431:
 nop
 mov	x0, x26
 bl	LFQH_Get
@@ -79856,24 +79886,24 @@ mov	w23, #1
 cbz	w24, LFQH_LBB728_24
 mov	x27, x0
 cbz	x0, LFQH_LBB728_24
-LFQH_Lloh13422:
+LFQH_Lloh13432:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13423:
+LFQH_Lloh13433:
 nop
 mov	x0, x25
 bl	LFQH_Get
 cmp	x0, x27
 b.ne	LFQH_LBB728_24
-LFQH_Lloh13424:
+LFQH_Lloh13434:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh13425:
+LFQH_Lloh13435:
 nop
 mov	x0, x27
 bl	LFQH_Get
 mov	x23, x0
-LFQH_Lloh13426:
+LFQH_Lloh13436:
 adr x0, LFQH_l_.str.438
-LFQH_Lloh13427:
+LFQH_Lloh13437:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x27, x0
@@ -79889,33 +79919,33 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x28, x0
 cset	w23, ls
 LFQH_LBB728_24:
-LFQH_Lloh13428:
+LFQH_Lloh13438:
 adr x0, LFQH_l_.str.581
-LFQH_Lloh13429:
+LFQH_Lloh13439:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x26
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v12, v0
-LFQH_Lloh13430:
+LFQH_Lloh13440:
 adr x1, LFQH_TopChromeArtworkAlphaKey
-LFQH_Lloh13431:
+LFQH_Lloh13441:
 nop
 mov	x0, x26
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x27, x0
-LFQH_Lloh13432:
+LFQH_Lloh13442:
 adr x1, LFQH_TopChromeArtworkAppliedKey
-LFQH_Lloh13433:
+LFQH_Lloh13443:
 nop
 mov	x0, x26
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x25, x0
 cbz	x0, LFQH_LBB728_27
-LFQH_Lloh13434:
+LFQH_Lloh13444:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh13435:
+LFQH_Lloh13445:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79923,9 +79953,9 @@ mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d12, d0
 b.ne	LFQH_LBB728_30
-LFQH_Lloh13436:
+LFQH_Lloh13446:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh13437:
+LFQH_Lloh13447:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79948,9 +79978,9 @@ b.ne	LFQH_LBB728_31
 b	LFQH_LBB728_36
 LFQH_LBB728_28:
 cbz	x21, LFQH_LBB728_56
-LFQH_Lloh13438:
+LFQH_Lloh13448:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh13439:
+LFQH_Lloh13449:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79967,15 +79997,15 @@ fcsel	d13, d12, d0, ne
 fcmp	d13, d12
 b.eq	LFQH_LBB728_34
 LFQH_LBB728_31:
-LFQH_Lloh13440:
+LFQH_Lloh13450:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13441:
+LFQH_Lloh13451:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13442:
+LFQH_Lloh13452:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh13443:
+LFQH_Lloh13453:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -79983,18 +80013,18 @@ mov	x0, x23
 mov.16b	v0, v12
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13444:
+LFQH_Lloh13454:
 adr x1, LFQH_TopChromeArtworkAlphaKey
-LFQH_Lloh13445:
+LFQH_Lloh13455:
 nop
 mov	x0, x26
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 cbz	x25, LFQH_LBB728_33
 LFQH_LBB728_32:
-LFQH_Lloh13446:
+LFQH_Lloh13456:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh13447:
+LFQH_Lloh13457:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80003,15 +80033,15 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d13, d0
 b.eq	LFQH_LBB728_36
 LFQH_LBB728_33:
-LFQH_Lloh13448:
+LFQH_Lloh13458:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13449:
+LFQH_Lloh13459:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13450:
+LFQH_Lloh13460:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh13451:
+LFQH_Lloh13461:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80021,9 +80051,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
 b	LFQH_LBB728_35
 LFQH_LBB728_34:
-LFQH_Lloh13452:
+LFQH_Lloh13462:
 adr x1, LFQH_TopChromeArtworkAlphaKey
-LFQH_Lloh13453:
+LFQH_Lloh13463:
 nop
 mov	x0, x26
 mov	x2, #0
@@ -80031,9 +80061,9 @@ mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 mov	x2, #0
 LFQH_LBB728_35:
-LFQH_Lloh13454:
+LFQH_Lloh13464:
 adr x1, LFQH_TopChromeArtworkAppliedKey
-LFQH_Lloh13455:
+LFQH_Lloh13465:
 nop
 mov	x0, x26
 mov	w3, #1
@@ -80041,9 +80071,9 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB728_36:
 fcmp	d12, d13
 b.eq	LFQH_LBB728_38
-LFQH_Lloh13456:
+LFQH_Lloh13466:
 adr x0, LFQH_l_.str.1013
-LFQH_Lloh13457:
+LFQH_Lloh13467:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80051,9 +80081,9 @@ mov	x0, x26
 mov.16b	v0, v13
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB728_38:
-LFQH_Lloh13458:
+LFQH_Lloh13468:
 adr x1, LFQH_BookstoreViewportKey
-LFQH_Lloh13459:
+LFQH_Lloh13469:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -80062,17 +80092,17 @@ csel	x26, xzr, x22, eq
 cmp	x0, x26
 b.eq	LFQH_LBB728_42
 mov	x25, x0
-LFQH_Lloh13460:
+LFQH_Lloh13470:
 adr x0, LFQH_l_.str.184
-LFQH_Lloh13461:
+LFQH_Lloh13471:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13462:
+LFQH_Lloh13472:
 adr x1, LFQH_BookstoreViewportKey
-LFQH_Lloh13463:
+LFQH_Lloh13473:
 nop
 mov	x0, x19
 mov	x2, x26
@@ -80085,18 +80115,18 @@ mov	x1, #0
 mov	w2, #0
 bl	LFQH_TopChromeUnderlap
 LFQH_LBB728_41:
-LFQH_Lloh13464:
+LFQH_Lloh13474:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh13465:
+LFQH_Lloh13475:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB728_42:
-LFQH_Lloh13466:
+LFQH_Lloh13476:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13467:
+LFQH_Lloh13477:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80112,26 +80142,26 @@ mov	x0, x22
 mov	x1, x21
 mov	x2, x24
 bl	LFQH_TopChromeUnderlap
-LFQH_Lloh13468:
+LFQH_Lloh13478:
 adr x1, LFQH_BookstoreUnexpandedScrollKey
-LFQH_Lloh13469:
+LFQH_Lloh13479:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x23, x0
 cbz	w24, LFQH_LBB728_44
-LFQH_Lloh13470:
+LFQH_Lloh13480:
 adr x1, LFQH_TopChromeFrameKey
-LFQH_Lloh13471:
+LFQH_Lloh13481:
 nop
 mov	x0, x22
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB728_46
 LFQH_LBB728_44:
 cbz	x23, LFQH_LBB728_54
-LFQH_Lloh13472:
+LFQH_Lloh13482:
 adr x1, LFQH_BookstoreUnexpandedFrameKey
-LFQH_Lloh13473:
+LFQH_Lloh13483:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -80140,9 +80170,9 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 mov	x2, #0
 b	LFQH_LBB728_53
 LFQH_LBB728_46:
-LFQH_Lloh13474:
+LFQH_Lloh13484:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh13475:
+LFQH_Lloh13485:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80152,17 +80182,17 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh13476:
+LFQH_Lloh13486:
 adr x1, LFQH_BookstoreUnexpandedFrameKey
-LFQH_Lloh13477:
+LFQH_Lloh13487:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB728_51
 mov	x25, x0
-LFQH_Lloh13478:
+LFQH_Lloh13488:
 adr x0, LFQH_l_.str.544
-LFQH_Lloh13479:
+LFQH_Lloh13489:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80177,15 +80207,15 @@ b.ne	LFQH_LBB728_51
 fcmp	d11, d3
 b.eq	LFQH_LBB728_52
 LFQH_LBB728_51:
-LFQH_Lloh13480:
+LFQH_Lloh13490:
 adr x0, LFQH_l_.str.455
-LFQH_Lloh13481:
+LFQH_Lloh13491:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh13482:
+LFQH_Lloh13492:
 adr x0, LFQH_l_.str.724
-LFQH_Lloh13483:
+LFQH_Lloh13493:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80196,9 +80226,9 @@ mov.16b	v2, v10
 mov.16b	v3, v11
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13484:
+LFQH_Lloh13494:
 adr x1, LFQH_BookstoreUnexpandedFrameKey
-LFQH_Lloh13485:
+LFQH_Lloh13495:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -80208,9 +80238,9 @@ mov	x2, x21
 cmp	x23, x21
 b.eq	LFQH_LBB728_54
 LFQH_LBB728_53:
-LFQH_Lloh13486:
+LFQH_Lloh13496:
 adr x1, LFQH_BookstoreUnexpandedScrollKey
-LFQH_Lloh13487:
+LFQH_Lloh13497:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -80218,9 +80248,9 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB728_54:
 mov	x0, x21
 bl	LFQH_TopChromeRefreshVisibility
-LFQH_Lloh13488:
+LFQH_Lloh13498:
 adr x1, LFQH_l_.str.1439
-LFQH_Lloh13489:
+LFQH_Lloh13499:
 nop
 mov	x0, x19
 mov	x2, x20
@@ -80240,9 +80270,9 @@ ldp	d15, d14, [sp, #32]
 add	sp, sp, #192
 b	LFQH_TopChromeDiagnostics
 LFQH_LBB728_55:
-LFQH_Lloh13490:
+LFQH_Lloh13500:
 adr x22, LFQH_l_.str.23
-LFQH_Lloh13491:
+LFQH_Lloh13501:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -80253,9 +80283,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh13492:
+LFQH_Lloh13502:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13493:
+LFQH_Lloh13503:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80293,9 +80323,9 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x8, x1
 mov	x19, x0
-LFQH_Lloh13494:
+LFQH_Lloh13504:
 adr x1, LFQH_l_.str.1440
-LFQH_Lloh13495:
+LFQH_Lloh13505:
 nop
 mov	x0, x8
 bl	LFQH_Get
@@ -80304,9 +80334,9 @@ ldp	x29, x30, [sp, #16]
 ldp	x20, x19, [sp], #32
 ret
 LFQH_LBB729_2:
-LFQH_Lloh13496:
+LFQH_Lloh13506:
 adr x1, LFQH_l_.str.766
-LFQH_Lloh13497:
+LFQH_Lloh13507:
 nop
 mov	x0, x19
 ldp	x29, x30, [sp, #16]
@@ -80356,15 +80386,15 @@ add	x29, sp, #48
 .cfi_offset w23, -56
 .cfi_offset w24, -64
 mov	x21, x0
-LFQH_Lloh13498:
+LFQH_Lloh13508:
 adr x1, LFQH_l_.str.766
-LFQH_Lloh13499:
+LFQH_Lloh13509:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13500:
+LFQH_Lloh13510:
 adr x1, LFQH_l_.str.361
-LFQH_Lloh13501:
+LFQH_Lloh13511:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB735_2
@@ -80375,38 +80405,38 @@ ldp	x22, x21, [sp, #16]
 ldp	x24, x23, [sp], #64
 b	LFQH_FQHShelf
 LFQH_LBB735_2:
-LFQH_Lloh13502:
+LFQH_Lloh13512:
 adr x1, LFQH_l_.str.767
-LFQH_Lloh13503:
+LFQH_Lloh13513:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh13504:
+LFQH_Lloh13514:
 adr x1, LFQH_l_.str.678
-LFQH_Lloh13505:
+LFQH_Lloh13515:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh13506:
+LFQH_Lloh13516:
 adr x1, LFQH_l_.str.37
-LFQH_Lloh13507:
+LFQH_Lloh13517:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13508:
+LFQH_Lloh13518:
 adr x1, LFQH_l_.str.167
-LFQH_Lloh13509:
+LFQH_Lloh13519:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB735_18
 cbz	x19, LFQH_LBB735_18
 mov	w23, #0
-LFQH_Lloh13510:
+LFQH_Lloh13520:
 adr x22, LFQH_l_.str.19
-LFQH_Lloh13511:
+LFQH_Lloh13521:
 nop
 mov	x0, x19
 LFQH_LBB735_5:
@@ -80424,9 +80454,9 @@ cmp	x20, x19
 b.eq	LFQH_LBB735_14
 cbz	x20, LFQH_LBB735_18
 mov	w22, #0
-LFQH_Lloh13512:
+LFQH_Lloh13522:
 adr x21, LFQH_l_.str.19
-LFQH_Lloh13513:
+LFQH_Lloh13523:
 nop
 mov	x0, x20
 LFQH_LBB735_11:
@@ -80440,16 +80470,16 @@ add	w22, w22, #1
 b.lo	LFQH_LBB735_11
 b	LFQH_LBB735_18
 LFQH_LBB735_14:
-LFQH_Lloh13514:
+LFQH_Lloh13524:
 adr x1, LFQH_ShelfRoleKey
-LFQH_Lloh13515:
+LFQH_Lloh13525:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13516:
+LFQH_Lloh13526:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh13517:
+LFQH_Lloh13527:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80458,15 +80488,15 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 fmov	d1, #2.00000000
 fcmp	d0, d1
 b.eq	LFQH_LBB735_16
-LFQH_Lloh13518:
+LFQH_Lloh13528:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13519:
+LFQH_Lloh13529:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13520:
+LFQH_Lloh13530:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh13521:
+LFQH_Lloh13531:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80474,9 +80504,9 @@ fmov	d0, #2.00000000
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13522:
+LFQH_Lloh13532:
 adr x1, LFQH_ShelfRoleKey
-LFQH_Lloh13523:
+LFQH_Lloh13533:
 nop
 mov	x0, x20
 mov	w3, #1
@@ -80485,9 +80515,9 @@ LFQH_LBB735_16:
 mov	x0, x20
 mov	w1, #12
 bl	LFQH_Icon
-LFQH_Lloh13524:
+LFQH_Lloh13534:
 adr x1, LFQH_IconGlassKey
-LFQH_Lloh13525:
+LFQH_Lloh13535:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -80543,21 +80573,21 @@ add	x29, sp, #96
 .cfi_offset b9, -112
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh13526:
+LFQH_Lloh13536:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh13527:
+LFQH_Lloh13537:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13528:
+LFQH_Lloh13538:
 adr x1, LFQH_l_.str.397
-LFQH_Lloh13529:
+LFQH_Lloh13539:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB736_2
-LFQH_Lloh13530:
+LFQH_Lloh13540:
 adr x1, LFQH_l_.str.699
-LFQH_Lloh13531:
+LFQH_Lloh13541:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -80573,59 +80603,59 @@ ldp	x28, x27, [sp, #16]
 ldp	d9, d8, [sp], #112
 ret
 LFQH_LBB736_3:
-LFQH_Lloh13532:
+LFQH_Lloh13542:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13533:
+LFQH_Lloh13543:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB736_2
-LFQH_Lloh13534:
+LFQH_Lloh13544:
 adr x1, LFQH_BookshelfHistorySyncKey
-LFQH_Lloh13535:
+LFQH_Lloh13545:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbnz	x0, LFQH_LBB736_2
 bl	LFQH_Enabled
 cbz	w0, LFQH_LBB736_2
-LFQH_Lloh13536:
+LFQH_Lloh13546:
 adr x1, LFQH_l_.str.768
-LFQH_Lloh13537:
+LFQH_Lloh13547:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh13538:
+LFQH_Lloh13548:
 adr x1, LFQH_l_.str.1446
-LFQH_Lloh13539:
+LFQH_Lloh13549:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x22, LFQH_LBB736_2
 mov	x24, x0
 cbz	x0, LFQH_LBB736_2
-LFQH_Lloh13540:
+LFQH_Lloh13550:
 adr x0, LFQH_l_.str.1447
-LFQH_Lloh13541:
+LFQH_Lloh13551:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB736_2
-LFQH_Lloh13542:
+LFQH_Lloh13552:
 adr x0, LFQH_l_.str.1342
-LFQH_Lloh13543:
+LFQH_Lloh13553:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB736_2
-LFQH_Lloh13544:
+LFQH_Lloh13554:
 adr x0, LFQH_l_.str.1448
-LFQH_Lloh13545:
+LFQH_Lloh13555:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80634,9 +80664,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB736_2
 cbz	w21, LFQH_LBB736_16
 LFQH_LBB736_12:
-LFQH_Lloh13546:
+LFQH_Lloh13556:
 adr x0, LFQH_l_.str.688
-LFQH_Lloh13547:
+LFQH_Lloh13557:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80648,9 +80678,9 @@ mov	x1, x21
 bl	LFQH_BookshelfHistoryAtIndex
 cbz	x0, LFQH_LBB736_2
 mov	x23, x0
-LFQH_Lloh13548:
+LFQH_Lloh13558:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13549:
+LFQH_Lloh13559:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80659,36 +80689,36 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d2, #0.0
 b.ls	LFQH_LBB736_2
 mov.16b	v8, v2
-LFQH_Lloh13550:
+LFQH_Lloh13560:
 adr x0, LFQH_l_.str.1450
-LFQH_Lloh13551:
+LFQH_Lloh13561:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x27, x0
-LFQH_Lloh13552:
+LFQH_Lloh13562:
 adr x0, LFQH_l_.str.1451
-LFQH_Lloh13553:
+LFQH_Lloh13563:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh13554:
+LFQH_Lloh13564:
 adr x1, LFQH_l_.str.1440
-LFQH_Lloh13555:
+LFQH_Lloh13565:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x26, x0
 cmp	x27, x21
 b.ne	LFQH_LBB736_17
-LFQH_Lloh13556:
+LFQH_Lloh13566:
 adr x1, LFQH_l_.str.766
-LFQH_Lloh13557:
+LFQH_Lloh13567:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -80696,9 +80726,9 @@ cmp	x0, x23
 cset	w27, ne
 b	LFQH_LBB736_18
 LFQH_LBB736_16:
-LFQH_Lloh13558:
+LFQH_Lloh13568:
 adr x0, LFQH_l_.str.1449
-LFQH_Lloh13559:
+LFQH_Lloh13569:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80709,9 +80739,9 @@ b	LFQH_LBB736_12
 LFQH_LBB736_17:
 mov	w27, #1
 LFQH_LBB736_18:
-LFQH_Lloh13560:
+LFQH_Lloh13570:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh13561:
+LFQH_Lloh13571:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80733,17 +80763,17 @@ LFQH_LBB736_20:
 mov	w0, #1
 bl	LFQH_BoolBox
 mov	x2, x0
-LFQH_Lloh13562:
+LFQH_Lloh13572:
 adr x1, LFQH_BookshelfHistorySyncKey
-LFQH_Lloh13563:
+LFQH_Lloh13573:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 cbz	w27, LFQH_LBB736_22
-LFQH_Lloh13564:
+LFQH_Lloh13574:
 adr x0, LFQH_l_.str.409
-LFQH_Lloh13565:
+LFQH_Lloh13575:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80751,18 +80781,18 @@ mov	x0, x20
 mov	x2, x22
 mov	x3, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13566:
+LFQH_Lloh13576:
 adr x0, LFQH_l_.str.1451
-LFQH_Lloh13567:
+LFQH_Lloh13577:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh13568:
+LFQH_Lloh13578:
 adr x1, LFQH_l_.str.1440
-LFQH_Lloh13569:
+LFQH_Lloh13579:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -80770,18 +80800,18 @@ mov	x26, x0
 LFQH_LBB736_22:
 cmp	x25, x21
 b.eq	LFQH_LBB736_24
-LFQH_Lloh13570:
+LFQH_Lloh13580:
 adr x0, LFQH_l_.str.412
-LFQH_Lloh13571:
+LFQH_Lloh13581:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13572:
+LFQH_Lloh13582:
 adr x1, LFQH_l_.str.1440
-LFQH_Lloh13573:
+LFQH_Lloh13583:
 nop
 mov	x0, x19
 bl	LFQH_Get
@@ -80790,9 +80820,9 @@ LFQH_LBB736_24:
 cmp	x26, x23
 b.eq	LFQH_LBB736_28
 cbz	x26, LFQH_LBB736_27
-LFQH_Lloh13574:
+LFQH_Lloh13584:
 adr x0, LFQH_l_.str.414
-LFQH_Lloh13575:
+LFQH_Lloh13585:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80800,18 +80830,18 @@ mov	x0, x19
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB736_27:
-LFQH_Lloh13576:
+LFQH_Lloh13586:
 adr x0, LFQH_l_.str.415
-LFQH_Lloh13577:
+LFQH_Lloh13587:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13578:
+LFQH_Lloh13588:
 adr x0, LFQH_l_.str.416
-LFQH_Lloh13579:
+LFQH_Lloh13589:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80819,17 +80849,17 @@ mov	x0, x19
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB736_28:
-LFQH_Lloh13580:
+LFQH_Lloh13590:
 adr x0, LFQH_l_.str.417
-LFQH_Lloh13581:
+LFQH_Lloh13591:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13582:
+LFQH_Lloh13592:
 adr x1, LFQH_BookshelfHistorySyncKey
-LFQH_Lloh13583:
+LFQH_Lloh13593:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -80855,22 +80885,22 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh13584:
+LFQH_Lloh13594:
 adr x1, LFQH_l_.str.361
-LFQH_Lloh13585:
+LFQH_Lloh13595:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB737_3
-LFQH_Lloh13586:
+LFQH_Lloh13596:
 adr x1, LFQH_l_.str.1388
-LFQH_Lloh13587:
+LFQH_Lloh13597:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13588:
+LFQH_Lloh13598:
 adr x1, LFQH_ShelfMotionComicPendingKey
-LFQH_Lloh13589:
+LFQH_Lloh13599:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB737_3
@@ -80902,15 +80932,15 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x1
-LFQH_Lloh13590:
+LFQH_Lloh13600:
 adr x1, LFQH_l_.str.1452
-LFQH_Lloh13591:
+LFQH_Lloh13601:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13592:
+LFQH_Lloh13602:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13593:
+LFQH_Lloh13603:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80918,9 +80948,9 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x19, x0
 b.hs	LFQH_LBB739_4
-LFQH_Lloh13594:
+LFQH_Lloh13604:
 adr x0, LFQH_l_.str.568
-LFQH_Lloh13595:
+LFQH_Lloh13605:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -80935,9 +80965,9 @@ ret
 LFQH_LBB739_4:
 mov	x19, #0
 LFQH_LBB739_5:
-LFQH_Lloh13596:
+LFQH_Lloh13606:
 adr x1, LFQH_l_.str.1453
-LFQH_Lloh13597:
+LFQH_Lloh13607:
 nop
 mov	x0, x19
 bl	LFQH_Kind
@@ -80963,33 +80993,33 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh13598:
+LFQH_Lloh13608:
 adr x1, LFQH_ShelfMotionComicPendingKey
-LFQH_Lloh13599:
+LFQH_Lloh13609:
 nop
 mov	x2, #0
 mov	x3, #0
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13600:
+LFQH_Lloh13610:
 adr x1, LFQH_ShelfMotionComicSource178R9Key
-LFQH_Lloh13601:
+LFQH_Lloh13611:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 bl	LFQH_ShelfMotionComicFiltered178R9
 mov	x21, x0
-LFQH_Lloh13602:
+LFQH_Lloh13612:
 adr x1, LFQH_l_.str.1454
-LFQH_Lloh13603:
+LFQH_Lloh13613:
 nop
 mov	x0, x20
 bl	LFQH_Get
 cmp	x21, x0
 b.eq	LFQH_LBB740_2
 mov	x22, x0
-LFQH_Lloh13604:
+LFQH_Lloh13614:
 adr x0, LFQH_l_.str.49
-LFQH_Lloh13605:
+LFQH_Lloh13615:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81003,65 +81033,65 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB740_3:
-LFQH_Lloh13606:
+LFQH_Lloh13616:
 adr x0, LFQH_l_.str.1157
-LFQH_Lloh13607:
+LFQH_Lloh13617:
 nop
-LFQH_Lloh13608:
+LFQH_Lloh13618:
 adr x1, LFQH_l_.str.1159
-LFQH_Lloh13609:
+LFQH_Lloh13619:
 nop
 bl	LFQH_Original
 mov	x22, x0
-LFQH_Lloh13610:
+LFQH_Lloh13620:
 adr x0, LFQH_l_.str.1158
-LFQH_Lloh13611:
+LFQH_Lloh13621:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	x2, x21
 blr	x22
-LFQH_Lloh13612:
+LFQH_Lloh13622:
 adr x1, LFQH_l_.str.361
-LFQH_Lloh13613:
+LFQH_Lloh13623:
 nop
 mov	x0, x19
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB740_2
 mov	x0, x19
 bl Lpatch + (0xa664 - PATCH_BASE)
-LFQH_Lloh13614:
+LFQH_Lloh13624:
 adr x1, LFQH_l_.str.274
-LFQH_Lloh13615:
+LFQH_Lloh13625:
 nop
-LFQH_Lloh13616:
+LFQH_Lloh13626:
 adr x2, LFQH_l_.str.213
-LFQH_Lloh13617:
+LFQH_Lloh13627:
 nop
 bl	LFQH_ClassABI
 cbz	w0, LFQH_LBB740_2
-LFQH_Lloh13618:
+LFQH_Lloh13628:
 adr x0, LFQH_l_.str.274
-LFQH_Lloh13619:
+LFQH_Lloh13629:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13620:
+LFQH_Lloh13630:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13621:
+LFQH_Lloh13631:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13622:
+LFQH_Lloh13632:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13623:
+LFQH_Lloh13633:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13624:
+LFQH_Lloh13634:
 adr x2, LFQH_l_.str.1455
-LFQH_Lloh13625:
+LFQH_Lloh13635:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -81100,16 +81130,16 @@ ccmp	x3, #1, #0, ne
 b.ne	LFQH_LBB741_4
 bl	LFQH_Enabled
 cbz	w0, LFQH_LBB741_4
-LFQH_Lloh13626:
+LFQH_Lloh13636:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh13627:
+LFQH_Lloh13637:
 nop
 mov	x0, x23
 bl	LFQH_Get
 mov	x24, x0
-LFQH_Lloh13628:
+LFQH_Lloh13638:
 adr x1, LFQH_l_.str.397
-LFQH_Lloh13629:
+LFQH_Lloh13639:
 nop
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB741_4
@@ -81119,13 +81149,13 @@ bl	LFQH_BookshelfHistoryAtIndex
 cmp	x0, #0
 csel	w21, w21, wzr, eq
 LFQH_LBB741_4:
-LFQH_Lloh13630:
+LFQH_Lloh13640:
 adr x0, LFQH_l_.str.280
-LFQH_Lloh13631:
+LFQH_Lloh13641:
 nop
-LFQH_Lloh13632:
+LFQH_Lloh13642:
 adr x1, LFQH_l_.str.1458
-LFQH_Lloh13633:
+LFQH_Lloh13643:
 nop
 bl	LFQH_Original
 mov	x5, x0
@@ -81155,21 +81185,21 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh13634:
+LFQH_Lloh13644:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13635:
+LFQH_Lloh13645:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13636:
+LFQH_Lloh13646:
 adr x1, LFQH_l_.str.150
-LFQH_Lloh13637:
+LFQH_Lloh13647:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh13638:
+LFQH_Lloh13648:
 adr x1, LFQH_l_.str.1341
-LFQH_Lloh13639:
+LFQH_Lloh13649:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -81181,40 +81211,40 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB742_2:
-LFQH_Lloh13640:
+LFQH_Lloh13650:
 adr x1, LFQH_l_.str.379
-LFQH_Lloh13641:
+LFQH_Lloh13651:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB742_4
-LFQH_Lloh13642:
+LFQH_Lloh13652:
 adr x1, LFQH_l_.str.745
-LFQH_Lloh13643:
+LFQH_Lloh13653:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x20
 b.eq	LFQH_LBB742_7
 LFQH_LBB742_4:
-LFQH_Lloh13644:
+LFQH_Lloh13654:
 adr x1, LFQH_l_.str.316
-LFQH_Lloh13645:
+LFQH_Lloh13655:
 nop
 mov	x0, x21
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB742_1
-LFQH_Lloh13646:
+LFQH_Lloh13656:
 adr x1, LFQH_l_.str.1336
-LFQH_Lloh13647:
+LFQH_Lloh13657:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x20
 b.ne	LFQH_LBB742_1
-LFQH_Lloh13648:
+LFQH_Lloh13658:
 adr x1, LFQH_l_.str.1459
-LFQH_Lloh13649:
+LFQH_Lloh13659:
 nop
 mov	x0, x21
 bl	LFQH_Get
@@ -81248,22 +81278,22 @@ mov	x19, x2
 mov	x20, x1
 mov	x21, x0
 cbz	x2, LFQH_LBB743_2
-LFQH_Lloh13650:
+LFQH_Lloh13660:
 adr x1, LFQH_l_.str.1460
-LFQH_Lloh13651:
+LFQH_Lloh13661:
 nop
 mov	x0, x21
 bl	LFQH_Get
 cmp	x0, x19
 b.eq	LFQH_LBB743_3
 LFQH_LBB743_2:
-LFQH_Lloh13652:
+LFQH_Lloh13662:
 adr x0, LFQH_l_.str.78
-LFQH_Lloh13653:
+LFQH_Lloh13663:
 nop
-LFQH_Lloh13654:
+LFQH_Lloh13664:
 adr x1, LFQH_l_.str.1462
-LFQH_Lloh13655:
+LFQH_Lloh13665:
 nop
 bl	LFQH_Original
 mov	x3, x0
@@ -81280,9 +81310,9 @@ mov	x0, x21
 bl	LFQH_BottomDramaCapsuleForView
 cbz	x0, LFQH_LBB743_2
 mov	x22, x0
-LFQH_Lloh13656:
+LFQH_Lloh13666:
 adr x0, LFQH_l_.str.449
-LFQH_Lloh13657:
+LFQH_Lloh13667:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81291,9 +81321,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh13658:
+LFQH_Lloh13668:
 adr x0, LFQH_l_.str.450
-LFQH_Lloh13659:
+LFQH_Lloh13669:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81302,9 +81332,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 fsub	d8, d8, d0
 fsub	d9, d9, d1
-LFQH_Lloh13660:
+LFQH_Lloh13670:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13661:
+LFQH_Lloh13671:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81353,13 +81383,13 @@ mov	x1, x2
 mov	x2, x3
 bl	LFQH_BottomDramaProgressTouch
 cbz	w0, LFQH_LBB745_2
-LFQH_Lloh13662:
+LFQH_Lloh13672:
 adr x0, LFQH_l_.str.77
-LFQH_Lloh13663:
+LFQH_Lloh13673:
 nop
-LFQH_Lloh13664:
+LFQH_Lloh13674:
 adr x1, LFQH_l_.str.1464
-LFQH_Lloh13665:
+LFQH_Lloh13675:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -81404,9 +81434,9 @@ mov	x21, x0
 bl	LFQH_BottomDramaCapsuleForView
 cbz	x0, LFQH_LBB746_2
 mov	x22, x0
-LFQH_Lloh13666:
+LFQH_Lloh13676:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13667:
+LFQH_Lloh13677:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81419,9 +81449,9 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v10, v0
 mov.16b	v11, v1
-LFQH_Lloh13668:
+LFQH_Lloh13678:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13669:
+LFQH_Lloh13679:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81435,13 +81465,13 @@ fccmp	d11, d1, #8, mi
 fccmp	d11, d3, #0, ge
 b.mi	LFQH_LBB746_3
 LFQH_LBB746_2:
-LFQH_Lloh13670:
+LFQH_Lloh13680:
 adr x0, LFQH_l_.str.77
-LFQH_Lloh13671:
+LFQH_Lloh13681:
 nop
-LFQH_Lloh13672:
+LFQH_Lloh13682:
 adr x1, LFQH_l_.str.1466
-LFQH_Lloh13673:
+LFQH_Lloh13683:
 nop
 bl	LFQH_Original
 mov	x3, x0
@@ -81499,13 +81529,13 @@ mov.16b	v8, v1
 mov.16b	v9, v0
 mov	x21, x1
 mov	x22, x0
-LFQH_Lloh13674:
+LFQH_Lloh13684:
 adr x0, LFQH_l_.str.1307
-LFQH_Lloh13675:
+LFQH_Lloh13685:
 nop
-LFQH_Lloh13676:
+LFQH_Lloh13686:
 adr x1, LFQH_l_.str.1468
-LFQH_Lloh13677:
+LFQH_Lloh13687:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -81519,17 +81549,17 @@ mov	x27, x0
 bl	LFQH_BottomDramaCapsuleForView
 cbz	x0, LFQH_LBB747_15
 mov	x19, x0
-LFQH_Lloh13678:
+LFQH_Lloh13688:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13679:
+LFQH_Lloh13689:
 nop
 mov	x0, x27
 bl	LFQH_Get
 cmp	x0, x22
 b.ne	LFQH_LBB747_15
-LFQH_Lloh13680:
+LFQH_Lloh13690:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13681:
+LFQH_Lloh13691:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81542,9 +81572,9 @@ mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v10, v0
 mov.16b	v11, v1
-LFQH_Lloh13682:
+LFQH_Lloh13692:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13683:
+LFQH_Lloh13693:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81557,25 +81587,25 @@ fccmp	d10, d2, #0, ge
 fccmp	d11, d1, #8, mi
 fccmp	d11, d3, #0, ge
 b.pl	LFQH_LBB747_15
-LFQH_Lloh13684:
+LFQH_Lloh13694:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13685:
+LFQH_Lloh13695:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x27, LFQH_LBB747_15
 mov	x23, x0
-LFQH_Lloh13686:
+LFQH_Lloh13696:
 adr x24, LFQH_l_.str.502
-LFQH_Lloh13687:
+LFQH_Lloh13697:
 nop
-LFQH_Lloh13688:
+LFQH_Lloh13698:
 adr x25, LFQH_l_.str.78
-LFQH_Lloh13689:
+LFQH_Lloh13699:
 nop
-LFQH_Lloh13690:
+LFQH_Lloh13700:
 adr x26, LFQH_l_.str.77
-LFQH_Lloh13691:
+LFQH_Lloh13701:
 nop
 mov	x19, x27
 LFQH_LBB747_5:
@@ -81602,9 +81632,9 @@ cbnz	w0, LFQH_LBB747_9
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x28, x0
-LFQH_Lloh13692:
+LFQH_Lloh13702:
 adr x0, LFQH_l_.str.1469
-LFQH_Lloh13693:
+LFQH_Lloh13703:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x2, x0
@@ -81613,18 +81643,18 @@ mov	x1, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB747_9
 mov	x0, x19
-LFQH_Lloh13694:
+LFQH_Lloh13704:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13695:
+LFQH_Lloh13705:
 nop
 bl	LFQH_Get
 mov	x19, x0
 cbnz	x0, LFQH_LBB747_5
 b	LFQH_LBB747_15
 LFQH_LBB747_9:
-LFQH_Lloh13696:
+LFQH_Lloh13706:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13697:
+LFQH_Lloh13707:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81644,9 +81674,9 @@ ccmp	x0, #0, #4, ne
 b.eq	LFQH_LBB747_15
 mov	x19, x0
 mov	w21, #0
-LFQH_Lloh13698:
+LFQH_Lloh13708:
 adr x20, LFQH_l_.str.19
-LFQH_Lloh13699:
+LFQH_Lloh13709:
 nop
 LFQH_LBB747_11:
 cmp	x0, x23
@@ -81689,9 +81719,9 @@ add	x29, sp, #48
 .cfi_offset b9, -48
 mov	x20, x2
 mov	x19, x0
-LFQH_Lloh13700:
+LFQH_Lloh13710:
 adr x0, LFQH_l_.str.1237
-LFQH_Lloh13701:
+LFQH_Lloh13711:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81701,17 +81731,17 @@ cmp	x0, #3
 b.eq	LFQH_LBB748_7
 cmp	x0, #1
 b.ne	LFQH_LBB748_9
-LFQH_Lloh13702:
+LFQH_Lloh13712:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13703:
+LFQH_Lloh13713:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13704:
+LFQH_Lloh13714:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13705:
+LFQH_Lloh13715:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -81722,9 +81752,9 @@ cbz	w0, LFQH_LBB748_16
 mov	w0, #2
 bl	LFQH_BottomFlag178
 cbz	w0, LFQH_LBB748_16
-LFQH_Lloh13706:
+LFQH_Lloh13716:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh13707:
+LFQH_Lloh13717:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81739,51 +81769,51 @@ fmov	x8, d8
 ubfx	x8, x8, #52, #11
 cmp	x8, #2046
 b.ls	LFQH_LBB748_12
-LFQH_Lloh13708:
+LFQH_Lloh13718:
 adr x1, LFQH_l_.str.1473
-LFQH_Lloh13709:
+LFQH_Lloh13719:
 nop
 b	LFQH_LBB748_15
 LFQH_LBB748_7:
-LFQH_Lloh13710:
+LFQH_Lloh13720:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13711:
+LFQH_Lloh13721:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB748_16
 mov	x2, x0
-LFQH_Lloh13712:
+LFQH_Lloh13722:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13713:
+LFQH_Lloh13723:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13714:
+LFQH_Lloh13724:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13715:
+LFQH_Lloh13725:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13716:
+LFQH_Lloh13726:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh13717:
+LFQH_Lloh13727:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v0, v1
-LFQH_Lloh13718:
+LFQH_Lloh13728:
 adr x0, LFQH_l_.str.1476
-LFQH_Lloh13719:
+LFQH_Lloh13729:
 nop
-LFQH_Lloh13720:
+LFQH_Lloh13730:
 adr x1, LFQH_l_.str.1477
-LFQH_Lloh13721:
+LFQH_Lloh13731:
 nop
 bl	LFQH_BottomDramaDragLog
 mov	x0, x19
@@ -81796,17 +81826,17 @@ LFQH_LBB748_9:
 and	x8, x0, #0xfffffffffffffffe
 cmp	x8, #4
 b.ne	LFQH_LBB748_16
-LFQH_Lloh13722:
+LFQH_Lloh13732:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13723:
+LFQH_Lloh13733:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13724:
+LFQH_Lloh13734:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13725:
+LFQH_Lloh13735:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -81820,26 +81850,26 @@ LFQH_LBB748_11:
 ldr	x1, [sp, #8]
 b	LFQH_LBB748_15
 LFQH_LBB748_12:
-LFQH_Lloh13726:
+LFQH_Lloh13736:
 adr x1, LFQH_BottomCompact178Key
-LFQH_Lloh13727:
+LFQH_Lloh13737:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh13728:
+LFQH_Lloh13738:
 adr x1, LFQH_l_.str.40
-LFQH_Lloh13729:
+LFQH_Lloh13739:
 nop
 bl	LFQH_BoolProp
 cbz	w0, LFQH_LBB748_14
-LFQH_Lloh13730:
+LFQH_Lloh13740:
 adr x1, LFQH_l_.str.1474
-LFQH_Lloh13731:
+LFQH_Lloh13741:
 nop
 b	LFQH_LBB748_15
 LFQH_LBB748_14:
-LFQH_Lloh13732:
+LFQH_Lloh13742:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13733:
+LFQH_Lloh13743:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -81854,21 +81884,21 @@ fcvtzs	d0, d0
 scvtf	d0, d0
 bl	LFQH_Number
 mov	x2, x0
-LFQH_Lloh13734:
+LFQH_Lloh13744:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13735:
+LFQH_Lloh13745:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13736:
+LFQH_Lloh13746:
 adr x1, LFQH_l_.str.1475
-LFQH_Lloh13737:
+LFQH_Lloh13747:
 nop
 LFQH_LBB748_15:
-LFQH_Lloh13738:
+LFQH_Lloh13748:
 adr x0, LFQH_l_.str.506
-LFQH_Lloh13739:
+LFQH_Lloh13749:
 nop
 mov.16b	v0, v8
 bl	LFQH_BottomDramaDragLog
@@ -81892,13 +81922,13 @@ add	x29, sp, #16
 .cfi_offset w20, -32
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh13740:
+LFQH_Lloh13750:
 adr x0, LFQH_l_.str.1469
-LFQH_Lloh13741:
+LFQH_Lloh13751:
 nop
-LFQH_Lloh13742:
+LFQH_Lloh13752:
 adr x1, LFQH_l_.str.1471
-LFQH_Lloh13743:
+LFQH_Lloh13753:
 nop
 bl	LFQH_Original
 mov	x8, x0
@@ -81926,29 +81956,29 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh13744:
+LFQH_Lloh13754:
 adr x0, LFQH_l_.str.1469
-LFQH_Lloh13745:
+LFQH_Lloh13755:
 nop
-LFQH_Lloh13746:
+LFQH_Lloh13756:
 adr x1, LFQH_l_.str.1472
-LFQH_Lloh13747:
+LFQH_Lloh13757:
 nop
 bl	LFQH_Original
 mov	x8, x0
 mov	x0, x19
 mov	x1, x20
 blr	x8
-LFQH_Lloh13748:
+LFQH_Lloh13758:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13749:
+LFQH_Lloh13759:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB750_3
-LFQH_Lloh13750:
+LFQH_Lloh13760:
 adr x1, LFQH_BottomDragAttachedKey
-LFQH_Lloh13751:
+LFQH_Lloh13761:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -81959,17 +81989,17 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB750_3:
-LFQH_Lloh13752:
+LFQH_Lloh13762:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13753:
+LFQH_Lloh13763:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13754:
+LFQH_Lloh13764:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13755:
+LFQH_Lloh13765:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -81979,23 +82009,23 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 b Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB750_4:
-LFQH_Lloh13756:
+LFQH_Lloh13766:
 adr x1, LFQH_l_.str.1490
-LFQH_Lloh13757:
+LFQH_Lloh13767:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cbz	x0, LFQH_LBB750_2
 mov	x20, x0
-LFQH_Lloh13758:
+LFQH_Lloh13768:
 adr x0, LFQH_l_.str.1491
-LFQH_Lloh13759:
+LFQH_Lloh13769:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13760:
+LFQH_Lloh13770:
 adr x0, LFQH_l_.str.1470
-LFQH_Lloh13761:
+LFQH_Lloh13771:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -82003,15 +82033,15 @@ mov	x0, x20
 mov	x1, x21
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13762:
+LFQH_Lloh13772:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13763:
+LFQH_Lloh13773:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13764:
+LFQH_Lloh13774:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh13765:
+LFQH_Lloh13775:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82019,9 +82049,9 @@ mov	x0, x20
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13766:
+LFQH_Lloh13776:
 adr x1, LFQH_BottomDragAttachedKey
-LFQH_Lloh13767:
+LFQH_Lloh13777:
 nop
 mov	x0, x19
 mov	w3, #1
@@ -82029,22 +82059,22 @@ bl Lpatch + (0xa634 - PATCH_BASE)
 mov	w0, #2
 bl	LFQH_BottomFlag178
 cbz	w0, LFQH_LBB750_2
-LFQH_Lloh13768:
+LFQH_Lloh13778:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh13769:
+LFQH_Lloh13779:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v0, v1
-LFQH_Lloh13770:
+LFQH_Lloh13780:
 adr x0, LFQH_l_.str.1492
-LFQH_Lloh13771:
+LFQH_Lloh13781:
 nop
-LFQH_Lloh13772:
+LFQH_Lloh13782:
 adr x1, LFQH_l_.str.1493
-LFQH_Lloh13773:
+LFQH_Lloh13783:
 nop
 ldp	x29, x30, [sp, #32]
 ldp	x20, x19, [sp, #16]
@@ -82072,9 +82102,9 @@ add	x29, sp, #48
 mov	x19, x2
 mov	x21, x1
 mov	x20, x0
-LFQH_Lloh13774:
+LFQH_Lloh13784:
 adr x1, LFQH_l_.str.1460
-LFQH_Lloh13775:
+LFQH_Lloh13785:
 nop
 bl	LFQH_Get
 cmp	x0, x21
@@ -82090,9 +82120,9 @@ mov	x0, x20
 bl	LFQH_BottomDramaCapsuleForView
 cbz	x0, LFQH_LBB751_2
 mov	x20, x0
-LFQH_Lloh13776:
+LFQH_Lloh13786:
 adr x0, LFQH_l_.str.449
-LFQH_Lloh13777:
+LFQH_Lloh13787:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82101,9 +82131,9 @@ mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
 mov.16b	v9, v1
-LFQH_Lloh13778:
+LFQH_Lloh13788:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13779:
+LFQH_Lloh13789:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82154,29 +82184,29 @@ add	x29, sp, #96
 .cfi_offset b11, -112
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh13780:
+LFQH_Lloh13790:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13781:
+LFQH_Lloh13791:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh13782:
+LFQH_Lloh13792:
 adr x8, LFQH_l_.str.1478
-LFQH_Lloh13783:
+LFQH_Lloh13793:
 nop
 str	x8, [x20]
 mov	x0, x19
 mov	x1, x21
 bl	LFQH_BottomVisible178
 cbz	w0, LFQH_LBB752_2
-LFQH_Lloh13784:
+LFQH_Lloh13794:
 adr x8, LFQH_l_.str.1479
-LFQH_Lloh13785:
+LFQH_Lloh13795:
 nop
 str	x8, [x20]
-LFQH_Lloh13786:
+LFQH_Lloh13796:
 adr x22, LFQH_l_.str.23
-LFQH_Lloh13787:
+LFQH_Lloh13797:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -82187,9 +82217,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh13788:
+LFQH_Lloh13798:
 adr x0, LFQH_l_.str.695
-LFQH_Lloh13789:
+LFQH_Lloh13799:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82254,42 +82284,42 @@ fccmp	d9, d2, #8, lt
 fccmp	d8, d3, #0, pl
 fccmp	d4, d1, #0, lt
 b.ls	LFQH_LBB752_2
-LFQH_Lloh13790:
+LFQH_Lloh13800:
 adr x8, LFQH_l_.str.1480
-LFQH_Lloh13791:
+LFQH_Lloh13801:
 nop
 str	x8, [x20]
-LFQH_Lloh13792:
+LFQH_Lloh13802:
 adr x1, LFQH_BottomWindowBarKey
-LFQH_Lloh13793:
+LFQH_Lloh13803:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh13794:
+LFQH_Lloh13804:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh13795:
+LFQH_Lloh13805:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB752_3
 mov	x22, x0
-LFQH_Lloh13796:
+LFQH_Lloh13806:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13797:
+LFQH_Lloh13807:
 nop
 bl	LFQH_Get
 cmp	x0, x21
 b.ne	LFQH_LBB752_2
-LFQH_Lloh13798:
+LFQH_Lloh13808:
 adr x8, LFQH_l_.str.1481
-LFQH_Lloh13799:
+LFQH_Lloh13809:
 nop
 str	x8, [x20]
 mov	x0, x22
 bl	LFQH_BottomDramaPage178R7
 cbz	x0, LFQH_LBB752_3
-LFQH_Lloh13800:
+LFQH_Lloh13810:
 adr x8, LFQH_l_.str.1482
-LFQH_Lloh13801:
+LFQH_Lloh13811:
 nop
 str	x8, [x20]
 mov	x1, x19
@@ -82328,31 +82358,31 @@ mov	x20, x1
 mov	x21, x0
 bl LDiagnosticsEnabled
 cbz	w0, LFQH_LBB754_4
-LFQH_Lloh13802:
+LFQH_Lloh13812:
 adr x0, LFQH_l_.str.115
-LFQH_Lloh13803:
+LFQH_Lloh13813:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13804:
+LFQH_Lloh13814:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh13805:
+LFQH_Lloh13815:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13806:
+LFQH_Lloh13816:
 adr x22, LFQH_l_.str.445
-LFQH_Lloh13807:
+LFQH_Lloh13817:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13808:
+LFQH_Lloh13818:
 adr x24, LFQH_l_.str.517
-LFQH_Lloh13809:
+LFQH_Lloh13819:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -82361,9 +82391,9 @@ mov	x0, x23
 mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13810:
+LFQH_Lloh13820:
 adr x1, LFQH_l_.str.1483
-LFQH_Lloh13811:
+LFQH_Lloh13821:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -82377,9 +82407,9 @@ mov	x0, x21
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13812:
+LFQH_Lloh13822:
 adr x1, LFQH_l_.str.801
-LFQH_Lloh13813:
+LFQH_Lloh13823:
 nop
 mov	x0, x19
 bl	LFQH_Put
@@ -82387,15 +82417,15 @@ fmov	x8, d8
 ubfx	x8, x8, #52, #11
 cmp	x8, #2046
 b.hi	LFQH_LBB754_3
-LFQH_Lloh13814:
+LFQH_Lloh13824:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13815:
+LFQH_Lloh13825:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13816:
+LFQH_Lloh13826:
 adr x0, LFQH_l_.str.717
-LFQH_Lloh13817:
+LFQH_Lloh13827:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82403,16 +82433,16 @@ mov	x0, x20
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13818:
+LFQH_Lloh13828:
 adr x1, LFQH_l_.str.1484
-LFQH_Lloh13819:
+LFQH_Lloh13829:
 nop
 mov	x0, x19
 bl	LFQH_Put
 LFQH_LBB754_3:
-LFQH_Lloh13820:
+LFQH_Lloh13830:
 adr x0, LFQH_l_.str.1485
-LFQH_Lloh13821:
+LFQH_Lloh13831:
 nop
 mov	x1, x19
 ldp	x29, x30, [sp, #64]
@@ -82459,16 +82489,16 @@ add	x29, sp, #96
 .cfi_offset b10, -88
 .cfi_offset b11, -96
 mov	x19, x0
-LFQH_Lloh13822:
+LFQH_Lloh13832:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13823:
+LFQH_Lloh13833:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB756_14
 mov	x20, x0
-LFQH_Lloh13824:
+LFQH_Lloh13834:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh13825:
+LFQH_Lloh13835:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82479,9 +82509,9 @@ mov.16b	v9, v3
 fmov	x21, d10
 fmov	x22, d1
 fmov	x23, d0
-LFQH_Lloh13826:
+LFQH_Lloh13836:
 adr x0, LFQH_l_.str.1337
-LFQH_Lloh13827:
+LFQH_Lloh13837:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82508,17 +82538,17 @@ fccmp	d9, d11, #4, ls
 fccmp	d10, d11, #4, gt
 b.gt	LFQH_LBB756_4
 LFQH_LBB756_3:
-LFQH_Lloh13828:
+LFQH_Lloh13838:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13829:
+LFQH_Lloh13839:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13830:
+LFQH_Lloh13840:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13831:
+LFQH_Lloh13841:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -82532,9 +82562,9 @@ ldp	d11, d10, [sp, #16]
 add	sp, sp, #112
 b Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB756_4:
-LFQH_Lloh13832:
+LFQH_Lloh13842:
 adr x0, LFQH_l_.str.495
-LFQH_Lloh13833:
+LFQH_Lloh13843:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82554,27 +82584,27 @@ b.gt	LFQH_LBB756_14
 fcvtzs	x21, d0
 cmp	x20, x21
 b.ne	LFQH_LBB756_9
-LFQH_Lloh13834:
+LFQH_Lloh13844:
 adr x0, LFQH_l_.str.1342
-LFQH_Lloh13835:
+LFQH_Lloh13845:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB756_14
-LFQH_Lloh13836:
+LFQH_Lloh13846:
 adr x0, LFQH_l_.str.1448
-LFQH_Lloh13837:
+LFQH_Lloh13847:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB756_14
-LFQH_Lloh13838:
+LFQH_Lloh13848:
 adr x0, LFQH_l_.str.1449
-LFQH_Lloh13839:
+LFQH_Lloh13849:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82582,17 +82612,17 @@ mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB756_14
 LFQH_LBB756_9:
-LFQH_Lloh13840:
+LFQH_Lloh13850:
 adr x1, LFQH_BottomDragStart178R7Key
-LFQH_Lloh13841:
+LFQH_Lloh13851:
 nop
 mov	x0, x19
 mov	x2, #0
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh13842:
+LFQH_Lloh13852:
 adr x1, LFQH_BottomDragReleasedKey
-LFQH_Lloh13843:
+LFQH_Lloh13853:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -82602,30 +82632,30 @@ add	x1, sp, #8
 mov	x0, x19
 bl	LFQH_BottomDramaScrollBar
 cbz	x0, LFQH_LBB756_12
-LFQH_Lloh13844:
+LFQH_Lloh13854:
 adr x8, LFQH_l_.str.1488
-LFQH_Lloh13845:
+LFQH_Lloh13855:
 nop
-LFQH_Lloh13846:
+LFQH_Lloh13856:
 adr x9, LFQH_l_.str.1487
-LFQH_Lloh13847:
+LFQH_Lloh13857:
 nop
 cmp	x20, x21
 csel	x1, x9, x8, lt
 b.le	LFQH_LBB756_13
 mov	w1, #1
 bl	LFQH_BottomSetCompact178
-LFQH_Lloh13848:
+LFQH_Lloh13858:
 adr x1, LFQH_l_.str.1486
-LFQH_Lloh13849:
+LFQH_Lloh13859:
 nop
 b	LFQH_LBB756_13
 LFQH_LBB756_12:
 ldr	x1, [sp, #8]
 LFQH_LBB756_13:
-LFQH_Lloh13850:
+LFQH_Lloh13860:
 adr x0, LFQH_l_.str.1489
-LFQH_Lloh13851:
+LFQH_Lloh13861:
 nop
 mov.16b	v0, v8
 bl	LFQH_BottomDramaDragLog
@@ -82667,9 +82697,9 @@ add	x29, sp, #80
 mov	x19, x1
 cbz	x1, LFQH_LBB757_4
 mov	x20, x0
-LFQH_Lloh13852:
+LFQH_Lloh13862:
 adr x1, LFQH_l_.str.69
-LFQH_Lloh13853:
+LFQH_Lloh13863:
 nop
 bl	LFQH_Get
 cmp	x0, x19
@@ -82688,22 +82718,22 @@ sxtb	w0, w8
 ret
 LFQH_LBB757_6:
 mov	w24, #0
-LFQH_Lloh13854:
+LFQH_Lloh13864:
 adr x21, LFQH_l_.str.41
-LFQH_Lloh13855:
+LFQH_Lloh13865:
 nop
-LFQH_Lloh13856:
+LFQH_Lloh13866:
 adr x22, LFQH_l_.str.581
-LFQH_Lloh13857:
+LFQH_Lloh13867:
 nop
-LFQH_Lloh13858:
+LFQH_Lloh13868:
 adr x8, LFQH_lCPI757_0
-LFQH_Lloh13859:
+LFQH_Lloh13869:
 ldr d8, [x8]
 and x8, x8, #0xfffffffffffff000
-LFQH_Lloh13860:
+LFQH_Lloh13870:
 adr x23, LFQH_l_.str.19
-LFQH_Lloh13861:
+LFQH_Lloh13871:
 nop
 LFQH_LBB757_7:
 mov	x0, x21
@@ -82763,42 +82793,42 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
-LFQH_Lloh13862:
+LFQH_Lloh13872:
 adr x0, LFQH_l_.str.71
-LFQH_Lloh13863:
+LFQH_Lloh13873:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13864:
+LFQH_Lloh13874:
 adr x0, LFQH_l_.str.72
-LFQH_Lloh13865:
+LFQH_Lloh13875:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh13866:
+LFQH_Lloh13876:
 adr x0, LFQH_l_.str.575
-LFQH_Lloh13867:
+LFQH_Lloh13877:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13868:
+LFQH_Lloh13878:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh13869:
+LFQH_Lloh13879:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13870:
+LFQH_Lloh13880:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh13871:
+LFQH_Lloh13881:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh13872:
+LFQH_Lloh13882:
 adr x2, LFQH_l_.str.1566
-LFQH_Lloh13873:
+LFQH_Lloh13883:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -82830,31 +82860,31 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh13874:
+LFQH_Lloh13884:
 adr x1, LFQH_BottomHidden178Key
-LFQH_Lloh13875:
+LFQH_Lloh13885:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbz	x0, LFQH_LBB761_3
 mov	x20, x0
-LFQH_Lloh13876:
+LFQH_Lloh13886:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh13877:
+LFQH_Lloh13887:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w0, LFQH_LBB761_3
-LFQH_Lloh13878:
+LFQH_Lloh13888:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh13879:
+LFQH_Lloh13889:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13880:
+LFQH_Lloh13890:
 adr x0, LFQH_l_.str.40
-LFQH_Lloh13881:
+LFQH_Lloh13891:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82865,9 +82895,9 @@ mov	x0, x19
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB761_3:
-LFQH_Lloh13882:
+LFQH_Lloh13892:
 adr x1, LFQH_BottomHidden178Key
-LFQH_Lloh13883:
+LFQH_Lloh13893:
 nop
 mov	x0, x19
 mov	x2, #0
@@ -82933,30 +82963,30 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 cbz	x0, LFQH_LBB770_4
 mov	x19, x0
-LFQH_Lloh13884:
+LFQH_Lloh13894:
 adr x1, LFQH_BottomHidden178Key
-LFQH_Lloh13885:
+LFQH_Lloh13895:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbnz	x0, LFQH_LBB770_3
-LFQH_Lloh13886:
+LFQH_Lloh13896:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh13887:
+LFQH_Lloh13897:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh13888:
+LFQH_Lloh13898:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh13889:
+LFQH_Lloh13899:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13890:
+LFQH_Lloh13900:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh13891:
+LFQH_Lloh13901:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82964,17 +82994,17 @@ mov	x0, x21
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh13892:
+LFQH_Lloh13902:
 adr x1, LFQH_BottomHidden178Key
-LFQH_Lloh13893:
+LFQH_Lloh13903:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB770_3:
-LFQH_Lloh13894:
+LFQH_Lloh13904:
 adr x0, LFQH_l_.str.41
-LFQH_Lloh13895:
+LFQH_Lloh13905:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -82987,9 +83017,9 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB770_5:
-LFQH_Lloh13896:
+LFQH_Lloh13906:
 adr x0, LFQH_l_.str.75
-LFQH_Lloh13897:
+LFQH_Lloh13907:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83017,29 +83047,29 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh13898:
+LFQH_Lloh13908:
 adr x1, LFQH_BottomBarBox178Key
-LFQH_Lloh13899:
+LFQH_Lloh13909:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh13900:
+LFQH_Lloh13910:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh13901:
+LFQH_Lloh13911:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB772_3
 mov	x20, x0
-LFQH_Lloh13902:
+LFQH_Lloh13912:
 adr x1, LFQH_l_.str.19
-LFQH_Lloh13903:
+LFQH_Lloh13913:
 nop
 mov	x0, x19
 bl	LFQH_Get
 cmp	x0, x20
 b.ne	LFQH_LBB772_3
-LFQH_Lloh13904:
+LFQH_Lloh13914:
 adr x1, LFQH_BottomCompactButton178R7Key
-LFQH_Lloh13905:
+LFQH_Lloh13915:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -83103,39 +83133,39 @@ add	x29, sp, #256
 .cfi_offset b14, -152
 .cfi_offset b15, -160
 mov	x22, x3
-LFQH_Lloh13906:
+LFQH_Lloh13916:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh13907:
+LFQH_Lloh13917:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh13908:
+LFQH_Lloh13918:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh13909:
+LFQH_Lloh13919:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh13910:
+LFQH_Lloh13920:
 adr x1, LFQH_l_.str.1568
-LFQH_Lloh13911:
+LFQH_Lloh13921:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13912:
+LFQH_Lloh13922:
 adr x1, LFQH_SettingsHeader178R13Key
-LFQH_Lloh13913:
+LFQH_Lloh13923:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13914:
+LFQH_Lloh13924:
 adr x1, LFQH_SettingsGroups178R13Key
-LFQH_Lloh13915:
+LFQH_Lloh13925:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh13916:
+LFQH_Lloh13926:
 adr x1, LFQH_SettingsCompactPositionRowKey
-LFQH_Lloh13917:
+LFQH_Lloh13927:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -83143,9 +83173,9 @@ str	x0, [sp, #80]
 mov	w0, #2
 bl	LFQH_BottomFlag178
 mov	x27, x0
-LFQH_Lloh13918:
+LFQH_Lloh13928:
 adr x0, LFQH_l_.str.474
-LFQH_Lloh13919:
+LFQH_Lloh13929:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83153,9 +83183,9 @@ str	x22, [sp, #56]
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh13920:
+LFQH_Lloh13930:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh13921:
+LFQH_Lloh13931:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83166,29 +83196,29 @@ stp	x21, x20, [sp]
 mov	x19, #0
 mov	x8, #4633641066610819072
 fmov	d8, x8
-LFQH_Lloh13922:
+LFQH_Lloh13932:
 adr x28, LFQH_l_.str.33
-LFQH_Lloh13923:
+LFQH_Lloh13933:
 nop
-LFQH_Lloh13924:
+LFQH_Lloh13934:
 adr x21, LFQH_l_.str.75
-LFQH_Lloh13925:
+LFQH_Lloh13935:
 nop
 mov	x8, #4630544841867001856
 fmov	d13, x8
 fmov	d14, #6.00000000
 fmov	d15, #12.00000000
-LFQH_Lloh13926:
+LFQH_Lloh13936:
 adr x26, LFQH_l_.str.1573
-LFQH_Lloh13927:
+LFQH_Lloh13937:
 nop
 str	x23, [sp, #16]
 str	w27, [sp, #52]
 str	x22, [sp, #40]
 LFQH_LBB775_2:
-LFQH_Lloh13928:
+LFQH_Lloh13938:
 adr x0, LFQH_l_.str.568
-LFQH_Lloh13929:
+LFQH_Lloh13939:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83197,9 +83227,9 @@ str	x19, [sp, #32]
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 str	x0, [sp, #24]
-LFQH_Lloh13930:
+LFQH_Lloh13940:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh13931:
+LFQH_Lloh13941:
 nop
 bl	LFQH_Get
 mov	x25, x0
@@ -83213,9 +83243,9 @@ fmov	d9, x8
 cmp	x0, #2
 b.lo	LFQH_LBB775_26
 mov	w20, #1
-LFQH_Lloh13932:
+LFQH_Lloh13942:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13933:
+LFQH_Lloh13943:
 nop
 str	x25, [sp, #64]
 LFQH_LBB775_4:
@@ -83229,31 +83259,31 @@ mov	x24, x0
 cbz	x22, LFQH_LBB775_17
 str	x20, [sp, #88]
 mov	x0, x24
-LFQH_Lloh13934:
+LFQH_Lloh13944:
 adr x1, LFQH_l_.str.577
-LFQH_Lloh13935:
+LFQH_Lloh13945:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB775_18
 mov	x20, x0
-LFQH_Lloh13936:
+LFQH_Lloh13946:
 adr x0, LFQH_l_.str.1570
-LFQH_Lloh13937:
+LFQH_Lloh13947:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13938:
+LFQH_Lloh13948:
 adr x0, LFQH_l_.str.1571
-LFQH_Lloh13939:
+LFQH_Lloh13949:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh13940:
+LFQH_Lloh13950:
 adr x0, LFQH_l_.str.1572
-LFQH_Lloh13941:
+LFQH_Lloh13951:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83269,15 +83299,15 @@ mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
 mov	x0, x20
-LFQH_Lloh13942:
+LFQH_Lloh13952:
 adr x1, LFQH_l_.str.582
-LFQH_Lloh13943:
+LFQH_Lloh13953:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh13944:
+LFQH_Lloh13954:
 adr x0, LFQH_l_.str.474
-LFQH_Lloh13945:
+LFQH_Lloh13955:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83287,13 +83317,13 @@ cbz	x25, LFQH_LBB775_19
 mov	x20, x0
 str	x24, [sp, #72]
 mov	x22, #0
-LFQH_Lloh13946:
+LFQH_Lloh13956:
 adr x19, LFQH_l_.str.582
-LFQH_Lloh13947:
+LFQH_Lloh13957:
 nop
-LFQH_Lloh13948:
+LFQH_Lloh13958:
 adr x24, LFQH_l_.str.474
-LFQH_Lloh13949:
+LFQH_Lloh13959:
 nop
 LFQH_LBB775_8:
 mov	x0, x23
@@ -83312,9 +83342,9 @@ mov	x0, x28
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB775_15
 mov	x27, x0
-LFQH_Lloh13950:
+LFQH_Lloh13960:
 adr x0, LFQH_l_.str.583
-LFQH_Lloh13951:
+LFQH_Lloh13961:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83348,17 +83378,17 @@ cmp	x23, x27
 b.lo	LFQH_LBB775_12
 LFQH_LBB775_14:
 cmp	x23, x27
-LFQH_Lloh13952:
+LFQH_Lloh13962:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh13953:
+LFQH_Lloh13963:
 nop
-LFQH_Lloh13954:
+LFQH_Lloh13964:
 adr x19, LFQH_l_.str.582
-LFQH_Lloh13955:
+LFQH_Lloh13965:
 nop
-LFQH_Lloh13956:
+LFQH_Lloh13966:
 adr x24, LFQH_l_.str.474
-LFQH_Lloh13957:
+LFQH_Lloh13967:
 nop
 b.ne	LFQH_LBB775_20
 LFQH_LBB775_15:
@@ -83375,9 +83405,9 @@ mov	w8, #1
 b	LFQH_LBB775_22
 LFQH_LBB775_19:
 mov	w8, #0
-LFQH_Lloh13958:
+LFQH_Lloh13968:
 adr x21, LFQH_l_.str.75
-LFQH_Lloh13959:
+LFQH_Lloh13969:
 nop
 ldr	x25, [sp, #64]
 b	LFQH_LBB775_22
@@ -83386,13 +83416,13 @@ mov	w8, #1
 LFQH_LBB775_21:
 ldr	w27, [sp, #52]
 ldr	x22, [sp, #40]
-LFQH_Lloh13960:
+LFQH_Lloh13970:
 adr x28, LFQH_l_.str.33
-LFQH_Lloh13961:
+LFQH_Lloh13971:
 nop
-LFQH_Lloh13962:
+LFQH_Lloh13972:
 adr x21, LFQH_l_.str.75
-LFQH_Lloh13963:
+LFQH_Lloh13973:
 nop
 ldp	x25, x24, [sp, #64]
 LFQH_LBB775_22:
@@ -83409,9 +83439,9 @@ mov	x0, x24
 mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 tbnz	w19, #0, LFQH_LBB775_25
-LFQH_Lloh13964:
+LFQH_Lloh13974:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh13965:
+LFQH_Lloh13975:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83420,9 +83450,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v10, v0
 mov.16b	v11, v2
 mov.16b	v12, v3
-LFQH_Lloh13966:
+LFQH_Lloh13976:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh13967:
+LFQH_Lloh13977:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83454,9 +83484,9 @@ mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 fcmp	d9, d13
 b.eq	LFQH_LBB775_28
-LFQH_Lloh13968:
+LFQH_Lloh13978:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh13969:
+LFQH_Lloh13979:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83465,9 +83495,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v10, v0
 mov.16b	v11, v2
 fadd	d9, d9, d14
-LFQH_Lloh13970:
+LFQH_Lloh13980:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh13971:
+LFQH_Lloh13981:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83498,9 +83528,9 @@ LFQH_LBB775_30:
 mov	x8, #4634204016564240384
 fmov	d8, x8
 LFQH_LBB775_31:
-LFQH_Lloh13972:
+LFQH_Lloh13982:
 adr x19, LFQH_l_.str.480
-LFQH_Lloh13973:
+LFQH_Lloh13983:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -83536,9 +83566,9 @@ ldp	d15, d14, [sp, #112]
 add	sp, sp, #272
 ret
 LFQH_LBB775_36:
-LFQH_Lloh13974:
+LFQH_Lloh13984:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh13975:
+LFQH_Lloh13985:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83548,9 +83578,9 @@ mov.16b	v1, v10
 mov.16b	v2, v11
 mov.16b	v3, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh13976:
+LFQH_Lloh13986:
 adr x0, LFQH_l_.str.1569
-LFQH_Lloh13977:
+LFQH_Lloh13987:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83603,27 +83633,27 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
-LFQH_Lloh13978:
+LFQH_Lloh13988:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh13979:
+LFQH_Lloh13989:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh13980:
+LFQH_Lloh13990:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh13981:
+LFQH_Lloh13991:
 nop
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh13982:
+LFQH_Lloh13992:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh13983:
+LFQH_Lloh13993:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB780_2
 mov	x19, x0
-LFQH_Lloh13984:
+LFQH_Lloh13994:
 adr x1, LFQH_l_.str.1429
-LFQH_Lloh13985:
+LFQH_Lloh13995:
 nop
 mov	x0, x20
 bl	LFQH_Get
@@ -83634,82 +83664,82 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB780_3:
-LFQH_Lloh13986:
+LFQH_Lloh13996:
 adr x0, LFQH_l_.str.1691
-LFQH_Lloh13987:
+LFQH_Lloh13997:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
 cbnz	x0, LFQH_LBB780_6
-LFQH_Lloh13988:
+LFQH_Lloh13998:
 adr x0, LFQH_l_.str.1692
-LFQH_Lloh13989:
+LFQH_Lloh13999:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
-LFQH_Lloh13990:
+LFQH_Lloh14000:
 adr x1, LFQH_l_.str.1691
-LFQH_Lloh13991:
+LFQH_Lloh14001:
 nop
 mov	x2, #0
 bl Lpatch + (0xa61c - PATCH_BASE)
 mov	x21, x0
 cbz	x0, LFQH_LBB780_6
-LFQH_Lloh13992:
-adr x0, LFQH_l_.str.1693
-LFQH_Lloh13993:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-LFQH_Lloh13994:
-adr x2, LFQH_BottomSettingsLoad178
-LFQH_Lloh13995:
-nop
-LFQH_Lloh13996:
-adr x22, LFQH_l_.str.8
-LFQH_Lloh13997:
-nop
-mov	x0, x21
-mov	x3, x22
-bl Lpatch + (0xa58c - PATCH_BASE)
-LFQH_Lloh13998:
-adr x0, LFQH_l_.str.255
-LFQH_Lloh13999:
-nop
-bl Lpatch + (0xa5a4 - PATCH_BASE)
-mov	x1, x0
-LFQH_Lloh14000:
-adr x2, LFQH_BottomSettingsLayout178
-LFQH_Lloh14001:
-nop
-mov	x0, x21
-mov	x3, x22
-bl Lpatch + (0xa58c - PATCH_BASE)
 LFQH_Lloh14002:
-adr x0, LFQH_l_.str.1590
+adr x0, LFQH_l_.str.1693
 LFQH_Lloh14003:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 LFQH_Lloh14004:
-adr x2, LFQH_FQHBottomOptionChanged178
+adr x2, LFQH_BottomSettingsLoad178
 LFQH_Lloh14005:
 nop
 LFQH_Lloh14006:
-adr x22, LFQH_l_.str.213
+adr x22, LFQH_l_.str.8
 LFQH_Lloh14007:
 nop
 mov	x0, x21
 mov	x3, x22
 bl Lpatch + (0xa58c - PATCH_BASE)
 LFQH_Lloh14008:
-adr x0, LFQH_l_.str.1694
+adr x0, LFQH_l_.str.255
 LFQH_Lloh14009:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 LFQH_Lloh14010:
-adr x2, LFQH_FQHBottomOptionsReset178
+adr x2, LFQH_BottomSettingsLayout178
 LFQH_Lloh14011:
+nop
+mov	x0, x21
+mov	x3, x22
+bl Lpatch + (0xa58c - PATCH_BASE)
+LFQH_Lloh14012:
+adr x0, LFQH_l_.str.1590
+LFQH_Lloh14013:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh14014:
+adr x2, LFQH_FQHBottomOptionChanged178
+LFQH_Lloh14015:
+nop
+LFQH_Lloh14016:
+adr x22, LFQH_l_.str.213
+LFQH_Lloh14017:
+nop
+mov	x0, x21
+mov	x3, x22
+bl Lpatch + (0xa58c - PATCH_BASE)
+LFQH_Lloh14018:
+adr x0, LFQH_l_.str.1694
+LFQH_Lloh14019:
+nop
+bl Lpatch + (0xa5a4 - PATCH_BASE)
+mov	x1, x0
+LFQH_Lloh14020:
+adr x2, LFQH_FQHBottomOptionsReset178
+LFQH_Lloh14021:
 nop
 mov	x0, x21
 mov	x3, x22
@@ -83717,9 +83747,9 @@ bl Lpatch + (0xa58c - PATCH_BASE)
 mov	x0, x21
 bl Lpatch + (0xa610 - PATCH_BASE)
 LFQH_LBB780_6:
-LFQH_Lloh14012:
+LFQH_Lloh14022:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14013:
+LFQH_Lloh14023:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83727,33 +83757,33 @@ mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	x0, LFQH_LBB780_2
 mov	x21, x0
-LFQH_Lloh14014:
+LFQH_Lloh14024:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14015:
+LFQH_Lloh14025:
 nop
 mov	x2, x20
 bl	LFQH_BottomSetWeak178
-LFQH_Lloh14016:
+LFQH_Lloh14026:
 adr x0, LFQH_l_.str.1689
-LFQH_Lloh14017:
+LFQH_Lloh14027:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14018:
+LFQH_Lloh14028:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14019:
+LFQH_Lloh14029:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14020:
+LFQH_Lloh14030:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14021:
+LFQH_Lloh14031:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14022:
+LFQH_Lloh14032:
 adr x2, LFQH_l_.str.1592
-LFQH_Lloh14023:
+LFQH_Lloh14033:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -83761,9 +83791,9 @@ mov	x2, x0
 mov	x0, x21
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14024:
+LFQH_Lloh14034:
 adr x0, LFQH_l_.str.1690
-LFQH_Lloh14025:
+LFQH_Lloh14035:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83771,9 +83801,9 @@ mov	x0, x19
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14026:
+LFQH_Lloh14036:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14027:
+LFQH_Lloh14037:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83797,33 +83827,33 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
-LFQH_Lloh14028:
+LFQH_Lloh14038:
 adr x0, LFQH_l_.str.1716
-LFQH_Lloh14029:
+LFQH_Lloh14039:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14030:
+LFQH_Lloh14040:
 adr x0, LFQH_l_.str.1717
-LFQH_Lloh14031:
+LFQH_Lloh14041:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14032:
+LFQH_Lloh14042:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14033:
+LFQH_Lloh14043:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14034:
+LFQH_Lloh14044:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14035:
+LFQH_Lloh14045:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14036:
+LFQH_Lloh14046:
 adr x2, LFQH_l_.str.1718
-LFQH_Lloh14037:
+LFQH_Lloh14047:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -83832,39 +83862,39 @@ mov	x0, x19
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14038:
+LFQH_Lloh14048:
 adr x0, LFQH_l_.str.1423
-LFQH_Lloh14039:
+LFQH_Lloh14049:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14040:
+LFQH_Lloh14050:
 adr x0, LFQH_l_.str.1424
-LFQH_Lloh14041:
+LFQH_Lloh14051:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14042:
+LFQH_Lloh14052:
 adr x0, LFQH_l_.str.491
-LFQH_Lloh14043:
+LFQH_Lloh14053:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14044:
+LFQH_Lloh14054:
 adr x0, LFQH_l_.str.116
-LFQH_Lloh14045:
+LFQH_Lloh14055:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14046:
+LFQH_Lloh14056:
 adr x0, LFQH_l_.str.1719
-LFQH_Lloh14047:
+LFQH_Lloh14057:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83891,42 +83921,42 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset b8, -40
 .cfi_offset b9, -48
-LFQH_Lloh14048:
+LFQH_Lloh14058:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14049:
+LFQH_Lloh14059:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14050:
+LFQH_Lloh14060:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14051:
+LFQH_Lloh14061:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14052:
+LFQH_Lloh14062:
 adr x1, LFQH_SettingsSearch178R13Key
-LFQH_Lloh14053:
+LFQH_Lloh14063:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14054:
+LFQH_Lloh14064:
 adr x1, LFQH_l_.str.1568
-LFQH_Lloh14055:
+LFQH_Lloh14065:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14056:
+LFQH_Lloh14066:
 adr x0, LFQH_l_.str.1338
-LFQH_Lloh14057:
+LFQH_Lloh14067:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v0
-LFQH_Lloh14058:
+LFQH_Lloh14068:
 adr x0, LFQH_l_.str.1720
-LFQH_Lloh14059:
+LFQH_Lloh14069:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83935,16 +83965,16 @@ fmov	d0, xzr
 mov	x0, x19
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14060:
+LFQH_Lloh14070:
 adr x1, LFQH_l_.str.1721
-LFQH_Lloh14061:
+LFQH_Lloh14071:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14062:
+LFQH_Lloh14072:
 adr x0, LFQH_l_.str.1722
-LFQH_Lloh14063:
+LFQH_Lloh14073:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83966,9 +83996,9 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x2
-LFQH_Lloh14064:
+LFQH_Lloh14074:
 adr x0, LFQH_l_.str.490
-LFQH_Lloh14065:
+LFQH_Lloh14075:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -83999,14 +84029,14 @@ add	x29, sp, #64
 .cfi_offset w25, -72
 .cfi_offset w26, -80
 mov	x19, x2
-LFQH_Lloh14066:
+LFQH_Lloh14076:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14067:
+LFQH_Lloh14077:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14068:
+LFQH_Lloh14078:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14069:
+LFQH_Lloh14079:
 nop
 bl	LFQH_Get
 mov	x22, x0
@@ -84014,29 +84044,29 @@ bl	LFQH_SettingsVisibleController
 mov	x20, x0
 cmp	x0, x22
 b.eq	LFQH_LBB784_6
-LFQH_Lloh14070:
+LFQH_Lloh14080:
 adr x1, LFQH_l_.str.182
-LFQH_Lloh14071:
+LFQH_Lloh14081:
 nop
 mov	x0, x20
 bl	LFQH_Kind
 cbz	w0, LFQH_LBB784_6
-LFQH_Lloh14072:
+LFQH_Lloh14082:
 adr x1, LFQH_l_.str.1723
-LFQH_Lloh14073:
+LFQH_Lloh14083:
 nop
 mov	x0, x20
 bl	LFQH_Responds
 tbnz	w0, #0, LFQH_LBB784_6
-LFQH_Lloh14074:
+LFQH_Lloh14084:
 adr x0, LFQH_l_.str.1723
-LFQH_Lloh14075:
+LFQH_Lloh14085:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14076:
+LFQH_Lloh14086:
 adr x0, LFQH_l_.str.1724
-LFQH_Lloh14077:
+LFQH_Lloh14087:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
@@ -84057,9 +84087,9 @@ cbz	x24, LFQH_LBB784_6
 cbz	x0, LFQH_LBB784_6
 bl Lpatch + (0xa598 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh14078:
+LFQH_Lloh14088:
 adr x25, LFQH_l_.str.213
-LFQH_Lloh14079:
+LFQH_Lloh14089:
 nop
 mov	x0, x22
 mov	x1, x23
@@ -84073,16 +84103,16 @@ mov	x1, x21
 mov	x3, x25
 bl Lpatch + (0xa58c - PATCH_BASE)
 LFQH_LBB784_6:
-LFQH_Lloh14080:
+LFQH_Lloh14090:
 adr x1, LFQH_l_.str.1723
-LFQH_Lloh14081:
+LFQH_Lloh14091:
 nop
 mov	x0, x20
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB784_8
-LFQH_Lloh14082:
+LFQH_Lloh14092:
 adr x0, LFQH_l_.str.1723
-LFQH_Lloh14083:
+LFQH_Lloh14093:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84116,26 +84146,26 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
-LFQH_Lloh14084:
+LFQH_Lloh14094:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14085:
+LFQH_Lloh14095:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14086:
+LFQH_Lloh14096:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14087:
+LFQH_Lloh14097:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14088:
+LFQH_Lloh14098:
 adr x0, LFQH_l_.str.1628
-LFQH_Lloh14089:
+LFQH_Lloh14099:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14090:
+LFQH_Lloh14100:
 adr x0, LFQH_l_.str.1726
-LFQH_Lloh14091:
+LFQH_Lloh14101:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
@@ -84164,27 +84194,27 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh14092:
+LFQH_Lloh14102:
 adr x0, LFQH_l_.str.198
-LFQH_Lloh14093:
+LFQH_Lloh14103:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14094:
+LFQH_Lloh14104:
 adr x0, LFQH_l_.str.1727
-LFQH_Lloh14095:
+LFQH_Lloh14105:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14096:
+LFQH_Lloh14106:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14097:
+LFQH_Lloh14107:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14098:
+LFQH_Lloh14108:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14099:
+LFQH_Lloh14109:
 nop
 bl	LFQH_Get
 bl	LFQH_SettingsVisibleController
@@ -84211,27 +84241,27 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x19, x0
-LFQH_Lloh14100:
+LFQH_Lloh14110:
 adr x0, LFQH_l_.str.198
-LFQH_Lloh14101:
+LFQH_Lloh14111:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14102:
+LFQH_Lloh14112:
 adr x0, LFQH_l_.str.1728
-LFQH_Lloh14103:
+LFQH_Lloh14113:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14104:
+LFQH_Lloh14114:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14105:
+LFQH_Lloh14115:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14106:
+LFQH_Lloh14116:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14107:
+LFQH_Lloh14117:
 nop
 bl	LFQH_Get
 bl	LFQH_SettingsVisibleController
@@ -84254,26 +84284,26 @@ add	x29, sp, #16
 .cfi_offset w29, -16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
-LFQH_Lloh14108:
+LFQH_Lloh14118:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14109:
+LFQH_Lloh14119:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14110:
+LFQH_Lloh14120:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14111:
+LFQH_Lloh14121:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14112:
+LFQH_Lloh14122:
 adr x0, LFQH_l_.str.1729
-LFQH_Lloh14113:
+LFQH_Lloh14123:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14114:
+LFQH_Lloh14124:
 adr x0, LFQH_l_.str.1730
-LFQH_Lloh14115:
+LFQH_Lloh14125:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84303,22 +84333,22 @@ add	x29, sp, #64
 .cfi_offset w24, -64
 .cfi_offset w25, -72
 .cfi_offset w26, -80
-LFQH_Lloh14116:
+LFQH_Lloh14126:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14117:
+LFQH_Lloh14127:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14118:
+LFQH_Lloh14128:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14119:
+LFQH_Lloh14129:
 nop
 bl	LFQH_Get
 bl	LFQH_SettingsVisibleController
 cbz	x0, LFQH_LBB789_2
 mov	x19, x0
-LFQH_Lloh14120:
+LFQH_Lloh14130:
 adr x1, LFQH_l_.str.1429
-LFQH_Lloh14121:
+LFQH_Lloh14131:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB789_3
@@ -84333,46 +84363,46 @@ LFQH_LBB789_3:
 mov	w0, #35
 bl	LFQH_BottomFlag178
 mov	x22, x0
-LFQH_Lloh14122:
+LFQH_Lloh14132:
 adr x0, LFQH_l_.str.1731
-LFQH_Lloh14123:
+LFQH_Lloh14133:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14124:
+LFQH_Lloh14134:
 adr x0, LFQH_l_.str.1732
-LFQH_Lloh14125:
+LFQH_Lloh14135:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14126:
+LFQH_Lloh14136:
 adr x20, LFQH_l_.str.445
-LFQH_Lloh14127:
+LFQH_Lloh14137:
 nop
 mov	x0, x20
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14128:
+LFQH_Lloh14138:
 adr x21, LFQH_l_.str.517
-LFQH_Lloh14129:
+LFQH_Lloh14139:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14130:
+LFQH_Lloh14140:
 adr x2, LFQH_l_.str.1667
-LFQH_Lloh14131:
+LFQH_Lloh14141:
 nop
 mov	x0, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14132:
+LFQH_Lloh14142:
 adr x8, LFQH_l_.str.1733
-LFQH_Lloh14133:
+LFQH_Lloh14143:
 nop
-LFQH_Lloh14134:
+LFQH_Lloh14144:
 adr x9, LFQH_l_.str.1734
-LFQH_Lloh14135:
+LFQH_Lloh14145:
 nop
 cmp	w22, #0
 csel	x22, x9, x8, eq
@@ -84392,15 +84422,15 @@ mov	x2, x25
 mov	w4, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14136:
+LFQH_Lloh14146:
 adr x0, LFQH_l_.str.1735
-LFQH_Lloh14137:
+LFQH_Lloh14147:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14138:
+LFQH_Lloh14148:
 adr x0, LFQH_l_.str.1736
-LFQH_Lloh14139:
+LFQH_Lloh14149:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
@@ -84410,9 +84440,9 @@ mov	x20, x0
 mov	x0, x21
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14140:
+LFQH_Lloh14150:
 adr x2, LFQH_l_.str.1737
-LFQH_Lloh14141:
+LFQH_Lloh14151:
 nop
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -84423,18 +84453,18 @@ mov	x3, #0
 mov	x4, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14142:
+LFQH_Lloh14152:
 adr x0, LFQH_l_.str.1738
-LFQH_Lloh14143:
+LFQH_Lloh14153:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14144:
+LFQH_Lloh14154:
 adr x0, LFQH_l_.str.1739
-LFQH_Lloh14145:
+LFQH_Lloh14155:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84464,46 +84494,46 @@ add	x29, sp, #32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
 mov	x20, x2
-LFQH_Lloh14146:
+LFQH_Lloh14156:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14147:
+LFQH_Lloh14157:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14148:
+LFQH_Lloh14158:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14149:
+LFQH_Lloh14159:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh14150:
+LFQH_Lloh14160:
 adr x1, LFQH_l_.str.1568
-LFQH_Lloh14151:
+LFQH_Lloh14161:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14152:
+LFQH_Lloh14162:
 adr x1, LFQH_SettingsSearch178R13Key
-LFQH_Lloh14153:
+LFQH_Lloh14163:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14154:
+LFQH_Lloh14164:
 adr x1, LFQH_l_.str.1721
-LFQH_Lloh14155:
+LFQH_Lloh14165:
 nop
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh14156:
+LFQH_Lloh14166:
 adr x0, LFQH_l_.str.1740
-LFQH_Lloh14157:
+LFQH_Lloh14167:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14158:
+LFQH_Lloh14168:
 adr x0, LFQH_l_.str.489
-LFQH_Lloh14159:
+LFQH_Lloh14169:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84511,22 +84541,22 @@ mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x0, #1
 b.ne	LFQH_LBB790_2
-LFQH_Lloh14160:
+LFQH_Lloh14170:
 adr x1, LFQH_l_.str.1741
-LFQH_Lloh14161:
+LFQH_Lloh14171:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh14162:
+LFQH_Lloh14172:
 adr x0, LFQH_l_.str.1742
-LFQH_Lloh14163:
+LFQH_Lloh14173:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14164:
+LFQH_Lloh14174:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh14165:
+LFQH_Lloh14175:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84540,9 +84570,9 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 b Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB790_2:
-LFQH_Lloh14166:
+LFQH_Lloh14176:
 adr x0, LFQH_l_.str.1743
-LFQH_Lloh14167:
+LFQH_Lloh14177:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84552,9 +84582,9 @@ cmp	x0, #1
 b.lt	LFQH_LBB790_6
 mov	x21, x0
 mov	x20, #0
-LFQH_Lloh14168:
+LFQH_Lloh14178:
 adr x22, LFQH_l_.str.1744
-LFQH_Lloh14169:
+LFQH_Lloh14179:
 nop
 LFQH_LBB790_4:
 mov	x0, x22
@@ -84574,15 +84604,15 @@ ldp	x20, x19, [sp, #16]
 ldp	x22, x21, [sp], #48
 ret
 LFQH_LBB790_7:
-LFQH_Lloh14170:
+LFQH_Lloh14180:
 adr x0, LFQH_l_.str.998
-LFQH_Lloh14171:
+LFQH_Lloh14181:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14172:
+LFQH_Lloh14182:
 adr x0, LFQH_l_.str.1687
-LFQH_Lloh14173:
+LFQH_Lloh14183:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84591,9 +84621,9 @@ mov	x2, #0
 mov	x3, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14174:
+LFQH_Lloh14184:
 adr x0, LFQH_l_.str.1745
-LFQH_Lloh14175:
+LFQH_Lloh14185:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84620,41 +84650,41 @@ add	x29, sp, #32
 .cfi_offset w20, -32
 .cfi_offset w21, -40
 .cfi_offset w22, -48
-LFQH_Lloh14176:
+LFQH_Lloh14186:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14177:
+LFQH_Lloh14187:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14178:
+LFQH_Lloh14188:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14179:
+LFQH_Lloh14189:
 nop
 bl	LFQH_Get
-LFQH_Lloh14180:
+LFQH_Lloh14190:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh14181:
+LFQH_Lloh14191:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB791_2
 mov	x19, x0
-LFQH_Lloh14182:
+LFQH_Lloh14192:
 adr x0, LFQH_l_.str.1671
-LFQH_Lloh14183:
+LFQH_Lloh14193:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14184:
+LFQH_Lloh14194:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh14185:
+LFQH_Lloh14195:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14186:
+LFQH_Lloh14196:
 adr x0, LFQH_l_.str.1672
-LFQH_Lloh14187:
+LFQH_Lloh14197:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84662,15 +84692,15 @@ mov	x0, x20
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14188:
+LFQH_Lloh14198:
 adr x0, LFQH_l_.str.493
-LFQH_Lloh14189:
+LFQH_Lloh14199:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14190:
+LFQH_Lloh14200:
 adr x0, LFQH_l_.str.602
-LFQH_Lloh14191:
+LFQH_Lloh14201:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84678,34 +84708,34 @@ mov	x0, x21
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh14192:
+LFQH_Lloh14202:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14193:
+LFQH_Lloh14203:
 nop
 mov	x0, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh14194:
+LFQH_Lloh14204:
 adr x0, LFQH_l_.str.1689
-LFQH_Lloh14195:
+LFQH_Lloh14205:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14196:
+LFQH_Lloh14206:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14197:
+LFQH_Lloh14207:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14198:
+LFQH_Lloh14208:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14199:
+LFQH_Lloh14209:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14200:
+LFQH_Lloh14210:
 adr x2, LFQH_l_.str.1652
-LFQH_Lloh14201:
+LFQH_Lloh14211:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -84713,9 +84743,9 @@ mov	x2, x0
 mov	x0, x20
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14202:
+LFQH_Lloh14212:
 adr x0, LFQH_l_.str.1690
-LFQH_Lloh14203:
+LFQH_Lloh14213:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84723,9 +84753,9 @@ mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14204:
+LFQH_Lloh14214:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14205:
+LFQH_Lloh14215:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84767,20 +84797,20 @@ add	x29, sp, #96
 .cfi_offset b10, -104
 .cfi_offset b11, -112
 mov	x19, x0
-LFQH_Lloh14206:
+LFQH_Lloh14216:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14207:
+LFQH_Lloh14217:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14208:
+LFQH_Lloh14218:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14209:
+LFQH_Lloh14219:
 nop
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh14210:
+LFQH_Lloh14220:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh14211:
+LFQH_Lloh14221:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB792_5
@@ -84788,42 +84818,42 @@ mov	x20, x0
 mov	w0, #2
 bl	LFQH_BottomFlag178
 cbz	w0, LFQH_LBB792_5
-LFQH_Lloh14212:
+LFQH_Lloh14222:
 adr x0, LFQH_l_.str.1692
-LFQH_Lloh14213:
+LFQH_Lloh14223:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14214:
+LFQH_Lloh14224:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14215:
+LFQH_Lloh14225:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14216:
+LFQH_Lloh14226:
 adr x0, LFQH_l_.str.1689
-LFQH_Lloh14217:
+LFQH_Lloh14227:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14218:
+LFQH_Lloh14228:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14219:
+LFQH_Lloh14229:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14220:
+LFQH_Lloh14230:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14221:
+LFQH_Lloh14231:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14222:
+LFQH_Lloh14232:
 adr x2, LFQH_l_.str.1606
-LFQH_Lloh14223:
+LFQH_Lloh14233:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -84831,37 +84861,37 @@ mov	x2, x0
 mov	x0, x21
 mov	x1, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14224:
+LFQH_Lloh14234:
 adr x0, LFQH_l_.str.1746
-LFQH_Lloh14225:
+LFQH_Lloh14235:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 mov	x2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14226:
+LFQH_Lloh14236:
 adr x1, LFQH_l_.str.1096
-LFQH_Lloh14227:
+LFQH_Lloh14237:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x23, x0
-LFQH_Lloh14228:
+LFQH_Lloh14238:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh14229:
+LFQH_Lloh14239:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14230:
+LFQH_Lloh14240:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh14231:
+LFQH_Lloh14241:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14232:
+LFQH_Lloh14242:
 adr x0, LFQH_l_.str.1695
-LFQH_Lloh14233:
+LFQH_Lloh14243:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84871,25 +84901,25 @@ mov	x2, x0
 mov	x0, x23
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14234:
+LFQH_Lloh14244:
 adr x1, LFQH_l_.str.684
-LFQH_Lloh14235:
+LFQH_Lloh14245:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x24, x0
 cbnz	x0, LFQH_LBB792_4
-LFQH_Lloh14236:
+LFQH_Lloh14246:
 adr x1, LFQH_l_.str.1568
-LFQH_Lloh14237:
+LFQH_Lloh14247:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x24, x0
 LFQH_LBB792_4:
-LFQH_Lloh14238:
+LFQH_Lloh14248:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14239:
+LFQH_Lloh14249:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84899,9 +84929,9 @@ mov.16b	v8, v0
 mov.16b	v9, v1
 mov.16b	v10, v2
 mov.16b	v11, v3
-LFQH_Lloh14240:
+LFQH_Lloh14250:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14241:
+LFQH_Lloh14251:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84925,13 +84955,13 @@ mov	x22, x0
 bl	LFQH_BottomCompactPosition
 cmp	x0, #2
 csel	x23, xzr, x0, hi
-LFQH_Lloh14242:
+LFQH_Lloh14252:
 adr x4, LFQH_l_.str.1747
-LFQH_Lloh14243:
+LFQH_Lloh14253:
 nop
-LFQH_Lloh14244:
+LFQH_Lloh14254:
 adr x5, LFQH_l_.str.1748
-LFQH_Lloh14245:
+LFQH_Lloh14255:
 nop
 fmov	d0, xzr
 mov	x0, x22
@@ -84939,13 +84969,13 @@ mov	x1, x19
 mov	w2, #1
 mov	x3, x23
 bl	LFQH_SettingsCompactPositionChoice
-LFQH_Lloh14246:
+LFQH_Lloh14256:
 adr x4, LFQH_l_.str.1749
-LFQH_Lloh14247:
+LFQH_Lloh14257:
 nop
-LFQH_Lloh14248:
+LFQH_Lloh14258:
 adr x5, LFQH_l_.str.1750
-LFQH_Lloh14249:
+LFQH_Lloh14259:
 nop
 mov	x8, #4631952216750555136
 fmov	d0, x8
@@ -84954,13 +84984,13 @@ mov	x1, x19
 mov	w2, #2
 mov	x3, x23
 bl	LFQH_SettingsCompactPositionChoice
-LFQH_Lloh14250:
+LFQH_Lloh14260:
 adr x4, LFQH_l_.str.1751
-LFQH_Lloh14251:
+LFQH_Lloh14261:
 nop
-LFQH_Lloh14252:
+LFQH_Lloh14262:
 adr x5, LFQH_l_.str.1752
-LFQH_Lloh14253:
+LFQH_Lloh14263:
 nop
 mov	x8, #4636455816377925632
 fmov	d0, x8
@@ -84969,9 +84999,9 @@ mov	x1, x19
 mov	x2, #0
 mov	x3, x23
 bl	LFQH_SettingsCompactPositionChoice
-LFQH_Lloh14254:
+LFQH_Lloh14264:
 adr x0, LFQH_l_.str.1690
-LFQH_Lloh14255:
+LFQH_Lloh14265:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -84979,9 +85009,9 @@ mov	x0, x20
 mov	x2, x21
 mov	w3, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14256:
+LFQH_Lloh14266:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14257:
+LFQH_Lloh14267:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85023,51 +85053,51 @@ add	x29, sp, #48
 .cfi_offset w24, -64
 mov	x20, x2
 mov	x19, x0
-LFQH_Lloh14258:
+LFQH_Lloh14268:
 adr x0, LFQH_l_.str.489
-LFQH_Lloh14259:
+LFQH_Lloh14269:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14260:
+LFQH_Lloh14270:
 adr x0, LFQH_l_.str.71
-LFQH_Lloh14261:
+LFQH_Lloh14271:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14262:
+LFQH_Lloh14272:
 adr x0, LFQH_l_.str.72
-LFQH_Lloh14263:
+LFQH_Lloh14273:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14264:
+LFQH_Lloh14274:
 adr x0, LFQH_l_.str.1753
-LFQH_Lloh14265:
+LFQH_Lloh14275:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14266:
+LFQH_Lloh14276:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14267:
+LFQH_Lloh14277:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14268:
+LFQH_Lloh14278:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14269:
+LFQH_Lloh14279:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14270:
+LFQH_Lloh14280:
 adr x2, LFQH_l_.str.1566
-LFQH_Lloh14271:
+LFQH_Lloh14281:
 nop
 mov	x0, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -85077,26 +85107,26 @@ mov	x1, x22
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 bl	LFQH_BottomRefresh178
-LFQH_Lloh14272:
+LFQH_Lloh14282:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14273:
+LFQH_Lloh14283:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
-LFQH_Lloh14274:
+LFQH_Lloh14284:
 adr x1, LFQH_l_.str.107
-LFQH_Lloh14275:
+LFQH_Lloh14285:
 nop
 bl	LFQH_Get
-LFQH_Lloh14276:
+LFQH_Lloh14286:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh14277:
+LFQH_Lloh14287:
 nop
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14278:
+LFQH_Lloh14288:
 adr x0, LFQH_l_.str.1754
-LFQH_Lloh14279:
+LFQH_Lloh14289:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85135,15 +85165,15 @@ mov	x21, x3
 mov	x23, x2
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh14280:
+LFQH_Lloh14290:
 adr x0, LFQH_l_.str.1755
-LFQH_Lloh14281:
+LFQH_Lloh14291:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14282:
+LFQH_Lloh14292:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh14283:
+LFQH_Lloh14293:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85151,28 +85181,28 @@ mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
 cbz	x23, LFQH_LBB794_2
-LFQH_Lloh14284:
+LFQH_Lloh14294:
 adr x0, LFQH_l_.str.625
-LFQH_Lloh14285:
+LFQH_Lloh14295:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14286:
+LFQH_Lloh14296:
 adr x0, LFQH_l_.str.1756
-LFQH_Lloh14287:
+LFQH_Lloh14297:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14288:
+LFQH_Lloh14298:
 adr x26, LFQH_l_.str.445
-LFQH_Lloh14289:
+LFQH_Lloh14299:
 nop
 mov	x0, x26
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x27, x0
-LFQH_Lloh14290:
+LFQH_Lloh14300:
 adr x28, LFQH_l_.str.517
-LFQH_Lloh14291:
+LFQH_Lloh14301:
 nop
 mov	x0, x28
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -85185,9 +85215,9 @@ mov	x0, x24
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14292:
+LFQH_Lloh14302:
 adr x0, LFQH_l_.str.1757
-LFQH_Lloh14293:
+LFQH_Lloh14303:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
@@ -85201,9 +85231,9 @@ mov	x3, #0
 mov	x4, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14294:
+LFQH_Lloh14304:
 adr x0, LFQH_l_.str.1018
-LFQH_Lloh14295:
+LFQH_Lloh14305:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
@@ -85229,21 +85259,21 @@ ldp	x26, x25, [sp, #16]
 ldp	x28, x27, [sp], #96
 ret
 LFQH_LBB794_2:
-LFQH_Lloh14296:
+LFQH_Lloh14306:
 adr x0, LFQH_l_.str.1758
-LFQH_Lloh14297:
+LFQH_Lloh14307:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14298:
+LFQH_Lloh14308:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14299:
+LFQH_Lloh14309:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14300:
+LFQH_Lloh14310:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14301:
+LFQH_Lloh14311:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85283,9 +85313,9 @@ add	x29, sp, #32
 .cfi_offset w22, -48
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh14302:
+LFQH_Lloh14312:
 adr x21, LFQH_l_.str.23
-LFQH_Lloh14303:
+LFQH_Lloh14313:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -85318,16 +85348,16 @@ mov	x0, x22
 mov	x1, x19
 mov	w2, #1
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14304:
+LFQH_Lloh14314:
 adr x1, LFQH_SettingsGroups178R13Key
-LFQH_Lloh14305:
+LFQH_Lloh14315:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14306:
+LFQH_Lloh14316:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh14307:
+LFQH_Lloh14317:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85370,18 +85400,18 @@ mov	x20, x3
 mov	x21, x2
 mov	x24, x1
 mov	x19, x0
-LFQH_Lloh14308:
+LFQH_Lloh14318:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14309:
+LFQH_Lloh14319:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x23, #0
-LFQH_Lloh14310:
+LFQH_Lloh14320:
 adr x8, LFQH_lCPI796_0
-LFQH_Lloh14311:
+LFQH_Lloh14321:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	x8, #4631952216750555136
@@ -85400,33 +85430,33 @@ mov	x22, x0
 mov	x0, x20
 bl	LFQH_PageOptionEnabled
 mov	x23, x0
-LFQH_Lloh14312:
+LFQH_Lloh14322:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14313:
+LFQH_Lloh14323:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v2
-LFQH_Lloh14314:
+LFQH_Lloh14324:
 adr x0, LFQH_l_.str.35
-LFQH_Lloh14315:
+LFQH_Lloh14325:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14316:
+LFQH_Lloh14326:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh14317:
+LFQH_Lloh14327:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14318:
+LFQH_Lloh14328:
 adr x0, LFQH_l_.str.1412
-LFQH_Lloh14319:
+LFQH_Lloh14329:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85437,9 +85467,9 @@ mov	x24, x0
 mov	x8, #-4586916220476850176
 fmov	d0, x8
 fadd	d9, d8, d0
-LFQH_Lloh14320:
+LFQH_Lloh14330:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14321:
+LFQH_Lloh14331:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85449,30 +85479,30 @@ fmov	d3, #30.00000000
 mov	x0, x24
 mov.16b	v2, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14322:
+LFQH_Lloh14332:
 adr x0, LFQH_l_.str.497
-LFQH_Lloh14323:
+LFQH_Lloh14333:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14324:
+LFQH_Lloh14334:
 adr x0, LFQH_l_.str.606
-LFQH_Lloh14325:
+LFQH_Lloh14335:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14326:
+LFQH_Lloh14336:
 adr x0, LFQH_l_.str.1759
-LFQH_Lloh14327:
+LFQH_Lloh14337:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh14328:
+LFQH_Lloh14338:
 adr x0, LFQH_l_.str.1760
-LFQH_Lloh14329:
+LFQH_Lloh14339:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85483,21 +85513,21 @@ mov	x2, x0
 mov	x0, x24
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14330:
+LFQH_Lloh14340:
 adr x0, LFQH_l_.str.45
-LFQH_Lloh14331:
+LFQH_Lloh14341:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14332:
+LFQH_Lloh14342:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh14333:
+LFQH_Lloh14343:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x26, x0
-LFQH_Lloh14334:
+LFQH_Lloh14344:
 adr x0, LFQH_l_.str.48
-LFQH_Lloh14335:
+LFQH_Lloh14345:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85507,50 +85537,50 @@ mov	x2, x0
 mov	x0, x24
 mov	x1, x25
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14336:
+LFQH_Lloh14346:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14337:
+LFQH_Lloh14347:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14338:
+LFQH_Lloh14348:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14339:
+LFQH_Lloh14349:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14340:
+LFQH_Lloh14350:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14341:
+LFQH_Lloh14351:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14342:
+LFQH_Lloh14352:
 adr x0, LFQH_l_.str.1663
-LFQH_Lloh14343:
+LFQH_Lloh14353:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14344:
+LFQH_Lloh14354:
 adr x0, LFQH_l_.str.511
-LFQH_Lloh14345:
+LFQH_Lloh14355:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14346:
+LFQH_Lloh14356:
 adr x0, LFQH_l_.str.1412
-LFQH_Lloh14347:
+LFQH_Lloh14357:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85561,27 +85591,27 @@ mov	x24, x0
 fmov	d1, #24.00000000
 mov.16b	v0, v8
 bl	LFQH_SettingsPlaceSwitch178R14
-LFQH_Lloh14348:
+LFQH_Lloh14358:
 adr x0, LFQH_l_.str.1656
-LFQH_Lloh14349:
+LFQH_Lloh14359:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14350:
+LFQH_Lloh14360:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14351:
+LFQH_Lloh14361:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14352:
+LFQH_Lloh14362:
 adr x0, LFQH_l_.str.499
-LFQH_Lloh14353:
+LFQH_Lloh14363:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85589,15 +85619,15 @@ mov	x0, x24
 mov	x2, x23
 mov	w3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14354:
+LFQH_Lloh14364:
 adr x0, LFQH_l_.str.550
-LFQH_Lloh14355:
+LFQH_Lloh14365:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14356:
+LFQH_Lloh14366:
 adr x0, LFQH_l_.str.1417
-LFQH_Lloh14357:
+LFQH_Lloh14367:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -85606,36 +85636,36 @@ mov	x1, x23
 mov	x2, x21
 mov	w4, #4096
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14358:
+LFQH_Lloh14368:
 adr x0, LFQH_l_.str.1018
-LFQH_Lloh14359:
+LFQH_Lloh14369:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14360:
+LFQH_Lloh14370:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14361:
+LFQH_Lloh14371:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14362:
+LFQH_Lloh14372:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14363:
+LFQH_Lloh14373:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB796_4:
-LFQH_Lloh14364:
+LFQH_Lloh14374:
 adr x0, LFQH_l_.str.1607
-LFQH_Lloh14365:
+LFQH_Lloh14375:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
@@ -85650,21 +85680,21 @@ mov	x2, x20
 mov	x3, x22
 mov	x4, x23
 bl	LFQH_BottomSettingsSwitch178
-LFQH_Lloh14366:
+LFQH_Lloh14376:
 adr x0, LFQH_l_.str.1607
-LFQH_Lloh14367:
+LFQH_Lloh14377:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14368:
+LFQH_Lloh14378:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14369:
+LFQH_Lloh14379:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14370:
+LFQH_Lloh14380:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14371:
+LFQH_Lloh14381:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85721,15 +85751,15 @@ mov.16b	v10, v1
 mov.16b	v11, v0
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh14372:
+LFQH_Lloh14382:
 adr x0, LFQH_l_.str.167
-LFQH_Lloh14373:
+LFQH_Lloh14383:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14374:
+LFQH_Lloh14384:
 adr x0, LFQH_l_.str.1709
-LFQH_Lloh14375:
+LFQH_Lloh14385:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85737,9 +85767,9 @@ mov	x0, x21
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14376:
+LFQH_Lloh14386:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14377:
+LFQH_Lloh14387:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85749,31 +85779,31 @@ mov.16b	v1, v10
 mov.16b	v2, v9
 mov.16b	v3, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14378:
+LFQH_Lloh14388:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14379:
+LFQH_Lloh14389:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14380:
+LFQH_Lloh14390:
 adr x0, LFQH_l_.str.1508
-LFQH_Lloh14381:
+LFQH_Lloh14391:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14382:
+LFQH_Lloh14392:
 adr x26, LFQH_l_.str.445
-LFQH_Lloh14383:
+LFQH_Lloh14393:
 nop
 mov	x0, x26
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x27, x0
-LFQH_Lloh14384:
+LFQH_Lloh14394:
 adr x28, LFQH_l_.str.517
-LFQH_Lloh14385:
+LFQH_Lloh14395:
 nop
 mov	x0, x28
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -85786,9 +85816,9 @@ mov	x0, x21
 mov	x1, x25
 mov	x3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14386:
+LFQH_Lloh14396:
 adr x0, LFQH_l_.str.1018
-LFQH_Lloh14387:
+LFQH_Lloh14397:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
@@ -85805,9 +85835,9 @@ mov	x2, x0
 mov	x0, x21
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14388:
+LFQH_Lloh14398:
 adr x0, LFQH_l_.str.550
-LFQH_Lloh14389:
+LFQH_Lloh14399:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
@@ -85819,17 +85849,17 @@ mov	x1, x23
 mov	x2, x20
 mov	w4, #64
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14390:
+LFQH_Lloh14400:
 adr x1, LFQH_BottomOptionsOwner178Key
-LFQH_Lloh14391:
+LFQH_Lloh14401:
 nop
 mov	x0, x21
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh14392:
+LFQH_Lloh14402:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14393:
+LFQH_Lloh14403:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85873,24 +85903,24 @@ mov.16b	v9, v2
 mov.16b	v10, v1
 mov.16b	v11, v0
 mov	x19, x0
-LFQH_Lloh14394:
+LFQH_Lloh14404:
 adr x0, LFQH_l_.str.22
-LFQH_Lloh14395:
+LFQH_Lloh14405:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14396:
+LFQH_Lloh14406:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14397:
+LFQH_Lloh14407:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14398:
+LFQH_Lloh14408:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14399:
+LFQH_Lloh14409:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85900,9 +85930,9 @@ mov.16b	v1, v10
 mov.16b	v2, v9
 mov.16b	v3, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14400:
+LFQH_Lloh14410:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14401:
+LFQH_Lloh14411:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85910,21 +85940,21 @@ mov	x0, x20
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbz	w21, LFQH_LBB798_2
-LFQH_Lloh14402:
+LFQH_Lloh14412:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh14403:
+LFQH_Lloh14413:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14404:
+LFQH_Lloh14414:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh14405:
+LFQH_Lloh14415:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14406:
+LFQH_Lloh14416:
 adr x0, LFQH_l_.str.1773
-LFQH_Lloh14407:
+LFQH_Lloh14417:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85934,16 +85964,16 @@ mov	x2, x0
 mov	x0, x20
 mov	x1, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14408:
+LFQH_Lloh14418:
 adr x1, LFQH_l_.str.451
-LFQH_Lloh14409:
+LFQH_Lloh14419:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x21, x0
-LFQH_Lloh14410:
+LFQH_Lloh14420:
 adr x0, LFQH_l_.str.1501
-LFQH_Lloh14411:
+LFQH_Lloh14421:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -85951,18 +85981,18 @@ fmov	d0, #18.00000000
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB798_2:
-LFQH_Lloh14412:
+LFQH_Lloh14422:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14413:
+LFQH_Lloh14423:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14414:
+LFQH_Lloh14424:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14415:
+LFQH_Lloh14425:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86010,24 +86040,24 @@ mov.16b	v10, v2
 mov.16b	v11, v1
 mov.16b	v12, v0
 mov	x19, x0
-LFQH_Lloh14416:
+LFQH_Lloh14426:
 adr x0, LFQH_l_.str.35
-LFQH_Lloh14417:
+LFQH_Lloh14427:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14418:
+LFQH_Lloh14428:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14419:
+LFQH_Lloh14429:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14420:
+LFQH_Lloh14430:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14421:
+LFQH_Lloh14431:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86037,21 +86067,21 @@ mov.16b	v1, v11
 mov.16b	v2, v10
 mov.16b	v3, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14422:
+LFQH_Lloh14432:
 adr x0, LFQH_l_.str.497
-LFQH_Lloh14423:
+LFQH_Lloh14433:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14424:
+LFQH_Lloh14434:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14425:
+LFQH_Lloh14435:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14426:
+LFQH_Lloh14436:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14427:
+LFQH_Lloh14437:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86062,21 +86092,21 @@ mov	x2, x0
 mov	x0, x20
 mov	x1, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14428:
+LFQH_Lloh14438:
 adr x0, LFQH_l_.str.606
-LFQH_Lloh14429:
+LFQH_Lloh14439:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14430:
+LFQH_Lloh14440:
 adr x0, LFQH_l_.str.1759
-LFQH_Lloh14431:
+LFQH_Lloh14441:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14432:
+LFQH_Lloh14442:
 adr x0, LFQH_l_.str.1760
-LFQH_Lloh14433:
+LFQH_Lloh14443:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86087,25 +86117,25 @@ mov	x2, x0
 mov	x0, x20
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14434:
+LFQH_Lloh14444:
 adr x0, LFQH_l_.str.45
-LFQH_Lloh14435:
+LFQH_Lloh14445:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14436:
+LFQH_Lloh14446:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh14437:
+LFQH_Lloh14447:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14438:
+LFQH_Lloh14448:
 adr x8, LFQH_l_.str.1774
-LFQH_Lloh14439:
+LFQH_Lloh14449:
 nop
-LFQH_Lloh14440:
+LFQH_Lloh14450:
 adr x9, LFQH_l_.str.48
-LFQH_Lloh14441:
+LFQH_Lloh14451:
 nop
 cmp	w21, #0
 csel	x0, x9, x8, eq
@@ -86117,36 +86147,36 @@ mov	x2, x0
 mov	x0, x20
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14442:
+LFQH_Lloh14452:
 adr x0, LFQH_l_.str.1775
-LFQH_Lloh14443:
+LFQH_Lloh14453:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	x2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14444:
+LFQH_Lloh14454:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14445:
+LFQH_Lloh14455:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14446:
+LFQH_Lloh14456:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14447:
+LFQH_Lloh14457:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14448:
+LFQH_Lloh14458:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14449:
+LFQH_Lloh14459:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86182,9 +86212,9 @@ add	x29, sp, #48
 mov.16b	v11, v1
 mov.16b	v10, v0
 mov	x19, x0
-LFQH_Lloh14450:
+LFQH_Lloh14460:
 adr x0, LFQH_l_.str.770
-LFQH_Lloh14451:
+LFQH_Lloh14461:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86206,9 +86236,9 @@ fsub	d10, d0, d8
 fmov	d0, #-0.50000000
 fmul	d0, d9, d0
 fadd	d11, d11, d0
-LFQH_Lloh14452:
+LFQH_Lloh14462:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh14453:
+LFQH_Lloh14463:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86219,9 +86249,9 @@ fccmp	d1, d11, #0, eq
 fccmp	d2, d8, #0, eq
 fccmp	d3, d9, #0, eq
 b.eq	LFQH_LBB800_2
-LFQH_Lloh14454:
+LFQH_Lloh14464:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14455:
+LFQH_Lloh14465:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86271,18 +86301,18 @@ mov	x20, x2
 mov.16b	v8, v0
 mov	x21, x1
 mov	x19, x0
-LFQH_Lloh14456:
+LFQH_Lloh14466:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14457:
+LFQH_Lloh14467:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v9, v2
-LFQH_Lloh14458:
+LFQH_Lloh14468:
 adr x8, LFQH_lCPI801_0
-LFQH_Lloh14459:
+LFQH_Lloh14469:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 fadd	d2, d2, d0
@@ -86295,9 +86325,9 @@ mov	x1, x23
 mov	w2, #0
 bl	LFQH_BottomSettingsLabel178
 cbz	x22, LFQH_LBB801_2
-LFQH_Lloh14460:
+LFQH_Lloh14470:
 adr x8, LFQH_lCPI801_1
-LFQH_Lloh14461:
+LFQH_Lloh14471:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 fadd	d1, d8, d0
@@ -86313,15 +86343,15 @@ mov	x1, x22
 mov	w2, #1
 bl	LFQH_BottomSettingsLabel178
 LFQH_LBB801_2:
-LFQH_Lloh14462:
+LFQH_Lloh14472:
 adr x0, LFQH_l_.str.1663
-LFQH_Lloh14463:
+LFQH_Lloh14473:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14464:
+LFQH_Lloh14474:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14465:
+LFQH_Lloh14475:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86332,27 +86362,27 @@ fmov	d0, #14.50000000
 fadd	d1, d8, d0
 mov.16b	v0, v9
 bl	LFQH_SettingsPlaceSwitch178R14
-LFQH_Lloh14466:
+LFQH_Lloh14476:
 adr x0, LFQH_l_.str.503
-LFQH_Lloh14467:
+LFQH_Lloh14477:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14468:
+LFQH_Lloh14478:
 adr x0, LFQH_l_.str.1656
-LFQH_Lloh14469:
+LFQH_Lloh14479:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14470:
+LFQH_Lloh14480:
 adr x0, LFQH_l_.str.499
-LFQH_Lloh14471:
+LFQH_Lloh14481:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
@@ -86363,21 +86393,21 @@ mov	x0, x22
 mov	x1, x24
 mov	w3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14472:
+LFQH_Lloh14482:
 adr x0, LFQH_l_.str.1018
-LFQH_Lloh14473:
+LFQH_Lloh14483:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14474:
+LFQH_Lloh14484:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14475:
+LFQH_Lloh14485:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14476:
+LFQH_Lloh14486:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14477:
+LFQH_Lloh14487:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86388,15 +86418,15 @@ mov	x2, x0
 mov	x0, x22
 mov	x1, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14478:
+LFQH_Lloh14488:
 adr x0, LFQH_l_.str.550
-LFQH_Lloh14479:
+LFQH_Lloh14489:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14480:
+LFQH_Lloh14490:
 adr x0, LFQH_l_.str.1590
-LFQH_Lloh14481:
+LFQH_Lloh14491:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -86405,25 +86435,25 @@ mov	x1, x23
 mov	x2, x19
 mov	w4, #4096
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14482:
+LFQH_Lloh14492:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14483:
+LFQH_Lloh14493:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x21
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14484:
+LFQH_Lloh14494:
 adr x1, LFQH_BottomSettingViews178Key
-LFQH_Lloh14485:
+LFQH_Lloh14495:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14486:
+LFQH_Lloh14496:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh14487:
+LFQH_Lloh14497:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86432,18 +86462,18 @@ mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x20, #2
 b.ne	LFQH_LBB801_4
-LFQH_Lloh14488:
+LFQH_Lloh14498:
 adr x1, LFQH_SettingsCompactSwitchKey
-LFQH_Lloh14489:
+LFQH_Lloh14499:
 nop
 mov	x0, x19
 mov	x2, x22
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
 LFQH_LBB801_4:
-LFQH_Lloh14490:
+LFQH_Lloh14500:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14491:
+LFQH_Lloh14501:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86486,21 +86516,21 @@ add	x29, sp, #112
 .cfi_offset b12, -120
 .cfi_offset b13, -128
 mov	x21, x0
-LFQH_Lloh14492:
+LFQH_Lloh14502:
 adr x0, LFQH_l_.str.182
-LFQH_Lloh14493:
+LFQH_Lloh14503:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14494:
+LFQH_Lloh14504:
 adr x1, LFQH_l_.str.1777
-LFQH_Lloh14495:
+LFQH_Lloh14505:
 nop
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB802_2
-LFQH_Lloh14496:
+LFQH_Lloh14506:
 adr x0, LFQH_l_.str.1777
-LFQH_Lloh14497:
+LFQH_Lloh14507:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86509,52 +86539,52 @@ mov	x2, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	w0, LFQH_LBB802_18
 LFQH_LBB802_2:
-LFQH_Lloh14498:
+LFQH_Lloh14508:
 adr x1, LFQH_l_.str.1568
-LFQH_Lloh14499:
+LFQH_Lloh14509:
 nop
 mov	x0, x21
 bl	LFQH_Get
 mov	x22, x0
-LFQH_Lloh14500:
+LFQH_Lloh14510:
 adr x1, LFQH_SettingsHeader178R13Key
-LFQH_Lloh14501:
+LFQH_Lloh14511:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14502:
+LFQH_Lloh14512:
 adr x1, LFQH_l_.str.1741
-LFQH_Lloh14503:
+LFQH_Lloh14513:
 nop
 mov	x0, x22
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14504:
+LFQH_Lloh14514:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14505:
+LFQH_Lloh14515:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v8, v2
-LFQH_Lloh14506:
+LFQH_Lloh14516:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh14507:
+LFQH_Lloh14517:
 nop
 mov	x0, x21
 bl	LFQH_Get
-LFQH_Lloh14508:
+LFQH_Lloh14518:
 adr x1, LFQH_l_.str.684
-LFQH_Lloh14509:
+LFQH_Lloh14519:
 nop
 bl	LFQH_Get
 cbz	x0, LFQH_LBB802_4
 mov	x22, x0
-LFQH_Lloh14510:
+LFQH_Lloh14520:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14511:
+LFQH_Lloh14521:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86579,16 +86609,16 @@ fmov	d0, x9
 fcmp	d12, d0
 b.mi	LFQH_LBB802_18
 tbnz	w8, #0, LFQH_LBB802_18
-LFQH_Lloh14512:
+LFQH_Lloh14522:
 adr x1, LFQH_SettingsSearch178R13Key
-LFQH_Lloh14513:
+LFQH_Lloh14523:
 nop
 mov	x0, x21
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14514:
+LFQH_Lloh14524:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh14515:
+LFQH_Lloh14525:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86602,9 +86632,9 @@ fcmp	d2, d11
 b.eq	LFQH_LBB802_11
 mov.16b	v9, v1
 mov.16b	v10, v3
-LFQH_Lloh14516:
+LFQH_Lloh14526:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14517:
+LFQH_Lloh14527:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86615,16 +86645,16 @@ mov.16b	v2, v11
 mov.16b	v3, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB802_11:
-LFQH_Lloh14518:
+LFQH_Lloh14528:
 adr x1, LFQH_SettingsGroups178R13Key
-LFQH_Lloh14519:
+LFQH_Lloh14529:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14520:
+LFQH_Lloh14530:
 adr x0, LFQH_l_.str.33
-LFQH_Lloh14521:
+LFQH_Lloh14531:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86636,17 +86666,17 @@ fadd	d8, d12, d0
 cbz	x0, LFQH_LBB802_16
 mov	x21, x0
 mov	x22, #0
-LFQH_Lloh14522:
+LFQH_Lloh14532:
 adr x23, LFQH_l_.str.568
-LFQH_Lloh14523:
+LFQH_Lloh14533:
 nop
-LFQH_Lloh14524:
+LFQH_Lloh14534:
 adr x24, LFQH_l_.str.480
-LFQH_Lloh14525:
+LFQH_Lloh14535:
 nop
-LFQH_Lloh14526:
+LFQH_Lloh14536:
 adr x25, LFQH_l_.str.508
-LFQH_Lloh14527:
+LFQH_Lloh14537:
 nop
 LFQH_LBB802_13:
 mov	x0, x23
@@ -86680,16 +86710,16 @@ add	x22, x22, #1
 cmp	x21, x22
 b.ne	LFQH_LBB802_13
 LFQH_LBB802_16:
-LFQH_Lloh14528:
+LFQH_Lloh14538:
 adr x1, LFQH_l_.str.462
-LFQH_Lloh14529:
+LFQH_Lloh14539:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x19, x0
-LFQH_Lloh14530:
+LFQH_Lloh14540:
 adr x0, LFQH_l_.str.568
-LFQH_Lloh14531:
+LFQH_Lloh14541:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86697,9 +86727,9 @@ mov	x0, x19
 mov	x2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14532:
+LFQH_Lloh14542:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh14533:
+LFQH_Lloh14543:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86710,9 +86740,9 @@ b.eq	LFQH_LBB802_18
 mov.16b	v9, v0
 mov.16b	v10, v1
 mov.16b	v11, v3
-LFQH_Lloh14534:
+LFQH_Lloh14544:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14535:
+LFQH_Lloh14545:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86749,9 +86779,9 @@ mov	x29, sp
 .cfi_def_cfa w29, 16
 .cfi_offset w30, -8
 .cfi_offset w29, -16
-LFQH_Lloh14536:
+LFQH_Lloh14546:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14537:
+LFQH_Lloh14547:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cmp	x0, #0
@@ -86779,19 +86809,19 @@ mov	x19, x3
 mov	x20, x2
 mov	x21, x1
 mov	x22, x0
-LFQH_Lloh14538:
+LFQH_Lloh14548:
 adr x0, LFQH_l_.str.1671
-LFQH_Lloh14539:
+LFQH_Lloh14549:
 nop
-LFQH_Lloh14540:
+LFQH_Lloh14550:
 adr x1, LFQH_l_.str.1677
-LFQH_Lloh14541:
+LFQH_Lloh14551:
 nop
 bl	LFQH_Original
 str	x0, [sp, #8]
-LFQH_Lloh14542:
+LFQH_Lloh14552:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14543:
+LFQH_Lloh14553:
 nop
 mov	x0, x22
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -86827,19 +86857,19 @@ mov	x19, x3
 mov	x20, x2
 mov	x21, x1
 mov	x22, x0
-LFQH_Lloh14544:
+LFQH_Lloh14554:
 adr x0, LFQH_l_.str.1671
-LFQH_Lloh14545:
+LFQH_Lloh14555:
 nop
-LFQH_Lloh14546:
+LFQH_Lloh14556:
 adr x1, LFQH_l_.str.1680
-LFQH_Lloh14547:
+LFQH_Lloh14557:
 nop
 bl	LFQH_Original
 str	x0, [sp, #8]
-LFQH_Lloh14548:
+LFQH_Lloh14558:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14549:
+LFQH_Lloh14559:
 nop
 mov	x0, x22
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -86875,19 +86905,19 @@ mov	x19, x3
 mov	x20, x2
 mov	x21, x1
 mov	x22, x0
-LFQH_Lloh14550:
+LFQH_Lloh14560:
 adr x0, LFQH_l_.str.1671
-LFQH_Lloh14551:
+LFQH_Lloh14561:
 nop
-LFQH_Lloh14552:
+LFQH_Lloh14562:
 adr x1, LFQH_l_.str.1683
-LFQH_Lloh14553:
+LFQH_Lloh14563:
 nop
 bl	LFQH_Original
 str	x0, [sp, #8]
-LFQH_Lloh14554:
+LFQH_Lloh14564:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14555:
+LFQH_Lloh14565:
 nop
 mov	x0, x22
 bl Lpatch + (0xa628 - PATCH_BASE)
@@ -86925,30 +86955,30 @@ mov	x22, x3
 mov	x19, x2
 mov	x20, x1
 mov	x21, x0
-LFQH_Lloh14556:
+LFQH_Lloh14566:
 adr x1, LFQH_SettingsAdPageKey
-LFQH_Lloh14557:
+LFQH_Lloh14567:
 nop
 bl Lpatch + (0xa628 - PATCH_BASE)
 cbnz	x0, LFQH_LBB807_2
-LFQH_Lloh14558:
+LFQH_Lloh14568:
 adr x0, LFQH_l_.str.1686
-LFQH_Lloh14559:
+LFQH_Lloh14569:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14560:
+LFQH_Lloh14570:
 adr x0, LFQH_l_.str.998
-LFQH_Lloh14561:
+LFQH_Lloh14571:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14562:
+LFQH_Lloh14572:
 adr x0, LFQH_l_.str.1687
-LFQH_Lloh14563:
+LFQH_Lloh14573:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -86958,13 +86988,13 @@ mov	w3, #3
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x22, x0
 LFQH_LBB807_2:
-LFQH_Lloh14564:
+LFQH_Lloh14574:
 adr x0, LFQH_l_.str.1671
-LFQH_Lloh14565:
+LFQH_Lloh14575:
 nop
-LFQH_Lloh14566:
+LFQH_Lloh14576:
 adr x1, LFQH_l_.str.1685
-LFQH_Lloh14567:
+LFQH_Lloh14577:
 nop
 bl	LFQH_Original
 mov	x4, x0
@@ -87009,15 +87039,15 @@ add	x29, sp, #112
 .cfi_offset b11, -128
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh14568:
+LFQH_Lloh14578:
 adr x0, LFQH_l_.str.1692
-LFQH_Lloh14569:
+LFQH_Lloh14579:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14570:
+LFQH_Lloh14580:
 adr x0, LFQH_l_.str.1693
-LFQH_Lloh14571:
+LFQH_Lloh14581:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87030,16 +87060,16 @@ mov	x0, x19
 mov	x1, x20
 blr	x8
 LFQH_LBB808_2:
-LFQH_Lloh14572:
+LFQH_Lloh14582:
 adr x1, LFQH_l_.str.1096
-LFQH_Lloh14573:
+LFQH_Lloh14583:
 nop
 mov	x0, x19
 bl	LFQH_Get
 mov	x23, x0
-LFQH_Lloh14574:
+LFQH_Lloh14584:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14575:
+LFQH_Lloh14585:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87050,24 +87080,24 @@ mov	x8, #4642648265865560064
 fmov	d0, x8
 fcmp	d2, d0
 b.pl	LFQH_LBB808_4
-LFQH_Lloh14576:
+LFQH_Lloh14586:
 adr x0, LFQH_l_.str.780
-LFQH_Lloh14577:
+LFQH_Lloh14587:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14578:
+LFQH_Lloh14588:
 adr x0, LFQH_l_.str.781
-LFQH_Lloh14579:
+LFQH_Lloh14589:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14580:
+LFQH_Lloh14590:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14581:
+LFQH_Lloh14591:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87083,33 +87113,33 @@ fmov	d0, x8
 fcmp	d2, d0
 b.pl	LFQH_LBB808_6
 fmov	d9, xzr
-LFQH_Lloh14582:
+LFQH_Lloh14592:
 adr x8, LFQH_lCPI808_0
-LFQH_Lloh14583:
+LFQH_Lloh14593:
 ldr d10, [x8]
 and x8, x8, #0xfffffffffffff000
-LFQH_Lloh14584:
+LFQH_Lloh14594:
 adr x8, LFQH_lCPI808_1
-LFQH_Lloh14585:
+LFQH_Lloh14595:
 ldr d8, [x8]
 and x8, x8, #0xfffffffffffff000
 fmov	d11, xzr
 LFQH_LBB808_6:
-LFQH_Lloh14586:
+LFQH_Lloh14596:
 adr x0, LFQH_l_.str.458
-LFQH_Lloh14587:
+LFQH_Lloh14597:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14588:
+LFQH_Lloh14598:
 adr x0, LFQH_l_.str.47
-LFQH_Lloh14589:
+LFQH_Lloh14599:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14590:
+LFQH_Lloh14600:
 adr x0, LFQH_l_.str.1695
-LFQH_Lloh14591:
+LFQH_Lloh14601:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87119,29 +87149,29 @@ mov	x2, x0
 mov	x0, x23
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14592:
+LFQH_Lloh14602:
 adr x0, LFQH_l_.str.1689
-LFQH_Lloh14593:
+LFQH_Lloh14603:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14594:
+LFQH_Lloh14604:
 adr x21, LFQH_l_.str.445
-LFQH_Lloh14595:
+LFQH_Lloh14605:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x24, x0
-LFQH_Lloh14596:
+LFQH_Lloh14606:
 adr x22, LFQH_l_.str.517
-LFQH_Lloh14597:
+LFQH_Lloh14607:
 nop
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14598:
+LFQH_Lloh14608:
 adr x2, LFQH_l_.str.1592
-LFQH_Lloh14599:
+LFQH_Lloh14609:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -87149,37 +87179,37 @@ mov	x2, x0
 mov	x0, x19
 mov	x1, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14600:
+LFQH_Lloh14610:
 adr x0, LFQH_l_.str.146
-LFQH_Lloh14601:
+LFQH_Lloh14611:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14602:
+LFQH_Lloh14612:
 adr x0, LFQH_l_.str.526
-LFQH_Lloh14603:
+LFQH_Lloh14613:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x2, x0
-LFQH_Lloh14604:
+LFQH_Lloh14614:
 adr x1, LFQH_BottomSettingViews178Key
-LFQH_Lloh14605:
+LFQH_Lloh14615:
 nop
 mov	x0, x19
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh14606:
+LFQH_Lloh14616:
 adr x0, LFQH_l_.str.1332
-LFQH_Lloh14607:
+LFQH_Lloh14617:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14608:
+LFQH_Lloh14618:
 adr x27, LFQH_l_.str.532
-LFQH_Lloh14609:
+LFQH_Lloh14619:
 nop
 mov	x0, x27
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87187,17 +87217,17 @@ mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14610:
+LFQH_Lloh14620:
 adr x1, LFQH_BottomSettingsScroll178Key
-LFQH_Lloh14611:
+LFQH_Lloh14621:
 nop
 mov	x0, x19
 mov	x2, x20
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh14612:
+LFQH_Lloh14622:
 adr x26, LFQH_l_.str.508
-LFQH_Lloh14613:
+LFQH_Lloh14623:
 nop
 mov	x0, x26
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87208,9 +87238,9 @@ mov.16b	v1, v11
 mov.16b	v2, v8
 mov.16b	v3, v10
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14614:
+LFQH_Lloh14624:
 adr x25, LFQH_l_.str.503
-LFQH_Lloh14615:
+LFQH_Lloh14625:
 nop
 mov	x0, x25
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87218,18 +87248,18 @@ mov	x1, x0
 mov	x0, x20
 mov	w2, #18
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14616:
+LFQH_Lloh14626:
 adr x0, LFQH_l_.str.1696
-LFQH_Lloh14617:
+LFQH_Lloh14627:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14618:
+LFQH_Lloh14628:
 adr x24, LFQH_l_.str.741
-LFQH_Lloh14619:
+LFQH_Lloh14629:
 nop
 mov	x0, x24
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87237,9 +87267,9 @@ mov	x1, x0
 mov	x0, x23
 mov	x2, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14620:
+LFQH_Lloh14630:
 adr x0, LFQH_l_.str.22
-LFQH_Lloh14621:
+LFQH_Lloh14631:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
@@ -87252,9 +87282,9 @@ mov	x23, x0
 mov	x0, x26
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14622:
+LFQH_Lloh14632:
 adr x8, LFQH_lCPI808_2
-LFQH_Lloh14623:
+LFQH_Lloh14633:
 ldr d9, [x8]
 and x8, x8, #0xfffffffffffff000
 fmov	d0, xzr
@@ -87275,9 +87305,9 @@ mov	x1, x0
 mov	x0, x20
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14624:
+LFQH_Lloh14634:
 adr x0, LFQH_l_.str.1697
-LFQH_Lloh14625:
+LFQH_Lloh14635:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87288,9 +87318,9 @@ bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov	x8, #-4592545720011063296
 fmov	d0, x8
 fadd	d8, d8, d0
-LFQH_Lloh14626:
+LFQH_Lloh14636:
 adr x1, LFQH_l_.str.1698
-LFQH_Lloh14627:
+LFQH_Lloh14637:
 nop
 fmov	d0, #20.00000000
 fmov	d1, #18.00000000
@@ -87300,30 +87330,30 @@ mov	x0, x23
 mov.16b	v2, v8
 mov	w2, #0
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14628:
+LFQH_Lloh14638:
 adr x3, LFQH_l_.str.1699
-LFQH_Lloh14629:
+LFQH_Lloh14639:
 nop
-LFQH_Lloh14630:
+LFQH_Lloh14640:
 adr x4, LFQH_l_.str.1700
-LFQH_Lloh14631:
+LFQH_Lloh14641:
 nop
-LFQH_Lloh14632:
+LFQH_Lloh14642:
 adr x8, LFQH_lCPI808_3
-LFQH_Lloh14633:
+LFQH_Lloh14643:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	x0, x19
 mov	x1, x23
 mov	w2, #1
 bl	LFQH_BottomSettingsSwitch178
-LFQH_Lloh14634:
+LFQH_Lloh14644:
 adr x3, LFQH_l_.str.1701
-LFQH_Lloh14635:
+LFQH_Lloh14645:
 nop
-LFQH_Lloh14636:
+LFQH_Lloh14646:
 adr x4, LFQH_l_.str.1702
-LFQH_Lloh14637:
+LFQH_Lloh14647:
 nop
 mov	x8, #4639552041121742848
 fmov	d0, x8
@@ -87331,13 +87361,13 @@ mov	x0, x19
 mov	x1, x23
 mov	w2, #34
 bl	LFQH_BottomSettingsSwitch178
-LFQH_Lloh14638:
+LFQH_Lloh14648:
 adr x1, LFQH_l_.str.1703
-LFQH_Lloh14639:
+LFQH_Lloh14649:
 nop
-LFQH_Lloh14640:
+LFQH_Lloh14650:
 adr x8, LFQH_lCPI808_4
-LFQH_Lloh14641:
+LFQH_Lloh14651:
 ldr d1, [x8]
 and x8, x8, #0xfffffffffffff000
 fmov	d0, #20.00000000
@@ -87347,30 +87377,30 @@ mov	x0, x23
 mov.16b	v2, v8
 mov	w2, #0
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14642:
+LFQH_Lloh14652:
 adr x3, LFQH_l_.str.1609
-LFQH_Lloh14643:
+LFQH_Lloh14653:
 nop
-LFQH_Lloh14644:
+LFQH_Lloh14654:
 adr x4, LFQH_l_.str.1610
-LFQH_Lloh14645:
+LFQH_Lloh14655:
 nop
-LFQH_Lloh14646:
+LFQH_Lloh14656:
 adr x8, LFQH_lCPI808_5
-LFQH_Lloh14647:
+LFQH_Lloh14657:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	x0, x19
 mov	x1, x23
 mov	w2, #37
 bl	LFQH_BottomSettingsSwitch178
-LFQH_Lloh14648:
+LFQH_Lloh14658:
 adr x3, LFQH_l_.str.1704
-LFQH_Lloh14649:
+LFQH_Lloh14659:
 nop
-LFQH_Lloh14650:
+LFQH_Lloh14660:
 adr x8, LFQH_lCPI808_6
-LFQH_Lloh14651:
+LFQH_Lloh14661:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	w8, #1112014848
@@ -87382,13 +87412,13 @@ mov	x1, x23
 mov	w2, #11
 mov.16b	v2, v9
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14652:
+LFQH_Lloh14662:
 adr x3, LFQH_l_.str.1705
-LFQH_Lloh14653:
+LFQH_Lloh14663:
 nop
-LFQH_Lloh14654:
+LFQH_Lloh14664:
 adr x8, LFQH_lCPI808_7
-LFQH_Lloh14655:
+LFQH_Lloh14665:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	w8, #1117782016
@@ -87399,13 +87429,13 @@ mov	x0, x19
 mov	x1, x23
 mov	w2, #12
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14656:
+LFQH_Lloh14666:
 adr x3, LFQH_l_.str.1706
-LFQH_Lloh14657:
+LFQH_Lloh14667:
 nop
-LFQH_Lloh14658:
+LFQH_Lloh14668:
 adr x8, LFQH_lCPI808_8
-LFQH_Lloh14659:
+LFQH_Lloh14669:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	w8, #1116471296
@@ -87415,9 +87445,9 @@ mov	x1, x23
 mov	w2, #13
 mov.16b	v2, v9
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14660:
+LFQH_Lloh14670:
 adr x3, LFQH_l_.str.1707
-LFQH_Lloh14661:
+LFQH_Lloh14671:
 nop
 mov	x8, #4648840715353194496
 fmov	d0, x8
@@ -87427,13 +87457,13 @@ mov	x0, x19
 mov	x1, x23
 mov	w2, #14
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14662:
+LFQH_Lloh14672:
 adr x1, LFQH_l_.str.1708
-LFQH_Lloh14663:
+LFQH_Lloh14673:
 nop
-LFQH_Lloh14664:
+LFQH_Lloh14674:
 adr x8, LFQH_lCPI808_9
-LFQH_Lloh14665:
+LFQH_Lloh14675:
 ldr d1, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	x8, #4633641066610819072
@@ -87444,15 +87474,15 @@ mov	x0, x23
 mov.16b	v2, v8
 mov	w2, #1
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14666:
+LFQH_Lloh14676:
 adr x0, LFQH_l_.str.167
-LFQH_Lloh14667:
+LFQH_Lloh14677:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x27, x0
-LFQH_Lloh14668:
+LFQH_Lloh14678:
 adr x0, LFQH_l_.str.1709
-LFQH_Lloh14669:
+LFQH_Lloh14679:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87477,9 +87507,9 @@ mov	x1, x0
 mov	x0, x27
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14670:
+LFQH_Lloh14680:
 adr x0, LFQH_l_.str.1508
-LFQH_Lloh14671:
+LFQH_Lloh14681:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
@@ -87489,9 +87519,9 @@ mov	x21, x0
 mov	x0, x22
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14672:
+LFQH_Lloh14682:
 adr x2, LFQH_l_.str.1710
-LFQH_Lloh14673:
+LFQH_Lloh14683:
 nop
 mov	x0, x21
 bl Lpatch + (0xa5d4 - PATCH_BASE)
@@ -87500,15 +87530,15 @@ mov	x0, x27
 mov	x1, x25
 mov	x3, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14674:
+LFQH_Lloh14684:
 adr x0, LFQH_l_.str.550
-LFQH_Lloh14675:
+LFQH_Lloh14685:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14676:
+LFQH_Lloh14686:
 adr x0, LFQH_l_.str.1694
-LFQH_Lloh14677:
+LFQH_Lloh14687:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -87523,13 +87553,13 @@ mov	x1, x0
 mov	x0, x23
 mov	x2, x27
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14678:
+LFQH_Lloh14688:
 adr x1, LFQH_l_.str.1711
-LFQH_Lloh14679:
+LFQH_Lloh14689:
 nop
-LFQH_Lloh14680:
+LFQH_Lloh14690:
 adr x8, LFQH_lCPI808_10
-LFQH_Lloh14681:
+LFQH_Lloh14691:
 ldr d1, [x8]
 and x8, x8, #0xfffffffffffff000
 fmov	d0, #20.00000000
@@ -87539,13 +87569,13 @@ mov	x0, x23
 mov.16b	v2, v8
 mov	w2, #0
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14682:
+LFQH_Lloh14692:
 adr x3, LFQH_l_.str.1712
-LFQH_Lloh14683:
+LFQH_Lloh14693:
 nop
-LFQH_Lloh14684:
+LFQH_Lloh14694:
 adr x8, LFQH_lCPI808_11
-LFQH_Lloh14685:
+LFQH_Lloh14695:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	w8, #1108344832
@@ -87556,13 +87586,13 @@ mov	x0, x19
 mov	x1, x23
 mov	w2, #15
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14686:
+LFQH_Lloh14696:
 adr x3, LFQH_l_.str.1713
-LFQH_Lloh14687:
+LFQH_Lloh14697:
 nop
-LFQH_Lloh14688:
+LFQH_Lloh14698:
 adr x8, LFQH_lCPI808_12
-LFQH_Lloh14689:
+LFQH_Lloh14699:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	w8, #1109917696
@@ -87572,9 +87602,9 @@ mov	x0, x19
 mov	x1, x23
 mov	w2, #16
 bl	LFQH_BottomSettingsSlider178
-LFQH_Lloh14690:
+LFQH_Lloh14700:
 adr x19, LFQH_l_.str.185
-LFQH_Lloh14691:
+LFQH_Lloh14701:
 nop
 mov	x0, x19
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87617,15 +87647,15 @@ add	x29, sp, #64
 .cfi_offset b11, -80
 mov	x19, x1
 mov	x20, x0
-LFQH_Lloh14692:
+LFQH_Lloh14702:
 adr x0, LFQH_l_.str.1692
-LFQH_Lloh14693:
+LFQH_Lloh14703:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14694:
+LFQH_Lloh14704:
 adr x0, LFQH_l_.str.255
-LFQH_Lloh14695:
+LFQH_Lloh14705:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87638,23 +87668,23 @@ mov	x0, x20
 mov	x1, x19
 blr	x8
 LFQH_LBB809_2:
-LFQH_Lloh14696:
+LFQH_Lloh14706:
 adr x1, LFQH_BottomSettingsScroll178Key
-LFQH_Lloh14697:
+LFQH_Lloh14707:
 nop
 mov	x0, x20
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14698:
+LFQH_Lloh14708:
 adr x1, LFQH_l_.str.1096
-LFQH_Lloh14699:
+LFQH_Lloh14709:
 nop
 mov	x0, x20
 bl	LFQH_Get
 mov	x20, x0
-LFQH_Lloh14700:
+LFQH_Lloh14710:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14701:
+LFQH_Lloh14711:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87692,9 +87722,9 @@ fcmp	d8, #0.0
 b.le	LFQH_LBB809_4
 fcmp	d9, #0.0
 b.le	LFQH_LBB809_4
-LFQH_Lloh14702:
+LFQH_Lloh14712:
 adr x0, LFQH_l_.str.480
-LFQH_Lloh14703:
+LFQH_Lloh14713:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87709,9 +87739,9 @@ b.ne	LFQH_LBB809_12
 fcmp	d3, d9
 b.eq	LFQH_LBB809_13
 LFQH_LBB809_12:
-LFQH_Lloh14704:
+LFQH_Lloh14714:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14705:
+LFQH_Lloh14715:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87722,15 +87752,15 @@ mov.16b	v2, v8
 mov.16b	v3, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB809_13:
-LFQH_Lloh14706:
+LFQH_Lloh14716:
 adr x0, LFQH_l_.str.1697
-LFQH_Lloh14707:
+LFQH_Lloh14717:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
-LFQH_Lloh14708:
+LFQH_Lloh14718:
 adr x8, LFQH_lCPI809_0
-LFQH_Lloh14709:
+LFQH_Lloh14719:
 ldr d1, [x8]
 and x8, x8, #0xfffffffffffff000
 mov	x0, x19
@@ -87780,18 +87810,18 @@ mov	x22, x2
 mov.16b	v10, v0
 mov	x20, x1
 mov	x19, x0
-LFQH_Lloh14710:
+LFQH_Lloh14720:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14711:
+LFQH_Lloh14721:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 mov.16b	v11, v2
-LFQH_Lloh14712:
+LFQH_Lloh14722:
 adr x8, LFQH_lCPI811_0
-LFQH_Lloh14713:
+LFQH_Lloh14723:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 fadd	d2, d2, d0
@@ -87803,19 +87833,19 @@ mov.16b	v1, v10
 mov	x1, x21
 mov	w2, #0
 bl	LFQH_BottomSettingsLabel178
-LFQH_Lloh14714:
+LFQH_Lloh14724:
 adr x8, LFQH_lCPI811_1
-LFQH_Lloh14715:
+LFQH_Lloh14725:
 ldr d0, [x8]
 and x8, x8, #0xfffffffffffff000
 fadd	d0, d11, d0
-LFQH_Lloh14716:
+LFQH_Lloh14726:
 adr x1, LFQH_l_.str.1507
-LFQH_Lloh14717:
+LFQH_Lloh14727:
 nop
-LFQH_Lloh14718:
+LFQH_Lloh14728:
 adr x8, LFQH_lCPI811_2
-LFQH_Lloh14719:
+LFQH_Lloh14729:
 ldr d2, [x8]
 and x8, x8, #0xfffffffffffff000
 fmov	d3, #24.00000000
@@ -87825,18 +87855,18 @@ mov.16b	v1, v10
 mov	w2, #1
 bl	LFQH_BottomSettingsLabel178
 mov	x24, x0
-LFQH_Lloh14720:
+LFQH_Lloh14730:
 adr x0, LFQH_l_.str.774
-LFQH_Lloh14721:
+LFQH_Lloh14731:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x24
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14722:
+LFQH_Lloh14732:
 adr x25, LFQH_l_.str.503
-LFQH_Lloh14723:
+LFQH_Lloh14733:
 nop
 mov	x0, x25
 bl Lpatch + (0xa5a4 - PATCH_BASE)
@@ -87844,9 +87874,9 @@ mov	x1, x0
 mov	x0, x24
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14724:
+LFQH_Lloh14734:
 adr x0, LFQH_l_.str.497
-LFQH_Lloh14725:
+LFQH_Lloh14735:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x23, x0
@@ -87856,15 +87886,15 @@ mov	x2, x0
 mov	x0, x24
 mov	x1, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14726:
+LFQH_Lloh14736:
 adr x0, LFQH_l_.str.713
-LFQH_Lloh14727:
+LFQH_Lloh14737:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x23, x0
-LFQH_Lloh14728:
+LFQH_Lloh14738:
 adr x0, LFQH_l_.str.532
-LFQH_Lloh14729:
+LFQH_Lloh14739:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87876,9 +87906,9 @@ fadd	d10, d10, d0
 mov	x8, #-4592545720011063296
 fmov	d0, x8
 fadd	d11, d11, d0
-LFQH_Lloh14730:
+LFQH_Lloh14740:
 adr x0, LFQH_l_.str.508
-LFQH_Lloh14731:
+LFQH_Lloh14741:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87895,36 +87925,36 @@ mov	x1, x0
 mov	x0, x23
 mov	w2, #2
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14732:
+LFQH_Lloh14742:
 adr x0, LFQH_l_.str.1656
-LFQH_Lloh14733:
+LFQH_Lloh14743:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 mov	x2, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14734:
+LFQH_Lloh14744:
 adr x0, LFQH_l_.str.1714
-LFQH_Lloh14735:
+LFQH_Lloh14745:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 mov.16b	v0, v9
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14736:
+LFQH_Lloh14746:
 adr x0, LFQH_l_.str.1715
-LFQH_Lloh14737:
+LFQH_Lloh14747:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x23
 mov.16b	v0, v8
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14738:
+LFQH_Lloh14748:
 adr x0, LFQH_l_.str.500
-LFQH_Lloh14739:
+LFQH_Lloh14749:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x25, x0
@@ -87935,21 +87965,21 @@ mov	x0, x23
 mov	x1, x25
 mov	w2, #0
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14740:
+LFQH_Lloh14750:
 adr x0, LFQH_l_.str.1018
-LFQH_Lloh14741:
+LFQH_Lloh14751:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x22, x0
-LFQH_Lloh14742:
+LFQH_Lloh14752:
 adr x0, LFQH_l_.str.445
-LFQH_Lloh14743:
+LFQH_Lloh14753:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x25, x0
-LFQH_Lloh14744:
+LFQH_Lloh14754:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14745:
+LFQH_Lloh14755:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -87960,23 +87990,23 @@ mov	x2, x0
 mov	x0, x23
 mov	x1, x22
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14746:
+LFQH_Lloh14756:
 adr x1, LFQH_BottomOptionValue178Key
-LFQH_Lloh14747:
+LFQH_Lloh14757:
 nop
 mov	x0, x23
 mov	x2, x24
 mov	w3, #1
 bl Lpatch + (0xa634 - PATCH_BASE)
-LFQH_Lloh14748:
+LFQH_Lloh14758:
 adr x0, LFQH_l_.str.550
-LFQH_Lloh14749:
+LFQH_Lloh14759:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14750:
+LFQH_Lloh14760:
 adr x0, LFQH_l_.str.1590
-LFQH_Lloh14751:
+LFQH_Lloh14761:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x3, x0
@@ -87985,34 +88015,34 @@ mov	x1, x21
 mov	x2, x19
 mov	w4, #4096
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14752:
+LFQH_Lloh14762:
 adr x0, LFQH_l_.str.741
-LFQH_Lloh14753:
+LFQH_Lloh14763:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x20
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14754:
+LFQH_Lloh14764:
 adr x1, LFQH_BottomSettingViews178Key
-LFQH_Lloh14755:
+LFQH_Lloh14765:
 nop
 mov	x0, x19
 bl Lpatch + (0xa628 - PATCH_BASE)
 mov	x19, x0
-LFQH_Lloh14756:
+LFQH_Lloh14766:
 adr x0, LFQH_l_.str.70
-LFQH_Lloh14757:
+LFQH_Lloh14767:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
 mov	x0, x19
 mov	x2, x23
 bl Lpatch + (0xa5d4 - PATCH_BASE)
-LFQH_Lloh14758:
+LFQH_Lloh14768:
 adr x0, LFQH_l_.str.185
-LFQH_Lloh14759:
+LFQH_Lloh14769:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -88038,21 +88068,21 @@ add	x29, sp, #16
 .cfi_offset w19, -24
 .cfi_offset w20, -32
 mov	x19, x0
-LFQH_Lloh14760:
+LFQH_Lloh14770:
 adr x0, LFQH_l_.str.182
-LFQH_Lloh14761:
+LFQH_Lloh14771:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14762:
+LFQH_Lloh14772:
 adr x1, LFQH_l_.str.1725
-LFQH_Lloh14763:
+LFQH_Lloh14773:
 nop
 bl	LFQH_Responds
 cbz	w0, LFQH_LBB812_2
-LFQH_Lloh14764:
+LFQH_Lloh14774:
 adr x0, LFQH_l_.str.1725
-LFQH_Lloh14765:
+LFQH_Lloh14775:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -88061,15 +88091,15 @@ mov	x2, x19
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cbnz	x0, LFQH_LBB812_3
 LFQH_LBB812_2:
-LFQH_Lloh14766:
+LFQH_Lloh14776:
 adr x1, LFQH_l_.str.1688
-LFQH_Lloh14767:
+LFQH_Lloh14777:
 nop
 mov	x0, x19
 bl	LFQH_Get
-LFQH_Lloh14768:
+LFQH_Lloh14778:
 adr x1, LFQH_l_.str.687
-LFQH_Lloh14769:
+LFQH_Lloh14779:
 nop
 bl	LFQH_Get
 cmp	x0, #0
@@ -88106,9 +88136,9 @@ mov	x22, x2
 mov.16b	v8, v0
 mov	x23, x1
 mov	x24, x0
-LFQH_Lloh14770:
+LFQH_Lloh14780:
 adr x0, LFQH_l_.str.23
-LFQH_Lloh14771:
+LFQH_Lloh14781:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -88116,9 +88146,9 @@ mov	x0, x24
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 cmp	x22, x21
 csel	x2, x19, x20, eq
-LFQH_Lloh14772:
+LFQH_Lloh14782:
 adr x4, LFQH_l_.str.1589
-LFQH_Lloh14773:
+LFQH_Lloh14783:
 nop
 mov	x8, #4631952216750555136
 fmov	d3, x8
@@ -88129,9 +88159,9 @@ mov.16b	v1, v8
 mov	x3, x20
 bl	LFQH_OptionsEntry178
 mov	x19, x0
-LFQH_Lloh14774:
+LFQH_Lloh14784:
 adr x0, LFQH_l_.str.1656
-LFQH_Lloh14775:
+LFQH_Lloh14785:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -88165,9 +88195,9 @@ cmp	x0, #7
 b.eq	LFQH_LBB814_20
 cmp	x0, #9
 b.ne	LFQH_LBB814_25
-LFQH_Lloh14776:
+LFQH_Lloh14786:
 adr x19, LFQH_l_.str.1769
-LFQH_Lloh14777:
+LFQH_Lloh14787:
 nop
 b	LFQH_LBB814_26
 LFQH_LBB814_6:
@@ -88179,9 +88209,9 @@ cmp	x0, #4
 b.eq	LFQH_LBB814_19
 cmp	x0, #5
 b.ne	LFQH_LBB814_25
-LFQH_Lloh14778:
+LFQH_Lloh14788:
 adr x19, LFQH_l_.str.1765
-LFQH_Lloh14779:
+LFQH_Lloh14789:
 nop
 b	LFQH_LBB814_26
 LFQH_LBB814_11:
@@ -88191,9 +88221,9 @@ cmp	x0, #11
 b.eq	LFQH_LBB814_21
 cmp	x0, #16
 b.ne	LFQH_LBB814_25
-LFQH_Lloh14780:
+LFQH_Lloh14790:
 adr x19, LFQH_l_.str.1768
-LFQH_Lloh14781:
+LFQH_Lloh14791:
 nop
 b	LFQH_LBB814_26
 LFQH_LBB814_15:
@@ -88201,68 +88231,68 @@ cmp	x0, #1
 b.eq	LFQH_LBB814_18
 cmp	x0, #2
 b.ne	LFQH_LBB814_25
-LFQH_Lloh14782:
-adr x19, LFQH_l_.str.1762
-LFQH_Lloh14783:
-nop
-b	LFQH_LBB814_26
-LFQH_LBB814_18:
-LFQH_Lloh14784:
-adr x19, LFQH_l_.str.1761
-LFQH_Lloh14785:
-nop
-b	LFQH_LBB814_26
-LFQH_LBB814_19:
-LFQH_Lloh14786:
-adr x19, LFQH_l_.str.1764
-LFQH_Lloh14787:
-nop
-b	LFQH_LBB814_26
-LFQH_LBB814_20:
-LFQH_Lloh14788:
-adr x19, LFQH_l_.str.1767
-LFQH_Lloh14789:
-nop
-b	LFQH_LBB814_26
-LFQH_LBB814_21:
-LFQH_Lloh14790:
-adr x19, LFQH_l_.str.1771
-LFQH_Lloh14791:
-nop
-b	LFQH_LBB814_26
-LFQH_LBB814_22:
 LFQH_Lloh14792:
-adr x19, LFQH_l_.str.1763
+adr x19, LFQH_l_.str.1762
 LFQH_Lloh14793:
 nop
 b	LFQH_LBB814_26
-LFQH_LBB814_23:
+LFQH_LBB814_18:
 LFQH_Lloh14794:
-adr x19, LFQH_l_.str.1766
+adr x19, LFQH_l_.str.1761
 LFQH_Lloh14795:
 nop
 b	LFQH_LBB814_26
-LFQH_LBB814_24:
+LFQH_LBB814_19:
 LFQH_Lloh14796:
-adr x19, LFQH_l_.str.1770
+adr x19, LFQH_l_.str.1764
 LFQH_Lloh14797:
 nop
 b	LFQH_LBB814_26
-LFQH_LBB814_25:
+LFQH_LBB814_20:
 LFQH_Lloh14798:
-adr x19, LFQH_l_.str.1772
+adr x19, LFQH_l_.str.1767
 LFQH_Lloh14799:
 nop
-LFQH_LBB814_26:
+b	LFQH_LBB814_26
+LFQH_LBB814_21:
 LFQH_Lloh14800:
-adr x0, LFQH_l_.str.445
+adr x19, LFQH_l_.str.1771
 LFQH_Lloh14801:
+nop
+b	LFQH_LBB814_26
+LFQH_LBB814_22:
+LFQH_Lloh14802:
+adr x19, LFQH_l_.str.1763
+LFQH_Lloh14803:
+nop
+b	LFQH_LBB814_26
+LFQH_LBB814_23:
+LFQH_Lloh14804:
+adr x19, LFQH_l_.str.1766
+LFQH_Lloh14805:
+nop
+b	LFQH_LBB814_26
+LFQH_LBB814_24:
+LFQH_Lloh14806:
+adr x19, LFQH_l_.str.1770
+LFQH_Lloh14807:
+nop
+b	LFQH_LBB814_26
+LFQH_LBB814_25:
+LFQH_Lloh14808:
+adr x19, LFQH_l_.str.1772
+LFQH_Lloh14809:
+nop
+LFQH_LBB814_26:
+LFQH_Lloh14810:
+adr x0, LFQH_l_.str.445
+LFQH_Lloh14811:
 nop
 bl Lpatch + (0xa5b0 - PATCH_BASE)
 mov	x20, x0
-LFQH_Lloh14802:
+LFQH_Lloh14812:
 adr x0, LFQH_l_.str.517
-LFQH_Lloh14803:
+LFQH_Lloh14813:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0
@@ -88290,9 +88320,9 @@ mov	x19, x1
 mov	x20, x0
 bl Lpatch + (0xa664 - PATCH_BASE)
 mov	x21, x0
-LFQH_Lloh14804:
+LFQH_Lloh14814:
 adr x0, LFQH_l_.str.1776
-LFQH_Lloh14805:
+LFQH_Lloh14815:
 nop
 bl Lpatch + (0xa5a4 - PATCH_BASE)
 mov	x1, x0

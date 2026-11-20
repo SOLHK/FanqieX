@@ -2775,7 +2775,7 @@ static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double ri
         B isText=Kind(sub,"UILabel") || Responds(sub,"setLineBreakMode:");
         if (isText) {
             if (inRoot.x+inRoot.width>rightLimit+0.5 && inRoot.x<rightLimit-16.0) {
-                Q1(sub,"setLineBreakMode:",4);
+                if (Responds(sub,"setLineBreakMode:")) Q1(sub,"setLineBreakMode:",4);
                 Rect f=Frame(sub);
                 double excess=(inRoot.x+inRoot.width)-rightLimit;
                 double newW=f.width-excess;
@@ -2784,6 +2784,7 @@ static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double ri
                     f.width=newW;
                     SetFrame(sub,f);
                 }
+                if (Responds(sub,"setClipsToBounds:")) VB(sub,"setClipsToBounds:",1);
             }
             continue;
         }
@@ -2804,6 +2805,7 @@ static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double ri
                 f.width=newW;
                 SetFrame(sub,f);
             }
+            if (Responds(sub,"setClipsToBounds:")) VB(sub,"setClipsToBounds:",1);
         }
         DramaClampSubviews(sub,rootContent,glass,rightLimit,depth+1);
     }
@@ -2813,14 +2815,13 @@ static void DramaClampEpisodeText(Obj content,Rect material,B alignedChanged) {
     if (!content || !VisibleRect(material)) return;
     if (alignedChanged && !objc_getAssociatedObject(content,DramaClampBusyKey)) {
         objc_setAssociatedObject(content,DramaClampBusyKey,content,0);
-        V0(content,"setNeedsLayout");
-        V0(content,"layoutIfNeeded");
+        if (Responds(content,"setNeedsLayout")) V0(content,"setNeedsLayout");
+        if (Responds(content,"layoutIfNeeded")) V0(content,"layoutIfNeeded");
         objc_setAssociatedObject(content,DramaClampBusyKey,0,0);
     }
     Obj glass=objc_getAssociatedObject(content,DramaGlassKey);
-    double rightLimit=material.x+material.width-12.0;
+    double rightLimit=material.x+material.width-8.0;
     if (rightLimit>material.x+32.0) DramaClampSubviews(content,content,glass,rightLimit,0);
-    if (!Flag(content,"clipsToBounds")) VB(content,"setClipsToBounds:",1);
 }
 
 static void DramaWatchGlass(Obj owner,Obj model) {
