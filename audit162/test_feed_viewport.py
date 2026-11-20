@@ -36,7 +36,7 @@ def labels_for(data, composed, extra_labels=()):
     s = text[0]
     payload = obj[s['offset']:s['offset'] + s['size']]
     words = struct.unpack_from('<64I', data, 0x800)
-    require(words[6] in (0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f, 0x14e10, 0x14e19, 0x14e1a, 0x14e1b, 0x14e1c, 0x14e1d, 0x14e1e, 0x14e1f, 0x14e20, 0x14e21, 0x14e22, 0x14e23, 0x14e24, 0x14f01, 0x14f02, 0x14f03, 0x14f04, 0x14f05, 0x15001, 0x15002, 0x15003, 0x15004, 0x15005, 0x15006, 0x15007, 0x15008, 0x15009, 0x1500A, 0x1500B, 0x1500C, 0x1500D, 0x1500E, 0x1500F, 0x15010, 0x15011, 0x15012, 0x15012, 0x15011, 0x15012, 0x15012, 0x15013, 0x15101, 0x15102, 0x15103, 0x15104, 0x15105, 0x15106, 0x15107, 0x15108, 0x15109, 0x1510A), 'Known feed payload directory')
+    require(words[6] in (0x10508, 0x10509, 0x10602, 0x10603, 0x10604,0x10605,0x10606,0x10607,0x10701,0x10702,0x10703,0x10704, 0x14a00, 0x14b00, 0x14c00, 0x14e00, 0x14e02, 0x14e03, 0x14e04, 0x14e05, 0x14e06, 0x14e07, 0x14e08, 0x14e09, 0x14e0a, 0x14e0b, 0x14e0c, 0x14e0d, 0x14e0e, 0x14e0f, 0x14e10, 0x14e19, 0x14e1a, 0x14e1b, 0x14e1c, 0x14e1d, 0x14e1e, 0x14e1f, 0x14e20, 0x14e21, 0x14e22, 0x14e23, 0x14e24, 0x14f01, 0x14f02, 0x14f03, 0x14f04, 0x14f05, 0x15001, 0x15002, 0x15003, 0x15004, 0x15005, 0x15006, 0x15007, 0x15008, 0x15009, 0x1500A, 0x1500B, 0x1500C, 0x1500D, 0x1500E, 0x1500F, 0x15010, 0x15011, 0x15012, 0x15012, 0x15011, 0x15012, 0x15012, 0x15013, 0x15101, 0x15102, 0x15103, 0x15104, 0x15105, 0x15106, 0x15107, 0x15108, 0x15109, 0x1510A, 0x1510B), 'Known feed payload directory')
     for start, stop in ((0x800, 0x800 + words[55]),
                         (0x800 + words[4], 0x800 + words[5]),
                         (0x800 + words[60], 0x800 + words[63])):
@@ -474,14 +474,34 @@ def owner_loss_cases(data, entries):
     return cases
 
 
+def dock_visibility_cases(data, entries):
+    cpu, rt = make(data, entries)
+    fixture(rt)
+    bar = rt.objects[rt.BAR].state
+    cases = []
+    for name, hidden, alpha, mask, expected in (
+        ('ordinary_dock', False, 1., 0, 1),
+        ('old_clean_screen_hidden_dock', True, 1., 0, 0),
+        ('old_clean_screen_zero_alpha_dock', False, 0., 0, 0),
+        ('masked_clean_screen_dock', False, 1., rt.obj('CALayer', 'empty paint mask'), 1),
+    ):
+        bar.update(hidden=hidden, alpha=alpha)
+        rt.objects[rt.layer(rt.BAR)].state['mask'] = mask
+        result = run(cpu, entries, 'Lvisible_to', rt.BAR, rt.WINDOW)['result']
+        require(result == expected, f'Incorrect Dock visibility in {name}')
+        cases.append({'name': name, 'visible_to_layout': bool(result), 'passed': True})
+    return cases
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('candidate', type=Path)
     p.add_argument('--report', type=Path)
     a = p.parse_args()
     data = a.candidate.read_bytes()
-    entries = labels_for(data, a.candidate.with_suffix('.composed.s'))
-    tests = {'supplied_log_geometry': real_log_cases(data, entries),
+    entries = labels_for(data, a.candidate.with_suffix('.composed.s'), ('Lvisible_to',))
+    tests = {'clean_screen_dock_visibility': dock_visibility_cases(data, entries),
+             'supplied_log_geometry': real_log_cases(data, entries),
              'unsafe_or_unrelated_rejection': rejected_cases(data, entries),
              'idempotence_host_changes_and_restoration': host_changes(data, entries),
              'scoped_layout_hook_weak_ownership_and_reentry': layout_hook_cases(data, entries),

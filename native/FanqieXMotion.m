@@ -1279,6 +1279,7 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
 @property(nonatomic, strong) UILongPressGestureRecognizer *dragGesture;
 @property(nonatomic) FQXTopCapsuleTouchMode mode;
 @property(nonatomic) NSInteger lastSelectedIndex;
+@property(nonatomic) BOOL paging;
 @property(nonatomic) NSInteger hoverIndex;
 @property(nonatomic) CGFloat anchorX;
 - (void)placePillAtRestingAnimated:(BOOL)animated;
@@ -1442,6 +1443,10 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
 }
 
 - (void)placePillAtRestingAnimated:(BOOL)animated {
+    if (self.paging) {
+        [self placePill:CGRectZero animated:NO];
+        return;
+    }
     NSInteger sel = [self currentHostSelectedIndex];
     UICollectionView *cv = self.collectionView;
     if (sel != NSNotFound && cv) {
@@ -1678,9 +1683,23 @@ static void HookDramaCommitTabIndex(id owner, SEL cmd, NSInteger index, int type
     FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
     if (interaction.mode == FQXTopCapsuleTouchIdle) {
         [interaction.pillGlass.layer removeAllAnimations];
+        interaction.paging = NO;
         interaction.lastSelectedIndex = index;
         [interaction placePillAtRestingAnimated:NO];
     }
+}
+
+static void (*OrigDramaScrollBetweenTabs)(id, SEL, id, id, NSInteger, id, NSInteger, CGFloat);
+static void HookDramaScrollBetweenTabs(id owner, SEL cmd, id tabs, id leftItem, NSInteger leftIndex,
+                                      id rightItem, NSInteger rightIndex, CGFloat ratio) {
+    OrigDramaScrollBetweenTabs(owner, cmd, tabs, leftItem, leftIndex, rightItem, rightIndex, ratio);
+    FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+    if (interaction.mode != FQXTopCapsuleTouchIdle) return;
+    BOOL paging = ratio > 0.0 && ratio < 1.0;
+    if (interaction.paging == paging) return;
+    interaction.paging = paging;
+    [interaction.pillGlass.layer removeAllAnimations];
+    [interaction placePillAtRestingAnimated:NO];
 }
 
 static NSHashTable<FQXTabBarInteraction *> *FQXTrackedDockInteractions(void) {
@@ -2591,10 +2610,26 @@ static NSHashTable<UIView *> *FQXPinchCleanControls(void) {
     return table;
 }
 
-static void FQXHideViewForPinchClean(UIView *target, NSMapTable<UIView *, NSNumber *> *hiddenViews) {
-    if (![target isKindOfClass:UIView.class] || target.hidden || target.alpha == 0.0) return;
-    [hiddenViews setObject:@(target.alpha) forKey:target];
-    target.alpha = 0.0;
+@interface FQXPinchCleanViewState : NSObject
+@property(nonatomic, strong) CALayer *mask;
+@property(nonatomic, strong) CALayer *originalMask;
+@property(nonatomic) BOOL interactive;
+@end
+
+@implementation FQXPinchCleanViewState
+@end
+
+static void FQXHideViewForPinchClean(UIView *view, NSMapTable<UIView *, FQXPinchCleanViewState *> *views) {
+    if (![view isKindOfClass:UIView.class] || view.hidden || view.alpha == 0.0 || [views objectForKey:view]) return;
+    FQXPinchCleanViewState *state = [FQXPinchCleanViewState new];
+    state.originalMask = view.layer.mask;
+    state.mask = [CALayer layer];
+    state.mask.frame = CGRectZero;
+    state.interactive = view.userInteractionEnabled;
+    [views setObject:state forKey:view];
+    // The Dock layout uses hidden and alpha to decide whether to tear down the renderer.
+    view.layer.mask = state.mask;
+    view.userInteractionEnabled = NO;
 }
 
 static UIView *FQXFindDramaDockForControl(UIView *control) {
@@ -2624,7 +2659,7 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
 
     if (enterClean) {
         objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        NSMapTable<UIView *, NSNumber *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
+        NSMapTable<UIView *, FQXPinchCleanViewState *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
         if (!hiddenSet) {
             hiddenSet = [NSMapTable weakToStrongObjectsMapTable];
             objc_setAssociatedObject(control, FQXPinchHiddenViewsKey, hiddenSet, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2673,10 +2708,14 @@ static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
         FQXHideViewForPinchClean(FQXFindDramaDockForControl(control), hiddenSet);
     } else {
         objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        NSMapTable<UIView *, NSNumber *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
+        NSMapTable<UIView *, FQXPinchCleanViewState *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
         objc_setAssociatedObject(control, FQXPinchHiddenViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         for (UIView *view in hiddenSet.keyEnumerator.allObjects) {
-            if (view.alpha == 0.0) view.alpha = [hiddenSet objectForKey:view].doubleValue;
+            FQXPinchCleanViewState *state = [hiddenSet objectForKey:view];
+            if (view.layer.mask == state.mask) view.layer.mask = state.originalMask;
+            if (![objc_getAssociatedObject(view, FQXDockHiddenByCommentKey) boolValue]) {
+                view.userInteractionEnabled = state.interactive;
+            }
         }
     }
 }
@@ -2763,8 +2802,17 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     BOOL spread = pinch.scale >= 1.10 || (pinch.scale > 1.03 && pinch.velocity > 0.35);
     BOOL shrink = pinch.scale <= 0.90 || (pinch.scale < 0.97 && pinch.velocity < -0.35);
     if ((!clean && spread) || (clean && shrink)) {
-        FQXApplyPinchPureCleanState(control, !clean);
-        [self triggerHaptic];
+        __weak UIView *weakControl = control;
+        UIWindow *window = control.window;
+        id model = FQXObjGet(control, "contentModel");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *current = weakControl;
+            if (current.window != window || !FQXPinchPureCleanEnabled() ||
+                FQXObjGet(current, "contentModel") != model ||
+                [objc_getAssociatedObject(current, FQXPinchPureCleanActiveKey) boolValue] != clean) return;
+            FQXApplyPinchPureCleanState(current, !clean);
+            [self triggerHaptic];
+        });
     }
 }
 @end
@@ -2928,9 +2976,25 @@ static void HookOuterBindContent(UIView *self, SEL cmd, id model) {
     OrigOuterBindContent(self, cmd, model);
 }
 
+static BOOL FQXPinchOverOuterDramaControl(id component, UIGestureRecognizer *gesture) {
+    UIWindow *window = gesture.view.window;
+    if (!window || !FQXPinchPureCleanEnabled() ||
+        CGRectGetWidth(window.bounds) >= CGRectGetHeight(window.bounds)) return NO;
+    id context = FQXObjGet(component, "listVCContext");
+    if (!context) return NO;
+    Class outerClass = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedControlView");
+    for (UIView *control in FQXPinchCleanControls().allObjects) {
+        if (control.window != window || control.hidden || ![control isKindOfClass:outerClass] ||
+            !CGRectContainsPoint(control.bounds, [gesture locationInView:control])) continue;
+        if (FQXObjGet(FQXObjGet(control, "hostContext"), "listVCContext") == context) return YES;
+    }
+    return NO;
+}
+
 static BOOL (*OrigGestureCompShouldBegin)(id, SEL, id);
 static BOOL HookGestureCompShouldBegin(id self, SEL _cmd, UIGestureRecognizer *gesture) {
-    if ([gesture isKindOfClass:UIPinchGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
+    if ([gesture isKindOfClass:UIPinchGestureRecognizer.class] &&
+        (FQXPinchOverOuterDramaControl(self, gesture) || FQXDramaPinchConflicts(gesture))) return NO;
     if ([gesture isKindOfClass:UILongPressGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
     return OrigGestureCompShouldBegin ? OrigGestureCompShouldBegin(self, _cmd, gesture) : YES;
 }
@@ -3312,64 +3376,11 @@ static void HookShelfSubHeaderLayoutEditBtn(UIView *self, SEL _cmd) {
     FQXApplyShelfEditVisibilityForHeader(self);
 }
 
-static const void *FQXBookstoreFirstRefreshFinishedKey = &FQXBookstoreFirstRefreshFinishedKey;
-static const void *FQXBookstoreFirstRefreshAtTopKey = &FQXBookstoreFirstRefreshAtTopKey;
-
-static BOOL FQXBookstoreScrollAtTop(UIScrollView *scroll) {
-    return !scroll.tracking && !scroll.decelerating &&
-        fabs(scroll.contentOffset.y + scroll.adjustedContentInset.top) <= 1.0;
-}
-
-static void (*OrigBookstoreBeforeRefresh)(id, SEL);
-static void HookBookstoreBeforeRefresh(UIView *view, SEL cmd) {
-    if (!objc_getAssociatedObject(view, FQXBookstoreFirstRefreshFinishedKey)) {
-        UIScrollView *list = FQXObjGet(view, "collectionView");
-        UIScrollView *feed = FQXObjGet(view, "innerUnlimitedCollectionView");
-        BOOL atTop = list && FQXBookstoreScrollAtTop(list) && FQXBookstoreScrollAtTop(feed);
-        objc_setAssociatedObject(view, FQXBookstoreFirstRefreshAtTopKey, @(atTop), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    OrigBookstoreBeforeRefresh(view, cmd);
-}
-
-static void (*OrigBookstoreBeginDragging)(id, SEL, id);
-static void HookBookstoreBeginDragging(UIView *view, SEL cmd, UIScrollView *scroll) {
-    objc_setAssociatedObject(view, FQXBookstoreFirstRefreshFinishedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    OrigBookstoreBeginDragging(view, cmd, scroll);
-}
-
-static void (*OrigBookstoreAfterRefresh)(id, SEL);
-static void HookBookstoreAfterRefresh(UIView *view, SEL cmd) {
-    BOOL first = !objc_getAssociatedObject(view, FQXBookstoreFirstRefreshFinishedKey);
-    if (!first || !view.window) {
-        OrigBookstoreAfterRefresh(view, cmd);
-        return;
-    }
-    objc_setAssociatedObject(view, FQXBookstoreFirstRefreshFinishedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (![objc_getAssociatedObject(view, FQXBookstoreFirstRefreshAtTopKey) boolValue]) {
-        OrigBookstoreAfterRefresh(view, cmd);
-        return;
-    }
-    [UIView performWithoutAnimation:^{
-        OrigBookstoreAfterRefresh(view, cmd);
-        [view layoutIfNeeded];
-        UIScrollView *list = FQXObjGet(view, "collectionView");
-        UIScrollView *feed = FQXObjGet(view, "innerUnlimitedCollectionView");
-        UIScrollView *scrolls[] = {list, feed};
-        for (NSUInteger i = 0; i < 2; ++i) {
-            UIScrollView *scroll = scrolls[i];
-            if (scroll.tracking || scroll.decelerating) continue;
-            CGPoint offset = scroll.contentOffset;
-            CGFloat top = -scroll.adjustedContentInset.top;
-            if (fabs(offset.y - top) > 1.0) [scroll setContentOffset:CGPointMake(offset.x, top) animated:NO];
-        }
-    }];
+static BOOL FQXBookstoreColdLaunchAnchor(__unused id cls, __unused SEL cmd, __unused NSUInteger scene) {
+    return NO;
 }
 
 #pragma mark - Mine Side Drawer Individual Item Visibility ("我的侧栏各项独立开关")
-
-static const void *FQXSidebarListTagKey = &FQXSidebarListTagKey;
-static const void *FQXSidebarHiddenPathsKey = &FQXSidebarHiddenPathsKey;
-static const void *FQXSidebarHiddenByUsKey = &FQXSidebarHiddenByUsKey;
 
 static NSHashTable<UIViewController *> *FQXTrackedMineSidebars(void) {
     static NSHashTable<UIViewController *> *table;
@@ -3382,26 +3393,6 @@ static BOOL FQXSidebarPrefEnabled(NSString *key) {
     if (!key.length) return YES;
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
     return stored ? [stored boolValue] : YES;
-}
-
-static void FQXCollectSidebarText(UIView *view, NSMutableString *out, NSInteger depth) {
-    if (!view || depth > 5 || out.length > 160 || [view isKindOfClass:UIVisualEffectView.class]) return;
-    if ([view isKindOfClass:UILabel.class]) {
-        UILabel *l = (UILabel *)view;
-        NSString *t = l.text.length ? l.text : l.attributedText.string;
-        if (t.length) [out appendFormat:@" %@", t];
-        return;
-    }
-    if ([view isKindOfClass:UIButton.class]) {
-        UIButton *b = (UIButton *)view;
-        NSString *t = [b titleForState:UIControlStateNormal];
-        if (!t.length) t = [b attributedTitleForState:UIControlStateNormal].string;
-        if (t.length) [out appendFormat:@" %@", t];
-        return;
-    }
-    for (UIView *sub in view.subviews) {
-        FQXCollectSidebarText(sub, out, depth + 1);
-    }
 }
 
 static NSArray<NSString *> *FQXSidebarMatchedKeysInText(NSString *text) {
@@ -3433,19 +3424,6 @@ static NSArray<NSString *> *FQXSidebarMatchedKeysInText(NSString *text) {
     return found;
 }
 
-static void FQXSetSidebarViewHidden(UIView *view, BOOL hide) {
-    if (!view) return;
-    if (hide) {
-        if (!view.hidden) {
-            objc_setAssociatedObject(view, FQXSidebarHiddenByUsKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            view.hidden = YES;
-        }
-    } else if ([objc_getAssociatedObject(view, FQXSidebarHiddenByUsKey) boolValue]) {
-        objc_setAssociatedObject(view, FQXSidebarHiddenByUsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        view.hidden = NO;
-    }
-}
-
 static NSIndexSet *FQXSidebarVisibleModelIndices(NSArray *models, NSArray *titles) {
     return [models indexesOfObjectsPassingTest:^BOOL(id model, NSUInteger index, __unused BOOL *stop) {
         id title = index < titles.count ? titles[index] : FQXObjGet(model, "titleString");
@@ -3470,245 +3448,41 @@ static void HookSidebarConfigureFunctionList(id cell, SEL cmd, NSArray *models, 
     OrigSidebarConfigureFunctionList(cell, cmd, models, titles, icons, darkIcons);
 }
 
+static __weak UIViewController *FQXSidebarSizingController;
+
 static CGFloat (*OrigSidebarFunctionListHeight)(id, SEL, NSArray *);
 static CGFloat HookSidebarFunctionListHeight(id cls, SEL cmd, NSArray *models) {
-    NSIndexSet *visible = FQXSidebarVisibleModelIndices(models, nil);
+    NSArray *titles = FQXObjGet(FQXSidebarSizingController, "functionEntryTitles");
+    NSIndexSet *visible = FQXSidebarVisibleModelIndices(models, titles.count == models.count ? titles : nil);
     return OrigSidebarFunctionListHeight(cls, cmd, visible.count == models.count ? models : [models objectsAtIndexes:visible]);
 }
 
-static NSMutableSet<NSString *> *FQXHookedSidebarCVDelegateClasses(void) {
-    static NSMutableSet<NSString *> *set;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
+static BOOL FQXSidebarHidesMessages(id controller, NSIndexPath *path) {
+    if (FQXSidebarPrefEnabled(@"FanqieX.SidebarMessages.1")) return NO;
+    SEL selector = sel_registerName("btd_indexPathForComponent:");
+    Method method = class_getInstanceMethod(object_getClass(controller), selector);
+    if (!method || strcmp(method_getTypeEncoding(method), "@24@0:8@16") != 0) return NO;
+    NSIndexPath *message = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector,
+        @"SSMyUser621SideBarMessageContainerCell");
+    return [message isEqual:path];
 }
 
-static NSMutableSet<NSString *> *FQXHookedSidebarCVDataSourceClasses(void) {
-    static NSMutableSet<NSString *> *set;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
+static CGSize (*OrigSidebarItemSize)(id, SEL, UICollectionView *, UICollectionViewLayout *, NSIndexPath *);
+static CGSize HookSidebarItemSize(UIViewController *controller, SEL cmd, UICollectionView *list,
+                                  UICollectionViewLayout *layout, NSIndexPath *path) {
+    if (FQXSidebarHidesMessages(controller, path)) return CGSizeZero;
+    UIViewController *previous = FQXSidebarSizingController;
+    FQXSidebarSizingController = controller;
+    CGSize size = OrigSidebarItemSize(controller, cmd, list, layout, path);
+    FQXSidebarSizingController = previous;
+    return size;
 }
 
-static NSMutableSet<NSString *> *FQXHookedSidebarTVDelegateClasses(void) {
-    static NSMutableSet<NSString *> *set;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
-}
-
-static NSMutableSet<NSString *> *FQXHookedSidebarTVDataSourceClasses(void) {
-    static NSMutableSet<NSString *> *set;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
-}
-
-static void FQXEvaluateSidebarCell(UIView *listView, UIView *cell, NSIndexPath *indexPath) {
-    if (!listView || !cell || !indexPath) return;
-    if ([cell isKindOfClass:NSClassFromString(@"SSMyUser621SideBarFunctionEntryListCell")]) return;
-    NSMutableSet<NSIndexPath *> *hiddenPaths = objc_getAssociatedObject(listView, FQXSidebarHiddenPathsKey);
-    if (!hiddenPaths) {
-        hiddenPaths = [NSMutableSet set];
-        objc_setAssociatedObject(listView, FQXSidebarHiddenPathsKey, hiddenPaths, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    NSMutableString *txt = [NSMutableString string];
-    FQXCollectSidebarText(cell, txt, 0);
-    NSArray<NSString *> *keys = FQXSidebarMatchedKeysInText(txt);
-    BOOL hideWholeCell = NO;
-    if (keys.count == 1) {
-        hideWholeCell = !FQXSidebarPrefEnabled(keys.firstObject);
-    } else if (keys.count > 1) {
-        // Grouped card containing multiple rows (e.g., all menu entries inside one cell):
-        // hide individual sub-rows and only collapse the whole cell if EVERY row inside is hidden.
-        BOOL allHidden = YES;
-        for (NSString *k in keys) {
-            if (FQXSidebarPrefEnabled(k)) { allHidden = NO; break; }
-        }
-        hideWholeCell = allHidden;
-
-    }
-    FQXSetSidebarViewHidden(cell, hideWholeCell);
-    BOOL wasHidden = [hiddenPaths containsObject:indexPath];
-    if (hideWholeCell && !wasHidden) {
-        [hiddenPaths addObject:indexPath];
-        if ([listView isKindOfClass:UICollectionView.class]) {
-            UICollectionView *cv = (UICollectionView *)listView;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [cv.collectionViewLayout invalidateLayout];
-            });
-        } else if ([listView isKindOfClass:UITableView.class]) {
-            UITableView *tv = (UITableView *)listView;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [tv beginUpdates];
-                [tv endUpdates];
-            });
-        }
-    } else if (!hideWholeCell && wasHidden) {
-        [hiddenPaths removeObject:indexPath];
-        if ([listView isKindOfClass:UICollectionView.class]) {
-            UICollectionView *cv = (UICollectionView *)listView;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [cv.collectionViewLayout invalidateLayout];
-            });
-        }
-    }
-}
-
-static void FQXWireSidebarCollectionView(UICollectionView *cv) {
-    if (![cv isKindOfClass:UICollectionView.class]) return;
-    objc_setAssociatedObject(cv, FQXSidebarListTagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    id ds = cv.dataSource;
-    if (ds) {
-        Class dsCls = object_getClass(ds);
-        NSString *dsName = NSStringFromClass(dsCls);
-        if (dsName.length && ![FQXHookedSidebarCVDataSourceClasses() containsObject:dsName]) {
-            [FQXHookedSidebarCVDataSourceClasses() addObject:dsName];
-            SEL cellSel = @selector(collectionView:cellForItemAtIndexPath:);
-            __block IMP origCell = NULL;
-            IMP hookCell = imp_implementationWithBlock(^UICollectionViewCell *(id selfObj, UICollectionView *col, NSIndexPath *ip) {
-                UICollectionViewCell *cell = origCell
-                    ? ((UICollectionViewCell *(*)(id, SEL, id, id))origCell)(selfObj, cellSel, col, ip)
-                    : nil;
-                if (cell && [objc_getAssociatedObject(col, FQXSidebarListTagKey) boolValue]) {
-                    FQXEvaluateSidebarCell(col, cell, ip);
-                }
-                return cell;
-            });
-            if (!FQXInstallOwnedHook(dsCls, cellSel, NO, "@32@0:8@16@24", hookCell, &origCell)) {
-                imp_removeBlock(hookCell);
-            }
-        }
-    }
-    id del = cv.delegate;
-    if (del) {
-        Class delCls = object_getClass(del);
-        NSString *delName = NSStringFromClass(delCls);
-        if (delName.length && ![FQXHookedSidebarCVDelegateClasses() containsObject:delName]) {
-            [FQXHookedSidebarCVDelegateClasses() addObject:delName];
-            SEL sizeSel = @selector(collectionView:layout:sizeForItemAtIndexPath:);
-            __block IMP origSize = NULL;
-            IMP hookSize = imp_implementationWithBlock(^CGSize(id selfObj, UICollectionView *col, UICollectionViewLayout *layout, NSIndexPath *ip) {
-                if (col && ip && [objc_getAssociatedObject(col, FQXSidebarListTagKey) boolValue]) {
-                    NSSet *hiddenPaths = objc_getAssociatedObject(col, FQXSidebarHiddenPathsKey);
-                    if ([hiddenPaths containsObject:ip]) {
-                        return CGSizeMake(MAX(1.0, CGRectGetWidth(col.bounds)), 0.01);
-                    }
-                }
-                return origSize
-                    ? ((CGSize (*)(id, SEL, id, id, id))origSize)(selfObj, sizeSel, col, layout, ip)
-                    : CGSizeZero;
-            });
-            if (!FQXInstallOwnedHook(delCls, sizeSel, NO, "{CGSize=dd}40@0:8@16@24@32", hookSize, &origSize)) {
-                imp_removeBlock(hookSize);
-            }
-        }
-    }
-}
-
-static void FQXWireSidebarTableView(UITableView *tv) {
-    if (![tv isKindOfClass:UITableView.class]) return;
-    objc_setAssociatedObject(tv, FQXSidebarListTagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    id ds = tv.dataSource;
-    if (ds) {
-        Class dsCls = object_getClass(ds);
-        NSString *dsName = NSStringFromClass(dsCls);
-        if (dsName.length && ![FQXHookedSidebarTVDataSourceClasses() containsObject:dsName]) {
-            [FQXHookedSidebarTVDataSourceClasses() addObject:dsName];
-            SEL cellSel = @selector(tableView:cellForRowAtIndexPath:);
-            __block IMP origCell = NULL;
-            IMP hookCell = imp_implementationWithBlock(^UITableViewCell *(id selfObj, UITableView *table, NSIndexPath *ip) {
-                UITableViewCell *cell = origCell
-                    ? ((UITableViewCell *(*)(id, SEL, id, id))origCell)(selfObj, cellSel, table, ip)
-                    : nil;
-                if (cell && [objc_getAssociatedObject(table, FQXSidebarListTagKey) boolValue]) {
-                    FQXEvaluateSidebarCell(table, cell, ip);
-                }
-                return cell;
-            });
-            if (!FQXInstallOwnedHook(dsCls, cellSel, NO, "@32@0:8@16@24", hookCell, &origCell)) {
-                imp_removeBlock(hookCell);
-            }
-        }
-    }
-    id del = tv.delegate;
-    if (del) {
-        Class delCls = object_getClass(del);
-        NSString *delName = NSStringFromClass(delCls);
-        if (delName.length && ![FQXHookedSidebarTVDelegateClasses() containsObject:delName]) {
-            [FQXHookedSidebarTVDelegateClasses() addObject:delName];
-            SEL heightSel = @selector(tableView:heightForRowAtIndexPath:);
-            __block IMP origH = NULL;
-            IMP hookH = imp_implementationWithBlock(^CGFloat(id selfObj, UITableView *table, NSIndexPath *ip) {
-                if (table && ip && [objc_getAssociatedObject(table, FQXSidebarListTagKey) boolValue]) {
-                    NSSet *hiddenPaths = objc_getAssociatedObject(table, FQXSidebarHiddenPathsKey);
-                    if ([hiddenPaths containsObject:ip]) return 0.0;
-                }
-                return origH
-                    ? ((CGFloat (*)(id, SEL, id, id))origH)(selfObj, heightSel, table, ip)
-                    : UITableViewAutomaticDimension;
-            });
-            if (!FQXInstallOwnedHook(delCls, heightSel, NO, "d32@0:8@16@24", hookH, &origH)) {
-                imp_removeBlock(hookH);
-            }
-        }
-    }
-}
-
-static void FQXScanSidebarSubtree(UIView *view, NSInteger depth) {
-    if (!view || depth > 8) return;
-    if ([view isKindOfClass:UICollectionView.class]) {
-        UICollectionView *cv = (UICollectionView *)view;
-        FQXWireSidebarCollectionView(cv);
-        for (UICollectionViewCell *cell in cv.visibleCells) {
-            NSIndexPath *ip = [cv indexPathForCell:cell];
-            if (ip) FQXEvaluateSidebarCell(cv, cell, ip);
-        }
-        return;
-    }
-    if ([view isKindOfClass:UITableView.class]) {
-        UITableView *tv = (UITableView *)view;
-        FQXWireSidebarTableView(tv);
-        for (UITableViewCell *cell in tv.visibleCells) {
-            NSIndexPath *ip = [tv indexPathForCell:cell];
-            if (ip) FQXEvaluateSidebarCell(tv, cell, ip);
-        }
-        return;
-    }
-    // Standalone bottom privacy footer ("《个人信息清单》《三方信息共享清单》") or standalone cards
-    NSMutableString *txt = [NSMutableString string];
-    FQXCollectSidebarText(view, txt, 0);
-    NSArray<NSString *> *keys = FQXSidebarMatchedKeysInText(txt);
-    if (keys.count == 1 && depth >= 1) {
-        NSString *k = keys.firstObject;
-        if ([k isEqualToString:@"FanqieX.SidebarPrivacyLinks.1"]) {
-            FQXSetSidebarViewHidden(view, !FQXSidebarPrefEnabled(k));
-            return;
-        }
-    }
-    for (UIView *sub in view.subviews) {
-        FQXScanSidebarSubtree(sub, depth + 1);
-    }
-}
-
-static void FQXApplyMineSidebarFilters(UIViewController *vc, BOOL resetHiddenCache) {
-    if (![vc isKindOfClass:UIViewController.class]) return;
-    [FQXTrackedMineSidebars() addObject:vc];
-    if (!vc.isViewLoaded) return;
-    UIView *root = vc.viewIfLoaded;
-    if (!root) return;
-    UICollectionView *cv = FQXObjGet(vc, "collectionView");
-    if ([cv isKindOfClass:UICollectionView.class]) {
-        if (resetHiddenCache) {
-            objc_setAssociatedObject(cv, FQXSidebarHiddenPathsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        FQXWireSidebarCollectionView(cv);
-    }
-    FQXScanSidebarSubtree(root, 0);
-    if (resetHiddenCache && [cv isKindOfClass:UICollectionView.class]) {
-        [cv.collectionViewLayout invalidateLayout];
-        [cv reloadData];
-    }
+static CGSize (*OrigSidebarFooterSize)(id, SEL, UICollectionView *, UICollectionViewLayout *, NSInteger);
+static CGSize HookSidebarFooterSize(id controller, SEL cmd, UICollectionView *list,
+                                    UICollectionViewLayout *layout, NSInteger section) {
+    if (!FQXSidebarPrefEnabled(@"FanqieX.SidebarPrivacyLinks.1")) return CGSizeZero;
+    return OrigSidebarFooterSize(controller, cmd, list, layout, section);
 }
 
 static void FQXRefreshAllMineSidebars(void) {
@@ -3716,33 +3490,17 @@ static void FQXRefreshAllMineSidebars(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllMineSidebars(); });
         return;
     }
-    for (UIViewController *vc in FQXTrackedMineSidebars().allObjects) {
-        FQXApplyMineSidebarFilters(vc, YES);
+    for (UIViewController *controller in FQXTrackedMineSidebars().allObjects) {
+        UICollectionView *list = FQXObjGet(controller, "collectionView");
+        [list.collectionViewLayout invalidateLayout];
+        [list reloadData];
     }
 }
 
 static void (*OrigSidebarViewDidLoad)(id, SEL);
-static void HookSidebarViewDidLoad(UIViewController *self, SEL _cmd) {
-    if (OrigSidebarViewDidLoad) OrigSidebarViewDidLoad(self, _cmd);
-    FQXApplyMineSidebarFilters(self, NO);
-}
-
-static void (*OrigSidebarViewWillAppear)(id, SEL, BOOL);
-static void HookSidebarViewWillAppear(UIViewController *self, SEL _cmd, BOOL animated) {
-    if (OrigSidebarViewWillAppear) OrigSidebarViewWillAppear(self, _cmd, animated);
-    FQXApplyMineSidebarFilters(self, YES);
-}
-
-static void (*OrigSidebarViewDidLayout)(id, SEL);
-static void HookSidebarViewDidLayout(UIViewController *self, SEL _cmd) {
-    if (OrigSidebarViewDidLayout) OrigSidebarViewDidLayout(self, _cmd);
-    FQXApplyMineSidebarFilters(self, NO);
-}
-
-static void (*OrigSidebarReloadForFilter)(id, SEL);
-static void HookSidebarReloadForFilter(UIViewController *self, SEL _cmd) {
-    if (OrigSidebarReloadForFilter) OrigSidebarReloadForFilter(self, _cmd);
-    FQXApplyMineSidebarFilters(self, YES);
+static void HookSidebarViewDidLoad(UIViewController *controller, SEL cmd) {
+    OrigSidebarViewDidLoad(controller, cmd);
+    [FQXTrackedMineSidebars() addObject:controller];
 }
 
 #pragma mark - Audio Play Page ("智能朗读") iOS 26/27 Liquid Glass, Refraction & Seamless Background
@@ -7293,7 +7051,9 @@ static void HookAudioSettingSaveFloatingFrame(id self, SEL cmd, CGRect frame) {
     OrigAudioSettingSaveFloatingFrame(self, cmd, clamped);
 }
 
-static void FQXPlaceExpandedComposer(UIView *host, BOOL floating) {
+static CGRect FQXComposerKeyboardFrame;
+
+static void FQXPlaceExpandedComposer(UIView *host, CGRect cardFrame, BOOL floating) {
     if (!host) return;
     NSValue *last = objc_getAssociatedObject(host, ExpandedInputAppliedTransformKey);
     NSValue *saved = objc_getAssociatedObject(host, ExpandedInputBaseTransformKey);
@@ -7304,7 +7064,14 @@ static void FQXPlaceExpandedComposer(UIView *host, BOOL floating) {
     CGAffineTransform desired = base;
     if (floating && width > 80.0) {
         desired = CGAffineTransformScale(base, (width - 24.0) / width, 1.0);
-        desired.ty -= 14.0;
+        UIWindow *window = host.window;
+        CGRect inWindow = [host convertRect:cardFrame toView:window];
+        CGFloat unmodifiedBottom = CGRectGetMaxY(inWindow) - (current.ty - base.ty);
+        CGRect keyboard = [window convertRect:FQXComposerKeyboardFrame fromCoordinateSpace:window.screen.coordinateSpace];
+        BOOL open = !CGRectIsEmpty(keyboard) && CGRectIntersectsRect(keyboard, window.bounds) &&
+            CGRectGetMinX(inWindow) < CGRectGetMaxX(keyboard) && CGRectGetMaxX(inWindow) > CGRectGetMinX(keyboard);
+        CGFloat lift = open ? MAX(14.0, unmodifiedBottom - CGRectGetMinY(keyboard) + 14.0) : 14.0;
+        desired.ty -= lift;
         if (!saved || !CGAffineTransformEqualToTransform(saved.CGAffineTransformValue, base)) {
             objc_setAssociatedObject(host, ExpandedInputBaseTransformKey, [NSValue valueWithCGAffineTransform:base], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -7326,7 +7093,7 @@ static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *em
     CGFloat extraBottom = floatingDetached ? 0.0 : 24.0;
     CGRect frame = CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + extraBottom);
     BOOL glass = FQXPlaceCommentComposerGlass(sheet, frame, 22.0, FQXCommentViewIsDark(sheet), NO);
-    FQXPlaceExpandedComposer(sheet, glass && floatingDetached);
+    FQXPlaceExpandedComposer(sheet, frame, glass && floatingDetached);
     if (glass) {
         if (!objc_getAssociatedObject(sheet, ExpandedInputSavedClipsKey)) {
             objc_setAssociatedObject(sheet, ExpandedInputSavedClipsKey, @(sheet.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -7374,7 +7141,7 @@ static void FQXClearStaleComposerHost(UIView *host) {
         objc_setAssociatedObject(host, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     FQXRestoreSheetTopCornerMask(host);
-    FQXPlaceExpandedComposer(host, NO);
+    FQXPlaceExpandedComposer(host, CGRectZero, NO);
     NSNumber *savedClips = objc_getAssociatedObject(host, ExpandedInputSavedClipsKey);
     if (savedClips) {
         host.clipsToBounds = savedClips.boolValue;
@@ -7425,7 +7192,7 @@ static void FQXStyleCommunityInput(UIView *editor) {
     BOOL glass = NO;
     if (glassHost) {
         glass = FQXPlaceCommentComposerGlass(glassHost, glassFrame, 22.0, FQXCommentViewIsDark(glassHost), NO);
-        FQXPlaceExpandedComposer(glassHost, glass && floatingDetached);
+        FQXPlaceExpandedComposer(glassHost, glassFrame, glass && floatingDetached);
         if (glass) {
             if (!objc_getAssociatedObject(glassHost, ExpandedInputSavedClipsKey)) {
                 objc_setAssociatedObject(glassHost, ExpandedInputSavedClipsKey, @(glassHost.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -8762,6 +8529,8 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v24@0:8q16", OrigMineTabBarCurrentTap64, HookMineTabBarCurrentTap64);
         HOOK_INST("SSMyUser621ViewController", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineUnlimitedRefresh, HookMineUnlimitedRefresh);
+        HOOK_INST("SSVideoSeriesFeedViewController", "categoryView:scrollingFromLeftItem:atLeftIndex:toRightItem:atRightIndex:ratio:",
+                  "v64@0:8@16@24q32@40q48d56", OrigDramaScrollBetweenTabs, HookDramaScrollBetweenTabs);
         HOOK_INST("SSVideoSeriesFeedViewController", "commitSelectedTabIndex:tabType:", "v28@0:8q16i24", OrigDramaCommitTabIndex, HookDramaCommitTabIndex);
         HOOK_INST("SSVideoSeriesFeedHeaderView", "layoutSubviews", "v16@0:8", OrigDramaHeaderLayoutForCapsule, HookDramaHeaderLayoutForCapsule);
         HOOK_INST("SSHGBookStoreCategoryTitleView", "layoutSubviews", "v16@0:8", OrigDramaTabsLayoutForCapsule, HookDramaTabsLayoutForCapsule);
@@ -8964,9 +8733,9 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQVShortVideoVPlayerControlView", "didMoveToWindow", "v16@0:8", OrigDramaControlDidMoveWindow, HookDramaControlDidMoveWindow);
 
         // 5c. Bookshelf edit button toggle & Mine side drawer individual item filters
-        HOOK_INST("SSBookStoreNestedTabView", "beforeRefreshData", "v16@0:8", OrigBookstoreBeforeRefresh, HookBookstoreBeforeRefresh);
-        HOOK_INST("SSBookStoreNestedTabView", "scrollViewWillBeginDragging:", "v24@0:8@16", OrigBookstoreBeginDragging, HookBookstoreBeginDragging);
-        HOOK_INST("SSBookStoreNestedTabView", "afterRefreshData", "v16@0:8", OrigBookstoreAfterRefresh, HookBookstoreAfterRefresh);
+        FQXInstallOwnedHook(objc_lookUpClass("SSBookStoreABTestHelper"),
+                            sel_registerName("coldLaunchAnchorToDoubleCol:"), YES, "B24@0:8Q16",
+                            (IMP)FQXBookstoreColdLaunchAnchor, NULL);
         HOOK_INST("SS525BookShelfSubHeaderView", "layoutSubviews", "v16@0:8", OrigShelfSubHeaderLayoutForEdit, HookShelfSubHeaderLayoutForEdit);
         HOOK_INST("SS525BookShelfSubHeaderView", "layoutEditButton", "v16@0:8", OrigShelfSubHeaderLayoutEditBtn, HookShelfSubHeaderLayoutEditBtn);
         HOOK_INST("SSMyUser621SideBarFunctionEntryListCell", "configureWithModels:titles:icons:darkIcons:", "v48@0:8@16@24@32@40", OrigSidebarConfigureFunctionList, HookSidebarConfigureFunctionList);
@@ -8976,10 +8745,11 @@ void FQXInstallMotionAndAudioHooks(void) {
                                 (IMP)HookSidebarFunctionListHeight, &sidebarHeight)) {
             OrigSidebarFunctionListHeight = (__typeof__(OrigSidebarFunctionListHeight))sidebarHeight;
         }
+        HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:sizeForItemAtIndexPath:",
+                  "{CGSize=dd}40@0:8@16@24@32", OrigSidebarItemSize, HookSidebarItemSize);
+        HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:referenceSizeForFooterInSection:",
+                  "{CGSize=dd}40@0:8@16@24q32", OrigSidebarFooterSize, HookSidebarFooterSize);
         HOOK_INST("SSMyUser621SideBarViewController", "viewDidLoad", "v16@0:8", OrigSidebarViewDidLoad, HookSidebarViewDidLoad);
-        HOOK_INST("SSMyUser621SideBarViewController", "viewWillAppear:", "v20@0:8B16", OrigSidebarViewWillAppear, HookSidebarViewWillAppear);
-        HOOK_INST("SSMyUser621SideBarViewController", "viewDidLayoutSubviews", "v16@0:8", OrigSidebarViewDidLayout, HookSidebarViewDidLayout);
-        HOOK_INST("SSMyUser621SideBarViewController", "reloadData", "v16@0:8", OrigSidebarReloadForFilter, HookSidebarReloadForFilter);
 
         // 6. Audio Play Page Liquid Glass, Refraction & Seamless Background
         HOOK_INST("SSNewAudioPlayNavigationView", "layoutSubviews", "v16@0:8", OrigAudioNavLayout, HookAudioNavLayout);
@@ -9022,6 +8792,16 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
 
+        [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardDidChangeFrameNotification
+                                                        object:nil
+                                                         queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(NSNotification *note) {
+            FQXComposerKeyboardFrame = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+            if (FQXCurrentCommentComposerStyle() != FQXCommentComposerFloatingDetached) return;
+            for (UIView *composer in FQXTrackedExpandedComposers().allObjects) {
+                if (composer.window) [composer setNeedsLayout];
+            }
+        }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillEnterForegroundNotification
                                                         object:nil
                                                          queue:NSOperationQueue.mainQueue

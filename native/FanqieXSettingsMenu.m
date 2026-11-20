@@ -90,79 +90,6 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @implementation FQXSettingRow
 @end
 
-@interface FQXPopoverPickerController : UIViewController <UIPopoverPresentationControllerDelegate>
-@property(nonatomic, copy) NSString *pickerTitle;
-@property(nonatomic, copy) NSArray<NSString *> *options;
-@property(nonatomic) NSInteger selectedIndex;
-@property(nonatomic, copy) void (^onSelect)(NSInteger index);
-@end
-
-@implementation FQXPopoverPickerController
-
-- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller {
-    (void)controller;
-    return UIModalPresentationNone;
-}
-
-- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller
-                                                               traitCollection:(UITraitCollection *)traitCollection {
-    (void)controller; (void)traitCollection;
-    return UIModalPresentationNone;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor = UIColor.clearColor;
-    UILabel *titleLabel = [UILabel new];
-    titleLabel.text = self.pickerTitle;
-    titleLabel.textAlignment = NSTextAlignmentCenter;
-    titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightSemibold];
-    titleLabel.textColor = UIColor.labelColor;
-    titleLabel.numberOfLines = 2;
-    titleLabel.accessibilityTraits |= UIAccessibilityTraitHeader;
-
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[titleLabel]];
-    stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 8.0;
-    [stack setCustomSpacing:12.0 afterView:titleLabel];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:stack];
-    UILayoutGuide *area = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:area.leadingAnchor constant:14.0],
-        [stack.trailingAnchor constraintEqualToAnchor:area.trailingAnchor constant:-14.0],
-        [stack.topAnchor constraintEqualToAnchor:area.topAnchor constant:14.0],
-        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:area.bottomAnchor constant:-14.0]
-    ]];
-
-    for (NSUInteger i = 0; i < self.options.count; ++i) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.tag = (NSInteger)i;
-        BOOL selected = ((NSInteger)i == self.selectedIndex);
-        NSString *label = selected ? [self.options[i] stringByAppendingString:@"  ✓"] : self.options[i];
-        [button setTitle:label forState:UIControlStateNormal];
-        [button setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:(selected ? UIFontWeightSemibold : UIFontWeightMedium)];
-        button.backgroundColor = selected ? UIColor.secondarySystemFillColor : UIColor.tertiarySystemFillColor;
-        button.layer.cornerRadius = 22.0;
-        button.layer.cornerCurve = kCACornerCurveContinuous;
-        if (selected) button.accessibilityTraits |= UIAccessibilityTraitSelected;
-        [button addTarget:self action:@selector(optionTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [stack addArrangedSubview:button];
-        [[button.heightAnchor constraintEqualToConstant:44.0] setActive:YES];
-    }
-}
-
-- (void)optionTapped:(UIButton *)sender {
-    NSInteger idx = sender.tag;
-    void (^handler)(NSInteger) = self.onSelect;
-    [self dismissViewControllerAnimated:YES completion:^{
-        if (handler) handler(idx);
-    }];
-}
-
-@end
-
 @interface FQXSettingsMenu : UITableViewController <UISearchResultsUpdating>
 @property(nonatomic, strong) NSMutableArray<FQXSettingRow *> *catalog;
 @property(nonatomic, copy) NSArray<FQXSettingRow *> *visibleRows;
@@ -1044,39 +971,32 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                              : (row.popoverKind == 2) ? CurrentSavedCommentComposerStyle()
                              : 0;
             if (curIdx < 0 || (NSUInteger)curIdx >= row.popoverOptions.count) curIdx = 0;
-            FQXPopoverPickerController *picker = [FQXPopoverPickerController new];
-            picker.pickerTitle = row.title;
-            picker.options = row.popoverOptions;
-            picker.selectedIndex = curIdx;
-            picker.preferredContentSize = CGSizeMake(236.0, 72.0 + row.popoverOptions.count * 52.0);
-            picker.modalPresentationStyle = UIModalPresentationPopover;
-            UIPopoverPresentationController *pop = picker.popoverPresentationController;
-            pop.delegate = picker;
-            pop.permittedArrowDirections = UIPopoverArrowDirectionUp | UIPopoverArrowDirectionDown;
-            if (cell) {
-                pop.sourceView = cell;
-                pop.sourceRect = CGRectMake(MAX(0.0, CGRectGetMaxX(cell.bounds) - 96.0),
-                                            CGRectGetMidY(cell.bounds) - 10.0, 76.0, 20.0);
-            } else {
-                pop.sourceView = self.view;
-                pop.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1.0, 1.0);
-            }
+            UIAlertController *picker = [UIAlertController alertControllerWithTitle:row.title
+                message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+            UIPopoverPresentationController *popover = picker.popoverPresentationController;
+            popover.sourceView = cell ?: self.view;
+            popover.sourceRect = cell ? cell.bounds : CGRectMake(CGRectGetMidX(self.view.bounds),
+                                                                 CGRectGetMidY(self.view.bounds), 1.0, 1.0);
             __weak FQXSettingsMenu *weakMenu = self;
             NSString *prefKey = row.popoverKey;
             NSInteger kind = row.popoverKind;
-            picker.onSelect = ^(NSInteger chosen) {
-                NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-                [ud setInteger:chosen forKey:prefKey];
-                if (kind == 1) {
-                    [ud setBool:(chosen == 1) forKey:BottomIconsOnlyLegacyKey];
-                }
-                Class cleanup = NSClassFromString(@"FQXCleanup");
-                SEL selector = NSSelectorFromString(@"refreshForKey:");
-                if ([cleanup respondsToSelector:selector]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
-                }
-                [weakMenu.tableView reloadData];
-            };
+            for (NSUInteger i = 0; i < row.popoverOptions.count; ++i) {
+                NSString *title = (NSInteger)i == curIdx
+                    ? [row.popoverOptions[i] stringByAppendingString:@"  ✓"] : row.popoverOptions[i];
+                [picker addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
+                    handler:^(__unused UIAlertAction *action) {
+                        NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+                        [ud setInteger:(NSInteger)i forKey:prefKey];
+                        if (kind == 1) [ud setBool:(i == 1) forKey:BottomIconsOnlyLegacyKey];
+                        Class cleanup = NSClassFromString(@"FQXCleanup");
+                        SEL selector = NSSelectorFromString(@"refreshForKey:");
+                        if ([cleanup respondsToSelector:selector]) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
+                        }
+                        [weakMenu.tableView reloadData];
+                    }]];
+            }
+            [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
             UIViewController *presenter = self.presentedViewController ?: self;
             [presenter presentViewController:picker animated:YES completion:nil];
             return;
