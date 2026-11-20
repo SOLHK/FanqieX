@@ -286,8 +286,13 @@ static UIVisualEffect *FQXMakeUnifiedGlassEffect(FQXGlassRole role) {
     return FQXMakeGlassEffect(glassStyle, interactive, tint);
 }
 
+static const void *FQXAppliedCornerStampKey = &FQXAppliedCornerStampKey;
+
 static void FQXApplyCornerConfiguration(UIView *view, CGFloat radius, BOOL continuousCard) {
     if (!view) return;
+    NSInteger stamp = ((NSInteger)llround(radius * 10.0) << 2) | (continuousCard ? 2 : 1);
+    NSNumber *applied = objc_getAssociatedObject(view, FQXAppliedCornerStampKey);
+    if (applied && applied.integerValue == stamp) return;
     Class cornerCls = NSClassFromString(@"UICornerConfiguration");
     SEL setCornerSel = NSSelectorFromString(@"setCornerConfiguration:");
     if (!cornerCls || ![view respondsToSelector:setCornerSel]) return;
@@ -314,6 +319,7 @@ static void FQXApplyCornerConfiguration(UIView *view, CGFloat radius, BOOL conti
     }
     if (config) {
         ((void (*)(id, SEL, id))objc_msgSend)(view, setCornerSel, config);
+        objc_setAssociatedObject(view, FQXAppliedCornerStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
@@ -328,6 +334,9 @@ static void FQXApplyUnifiedSurfaceCorners(UIVisualEffectView *surface,
         // NEVER pass nil to -[UIView setCornerConfiguration:] (nonnull on iOS 26/27, throws
         // NSInvalidArgumentException). Switching UIGlassEffect <-> UIBlurEffect recreates the
         // UIVisualEffectView via FQXEnsureUnifiedGlassView so default cornerConfiguration is clean.
+        if (objc_getAssociatedObject(surface, FQXAppliedCornerStampKey)) {
+            objc_setAssociatedObject(surface, FQXAppliedCornerStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         surface.layer.cornerCurve = kCACornerCurveContinuous;
         CGFloat half = MIN(CGRectGetWidth(surface.bounds), CGRectGetHeight(surface.bounds)) * 0.5;
         CGFloat r = radius < 0.0 ? 0.0 : (radius == 0.0 ? half : radius);
@@ -773,6 +782,33 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     return @"";
 }
 
+static const void *FQXZeroMaskLayerKey = &FQXZeroMaskLayerKey;
+
+// Visually hide a view without modifying hidden/alpha/layer.opacity, so Lvisible_to() in
+// native_surface.s still sees alpha == 1.0 and NEVER enters a reset/layout death spiral.
+static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
+    if (!view) return;
+    CALayer *ownedMask = objc_getAssociatedObject(view, FQXZeroMaskLayerKey);
+    if (hidden) {
+        if (!ownedMask) {
+            ownedMask = [CALayer layer];
+            ownedMask.frame = CGRectZero;
+            objc_setAssociatedObject(view, FQXZeroMaskLayerKey, ownedMask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (view.layer.mask != ownedMask) {
+            view.layer.mask = ownedMask;
+        }
+        if (view.layer.opacity != 1.0f) {
+            view.layer.opacity = 1.0f;
+        }
+    } else if (ownedMask) {
+        if (view.layer.mask == ownedMask) {
+            view.layer.mask = nil;
+        }
+        objc_setAssociatedObject(view, FQXZeroMaskLayerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 @interface FQXTabBarInteraction : NSObject <UITabBarDelegate>
 @property(nonatomic, weak) UIView *bar;
 @property(nonatomic, weak) UIVisualEffectView *proxy;
@@ -1017,17 +1053,17 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
         self.nativeDockBar.hidden = !visible;
     }
     if (visible) {
-        if (self.proxy && self.proxy.layer.opacity != 0.0f) self.proxy.layer.opacity = 0.0f;
+        FQXSetZeroMaskHidden(self.proxy, YES);
         if (self.overlay) {
-            if (self.overlay.layer.opacity != 0.0f) self.overlay.layer.opacity = 0.0f;
+            FQXSetZeroMaskHidden(self.overlay, YES);
             if (self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = NO;
         }
         self.nativeDockActive = YES;
     } else {
         if (restoreProxy) {
-            if (self.proxy && self.proxy.layer.opacity != 1.0f) self.proxy.layer.opacity = 1.0f;
+            FQXSetZeroMaskHidden(self.proxy, NO);
             if (self.overlay) {
-                if (self.overlay.layer.opacity != 1.0f) self.overlay.layer.opacity = 1.0f;
+                FQXSetZeroMaskHidden(self.overlay, NO);
                 if (!self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = YES;
             }
         }
@@ -1058,7 +1094,7 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
             self.overlay = lens.superview;
         }
         if (self.nativeDockActive && self.overlay) {
-            if (self.overlay.layer.opacity != 0.0f) self.overlay.layer.opacity = 0.0f;
+            FQXSetZeroMaskHidden(self.overlay, YES);
             if (self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = NO;
         }
     }
@@ -1083,7 +1119,6 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     self.nativeControl = native;
     if (lens) self.restingLens = lens;
     self.buttons = buttons;
-    FQXUpgradeDockProxyToClearGlass(bar, proxy, lens);
 
     UIView *overlay = self.restingLens.superview;
     if (!overlay && !native && buttons.count) {
@@ -1098,6 +1133,7 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     BOOL hiddenProxy = proxy.hidden || CGRectGetWidth(proxy.frame) < 60.0 || CGRectGetHeight(proxy.frame) < 30.0;
     if (compact || hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
         [self setNativeDockVisible:NO restoreProxy:YES];
+        FQXUpgradeDockProxyToClearGlass(bar, proxy, lens);
         if ([native isKindOfClass:UISegmentedControl.class]) {
             UIControl *seg = (UIControl *)native;
             if (![self.wiredControls containsObject:seg]) {
@@ -1465,7 +1501,7 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
     if (self.dragGesture.view) [self.dragGesture.view removeGestureRecognizer:self.dragGesture];
     [self.pillGlass removeFromSuperview];
     self.pillGlass = nil;
-    if (self.flatLens && self.flatLens.layer.opacity != 1.0f) self.flatLens.layer.opacity = 1.0f;
+    if (self.flatLens) FQXSetZeroMaskHidden(self.flatLens, NO);
     if (self.mode == FQXTopCapsuleTouchDragging && self.collectionView) {
         self.collectionView.panGestureRecognizer.enabled = YES;
     }
@@ -1506,7 +1542,7 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
     self.collectionView = cv;
     self.outerGlass = outer;
     self.flatLens = flat;
-    if (flat && flat.layer.opacity != 0.0f) flat.layer.opacity = 0.0f;
+    if (flat) FQXSetZeroMaskHidden(flat, YES);
 
     if (!self.pillGlass) {
         FQXFlexGlassView *pill = [[FQXFlexGlassView alloc] initWithEffect:nil];
@@ -3255,8 +3291,11 @@ static BOOL FQXCommentUsesTextShadow(void) {
 static void FQXSyncLabelShadowForCommentMode(UILabel *label) {
     if (!label) return;
     if (FQXCommentUsesTextShadow()) {
-        label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.36];
-        label.shadowOffset = CGSizeMake(0.0, 0.5);
+        CGSize targetOffset = CGSizeMake(0.0, 0.5);
+        if (!label.shadowColor || !CGSizeEqualToSize(label.shadowOffset, targetOffset)) {
+            label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.36];
+            label.shadowOffset = targetOffset;
+        }
     } else if (label.shadowColor) {
         label.shadowColor = nil;
         label.shadowOffset = CGSizeZero;
@@ -3532,7 +3571,22 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
         // Custom rich-text comment labels (YYLabel / FQCCommentContentLabel / FQCShortVideoCommentLabel)
         SEL setIsDarkSel = NSSelectorFromString(@"setIsDark:");
         if ([view respondsToSelector:setIsDarkSel]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(view, setIsDarkSel, FQXCommentsUseDarkTheme());
+            BOOL desiredDark = FQXCommentsUseDarkTheme();
+            SEL getIsDarkSel = NSSelectorFromString(@"isDark");
+            BOOL needsSet = YES;
+            if ([view respondsToSelector:getIsDarkSel]) {
+                Method gm = class_getInstanceMethod(object_getClass(view), getIsDarkSel);
+                const char *enc = gm ? method_getTypeEncoding(gm) : NULL;
+                if (enc && (enc[0] == 'B' || enc[0] == 'c')) {
+                    needsSet = (((BOOL (*)(id, SEL))objc_msgSend)(view, getIsDarkSel) != desiredDark);
+                }
+            }
+            if (needsSet) {
+                Method sm = class_getInstanceMethod(object_getClass(view), setIsDarkSel);
+                if (sm && method_getNumberOfArguments(sm) == 3) {
+                    ((void (*)(id, SEL, BOOL))objc_msgSend)(view, setIsDarkSel, desiredDark);
+                }
+            }
         }
         SEL getColor = @selector(textColor);
         SEL setColor = @selector(setTextColor:);
@@ -3724,11 +3778,22 @@ static void FQXNeutralizeStrayBarGlass(UIView *view, UIVisualEffectView *keepGla
     }
 }
 
+static const void *FQXSheetTopRimStampKey = &FQXSheetTopRimStampKey;
+
 static void FQXSyncSheetTopRimLayer(UIView *sheet, CGFloat radius, CGFloat lineWidth, CGFloat alpha) {
     if (!sheet) return;
     CGFloat w = CGRectGetWidth(sheet.bounds);
+    CGFloat h = CGRectGetHeight(sheet.bounds);
     if (w < 60.0 || radius < 2.0) return;
     CAShapeLayer *rim = objc_getAssociatedObject(sheet, FQXSheetTopRimLayerKey);
+    NSUInteger stamp = ((NSUInteger)llround(w * 2.0) << 36) ^
+                       ((NSUInteger)llround(h * 2.0) << 20) ^
+                       ((NSUInteger)llround(radius * 4.0) << 10) ^
+                       (NSUInteger)llround(alpha * 255.0);
+    if (rim && rim.superlayer == sheet.layer) {
+        NSNumber *prev = objc_getAssociatedObject(rim, FQXSheetTopRimStampKey);
+        if (prev && prev.unsignedIntegerValue == stamp) return;
+    }
     if (!rim) {
         rim = [CAShapeLayer layer];
         rim.fillColor = UIColor.clearColor.CGColor;
@@ -3749,6 +3814,7 @@ static void FQXSyncSheetTopRimLayer(UIView *sheet, CGFloat radius, CGFloat lineW
     rim.strokeColor = [UIColor colorWithWhite:1.0 alpha:alpha].CGColor;
     rim.frame = sheet.bounds;
     if (rim.superlayer != sheet.layer) [sheet.layer addSublayer:rim];
+    objc_setAssociatedObject(rim, FQXSheetTopRimStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void FQXRemoveSheetTopRimLayer(UIView *sheet) {
@@ -3841,18 +3907,21 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     }
     FQXApplyCommentGlassBacking(glass, scrim, glassRad, !nestedPill && !topAlignedSheet);
     if (nestedPill) {
-        glass.contentView.layer.borderWidth = clearComposer ? 0.0 : 0.5;
+        CGFloat targetBW = clearComposer ? 0.0 : 0.5;
+        if (fabs(glass.contentView.layer.borderWidth - targetBW) > 0.05) {
+            glass.contentView.layer.borderWidth = targetBW;
+        }
         UIColor *borderCol = !darkTheme
             ? [UIColor colorWithWhite:0.0 alpha:0.10]
             : [UIColor colorWithWhite:1.0 alpha:(matStyle == FQXCommentMaterialGaussianBlur ? 0.14 : 0.22)];
         glass.contentView.layer.borderColor = borderCol.CGColor;
     } else if (topAlignedSheet) {
-        glass.contentView.layer.borderWidth = 0.0;
+        if (glass.contentView.layer.borderWidth > 0.0) glass.contentView.layer.borderWidth = 0.0;
         FQXApplySheetTopCornerMask(host, radius > 0.0 ? radius : 22.0);
         CGFloat rimAlpha = !darkTheme ? 0.70 : (matStyle == FQXCommentMaterialGaussianBlur ? 0.14 : 0.20);
         FQXSyncSheetTopRimLayer(host, radius > 0.0 ? radius : 22.0, 0.5, rimAlpha);
     } else {
-        glass.contentView.layer.borderWidth = 0.0;
+        if (glass.contentView.layer.borderWidth > 0.0) glass.contentView.layer.borderWidth = 0.0;
         FQXRemoveSheetTopRimLayer(host);
     }
     if (host.subviews.firstObject != glass) [host insertSubview:glass atIndex:0];
@@ -4085,9 +4154,11 @@ static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController
         if (shouldHideDock && !hiddenByUs) {
             objc_setAssociatedObject(bar, FQXDockHiddenByCommentKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             bar.userInteractionEnabled = NO;
+            // Keep alpha strictly > 0.0 (0.002 rounds to 0/255 visually) so Lvisible_to() in
+            // native_surface.s / feed_viewport.s NEVER triggers LXrestore/FQHBottomReset178.
             [UIView animateWithDuration:0.16 delay:0.0
                                 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{ bar.alpha = 0.0; } completion:nil];
+                             animations:^{ bar.alpha = 0.002; } completion:nil];
         } else if (!shouldHideDock && hiddenByUs) {
             objc_setAssociatedObject(bar, FQXDockHiddenByCommentKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             bar.userInteractionEnabled = YES;
@@ -4464,29 +4535,40 @@ static void HookDramaCommentListDarkChange(UIViewController *controller, SEL cmd
 
 static void FQXSetLabelColorForce(UIView *view, UIColor *color, BOOL addShadow) {
     if (!view || !color) return;
+    NSUInteger mode = ((NSUInteger)FQXCurrentCommentMaterialStyle() << 1) | (FQXCommentsUseDarkTheme() ? 1u : 0u);
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
-        label.textColor = color;
+        if (![label.textColor isEqual:color]) label.textColor = color;
         if (addShadow && FQXCommentUsesTextShadow()) {
-            label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
-            label.shadowOffset = CGSizeMake(0.0, 0.5);
+            CGSize targetOffset = CGSizeMake(0.0, 0.5);
+            if (!label.shadowColor || !CGSizeEqualToSize(label.shadowOffset, targetOffset)) {
+                label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
+                label.shadowOffset = targetOffset;
+            }
         } else if (label.shadowColor) {
             label.shadowColor = nil;
             label.shadowOffset = CGSizeZero;
         }
         if (label.attributedText.length > 0) {
-            NSMutableAttributedString *mut = [label.attributedText mutableCopy];
-            NSRange full = NSMakeRange(0, mut.length);
-            [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
-            [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
-            label.attributedText = mut;
+            NSUInteger stamp = (1u << 31) ^ ((NSUInteger)mode << 28) ^ (label.attributedText.string.hash & 0x0FFFFFFF);
+            NSNumber *prevStamp = objc_getAssociatedObject(label, FQXCommentTypographyStampKey);
+            if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                NSMutableAttributedString *mut = [label.attributedText mutableCopy];
+                NSRange full = NSMakeRange(0, mut.length);
+                [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
+                [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
+                label.attributedText = mut;
+                objc_setAssociatedObject(label, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
         return;
     }
     if ([view isKindOfClass:UIButton.class]) {
         UIButton *btn = (UIButton *)view;
-        [btn setTitleColor:color forState:UIControlStateNormal];
-        btn.tintColor = color;
+        if (![[btn titleColorForState:UIControlStateNormal] isEqual:color]) {
+            [btn setTitleColor:color forState:UIControlStateNormal];
+        }
+        if (![btn.tintColor isEqual:color]) btn.tintColor = color;
         if (btn.titleLabel) FQXSetLabelColorForce(btn.titleLabel, color, addShadow);
         return;
     }
@@ -4496,7 +4578,7 @@ static void FQXSetLabelColorForce(UIView *view, UIColor *color, BOOL addShadow) 
             if (iv.image.renderingMode != UIImageRenderingModeAlwaysTemplate) {
                 iv.image = [iv.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
             }
-            iv.tintColor = color;
+            if (![iv.tintColor isEqual:color]) iv.tintColor = color;
         }
         return;
     }
@@ -4514,26 +4596,38 @@ static void FQXSetLabelColorForce(UIView *view, UIColor *color, BOOL addShadow) 
             id lText = ((id (*)(id, SEL))objc_msgSend)(layout, textSel);
             id container = ((id (*)(id, SEL))objc_msgSend)(layout, containerSel);
             if ([lText isKindOfClass:NSAttributedString.class] && container) {
-                NSMutableAttributedString *mut = [(NSAttributedString *)lText mutableCopy];
-                NSRange full = NSMakeRange(0, mut.length);
-                [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
-                [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
-                Class layoutCls = [layout class];
-                SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
-                if ([layoutCls respondsToSelector:makeLayout]) {
-                    id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, mut);
-                    if (newLayout) ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                NSAttributedString *as = (NSAttributedString *)lText;
+                NSUInteger stamp = (1u << 31) ^ ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF);
+                NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+                if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                    NSMutableAttributedString *mut = [as mutableCopy];
+                    NSRange full = NSMakeRange(0, mut.length);
+                    [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
+                    [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
+                    Class layoutCls = [layout class];
+                    SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
+                    if ([layoutCls respondsToSelector:makeLayout]) {
+                        id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, mut);
+                        if (newLayout) ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                    }
+                    objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 }
             }
         }
     } else if ([view respondsToSelector:@selector(attributedText)] && [view respondsToSelector:@selector(setAttributedText:)]) {
         id cur = ((id (*)(id, SEL))objc_msgSend)(view, @selector(attributedText));
         if ([cur isKindOfClass:NSAttributedString.class] && [(NSAttributedString *)cur length] > 0) {
-            NSMutableAttributedString *mut = [(NSAttributedString *)cur mutableCopy];
-            NSRange full = NSMakeRange(0, mut.length);
-            [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
-            [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
-            ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), mut);
+            NSAttributedString *as = (NSAttributedString *)cur;
+            NSUInteger stamp = (1u << 31) ^ ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF);
+            NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+            if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                NSMutableAttributedString *mut = [as mutableCopy];
+                NSRange full = NSMakeRange(0, mut.length);
+                [mut addAttribute:NSForegroundColorAttributeName value:color range:full];
+                [mut addAttribute:FQXCTForegroundColorAttr value:(id)color.CGColor range:full];
+                ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), mut);
+                objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
     }
 }
@@ -4584,15 +4678,21 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
     if (!view || depth > 6 || [view isKindOfClass:UIVisualEffectView.class]) return;
     UIColor *prefixInk = FQXPrimaryCommentTextColor();
     UIColor *richBlue = FQXRichCommentBlueColor();
+    NSUInteger mode = ((NSUInteger)FQXCurrentCommentMaterialStyle() << 1) | (FQXCommentsUseDarkTheme() ? 1u : 0u);
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
         NSString *txt = label.text ?: label.attributedText.string ?: @"";
         if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
             if (txt.length > 6) {
-                NSAttributedString *styled = FQXSplitStyleSearchAttributed(label.attributedText, txt, label.font);
-                if (styled) {
-                    label.attributedText = styled;
-                    FQXSyncLabelShadowForCommentMode(label);
+                NSUInteger stamp = (1u << 30) ^ ((NSUInteger)mode << 28) ^ (txt.hash & 0x0FFFFFFF);
+                NSNumber *prevStamp = objc_getAssociatedObject(label, FQXCommentTypographyStampKey);
+                if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                    NSAttributedString *styled = FQXSplitStyleSearchAttributed(label.attributedText, txt, label.font);
+                    if (styled) {
+                        label.attributedText = styled;
+                        FQXSyncLabelShadowForCommentMode(label);
+                    }
+                    objc_setAssociatedObject(label, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 }
             } else {
                 FQXSetLabelColorForce(label, prefixInk, YES);
@@ -4610,9 +4710,14 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
         UIButton *btn = (UIButton *)view;
         NSString *t = [btn titleForState:UIControlStateNormal] ?: @"";
         if (([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) && t.length > 6) {
-            NSAttributedString *curAttr = [btn attributedTitleForState:UIControlStateNormal];
-            NSAttributedString *styled = FQXSplitStyleSearchAttributed(curAttr, t, btn.titleLabel.font);
-            if (styled) [btn setAttributedTitle:styled forState:UIControlStateNormal];
+            NSUInteger stamp = (1u << 30) ^ ((NSUInteger)mode << 28) ^ (t.hash & 0x0FFFFFFF);
+            NSNumber *prevStamp = objc_getAssociatedObject(btn, FQXCommentTypographyStampKey);
+            if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                NSAttributedString *curAttr = [btn attributedTitleForState:UIControlStateNormal];
+                NSAttributedString *styled = FQXSplitStyleSearchAttributed(curAttr, t, btn.titleLabel.font);
+                if (styled) [btn setAttributedTitle:styled forState:UIControlStateNormal];
+                objc_setAssociatedObject(btn, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         } else {
             FQXSetLabelColorForce(btn, ([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) ? prefixInk : richBlue, YES);
         }
@@ -4631,6 +4736,9 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
             if ([lText isKindOfClass:NSAttributedString.class] && container) {
                 NSAttributedString *as = (NSAttributedString *)lText;
                 NSString *txt = as.string ?: @"";
+                NSUInteger stamp = (1u << 30) ^ ((NSUInteger)mode << 28) ^ (txt.hash & 0x0FFFFFFF);
+                NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+                if (prevStamp && prevStamp.unsignedIntegerValue == stamp) return;
                 if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
                     NSAttributedString *styled = FQXSplitStyleSearchAttributed(as, txt, nil);
                     Class layoutCls = [layout class];
@@ -4639,6 +4747,7 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
                         id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, styled);
                         if (newLayout) {
                             ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                            objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                             return;
                         }
                     }
@@ -4653,6 +4762,7 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
                         id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, mut);
                         if (newLayout) {
                             ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                            objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                             return;
                         }
                     }
@@ -4666,8 +4776,13 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
             NSAttributedString *as = (NSAttributedString *)curAttr;
             NSString *txt = as.string ?: @"";
             if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
-                NSAttributedString *styled = FQXSplitStyleSearchAttributed(as, txt, nil);
-                if (styled) ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), styled);
+                NSUInteger stamp = (1u << 30) ^ ((NSUInteger)mode << 28) ^ (txt.hash & 0x0FFFFFFF);
+                NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
+                if (!prevStamp || prevStamp.unsignedIntegerValue != stamp) {
+                    NSAttributedString *styled = FQXSplitStyleSearchAttributed(as, txt, nil);
+                    if (styled) ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), styled);
+                    objc_setAssociatedObject(view, FQXCommentTypographyStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
                 return;
             } else if (txt.length > 0) {
                 FQXSetLabelColorForce(view, richBlue, YES);

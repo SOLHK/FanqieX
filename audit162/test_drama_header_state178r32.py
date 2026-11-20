@@ -129,7 +129,7 @@ def exercise(data, labels, expect_old=False, expect_button_material_baseline=Fal
                 rt.is_kind(glass, rt.classes["UIButton"]) and rt.objects[glass].state.get("configuration"),
                 "R33 reproduces the category-wide glass-button material instead of the dock's Regular effect view")
         return {"expected_r33_button_material_mismatch_reproduced": True, **initial}
-    if release_version(data) in ("1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7"):
+    if release_version(data) in ("1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8"):
         require(regular, "R34 and later use the same effect-view material family as the bottom dock")
     require(initial["lens_frame"] == (51., 4., 45., 34.) and initial["glass_style"] == 2,
             "The lens follows the actual comic title and dark content even when both cached indices disagree")
