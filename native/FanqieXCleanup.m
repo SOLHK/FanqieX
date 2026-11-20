@@ -791,8 +791,8 @@ static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
 
 static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
     NSUInteger removedKeys = 0;
-    NSUInteger removedFiles = 0;
-    unsigned long long freedBytes = 0;
+    __block NSUInteger removedFiles = 0;
+    __block unsigned long long freedBytes = 0;
 
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     NSString *legacyFrostedKey = @"FanqieX.CommentGlassFrosted.1";
