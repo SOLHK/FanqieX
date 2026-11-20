@@ -1,0 +1,57 @@
+番茄小说 7.4.5 回归分析与 FanqieX 1.9.1beta11 测试版
+
+基线
+原始反馈使用 FanqieX 1.9.1beta9 / 350c582。
+beta10 / 771e9e1 的真机反馈是剧集外双指张开仍卡住、侧栏有时只剩遮罩，阅读段评输入框仍贴键盘。收到的两张图显示侧栏遮罩已打开但内容未显示，输入框左右已有留边但底边没有与键盘分开。
+beta11 源码提交 45c875bbbe2f1eeb96f90eb4e68bac2cda8f7c2d。修改集中在 native/FanqieXMotion.m 和 native/FanqieXSettingsMenu.m。另扩展了版本注册与底栏可见性回归用例。
+
+1. 剧集外双指张开与余音
+
+beta9 将清屏控件（含宿主 SSTabBar）设为 hidden。beta10 改成了 alpha = 0，但插件的 ARM64 底栏代码在 Lvisible_to 中对视图和祖先检查 isHidden 和 alpha，遇到 hidden 或 alpha <= 0 都判不可见。LXnative_update 等调用会进入失效分支，由相关恢复路径重新配置或重置底栏。beta8 修过评论打开时同类型的可见性重置问题，beta10 修正时漏掉了这一约束。
+
+7.4.5.33 的 FQVShortVideoListVCGestureComponent -pinchGesture: 在 0x1083390b8。该方法从 listVCContext 取 currentVideoDataModel、cellView 和 vPlayer，随后按状态及配置进入清屏、播放器缩放、播放器布局刷新。可以解析到 enableCleanModeWithPinchStrictStyle、enterPinchMode、exitPinchMode、enterPlayerZoomInModeWithScale: 和 refreshUIWithPlayerSuperViewSize:。因此宿主的双指动作有自己的 UI 修改，不能让插件的外层清屏与它在同一次手势中同时运行。外层 SSShortVideoOutterMultiGenreFeedControlView 与剧集内 FQVShortVideoVPlayerControlView 是不同路径。
+
+beta11 只用零面积 CALayer 遮罩隐藏目标绘制，单独关掉相应控件的触控，并在退出时恢复宿主遮罩与触控。视图的 hidden 和 alpha 保留原值。外层卡片的短剧列表上下文和手势位置均匹配时，拦住该宿主双指入口，防止外层双指竞争。插件切换清屏延后到手势回调退出后执行，换片或切窗后放弃旧回调。保留上一版针对该播放上下文的后台暂停分流。
+
+对实际 ARM64 Core 的回归结果
+普通底栏 → Lvisible_to 返回 1
+beta9 的 hidden → 返回 0
+beta10 的 alpha=0 → 返回 0
+beta11 的绘制遮罩，hidden=NO、alpha=1 → 返回 1
+
+7.4.5 新增 FQVShortVideoListVCAppLifecycleComponent 与 FQVShortVideoListVCBackgroundPlaybackComponent。前者的 applicationWillResignActive 确有 backgroundPlaybackComponent 和 playComponent 路径，后者的 shouldPauseInBackground 确有 PiP 与后台播放路径。它们提供了余音可能的分流位置。当前没有卡屏瞬间的系统主线程堆栈或进程结束与音频会话时间，无法证实哪一步在该手机阻塞，也无法判定所述余音发生于后台切换还是进程强退后。ARM64 回归证实的是底栏触发条件。
+
+2. 书城启动跳动
+
+7.4.5.33 中 +[SSBookStoreABTestHelper coldLaunchAnchorToDoubleCol:] 读取 store_launch_anchor_double_col_config 的 cold_launch_x_range。7.4.3.33 也存在相同入口。宿主另有 SSBookStoreDoubleRowViewController 的 autoAnchorUnlimitedAbility、刷新参数中的 needAnchorToUnlimited，7.4.5 还新增顶部分类活动记录与快照。beta11 拦截冷启动实验的自动双列定位，并撤掉 beta10 对刷新后滚动位置的改写。录像里出现晚到的排行榜卡片，缺少真机调用记录，尚不能排除服务端内容插入或其他定位入口引起首屏跳动。
+
+3. 短剧横划后「看剧」残框
+
+宿主的 categoryView:scrollingFromLeftItem:atLeftIndex:toRightItem:atRightIndex:ratio: 与 commitSelectedTabIndex:tabType: 是不同阶段。7.4.5 的中途回调会通知分栏外观和搜索图标。beta11 在分栏手势过渡中收起插件的选中胶囊，结束或提交后按宿主选中项恢复。beta10 只在提交时处理，覆盖不了过渡中的旧框。
+
+4. 设置弹窗与作者信息
+
+两种三选一设置使用 UIKit 的操作表，移除会在有效宽度变化时裁切的自定义按钮容器。作者信息仍在一级菜单末尾。最终 dylib 中确认存在作者入口和两个链接，链接在真机上尚未点击验证。
+https://t.me/Naloiafeed
+https://github.com/SOLHK/FanqieX
+
+5. 阅读段评和短剧评论输入卡片
+
+阅读段评走 FQCCommunityInputView 的键盘动画与布局。短剧另有 FQCShortVideoInputView 以及 FQCShortVideoNewEditorView，后者的 showKeyBoradAnimation:curve: 会调用 setupLayout 并执行 UIKit 动画。beta10 用固定相对位移，实际容器延伸到键盘区域时会把间距吃掉。beta11 在系统键盘完成换位后按实际键盘在窗口内的顶边计算未变换的卡片底边，从而更新悬浮卡片位置。保留段落引用、输入区和表情行的原生触控层级。第三方键盘、表情面板切换、编辑框重挂载和视觉效果仍需真机复测。
+
+6. 侧栏关闭项目后空白或只剩遮罩
+
+beta9/beta10 遍历侧栏子树，以后代文字匹配隐私链接。这条规则允许把包含页脚的较大容器当成应隐藏对象，而且刷新路径会在宿主 reloadData 后再次主动刷新。beta11 删除递归扫描、动态数据源 Hook 和布局中的主动刷新。通过宿主 btd_indexPathForComponent: 定位消息卡片，使用 collectionView:layout:referenceSizeForFooterInSection: 控制隐私页脚。“我的功能”列表的 configureWithModels:titles:icons:darkIcons: 与 heightForModels: 使用同一套过滤依据，模型和标题图标数组同步筛选。真机需要验证不同账号和配置的侧栏组合。
+
+7. 全包对比的范围与证据
+
+REA 6.7.0 在本地读取两份 IPA 并生成包清单与 Apple 应用图。两个包均有 1 个应用根、185 个包节点和 9 个组件节点。路径和 SHA-256 差异见 ipa-resource-diff.csv。两包 CFBundleIdentifier 均为 com.dragon.read，版本分别为 7.4.3.33 和 7.4.5.33。
+7.4.3 主程序 511,603,408 字节，7.4.5 主程序 519,167,792 字节。
+3,812 → 3,967 个普通文件，196 个新增路径、41 个移除路径、223 个同路径内容变化。新增包含 193 个 Compose 资源，以及短剧详情的亮暗加载动画。关键资源还覆盖短剧语音评论、书评入口和短剧详情动作。
+对主程序完整 Objective-C 类表和直接方法清单计数，79,545 → 80,161 个类，1,361,952 → 1,374,771 条类/选择器记录。按类名有 659 个新增和 43 个移除；关键类差异见 objc-ui-method-diff.csv。方法同名时仍可能改写实现。REA 的原生 Mach-O 提供方在这台 Windows 主机上不可用，所列入口、选择器和 ARM64 调用由本地二进制元数据、Capstone 和 LLVM 核验。范围包括全包清单与主程序 Objective-C 元数据，以及反馈相关入口的具体反汇编。未覆盖所有 Swift/Kotlin 函数体或服务端实验实际配置信息。
+
+8. 本机验收结果
+
+Windows 上使用 Clang 23.1.5 和 iPhoneOS 27.2 SDK 交叉构建，合并产物可重复，Mach-O dyld 预检和签名页哈希通过。独立 Core 审计、44 个负向审计用例、73 个书城/底栏 ARM64 模拟场景和另外 5 项相关模拟检查通过。最终 dylib 的 16 个接口签名与 7.4.5 IPA 匹配，7.4.3 匹配其中 15 个，差异是 7.4.5 新增的后台暂停方法。
+
+没有发现 USB 或可访问的 Wi-Fi 配对 iPhone。上一次附件中三个诊断为 beta8，只有微信记录为 beta9，本轮收到的是两张真机截图。当前没有 beta10 / beta11 卡住时的新主线程数据，也没有用 Xcode 在设备上运行 beta11。这一包供重新签名后测试，真机结果仍待确认。
