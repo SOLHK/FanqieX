@@ -90,19 +90,6 @@ static BOOL FQXShelfEditButtonEnabled(void) {
     return stored ? [stored boolValue] : YES;
 }
 
-static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentComposerStylePrefKey];
-    if (stored && [stored respondsToSelector:@selector(integerValue)]) {
-        NSInteger val = [stored integerValue];
-        if (val >= FQXCommentComposerNative && val <= FQXCommentComposerFloatingDetached) {
-            return (FQXCommentComposerStyle)val;
-        }
-    }
-    return FQXCurrentCommentMaterialStyle() != FQXCommentMaterialNative
-        ? FQXCommentComposerDockedGlass
-        : FQXCommentComposerNative;
-}
-
 static BOOL FQXDramaCommentNoVideoShiftEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:DramaCommentNoVideoShiftPrefKey];
 }
@@ -126,6 +113,19 @@ static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void) {
         return FQXCommentMaterialNative;
     }
     return (FQXCommentMaterialStyle)mode;
+}
+
+static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentComposerStylePrefKey];
+    if (stored && [stored respondsToSelector:@selector(integerValue)]) {
+        NSInteger val = [stored integerValue];
+        if (val >= FQXCommentComposerNative && val <= FQXCommentComposerFloatingDetached) {
+            return (FQXCommentComposerStyle)val;
+        }
+    }
+    return FQXCurrentCommentMaterialStyle() != FQXCommentMaterialNative
+        ? FQXCommentComposerDockedGlass
+        : FQXCommentComposerNative;
 }
 
 static FQXCommentAppearanceMode FQXCurrentCommentAppearanceMode(void) {
