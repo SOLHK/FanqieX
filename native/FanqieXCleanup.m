@@ -17,6 +17,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(CommentSearchEntrance, "CommentSearchEntrance", "显示评论区大家都在搜", "comment", YES) \
     X(ReaderEarnMore, "ReaderEarnMore", "显示阅读页去赚更多", "reader", YES) \
     X(SpeechFloat, "ReaderSpeechFloat", "显示阅读页听书悬浮按钮", "reader", YES) \
+    X(ReaderHotCommentBadge, "ReaderHotCommentBadge", "显示阅读顶部热评", "readerFeatures", YES) \
     X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
     X(AudioRecommendations, "AudioRecommendations", "显示听书页推荐内容", "reader", YES) \
     X(AudioLiquidGlass, "AudioLiquidGlass", "听书界面液态玻璃", "audio", NO) \
@@ -79,6 +80,8 @@ static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
 static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
+static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -1159,6 +1162,14 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
+    } else if ([key isEqualToString:DockMaterialKey] || [key isEqualToString:DockBlurKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refresh = NSSelectorFromString(@"refreshDockMaterial");
+        if ([dockMotion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refresh);
+    } else if ([key isEqualToString:ReaderHotCommentBadgeKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refresh = NSSelectorFromString(@"refreshReaderHotCommentBadge");
+        if ([dockMotion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refresh);
     } else if ([key isEqualToString:ShelfEditButtonKey]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshEditSel = NSSelectorFromString(@"refreshShelfEditButton");

@@ -55,6 +55,9 @@ static NSString *const CommentMaterialStylePrefKey = @"FanqieX.CommentMaterialSt
 static NSString *const CommentAppearanceModePrefKey = @"FanqieX.CommentAppearanceMode.1";
 static NSString *const CommentComposerStylePrefKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModePrefKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const DockMaterialPrefKey = @"FanqieX.DockMaterial.1";
+static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
+static NSString *const ReaderHotCommentBadgePrefKey = @"FanqieX.ReaderHotCommentBadge.1";
 static NSString *const ShelfEditButtonPrefKey = @"FanqieX.ShelfEditButton.1";
 static NSString *const LegacyCommentMaterialModePrefKey = @"FanqieX.CommentMaterialMode.1";
 static NSString *const LegacyCommentGlassFrostedPrefKey = @"FanqieX.CommentGlassFrosted.1";
@@ -488,14 +491,76 @@ static void FQXScheduleCYLGlassResample(UIView *bar, UIVisualEffectView *proxy) 
     });
 }
 
-static void FQXUpgradeDockProxyToClearGlass(UIView *bar, UIVisualEffectView *proxy, UIVisualEffectView *lens) {
+static UIColor *FQXDockRestingSelectionColor(BOOL dark) {
+    // The beta4 resting pill fill, also used by the compact Dock.
+    return dark ? [UIColor colorWithWhite:1.0 alpha:0.14]
+                : [UIColor colorWithWhite:0.0 alpha:0.065];
+}
+
+static BOOL FQXDockUsesFrostedGlass(void) {
+    return [NSUserDefaults.standardUserDefaults integerForKey:DockMaterialPrefKey] == 1;
+}
+
+static void FQXApplyDockBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame, BOOL dark) {
+    static char blurViewKey, animatorKey, blurStyleKey;
+    UIVisualEffectView *blur = objc_getAssociatedObject(owner, &blurViewKey);
+    UIViewPropertyAnimator *animator = objc_getAssociatedObject(blur, &animatorKey);
+    NSInteger strength = [NSUserDefaults.standardUserDefaults integerForKey:DockBlurPrefKey];
+    if (!container || strength <= 0 || UIAccessibilityIsReduceTransparencyEnabled()) {
+        if (blur) {
+            [animator stopAnimation:YES];
+            [blur removeFromSuperview];
+            objc_setAssociatedObject(owner, &blurViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return;
+    }
+
+    if (!blur) {
+        blur = [[UIVisualEffectView alloc] initWithEffect:nil];
+        blur.userInteractionEnabled = NO;
+        blur.accessibilityElementsHidden = YES;
+        blur.layer.cornerCurve = kCACornerCurveContinuous;
+        blur.clipsToBounds = YES;
+        objc_setAssociatedObject(owner, &blurViewKey, blur, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(blur, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (blur.superview != container) {
+        if (anchor) [container insertSubview:blur belowSubview:anchor];
+        else [container insertSubview:blur atIndex:0];
+    }
+    if (!CGRectEqualToRect(blur.frame, frame)) blur.frame = frame;
+    CGFloat radius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
+    if (blur.layer.cornerRadius != radius) blur.layer.cornerRadius = radius;
+
+    UIBlurEffectStyle style = dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight;
+    NSNumber *currentStyle = objc_getAssociatedObject(blur, &blurStyleKey);
+    if (!animator || currentStyle.integerValue != style) {
+        [animator stopAnimation:YES];
+        blur.effect = nil;
+        __weak UIVisualEffectView *weakBlur = blur;
+        animator = [[UIViewPropertyAnimator alloc] initWithDuration:1 curve:UIViewAnimationCurveLinear animations:^{
+            weakBlur.effect = [UIBlurEffect effectWithStyle:style];
+        }];
+        [animator startAnimation];
+        [animator pauseAnimation];
+        objc_setAssociatedObject(blur, &animatorKey, animator, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(blur, &blurStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    CGFloat fraction = MIN(strength, 100) / 100.0;
+    if (animator.fractionComplete != fraction) animator.fractionComplete = fraction;
+}
+
+static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UIVisualEffectView *lens) {
     if (!proxy || !FQXGlassEnabled()) return;
-    // Upgrade dock glass from Regular (milky blur) to Clear (CoolApk crystal-clear refraction).
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
+    BOOL frosted = FQXDockUsesFrostedGlass();
+    UIUserInterfaceStyle dockStyle = proxy.overrideUserInterfaceStyle;
+    BOOL darkDock = dockStyle == UIUserInterfaceStyleDark ||
+        (dockStyle == UIUserInterfaceStyleUnspecified && proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
     NSNumber *appliedMode = objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey);
-    NSInteger desiredMode = reduceTrans ? 2 : 1;
+    NSInteger desiredMode = reduceTrans ? 3 : (frosted ? 2 : 1);
     if (!appliedMode || appliedMode.integerValue != desiredMode) {
-        UIVisualEffect *clearGlass = FQXMakeUnifiedGlassEffect(FQXGlassRoleDock);
+        UIVisualEffect *clearGlass = FQXMakeGlassEffect((reduceTrans || frosted) ? 0 : 1, YES, nil);
         if (clearGlass) {
             proxy.effect = clearGlass;
             FQXApplyCornerConfiguration(proxy, 0.0, NO);
@@ -522,23 +587,18 @@ static void FQXUpgradeDockProxyToClearGlass(UIView *bar, UIVisualEffectView *pro
     }
     // Keep resting selection indicator subtle, unclipped, and matched to the dock appearance.
     if (lens) {
-        UIUserInterfaceStyle dockStyle = proxy.overrideUserInterfaceStyle;
         if (lens.overrideUserInterfaceStyle != dockStyle) {
             lens.overrideUserInterfaceStyle = dockStyle;
         }
         if (lens.clipsToBounds) lens.clipsToBounds = NO;
         if (!lens.effect) {
-            BOOL darkDock = (dockStyle == UIUserInterfaceStyleDark) ||
-                            (dockStyle == UIUserInterfaceStyleUnspecified &&
-                             proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
-            UIColor *airyFill = darkDock
-                ? [UIColor colorWithWhite:1.0 alpha:0.14]
-                : [UIColor colorWithWhite:0.0 alpha:0.065];
+            UIColor *airyFill = FQXDockRestingSelectionColor(darkDock);
             if (![lens.contentView.backgroundColor isEqual:airyFill]) {
                 lens.contentView.backgroundColor = airyFill;
             }
         }
     }
+    FQXApplyDockBlur(proxy, proxy.contentView, nil, proxy.contentView.bounds, darkDock);
 }
 
 static id FQXRawIvarObj(id target, const char *ivarName) {
@@ -639,9 +699,8 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
     return first;
 }
 
-// Upgrade UIKit._UITabBarPlatterView's glassEffect to Clear Liquid Glass while preserving
-// Apple's native interactive=YES press/long-press floating glass lift and refraction lens.
-static void FQXApplyDockPlatterClearGlass(UIView *platter, BOOL isDark) {
+// Swap only the platter material. UIKit still drives selection and the interactive lens.
+static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted) {
     if (!platter) return;
     NSNumber *applied = objc_getAssociatedObject(platter, FQXPlatterAppliedStyleKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
@@ -656,7 +715,7 @@ static void FQXApplyDockPlatterClearGlass(UIView *platter, BOOL isDark) {
         [platter setNeedsLayout];
         return;
     }
-    NSInteger desiredStamp = isDark ? 2 : 1;
+    NSInteger desiredStamp = (isDark ? 2 : 1) + (frosted ? 2 : 0);
     if (applied && applied.integerValue == desiredStamp) return;
     if (gFQXPlatterGlassProbed && !gFQXPlatterGlassSupported) return;
 
@@ -684,18 +743,40 @@ static void FQXApplyDockPlatterClearGlass(UIView *platter, BOOL isDark) {
             interactive = ((BOOL (*)(id, SEL))objc_msgSend)(current, isInterSel);
         }
     }
-    // Clear Light uses nil tint; Clear Dark uses 30% black tint so icons read crisply over dark video.
-    UIColor *tint = isDark ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-    UIVisualEffect *clearEffect = FQXMakeGlassEffect(1, interactive, tint);
-    if (!clearEffect) return;
+    UIColor *tint = (isDark && !frosted) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIVisualEffect *effect = FQXMakeGlassEffect(frosted ? 0 : 1, interactive, tint);
+    if (!effect) return;
     @try {
-        [platter setValue:clearEffect forKey:@"glassEffect"];
+        [platter setValue:effect forKey:@"glassEffect"];
     } @catch (__unused NSException *e) {
         gFQXPlatterGlassSupported = NO;
         return;
     }
     objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [platter setNeedsLayout];
+}
+
+static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL dark) {
+    BOOL frosted = FQXDockUsesFrostedGlass();
+    FQXApplyDockPlatterGlass(platter, dark, frosted);
+    static char originalAppearanceKey, selectionStyleKey;
+    BOOL useFrostedSelection = frosted && !UIAccessibilityIsReduceTransparencyEnabled();
+    if ([objc_getAssociatedObject(tabBar, &selectionStyleKey) boolValue] != useFrostedSelection) {
+        UITabBarAppearance *original = objc_getAssociatedObject(tabBar, &originalAppearanceKey);
+        if (!original) {
+            original = tabBar.standardAppearance;
+            objc_setAssociatedObject(tabBar, &originalAppearanceKey, original, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        UITabBarAppearance *appearance = useFrostedSelection ? [original copy] : original;
+        if (useFrostedSelection) {
+            appearance.selectionIndicatorTintColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+                return FQXDockRestingSelectionColor(traits.userInterfaceStyle == UIUserInterfaceStyleDark);
+            }];
+        }
+        tabBar.standardAppearance = appearance;
+        objc_setAssociatedObject(tabBar, &selectionStyleKey, @(useFrostedSelection), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    FQXApplyDockBlur(tabBar, platter.superview, platter, platter.frame, dark);
 }
 
 static NSString *FQXDockSymbolNameForTitle(NSString *title, BOOL selected) {
@@ -1036,7 +1117,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     BOOL isDark = (self.dockAppliedStyle == UIUserInterfaceStyleDark);
     if (!geometryChanged) {
         UIView *platter = FQXFindDockPlatter(tabBar);
-        if (platter) FQXApplyDockPlatterClearGlass(platter, isDark);
+        FQXApplyNativeDockMaterial(tabBar, platter, isDark);
         return;
     }
 
@@ -1075,9 +1156,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
         if (!metricChanged) break;
     }
 
-    if (platter) {
-        FQXApplyDockPlatterClearGlass(platter, isDark);
-    }
+    FQXApplyNativeDockMaterial(tabBar, platter, isDark);
 
     CGFloat finalScale = MAX(0.70, MIN(1.30, targetH / MAX(20.0, self.dockPlatterHeight)));
     CGPoint center = CGPointMake(CGRectGetMidX(proxyFrame) - self.dockPlatterMidOffsetX * finalScale,
@@ -1178,7 +1257,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     BOOL hiddenProxy = proxy.hidden || CGRectGetWidth(proxy.frame) < 60.0 || CGRectGetHeight(proxy.frame) < 30.0;
     if (compact || hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
         [self setNativeDockVisible:NO restoreProxy:YES];
-        FQXUpgradeDockProxyToClearGlass(bar, proxy, lens);
+        FQXApplyDockProxyMaterial(bar, proxy, lens);
         if ([native isKindOfClass:UISegmentedControl.class]) {
             UIControl *seg = (UIControl *)native;
             if (![self.wiredControls containsObject:seg]) {
@@ -1734,6 +1813,7 @@ static void FQXReapplyAllTrackedCommentGlass(void);
 static void FQXCompactRuntimeMemory(void);
 static void FQXRefreshAllShelfEditButtons(void);
 static void FQXRefreshAllMineSidebars(void);
+static void FQXRefreshReaderHotCommentBadges(void);
 
 #pragma mark - FQXDockMotion
 
@@ -1750,6 +1830,8 @@ static void FQXRefreshAllMineSidebars(void);
 + (void)refreshDramaPinchClean;
 + (void)refreshCommentGlass;
 + (void)refreshDockAppearance;
++ (void)refreshDockMaterial;
++ (void)refreshReaderHotCommentBadge;
 + (void)refreshShelfEditButton;
 + (void)refreshMineSidebar;
 + (void)compactMemory;
@@ -1953,6 +2035,21 @@ static void FQXRefreshAllMineSidebars(void);
 
 + (void)refreshDockAppearance {
     FQXRefreshAllDockAppearances();
+}
+
++ (void)refreshDockMaterial {
+    for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+        if (inter.nativeDockActive) {
+            UITabBar *tabBar = inter.nativeDockBar;
+            FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), [inter isDarkDock]);
+        } else {
+            FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.restingLens);
+        }
+    }
+}
+
++ (void)refreshReaderHotCommentBadge {
+    FQXRefreshReaderHotCommentBadges();
 }
 
 + (void)refreshShelfEditButton {
@@ -3103,9 +3200,57 @@ static void FQXCenterReaderBackButton(UIButton *self) {
     }
 }
 
+static NSHashTable<UILabel *> *FQXReaderHotCommentBadges(void) {
+    static NSHashTable<UILabel *> *badges;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ badges = [NSHashTable weakObjectsHashTable]; });
+    return badges;
+}
+
+static void FQXApplyReaderHotCommentBadge(UILabel *badge, BOOL visible) {
+    if (![badge isKindOfClass:UILabel.class]) return;
+    static char originalOpacityKey;
+    NSNumber *original = objc_getAssociatedObject(badge, &originalOpacityKey);
+    if (!visible) {
+        if (!original) {
+            objc_setAssociatedObject(badge, &originalOpacityKey, @(badge.layer.opacity), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (badge.layer.opacity != 0.0f) badge.layer.opacity = 0.0f;
+    } else if (original) {
+        badge.layer.opacity = original.floatValue;
+        objc_setAssociatedObject(badge, &originalOpacityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static BOOL FQXReaderHotCommentBadgeEnabled(void) {
+    NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:ReaderHotCommentBadgePrefKey];
+    return value ? value.boolValue : YES;
+}
+
+static void FQXSyncReaderHotCommentBadge(id owner) {
+    UILabel *badge = FQXRawIvarObj(owner, "_hotCommentBubble");
+    if (!badge) return;
+    [FQXReaderHotCommentBadges() addObject:badge];
+    FQXApplyReaderHotCommentBadge(badge, FQXReaderHotCommentBadgeEnabled());
+}
+
+static void FQXRefreshReaderHotCommentBadges(void) {
+    BOOL visible = FQXReaderHotCommentBadgeEnabled();
+    for (UILabel *badge in FQXReaderHotCommentBadges().allObjects) {
+        FQXApplyReaderHotCommentBadge(badge, visible);
+    }
+}
+
+static void (*OrigUpdateReaderHotCommentBubble)(id, SEL, BOOL);
+static void HookUpdateReaderHotCommentBubble(id self, SEL cmd, BOOL show) {
+    OrigUpdateReaderHotCommentBubble(self, cmd, show);
+    FQXSyncReaderHotCommentBadge(self);
+}
+
 static void (*OrigReaderNavLayoutMotion)(id, SEL);
 static void HookReaderNavLayoutMotion(UIView *self, SEL cmd) {
     OrigReaderNavLayoutMotion(self, cmd);
+    FQXSyncReaderHotCommentBadge(self);
     UIButton *button = FQXObjGet(self, "backBtn");
     if ([button isKindOfClass:UIButton.class]) FQXCenterReaderBackButton(button);
 }
@@ -4452,7 +4597,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     if (nestedPill) role = clearComposer ? FQXGlassRoleClearCommentComposer : FQXGlassRoleFloatingPill;
     BOOL topAlignedSheet = !nestedPill && !floatingDetached && frame.origin.y <= 1.0;
     CGFloat sideBleed = (matStyle == FQXCommentMaterialGaussianBlur || floatingDetached) ? 0.0 : 12.0;
-    CGFloat glassRad = nestedPill ? 0.0 : (floatingDetached ? 24.0 : (topAlignedSheet ? -1.0 : radius));
+    CGFloat glassRad = nestedPill ? 0.0 : (floatingDetached ? 32.0 : (topAlignedSheet ? -1.0 : radius));
     CGRect placedFrame = nestedPill
         ? frame
         : (floatingDetached
@@ -4481,14 +4626,9 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     FQXApplyCommentGlassBacking(glass, scrim, glassRad, continuousCard);
     if (floatingDetached) {
         FQXRestoreSheetTopCornerMask(host);
-        CGFloat targetBW = 0.75;
-        if (fabs(glass.contentView.layer.borderWidth - targetBW) > 0.05) {
-            glass.contentView.layer.borderWidth = targetBW;
-        }
-        UIColor *borderCol = !darkTheme
-            ? [UIColor colorWithWhite:1.0 alpha:0.78]
-            : [UIColor colorWithWhite:1.0 alpha:0.22];
-        glass.contentView.layer.borderColor = borderCol.CGColor;
+        // Let UIKit draw the outer glass edge. A second rounded stroke on the
+        // content view has a different inset and produces a double corner.
+        glass.contentView.layer.borderWidth = 0.0;
         glass.layer.shadowColor = UIColor.blackColor.CGColor;
         glass.layer.shadowOpacity = darkTheme ? 0.34f : 0.14f;
         glass.layer.shadowRadius = 14.0;
@@ -8770,6 +8910,7 @@ void FQXInstallMotionAndAudioHooks(void) {
 
         // 5. Reader back button centering, inline paragraph comment glass & Mine fold clipping
         HOOK_INST("FQReaderSaasNavigationView", "layoutSubviews", "v16@0:8", OrigReaderNavLayoutMotion, HookReaderNavLayoutMotion);
+        HOOK_INST("SSReaderNavigationBarCommunitySwitchBtnInsertObject", "updateHotCommentBubble:", "v20@0:8B16", OrigUpdateReaderHotCommentBubble, HookUpdateReaderHotCommentBubble);
         HOOK_INST("SSScrollFoldFuncView", "layoutSubviews", "v16@0:8", OrigScrollFoldLayout, HookScrollFoldLayout);
         HOOK_INST("SSMyUserCollectionViewFunCell", "layoutSubviews", "v16@0:8", OrigMineFunCellLayoutForBadge, HookMineFunCellLayoutForBadge);
 

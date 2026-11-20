@@ -22,6 +22,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomMall.1": @YES,
         @"FanqieX.BottomIconsOnly.1": @NO,
         @"FanqieX.BottomDisplayMode.1": @0,
+        @"FanqieX.DockMaterial.1": @0,
+        @"FanqieX.DockBlur.1": @0,
+        @"FanqieX.ReaderHotCommentBadge.1": @YES,
         @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
         @"FanqieX.BottomDramaCompactPosition.1": @0,
@@ -129,6 +132,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         return number >= 0 && number <= 0x3FFFF && number == trunc(number) ? @((NSInteger)number) : nil;
     }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
+        [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
+        [key isEqualToString:@"FanqieX.DockBlur.1"] ||
         [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
         [key isEqualToString:@"FanqieX.BottomDisplayMode.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
@@ -136,6 +141,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentComposerStyle.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
+        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 1;
+        if ([key isEqualToString:@"FanqieX.DockBlur.1"]) maximum = 100;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;
     }
     NSDictionary<NSString *, NSArray<NSNumber *> *> *ranges = @{

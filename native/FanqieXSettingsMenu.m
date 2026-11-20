@@ -10,6 +10,9 @@ static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
 static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
+static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
+static const char DockBlurValueLabelKey;
 static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
 
 static id Invoke(id receiver, NSString *name) {
@@ -82,6 +85,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic) NSInteger commentMaterialChoice;
 @property(nonatomic) BOOL commentAppearanceRow;
+@property(nonatomic) BOOL dockBlurRow;
 @property(nonatomic, copy) NSString *popoverKey;
 @property(nonatomic, copy) NSArray<NSString *> *popoverOptions;
 @property(nonatomic) NSInteger popoverKind;
@@ -242,6 +246,27 @@ static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL 
     [menu.catalog addObject:dockModeRow];
 }
 
+static void AddDockMaterialRows(FQXSettingsMenu *menu) {
+    NSString *route = @"外观/玻璃与尺寸";
+    FQXSettingRow *material = [FQXSettingRow new];
+    material.title = @"Dock 材质";
+    material.path = route;
+    material.keywords = @"底栏 导航栏 材质 液态玻璃 模糊玻璃 毛玻璃";
+    material.popoverKey = DockMaterialKey;
+    material.popoverOptions = @[@"液态玻璃", @"模糊玻璃"];
+    material.popoverKind = 3;
+    material.height = 52;
+    [menu.catalog addObject:material];
+
+    FQXSettingRow *blur = [FQXSettingRow new];
+    blur.title = @"Dock 模糊程度";
+    blur.path = route;
+    blur.keywords = @"底栏 导航栏 模糊程度 模糊强度 自定义";
+    blur.dockBlurRow = YES;
+    blur.height = 82;
+    [menu.catalog addObject:blur];
+}
+
 static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
     FQXSettingRow *glassRow = [FQXSettingRow new];
     glassRow.title = @"评论区液态玻璃";
@@ -327,6 +352,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     // Add Dock 3-way display style popover picker (Icons+Text / Icons Only / Text Only)
     AddDockDisplayStyleRow(menu, @"外观/玻璃与尺寸", NO);
     AddDockDisplayStyleRow(menu, @"页面与导航/底栏入口", YES);
+    AddDockMaterialRows(menu);
 
     // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native),
     // standalone Comment Appearance selector (Follow App / Light / Dark), and Composer Style popover.
@@ -350,7 +376,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         row.inverted = [@[@"reader", @"mine", @"sidebar", @"shelf", @"comment"] containsObject:option[@"category"]];
         row.title = row.inverted ? [option[@"title"] stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"] : option[@"title"];
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
-        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1", @"FanqieX.ReaderHotCommentBadge.1"] containsObject:option[@"key"]])
             row.path = @"阅读/阅读页面净化/正文与底栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.AudioRecommendations.1"])
             row.path = @"阅读/听书页面净化";
@@ -675,6 +701,50 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         row.nativeCell.accessibilityHint = self.search.searchBar.text.length ? [row.path stringByReplacingOccurrencesOfString:@"/" withString:@"，"] : nil;
         return row.nativeCell;
     }
+    if (row.dockBlurRow) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        UILabel *title = [UILabel new];
+        title.text = row.title;
+        title.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        UILabel *value = [UILabel new];
+        value.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
+        value.textColor = UIColor.secondaryLabelColor;
+        UISlider *slider = [UISlider new];
+        slider.maximumValue = 100;
+        slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:DockBlurKey]));
+        slider.accessibilityIdentifier = DockBlurKey;
+        slider.accessibilityLabel = row.title;
+        value.text = slider.value == 0 ? @"默认" : [NSString stringWithFormat:@"%.0f%%", slider.value];
+        slider.accessibilityValue = value.text;
+        objc_setAssociatedObject(slider, &DockBlurValueLabelKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [slider addTarget:self action:@selector(dockBlurChanged:) forControlEvents:UIControlEventValueChanged];
+        UIView *content = cell.contentView;
+        for (UIView *view in @[title, value, slider]) {
+            view.translatesAutoresizingMaskIntoConstraints = NO;
+            [content addSubview:view];
+        }
+        UILayoutGuide *margins = content.layoutMarginsGuide;
+        [NSLayoutConstraint activateConstraints:@[
+            [title.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
+            [title.topAnchor constraintEqualToAnchor:content.topAnchor constant:10],
+            [value.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
+            [value.firstBaselineAnchor constraintEqualToAnchor:title.firstBaselineAnchor],
+            [slider.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
+            [slider.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
+            [slider.topAnchor constraintEqualToAnchor:content.topAnchor constant:35],
+            [slider.heightAnchor constraintEqualToConstant:44],
+        ]];
+        if (self.search.searchBar.text.length) {
+            UILabel *pathLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, row.height, CGRectGetWidth(content.bounds) - 40, 22)];
+            pathLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+            pathLabel.font = [UIFont systemFontOfSize:11];
+            pathLabel.textColor = UIColor.secondaryLabelColor;
+            pathLabel.text = [row.path stringByReplacingOccurrencesOfString:@"/" withString:@" › "];
+            [content addSubview:pathLabel];
+        }
+        return cell;
+    }
     if (row.popoverKey.length && row.popoverOptions.count) {
         BOOL searching = self.search.searchBar.text.length > 0;
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
@@ -682,7 +752,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         cell.textLabel.numberOfLines = 2;
         NSInteger curIdx = (row.popoverKind == 1) ? CurrentSavedBottomDisplayMode()
                          : (row.popoverKind == 2) ? CurrentSavedCommentComposerStyle()
-                         : 0;
+                         : [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         if (curIdx < 0 || (NSUInteger)curIdx >= row.popoverOptions.count) curIdx = 0;
         cell.detailTextLabel.text = searching
             ? [NSString stringWithFormat:@"%@ · %@", row.popoverOptions[(NSUInteger)curIdx], row.path]
@@ -806,6 +876,19 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         } else cell.detailTextLabel.text = unavailable ? [@"先开启自动收缩 · " stringByAppendingString:row.path] : row.path;
     }
     return cell;
+}
+
+- (void)dockBlurChanged:(UISlider *)slider {
+    NSInteger strength = (NSInteger)lroundf(slider.value);
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    if ([defaults integerForKey:DockBlurKey] == strength) return;
+    [defaults setInteger:strength forKey:DockBlurKey];
+    UILabel *value = objc_getAssociatedObject(slider, &DockBlurValueLabelKey);
+    value.text = strength == 0 ? @"默认" : [NSString stringWithFormat:@"%ld%%", (long)strength];
+    slider.accessibilityValue = value.text;
+    Class cleanup = NSClassFromString(@"FQXCleanup");
+    SEL refresh = NSSelectorFromString(@"refreshForKey:");
+    if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, DockBlurKey);
 }
 
 - (void)commentMaterialSwitchChanged:(UISwitch *)toggle {
@@ -969,7 +1052,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             UITableViewCell *cell = [tableView cellForRowAtIndexPath:path];
             NSInteger curIdx = (row.popoverKind == 1) ? CurrentSavedBottomDisplayMode()
                              : (row.popoverKind == 2) ? CurrentSavedCommentComposerStyle()
-                             : 0;
+                             : [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
             if (curIdx < 0 || (NSUInteger)curIdx >= row.popoverOptions.count) curIdx = 0;
             UIAlertController *picker = [UIAlertController alertControllerWithTitle:row.title
                 message:nil preferredStyle:UIAlertControllerStyleActionSheet];
