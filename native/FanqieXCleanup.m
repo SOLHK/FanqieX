@@ -156,10 +156,74 @@ static BOOL HasUnconsumedBanner(id owner, SEL cmd) {
 }
 
 static __weak UIViewController *LastShelf;
+static char ShelfColdStartDoneKey;
+static char ShelfColdStartTimerKey;
+static char ShelfColdStartHiddenKey;
+
+static BOOL ShelfHasLoadedBooks(id controller) {
+    id vm = HostObject(controller, NSSelectorFromString(@"viewModel"));
+    if (!vm) return YES;
+    SEL sel = NSSelectorFromString(@"hasLoadBookShelf");
+    if (HostMethod(object_getClass(vm), sel, "B16@0:8")) {
+        return ((BOOL (*)(id, SEL))objc_msgSend)(vm, sel);
+    }
+    Ivar ivar = class_getInstanceVariable(object_getClass(vm), "_hasLoadBookShelf");
+    if (ivar) {
+        const char *enc = ivar_getTypeEncoding(ivar);
+        if (enc && (enc[0] == 'B' || enc[0] == 'c')) {
+            return *((const uint8_t *)(__bridge void *)vm + ivar_getOffset(ivar)) != 0;
+        }
+    }
+    return YES;
+}
+
+static void ShelfSyncColdStartVisibility(id controller, id collectionViewObj) {
+    if (!controller) return;
+    UIView *cv = [collectionViewObj isKindOfClass:UIView.class]
+        ? (UIView *)collectionViewObj
+        : HostObject(controller, NSSelectorFromString(@"collectionView"));
+    if (![cv isKindOfClass:UIView.class]) return;
+
+    BOOL done = [objc_getAssociatedObject(controller, &ShelfColdStartDoneKey) boolValue];
+    BOOL loaded = done || ShelfHasLoadedBooks(controller);
+    if (!loaded) {
+        if (cv.alpha > 0.001) {
+            objc_setAssociatedObject(cv, &ShelfColdStartHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            cv.alpha = 0.0;
+        }
+        if (![objc_getAssociatedObject(controller, &ShelfColdStartTimerKey) boolValue]) {
+            objc_setAssociatedObject(controller, &ShelfColdStartTimerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            __weak id weakController = controller;
+            __weak UIView *weakCV = cv;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.75 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                id strongController = weakController;
+                UIView *strongCV = weakCV;
+                if (strongController) {
+                    objc_setAssociatedObject(strongController, &ShelfColdStartDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+                if (strongCV && [objc_getAssociatedObject(strongCV, &ShelfColdStartHiddenKey) boolValue]) {
+                    objc_setAssociatedObject(strongCV, &ShelfColdStartHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    strongCV.alpha = 1.0;
+                }
+            });
+        }
+        return;
+    }
+
+    if (!done) {
+        objc_setAssociatedObject(controller, &ShelfColdStartDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if ([objc_getAssociatedObject(cv, &ShelfColdStartHiddenKey) boolValue]) {
+        objc_setAssociatedObject(cv, &ShelfColdStartHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        cv.alpha = 1.0;
+    }
+}
+
 static void (*NativeShelfAppeared)(id, SEL, BOOL);
 static void ShelfAppeared(id owner, SEL cmd, BOOL animated) {
     NativeShelfAppeared(owner, cmd, animated);
     LastShelf = owner;
+    ShelfSyncColdStartVisibility(owner, nil);
 }
 
 static char ShelfRecSectionsKey;
@@ -292,6 +356,7 @@ static void ShelfRecScheduleReload(id controller, id collectionView) {
 static NSInteger (*NativeShelfNumberOfSections)(id, SEL, id);
 static NSInteger ShelfRecNumberOfSections(id self, SEL cmd, id collectionView) {
     LastShelf = self;
+    ShelfSyncColdStartVisibility(self, collectionView);
     objc_setAssociatedObject(self, &ShelfRecReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     NSInteger count = NativeShelfNumberOfSections(self, cmd, collectionView);
     NSInteger bookSection = -1;
@@ -315,6 +380,7 @@ static NSInteger ShelfRecNumberOfItems(id self, SEL cmd, id collectionView, NSIn
 static id (*NativeShelfCellForItem)(id, SEL, id, NSIndexPath *);
 static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *indexPath) {
     LastShelf = self;
+    ShelfSyncColdStartVisibility(self, collectionView);
     id cell = NativeShelfCellForItem(self, cmd, collectionView, indexPath);
     if (Option(ShelfRecommendationsKey, YES)) {
         ShelfRecHideView(self, cell, NO);

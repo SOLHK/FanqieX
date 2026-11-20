@@ -112,6 +112,8 @@ static const void *FQXSheetSavedCornerRadiusKey = &FQXSheetSavedCornerRadiusKey;
 static const void *FQXSheetSavedMaskedCornersKey = &FQXSheetSavedMaskedCornersKey;
 static const void *FQXCommentBannerSavedHeightKey = &FQXCommentBannerSavedHeightKey;
 static const void *FQXReaderDisappearingKey = &FQXReaderDisappearingKey;
+static const void *FQXReaderSwipeHiddenIndicatorKey = &FQXReaderSwipeHiddenIndicatorKey;
+static const void *FQXShelfHeaderFixPendingKey = &FQXShelfHeaderFixPendingKey;
 
 static UIVisualEffect *FQXMakeGlassEffect(NSInteger style, BOOL interactive, UIColor *tintColor) {
     Class glassCls = NSClassFromString(@"UIGlassEffect");
@@ -293,7 +295,7 @@ static void FQXUpgradeDockProxyToClearGlass(UIView *bar, UIVisualEffectView *pro
     // Eliminate duplicate/milky sibling blur layers inside the tab bar so only one clean glass exists.
     // Never hide our own interactive UIGlassContainerEffect / droplet lens views.
     if (bar) {
-        for (UIView *sub in bar.subviews) {
+        for (UIView *sub in [bar.subviews copy]) {
             if (sub == proxy || sub == lens || ![sub isKindOfClass:UIVisualEffectView.class]) continue;
             if ([objc_getAssociatedObject(sub, FQXOwnedGlassElementKey) boolValue]) continue;
             if (!sub.hidden) sub.hidden = YES;
@@ -398,9 +400,8 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 @property(nonatomic, strong) NSHashTable<UIButton *> *wiredButtons;
 @property(nonatomic, strong) NSHashTable<UIGestureRecognizer *> *wiredRecognizers;
 @property(nonatomic, strong) NSHashTable<UIControl *> *wiredControls;
-@property(nonatomic, strong) UIVisualEffectView *dropletView;
-@property(nonatomic, strong) UIViewPropertyAnimator *dropletAnimator;
-@property(nonatomic) BOOL dropletActive;
+@property(nonatomic, strong) UIView *pillView;
+@property(nonatomic) BOOL pillActive;
 @property(nonatomic) BOOL panning;
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic, weak) UIButton *lastSelectedButton;
@@ -430,10 +431,16 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     return self;
 }
 
+- (BOOL)usesNativeSegmentedSelector {
+    return [self.nativeControl isKindOfClass:UISegmentedControl.class] &&
+           self.nativeControl.superview != nil &&
+           !self.nativeControl.hidden;
+}
+
 - (UIView *)mountHostView {
     UIView *overlay = self.overlay;
     if (overlay && overlay.superview == self.bar && !overlay.hidden && !overlay.clipsToBounds &&
-        (!self.nativeControl || self.nativeControl.hidden)) {
+        ![self usesNativeSegmentedSelector]) {
         return overlay;
     }
     return self.bar;
@@ -457,22 +464,31 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 - (UIColor *)restingPillFillColor {
     return [self isDarkDock]
-        ? [UIColor colorWithWhite:1.0 alpha:0.14]
-        : [UIColor colorWithWhite:0.0 alpha:0.065];
-}
-
-- (UIVisualEffect *)activeGlassLensEffect {
-    // Official iOS 26/27 interactive Clear Liquid Glass effect: transparent refraction
-    // that keeps tab icons crisp underneath while reacting natively to touch and motion.
-    return FQXMakeGlassEffect(1, YES, nil);
+        ? [UIColor colorWithWhite:1.0 alpha:0.15]
+        : [UIColor colorWithWhite:0.0 alpha:0.07];
 }
 
 - (UIButton *)currentSelectedButton {
-    if ([self.nativeControl isKindOfClass:UISegmentedControl.class] && !self.nativeControl.hidden) {
+    if ([self usesNativeSegmentedSelector]) {
         NSInteger idx = ((UISegmentedControl *)self.nativeControl).selectedSegmentIndex;
         if (idx >= 0 && (NSUInteger)idx < self.buttons.count) {
             UIButton *cand = self.buttons[(NSUInteger)idx];
             if ([cand isKindOfClass:UIButton.class]) return cand;
+        }
+    }
+    if (self.bar) {
+        SEL selItemSel = @selector(selectedItem);
+        SEL itemsSel = @selector(items);
+        if ([self.bar respondsToSelector:selItemSel] && [self.bar respondsToSelector:itemsSel]) {
+            id selItem = ((id (*)(id, SEL))objc_msgSend)(self.bar, selItemSel);
+            NSArray *barItems = ((id (*)(id, SEL))objc_msgSend)(self.bar, itemsSel);
+            if (selItem && [barItems isKindOfClass:NSArray.class]) {
+                NSUInteger idx = [barItems indexOfObjectIdenticalTo:selItem];
+                if (idx != NSNotFound && idx < self.buttons.count) {
+                    UIButton *cand = self.buttons[idx];
+                    if ([cand isKindOfClass:UIButton.class]) return cand;
+                }
+            }
         }
     }
     for (UIButton *btn in self.buttons) {
@@ -505,33 +521,12 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGRect btnRect = [button.superview convertRect:buttonSlot toView:host];
     CGFloat barH = CGRectGetHeight(track);
     if (barH <= 1.0 || CGRectGetWidth(btnRect) <= 1.0) return btnRect;
-    if (button == [self currentSelectedButton] && self.restingLens.superview) {
-        CGRect lens = [self.restingLens convertRect:self.restingLens.bounds toView:host];
-        if (CGRectGetHeight(lens) >= 24.0 && CGRectGetWidth(lens) >= 28.0 &&
-            fabs(CGRectGetMidX(lens) - CGRectGetMidX(btnRect)) < 8.0) return lens;
-    }
-    CGFloat pillH = MAX(28.0, barH - 8.0);
-    CGFloat pillW = MAX(28.0, CGRectGetWidth(btnRect) - 4.0);
+    CGFloat pillH = MAX(28.0, MIN(barH - 6.0, CGRectGetHeight(btnRect)));
+    CGFloat pillW = MAX(28.0, CGRectGetWidth(btnRect));
     return CGRectMake(CGRectGetMidX(btnRect) - pillW * 0.5,
                       CGRectGetMidY(track) - pillH * 0.5,
                       pillW,
                       pillH);
-}
-
-// Keep lifted lens tightly cohesive with the Dock capsule (matching Apple's native iOS 26/27
-// UITabBar proportions instead of ballooning past the capsule top/bottom).
-- (CGRect)liftedRectForRest:(CGRect)rest inHost:(UIView *)host {
-    if (!host || CGRectIsEmpty(rest)) return rest;
-    CGRect track = [self trackBoundsInHost:host];
-    CGFloat W = CGRectGetWidth(track);
-    CGFloat H = CGRectGetHeight(track);
-    if (W <= 1.0 || H <= 1.0) return rest;
-    CGFloat targetW = MIN(W - 2.0, CGRectGetWidth(rest) + 4.0);
-    CGFloat targetH = MIN(H - 2.0, CGRectGetHeight(rest) + 3.0);
-    CGFloat minX = CGRectGetMinX(track) + 1.0;
-    CGFloat maxX = CGRectGetMaxX(track) - targetW - 1.0;
-    CGFloat x = MAX(minX, MIN(maxX, CGRectGetMidX(rest) - targetW * 0.5));
-    return CGRectMake(x, CGRectGetMidY(track) - targetH * 0.5, targetW, targetH);
 }
 
 - (CGRect)dragRectAtCenterX:(CGFloat)centerX
@@ -542,133 +537,102 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat W = CGRectGetWidth(track);
     CGFloat H = CGRectGetHeight(track);
     if (W <= 1.0 || H <= 1.0) return CGRectZero;
-    CGFloat lensW = MIN(W - 2.0, MAX(32.0, baseWidth + 4.0));
-    CGFloat lensH = MAX(32.0, H - 2.0);
-    CGFloat minX = CGRectGetMinX(track) + 1.0;
-    CGFloat maxX = CGRectGetMaxX(track) - lensW - 1.0;
-    CGFloat rawX = centerX - lensW * 0.5;
+    CGFloat pillW = MIN(W - 6.0, MAX(32.0, baseWidth + 4.0));
+    CGFloat pillH = MAX(28.0, H - 5.0);
+    CGFloat minX = CGRectGetMinX(track) + 3.0;
+    CGFloat maxX = CGRectGetMaxX(track) - pillW - 3.0;
+    CGFloat rawX = centerX - pillW * 0.5;
     if (rawX < minX) {
-        rawX = minX - (minX - rawX) * 0.18;
+        rawX = minX - (minX - rawX) * 0.16;
     } else if (rawX > maxX) {
-        rawX = maxX + (rawX - maxX) * 0.18;
+        rawX = maxX + (rawX - maxX) * 0.16;
     }
-    return CGRectMake(rawX, CGRectGetMidY(track) - lensH * 0.5, lensW, lensH);
+    return CGRectMake(rawX, CGRectGetMidY(track) - pillH * 0.5, pillW, pillH);
 }
 
-- (UIView *)dropletCoordHost {
-    return self.dropletView.superview;
+- (UIView *)pillCoordHost {
+    return self.pillView.superview;
 }
 
-- (void)stopDropletAnimatorWithoutSnapping {
-    if (!self.dropletAnimator) return;
-    UIViewPropertyAnimator *anim = self.dropletAnimator;
-    self.dropletAnimator = nil;
-    if (anim.state == UIViewAnimatingStateActive) {
-        [anim stopAnimation:YES];
-    } else if (anim.state == UIViewAnimatingStateStopped) {
-        [anim finishAnimationAtPosition:UIViewAnimatingPositionCurrent];
+- (void)orderPillBelowButtonsInHost:(UIView *)host {
+    if (!self.pillView || self.pillView.superview != host) return;
+    if (self.restingLens && self.restingLens.superview == host && !self.panning &&
+        host.subviews.firstObject != self.restingLens) {
+        [host sendSubviewToBack:self.restingLens];
     }
-}
-
-- (void)syncDropletAppearance {
-    if (!self.dropletView) return;
-    UIUserInterfaceStyle dockStyle = self.proxy ? self.proxy.overrideUserInterfaceStyle : UIUserInterfaceStyleUnspecified;
-    if (self.dropletView.overrideUserInterfaceStyle != dockStyle) {
-        self.dropletView.overrideUserInterfaceStyle = dockStyle;
-    }
-    if (self.dropletView.clipsToBounds) self.dropletView.clipsToBounds = NO;
-    if (self.dropletView.layer.borderWidth > 0.0) {
-        self.dropletView.layer.borderWidth = 0.0;
-        self.dropletView.layer.borderColor = NULL;
-    }
-}
-
-- (void)applyRestingStyleToDropletForFrame:(CGRect)frame {
-    if (!self.dropletView) return;
-    self.dropletView.effect = nil;
-    self.dropletView.contentView.backgroundColor = [self restingPillFillColor];
-    self.dropletView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
-    self.dropletView.contentView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
-    self.dropletView.contentView.clipsToBounds = YES;
-}
-
-- (void)applyMaterializedGlassStyleToDroplet {
-    if (!self.dropletView) return;
-    if (!self.dropletView.effect) {
-        UIVisualEffect *effect = [self activeGlassLensEffect];
-        if (effect) {
-            self.dropletView.effect = effect;
-            FQXApplyCornerConfiguration(self.dropletView, 0.0, NO);
+    UIButton *firstBtn = nil;
+    for (UIView *sub in host.subviews) {
+        if ([sub isKindOfClass:UIButton.class]) {
+            firstBtn = (UIButton *)sub;
+            break;
         }
     }
-    self.dropletView.contentView.backgroundColor = UIColor.clearColor;
-    self.dropletView.contentView.clipsToBounds = NO;
+    if (firstBtn) {
+        NSUInteger pillIdx = [host.subviews indexOfObjectIdenticalTo:self.pillView];
+        NSUInteger btnIdx = [host.subviews indexOfObjectIdenticalTo:firstBtn];
+        if (pillIdx == NSNotFound || pillIdx > btnIdx) {
+            [host insertSubview:self.pillView belowSubview:firstBtn];
+        }
+    } else if (self.restingLens && self.restingLens.superview == host) {
+        [host insertSubview:self.pillView aboveSubview:self.restingLens];
+    }
 }
 
-- (UIView *)ensureDropletMounted {
+- (UIView *)ensurePillMounted {
     UIView *host = [self mountHostView];
-    if (!host || !FQXGlassEnabled()) return nil;
-    if (!self.dropletView) {
-        // Start with effect = nil so UIView.animate { dropletView.effect = glassEffect }
-        // runs Apple's official iOS 26/27 Liquid Glass materialize / dematerialize morph.
-        UIVisualEffectView *droplet = [[UIVisualEffectView alloc] initWithEffect:nil];
-        if (!droplet) return nil;
-        FQXApplyCornerConfiguration(droplet, 0.0, NO);
-        objc_setAssociatedObject(droplet, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        droplet.userInteractionEnabled = NO;
-        droplet.accessibilityElementsHidden = YES;
-        droplet.isAccessibilityElement = NO;
-        droplet.opaque = NO;
-        droplet.backgroundColor = UIColor.clearColor;
-        droplet.contentView.backgroundColor = UIColor.clearColor;
-        droplet.hidden = YES;
-        droplet.clipsToBounds = NO;
-        droplet.layer.cornerCurve = kCACornerCurveContinuous;
-        droplet.contentView.clipsToBounds = NO;
-        self.dropletView = droplet;
+    if (!host || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return nil;
+    if (!self.pillView) {
+        // Pure borderless capsule behind tab icons inside the single Liquid Glass Dock proxy:
+        // zero nested UIGlassEffect specular white/black border, zero effect->nil backdrop flash,
+        // and native 120Hz Core Animation additive Render-Server springs.
+        UIView *pill = [[UIView alloc] initWithFrame:CGRectZero];
+        if (!pill) return nil;
+        objc_setAssociatedObject(pill, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        pill.userInteractionEnabled = NO;
+        pill.accessibilityElementsHidden = YES;
+        pill.isAccessibilityElement = NO;
+        pill.opaque = NO;
+        pill.clipsToBounds = YES;
+        pill.layer.cornerCurve = kCACornerCurveContinuous;
+        pill.layer.borderWidth = 0.0;
+        pill.layer.borderColor = NULL;
+        pill.backgroundColor = [self restingPillFillColor];
+        pill.hidden = YES;
+        self.pillView = pill;
     }
-    [self syncDropletAppearance];
-
-    if (self.dropletView.superview != host) {
-        if (self.nativeControl.superview == host) {
-            [host insertSubview:self.dropletView belowSubview:self.nativeControl];
-        } else {
-            [host addSubview:self.dropletView];
-        }
+    if (self.pillView.layer.borderWidth > 0.0) {
+        self.pillView.layer.borderWidth = 0.0;
+        self.pillView.layer.borderColor = NULL;
     }
-    if (self.dropletActive && (!self.nativeControl || self.nativeControl.superview != host) &&
-        host.subviews.lastObject != self.dropletView) {
-        [host bringSubviewToFront:self.dropletView];
+    if (self.pillView.superview != host) {
+        [host addSubview:self.pillView];
     }
+    [self orderPillBelowButtonsInHost:host];
     return host;
 }
 
-- (void)placeDroplet:(CGRect)frame {
-    if (!self.dropletView || CGRectIsEmpty(frame)) return;
-    self.dropletView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
-    self.dropletView.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
-    if (!self.dropletView.effect) {
-        self.dropletView.contentView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
-    }
+- (void)placePill:(CGRect)frame {
+    if (!self.pillView || CGRectIsEmpty(frame)) return;
+    self.pillView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
+    self.pillView.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+    self.pillView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
 }
 
-- (CGRect)liveDropletFrameInHost:(UIView *)host {
-    if (!self.dropletView || !host) return CGRectZero;
-    BOOL animActive = (self.dropletAnimator && self.dropletAnimator.state == UIViewAnimatingStateActive) ||
-                      (self.dropletView.layer.animationKeys.count > 0);
-    CALayer *pres = animActive ? self.dropletView.layer.presentationLayer : nil;
+- (CGRect)livePillFrameInHost:(UIView *)host {
+    if (!self.pillView || !host) return CGRectZero;
+    CALayer *pres = self.pillView.layer.animationKeys.count > 0 ? self.pillView.layer.presentationLayer : nil;
     BOOL presValid = pres && CGRectGetWidth(pres.bounds) > 1.0 && CGRectGetHeight(pres.bounds) > 1.0;
     CGRect raw = presValid
         ? CGRectMake(pres.position.x - CGRectGetWidth(pres.bounds) * 0.5,
                      pres.position.y - CGRectGetHeight(pres.bounds) * 0.5,
                      CGRectGetWidth(pres.bounds),
                      CGRectGetHeight(pres.bounds))
-        : CGRectMake(self.dropletView.center.x - CGRectGetWidth(self.dropletView.bounds) * 0.5,
-                     self.dropletView.center.y - CGRectGetHeight(self.dropletView.bounds) * 0.5,
-                     CGRectGetWidth(self.dropletView.bounds),
-                     CGRectGetHeight(self.dropletView.bounds));
-    if (self.dropletView.superview && self.dropletView.superview != host) {
-        return [self.dropletView.superview convertRect:raw toView:host];
+        : CGRectMake(self.pillView.center.x - CGRectGetWidth(self.pillView.bounds) * 0.5,
+                     self.pillView.center.y - CGRectGetHeight(self.pillView.bounds) * 0.5,
+                     CGRectGetWidth(self.pillView.bounds),
+                     CGRectGetHeight(self.pillView.bounds));
+    if (self.pillView.superview && self.pillView.superview != host) {
+        return [self.pillView.superview convertRect:raw toView:host];
     }
     return raw;
 }
@@ -677,11 +641,11 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.liftedButton == button) return;
     UIButton *previous = self.liftedButton;
     self.liftedButton = button;
-    [UIView animateWithDuration:0.20 delay:0.0 usingSpringWithDamping:0.74 initialSpringVelocity:0.0
+    [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.76 initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
         previous.transform = CGAffineTransformIdentity;
-        button.transform = CGAffineTransformMakeScale(0.96, 0.96);
+        button.transform = CGAffineTransformMakeScale(0.95, 0.95);
     } completion:nil];
 }
 
@@ -704,19 +668,21 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     }
 }
 
-- (void)cancelDropletImmediately {
+- (void)deactivatePillAndRestoreLens {
     self.generation += 1;
-    [self stopDropletAnimatorWithoutSnapping];
     [UIView performWithoutAnimation:^{
-        if (self.dropletActive) self.restingLens.hidden = NO;
+        if (self.restingLens) {
+            self.restingLens.alpha = 1.0;
+            self.restingLens.hidden = NO;
+        }
         [self suppressFallbackSelection:NO];
-        self.dropletView.transform = CGAffineTransformIdentity;
-        self.dropletView.effect = nil;
-        self.dropletView.contentView.backgroundColor = UIColor.clearColor;
-        self.dropletView.hidden = YES;
-        [self.dropletView.layer removeAllAnimations];
+        if (self.pillView) {
+            self.pillView.transform = CGAffineTransformIdentity;
+            self.pillView.hidden = YES;
+            [self.pillView.layer removeAllAnimations];
+        }
     }];
-    self.dropletActive = NO;
+    self.pillActive = NO;
     self.panning = NO;
     self.pressedButton = nil;
     self.targetButton = nil;
@@ -724,189 +690,137 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.liftedButton = nil;
 }
 
-- (UIView *)startDropletFrom:(UIButton *)origin {
-    UIView *host = [self ensureDropletMounted];
+- (UIView *)ensureActivePillAtButton:(UIButton *)button {
+    UIView *host = [self ensurePillMounted];
     if (!host) return nil;
-    if (!self.dropletActive) {
-        CGRect start = [self restingRectForButton:origin inHost:host];
+    if (!self.pillActive || self.pillView.hidden || CGRectGetWidth(self.pillView.bounds) < 2.0) {
+        UIButton *seed = button ?: [self currentSelectedButton];
+        CGRect start = [self restingRectForButton:seed inHost:host];
         if (CGRectIsEmpty(start)) return nil;
-        [self stopDropletAnimatorWithoutSnapping];
         [UIView performWithoutAnimation:^{
-            if (self.dropletView.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
-                [host bringSubviewToFront:self.dropletView];
+            self.pillView.transform = CGAffineTransformIdentity;
+            self.pillView.backgroundColor = [self restingPillFillColor];
+            [self placePill:start];
+            self.pillView.hidden = NO;
+            if (self.restingLens) {
+                self.restingLens.hidden = YES;
+                self.restingLens.alpha = 0.0;
             }
-            self.dropletView.transform = CGAffineTransformIdentity;
-            // Frame 0 matches restingLens pixel-for-pixel (effect = nil + airyFill) so
-            // swapping restingLens -> dropletView produces zero pop before glass materializes.
-            [self applyRestingStyleToDropletForFrame:start];
-            [self placeDroplet:start];
-            self.dropletView.hidden = NO;
-            self.restingLens.hidden = YES;
             [self suppressFallbackSelection:YES];
         }];
+        self.pillActive = YES;
+        if (!self.lastSelectedButton) self.lastSelectedButton = seed;
     } else {
-        // Interruptible mid-flight / mid-dematerialize handoff: preserve live geometry.
-        CGRect live = [self liveDropletFrameInHost:host];
-        [self stopDropletAnimatorWithoutSnapping];
-        if (!CGRectIsEmpty(live)) {
+        if (self.restingLens && (!self.restingLens.hidden || self.restingLens.alpha > 0.001)) {
             [UIView performWithoutAnimation:^{
-                if (self.dropletView.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
-                    [host bringSubviewToFront:self.dropletView];
-                }
-                self.dropletView.transform = CGAffineTransformIdentity;
-                [self placeDroplet:live];
+                self.restingLens.hidden = YES;
+                self.restingLens.alpha = 0.0;
             }];
         }
     }
-    self.generation += 1;
-    self.dropletActive = YES;
     return host;
 }
 
-- (void)dematerializeAndFinishForGeneration:(NSUInteger)generation restFrame:(CGRect)rest {
-    if (self.generation != generation || !self.dropletActive || self.panning) return;
-    __weak typeof(self) weakSelf = self;
-    // Official iOS 26/27 Liquid Glass dematerialize transition: animate effect -> nil
-    // back into the soft resting pill so the handoff to restingLens is seamless.
-    [UIView animateWithDuration:0.18 delay:0.0
-                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction |
-                                UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.generation != generation) return;
-        [strongSelf applyRestingStyleToDropletForFrame:rest];
-        [strongSelf placeDroplet:rest];
-    } completion:^(BOOL finished) {
-        (void)finished;
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
-        UIView *bar = strongSelf.bar;
-        UIVisualEffectView *proxy = strongSelf.proxy;
-        [strongSelf cancelDropletImmediately];
-        FQXScheduleCYLGlassResample(bar, proxy);
-    }];
-}
-
-- (void)settleDropletToButton:(UIButton *)button velocity:(CGFloat)velocity duration:(NSTimeInterval)duration {
-    UIView *host = [self dropletCoordHost];
+- (void)animatePillToButton:(UIButton *)button velocity:(CGFloat)velocity {
+    if (!button) return;
+    UIView *host = [self ensureActivePillAtButton:self.lastSelectedButton ?: button];
+    if (!host) return;
     CGRect rest = [self restingRectForButton:button inHost:host];
-    if (!self.dropletActive || CGRectIsEmpty(rest)) {
-        [self cancelDropletImmediately];
-        return;
-    }
-    CGRect current = [self liveDropletFrameInHost:host];
-    [self stopDropletAnimatorWithoutSnapping];
-    if (!CGRectIsEmpty(current)) {
-        [UIView performWithoutAnimation:^{
-            self.dropletView.transform = CGAffineTransformIdentity;
-            [self placeDroplet:current];
-        }];
-    }
+    if (CGRectIsEmpty(rest)) return;
+
+    CGRect live = [self livePillFrameInHost:host];
+    CGFloat dx = CGRectGetMidX(rest) - CGRectGetMidX(live);
+    CGFloat slotW = MAX(32.0, CGRectGetWidth(rest));
+    CGFloat slots = fabs(dx) / slotW;
+    CGFloat initVel = fabs(dx) > 3.0 ? MAX(-2.6, MIN(2.6, velocity / dx)) : 0.0;
+    NSTimeInterval duration = fabs(dx) <= 3.0
+        ? 0.24
+        : (slots > 1.35 ? 0.38 : 0.33);
+    UIColor *desiredFill = [self restingPillFillColor];
+
     NSUInteger generation = ++self.generation;
     self.lastSelectedButton = button;
     self.targetButton = button;
     [self highlightButton:nil];
 
-    CGFloat dx = CGRectGetMidX(rest) - CGRectGetMidX(current);
-    CGFloat travelSlots = CGRectGetWidth(rest) > 1.0 ? (fabs(dx) / CGRectGetWidth(rest)) : 0.0;
-    CGFloat springVelX = fabs(dx) > 2.0 ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
-    BOOL hasTravel = fabs(dx) > 3.0;
-    CGFloat damping = hasTravel ? 0.80 : 0.84;
-    NSTimeInterval resolvedDuration = hasTravel
-        ? MAX(duration, travelSlots > 1.35 ? 0.40 : 0.32)
-        : 0.22;
-
-    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc]
-        initWithDampingRatio:damping
-             initialVelocity:CGVectorMake(springVelX, 0.0)];
-    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:resolvedDuration timingParameters:timing];
+    // Pure additive Core Animation spring on out-of-process Render Server (backboardd):
+    // UIViewAnimationOptionBeginFromCurrentState preserves full 120Hz ProMotion velocity
+    // across rapid taps and main-thread VC loads without ever calling stopAnimation:YES.
     __weak typeof(self) weakSelf = self;
-    [animator addAnimations:^{
+    [UIView animateWithDuration:duration
+                          delay:0.0
+         usingSpringWithDamping:0.84
+          initialSpringVelocity:initVel
+                        options:UIViewAnimationOptionBeginFromCurrentState |
+                                UIViewAnimationOptionAllowUserInteraction |
+                                UIViewAnimationOptionCurveEaseOut
+                     animations:^{
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
-        if (hasTravel) {
-            [strongSelf applyMaterializedGlassStyleToDroplet];
-        } else {
-            // Returning to the same tab: dematerialize smoothly directly during the settle spring.
-            [strongSelf applyRestingStyleToDropletForFrame:rest];
-        }
-        [strongSelf placeDroplet:rest];
-    }];
-    [animator addCompletion:^(UIViewAnimatingPosition finalPosition) {
-        (void)finalPosition;
+        strongSelf.pillView.backgroundColor = desiredFill;
+        [strongSelf placePill:rest];
+    } completion:^(BOOL finished) {
+        (void)finished;
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
-        strongSelf.dropletAnimator = nil;
-        if (hasTravel && strongSelf.dropletView.effect) {
-            [strongSelf dematerializeAndFinishForGeneration:generation restFrame:rest];
-        } else {
-            UIView *bar = strongSelf.bar;
-            UIVisualEffectView *proxy = strongSelf.proxy;
-            [strongSelf cancelDropletImmediately];
-            FQXScheduleCYLGlassResample(bar, proxy);
-        }
+        FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
     }];
-    self.dropletAnimator = animator;
-    [animator startAnimation];
+}
+
+- (void)syncPillFillSmoothly {
+    if (!self.pillActive || !self.pillView || self.pillView.hidden) return;
+    UIColor *desired = [self restingPillFillColor];
+    if ([self.pillView.backgroundColor isEqual:desired]) return;
+    [UIView animateWithDuration:0.22
+                          delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState |
+                                UIViewAnimationOptionAllowUserInteraction |
+                                UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        self.pillView.backgroundColor = desired;
+    } completion:nil];
 }
 
 - (void)onButtonTouchDown:(UIButton *)sender {
     if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled() ||
-        !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
-    UIButton *origin = self.targetButton ?: self.lastSelectedButton ?: [self currentSelectedButton] ?: sender;
+        !self.bar || self.proxy.hidden || (self.overlay && self.overlay.hidden) ||
+        !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return;
     self.pressedButton = sender;
     [self highlightButton:sender];
-    UIView *host = [self startDropletFrom:origin];
+    UIButton *selected = self.lastSelectedButton ?: [self currentSelectedButton];
+    UIView *host = [self ensureActivePillAtButton:selected];
     if (!host) return;
-    CGRect targetRest = [self restingRectForButton:sender inHost:host];
-    if (CGRectIsEmpty(targetRest)) return;
-    CGRect touchTarget = [self liftedRectForRest:targetRest inHost:host];
-    CGRect originRest = [self restingRectForButton:origin inHost:host];
-    BOOL sameTab = (sender == origin);
-    CGFloat dx = fabs(CGRectGetMidX(targetRest) - CGRectGetMidX(originRest));
-    CGFloat travelSlots = CGRectGetWidth(targetRest) > 1.0 ? (dx / CGRectGetWidth(targetRest)) : 0.0;
-    NSTimeInterval dur = sameTab ? 0.24 : (travelSlots > 1.35 ? 0.38 : 0.30);
-    self.targetButton = sender;
-    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc] initWithDampingRatio:sameTab ? 0.78 : 0.80];
-    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:dur timingParameters:timing];
-    __weak typeof(self) weakSelf = self;
-    [animator addAnimations:^{
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        // Official iOS 26/27 Liquid Glass materialize morph inside spring animation.
-        [strongSelf applyMaterializedGlassStyleToDroplet];
-        [strongSelf placeDroplet:touchTarget];
-    }];
-    self.dropletAnimator = animator;
-    [animator startAnimation];
+    if (sender == selected) {
+        CGRect rest = [self restingRectForButton:sender inHost:host];
+        if (!CGRectIsEmpty(rest)) {
+            CGRect breathe = CGRectInset(rest, -2.5, -1.5);
+            [UIView animateWithDuration:0.20 delay:0.0 usingSpringWithDamping:0.80 initialSpringVelocity:0.0
+                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                             animations:^{
+                [self placePill:breathe];
+            } completion:nil];
+        }
+    }
 }
 
 - (void)onButtonTap:(UIButton *)sender {
     if (![sender isKindOfClass:UIButton.class] || UIAccessibilityIsReduceMotionEnabled() ||
-        !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
-    UIButton *previous = self.lastSelectedButton ?: [self currentSelectedButton] ?: sender;
+        !self.bar || self.proxy.hidden || (self.overlay && self.overlay.hidden) ||
+        !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return;
     self.pressedButton = nil;
-    UIView *host = [self startDropletFrom:previous];
-    if (!host) return;
-    CGRect rest = [self restingRectForButton:sender inHost:host];
-    if (CGRectIsEmpty(rest)) {
-        [self cancelDropletImmediately];
+    [self highlightButton:nil];
+    // If SSTabBar's action fired first and syncWithBar: already launched the additive glide
+    // to sender, only crossfade fill if needed — never relaunch or reset spring velocity.
+    if (self.pillActive && self.lastSelectedButton == sender && self.pillView.layer.animationKeys.count > 0) {
+        [self syncPillFillSmoothly];
         return;
     }
-    CGRect live = [self liveDropletFrameInHost:host];
-    CGFloat travel = fabs(CGRectGetMidX(rest) - CGRectGetMidX(live));
-    CGFloat slots = CGRectGetWidth(rest) > 1.0 ? (travel / CGRectGetWidth(rest)) : 0.0;
-    [self settleDropletToButton:sender
-                       velocity:0.0
-                       duration:slots > 1.35 ? 0.40 : 0.32];
+    [self animatePillToButton:sender velocity:0.0];
 }
 
 - (void)onNativeValueChanged:(UIControl *)sender {
     if (![sender isKindOfClass:UISegmentedControl.class]) return;
-    NSInteger idx = ((UISegmentedControl *)sender).selectedSegmentIndex;
-    if (idx >= 0 && (NSUInteger)idx < self.buttons.count) {
-        [self onButtonTap:self.buttons[(NSUInteger)idx]];
-    }
+    FQXScheduleCYLGlassResample(self.bar, self.proxy);
 }
 
 - (void)onButtonCancel:(UIButton *)sender {
@@ -919,29 +833,32 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         }
     }
     [self highlightButton:nil];
-    if (self.dropletActive) {
-        UIButton *selected = [self currentSelectedButton] ?: self.lastSelectedButton;
-        if (selected) {
-            [self settleDropletToButton:selected velocity:0.0 duration:0.26];
-        } else {
-            [self cancelDropletImmediately];
-        }
+    UIButton *selected = [self currentSelectedButton] ?: self.lastSelectedButton;
+    if (self.pillActive && selected) {
+        [self animatePillToButton:selected velocity:0.0];
     }
 }
 
 - (void)handleOverlayPan:(UIPanGestureRecognizer *)pan {
-    if (!self.overlay || !FQXGlassEnabled() || UIAccessibilityIsReduceMotionEnabled()) return;
+    if (!self.overlay || !FQXGlassEnabled() || UIAccessibilityIsReduceMotionEnabled() ||
+        [self usesNativeSegmentedSelector]) return;
     if (pan.state == UIGestureRecognizerStateBegan || pan.state == UIGestureRecognizerStateChanged) {
         BOOL began = !self.panning;
-        UIView *host = began ? [self startDropletFrom:[self currentSelectedButton]] : [self dropletCoordHost];
+        UIButton *seed = self.lastSelectedButton ?: [self currentSelectedButton];
+        UIView *host = began ? [self ensureActivePillAtButton:seed] : [self pillCoordHost];
         if (!host) return;
         self.panning = YES;
         self.pressedButton = nil;
-        [self stopDropletAnimatorWithoutSnapping];
+        if (self.restingLens && !self.restingLens.hidden) {
+            [UIView performWithoutAnimation:^{
+                self.restingLens.hidden = YES;
+                self.restingLens.alpha = 0.0;
+            }];
+        }
         CGPoint location = [pan locationInView:host];
         UIButton *nearest = nil;
         CGFloat bestDistance = CGFLOAT_MAX;
-        CGFloat width = 0;
+        CGFloat width = 0.0;
         for (UIButton *button in self.buttons) {
             if (!button.superview) continue;
             CGRect frame = [button convertRect:button.bounds toView:host];
@@ -949,7 +866,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
             if (distance < bestDistance) {
                 nearest = button;
                 bestDistance = distance;
-                width = CGRectGetWidth(frame) - 4.0;
+                width = CGRectGetWidth(frame);
             }
         }
         if (!nearest) return;
@@ -957,33 +874,43 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         CGRect target = [self dragRectAtCenterX:location.x baseWidth:width inHost:host];
         [self highlightButton:nearest];
         if (began) {
-            // Smooth official iOS 26/27 Liquid Glass materialize & lift on drag start.
-            [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.80 initialSpringVelocity:0.0
+            CGRect live = [self livePillFrameInHost:host];
+            [UIView performWithoutAnimation:^{
+                if (!CGRectIsEmpty(live)) [self placePill:live];
+                [self.pillView.layer removeAnimationForKey:@"position"];
+                [self.pillView.layer removeAnimationForKey:@"bounds"];
+                [self.pillView.layer removeAnimationForKey:@"cornerRadius"];
+            }];
+            [UIView animateWithDuration:0.18 delay:0.0 usingSpringWithDamping:0.84 initialSpringVelocity:0.0
                                 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
                              animations:^{
-                [self applyMaterializedGlassStyleToDroplet];
-                [self placeDroplet:target];
+                self.pillView.backgroundColor = [self restingPillFillColor];
+                [self placePill:target];
             } completion:nil];
         } else {
-            // Direct 1:1 120Hz tracking during active finger drag (zero queued animation lag).
-            if (!self.dropletView.effect) [self applyMaterializedGlassStyleToDroplet];
-            [self placeDroplet:target];
+            // Direct 1:1 120Hz ProMotion tracking under finger without spring lag.
+            [UIView performWithoutAnimation:^{
+                [self placePill:target];
+            }];
         }
     } else if (self.panning) {
         self.panning = NO;
-        UIView *coordHost = [self dropletCoordHost];
+        UIView *coordHost = [self pillCoordHost];
         CGFloat velocity = (pan.state == UIGestureRecognizerStateEnded && coordHost)
             ? [pan velocityInView:coordHost].x : 0.0;
-        UIButton *dest = self.targetButton ?: [self currentSelectedButton];
-        [self settleDropletToButton:dest velocity:velocity duration:0.34];
+        UIButton *dest = (pan.state == UIGestureRecognizerStateEnded && self.targetButton && self.targetButton.isEnabled)
+            ? self.targetButton
+            : ([self currentSelectedButton] ?: self.lastSelectedButton);
+        [self animatePillToButton:dest velocity:velocity];
     }
 }
 
 - (void)updateLens:(UIVisualEffectView *)lens native:(UIView *)native {
+    if (native) self.nativeControl = native;
     if (lens) {
-        if (self.dropletActive && self.restingLens != lens) {
+        if (self.pillActive && self.restingLens && self.restingLens != lens) {
+            self.restingLens.alpha = 1.0;
             self.restingLens.hidden = NO;
-            lens.hidden = YES;
         }
         self.restingLens = lens;
         if (lens.superview && lens.superview != self.proxy && lens.superview.superview == self.bar) {
@@ -995,9 +922,14 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
                 }
             }
         }
-        if (self.dropletActive) [self ensureDropletMounted];
+        if (self.pillActive && ![self usesNativeSegmentedSelector]) {
+            [UIView performWithoutAnimation:^{
+                lens.hidden = YES;
+                lens.alpha = 0.0;
+            }];
+            [self ensurePillMounted];
+        }
     }
-    if (native) self.nativeControl = native;
 }
 
 - (void)syncWithBar:(UIView *)bar
@@ -1010,9 +942,9 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.proxy = proxy;
     self.nativeControl = native;
     if (lens && self.restingLens != lens) {
-        if (self.dropletActive) {
+        if (self.pillActive && self.restingLens) {
+            self.restingLens.alpha = 1.0;
             self.restingLens.hidden = NO;
-            lens.hidden = YES;
         }
         self.restingLens = lens;
     }
@@ -1029,8 +961,15 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.overlay = overlay;
 
     BOOL compact = (overlay && overlay.hidden) || (proxy.contentView && proxy.contentView.hidden);
-    if (compact || !buttons.count) {
-        if (self.dropletActive) [self cancelDropletImmediately];
+    if (compact || !buttons.count || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
+        if (self.pillActive) [self deactivatePillAndRestoreLens];
+        if ([native isKindOfClass:UISegmentedControl.class]) {
+            UIControl *seg = (UIControl *)native;
+            if (![self.wiredControls containsObject:seg]) {
+                [seg addTarget:self action:@selector(onNativeValueChanged:) forControlEvents:UIControlEventValueChanged];
+                [self.wiredControls addObject:seg];
+            }
+        }
         return;
     }
 
@@ -1054,36 +993,49 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         }
     }
 
-    if ([native isKindOfClass:UISegmentedControl.class]) {
-        UIControl *seg = (UIControl *)native;
-        if (![self.wiredControls containsObject:seg]) {
-            [seg addTarget:self action:@selector(onNativeValueChanged:) forControlEvents:UIControlEventValueChanged];
-            [self.wiredControls addObject:seg];
-        }
+    UIButton *selectedNow = [self currentSelectedButton];
+    UIView *host = [self ensureActivePillAtButton:self.lastSelectedButton ?: selectedNow];
+    if (!host || !selectedNow) return;
+
+    [self orderPillBelowButtonsInHost:host];
+    if (self.panning) {
+        [self syncPillFillSmoothly];
+        return;
     }
 
-    if (self.dropletActive) {
-        [self ensureDropletMounted];
-        [UIView performWithoutAnimation:^{
-            self.restingLens.hidden = YES;
-            [self suppressFallbackSelection:YES];
-        }];
-    } else {
-        [self ensureDropletMounted];
-        if (!self.pressedButton) {
-            UIButton *selectedNow = [self currentSelectedButton];
-            if (selectedNow && selectedNow != self.lastSelectedButton) {
-                FQXScheduleCYLGlassResample(bar, proxy);
-            }
+    if (self.lastSelectedButton && selectedNow != self.lastSelectedButton) {
+        if (UIAccessibilityIsReduceMotionEnabled()) {
+            CGRect rest = [self restingRectForButton:selectedNow inHost:host];
+            [UIView performWithoutAnimation:^{
+                self.pillView.backgroundColor = [self restingPillFillColor];
+                [self placePill:rest];
+            }];
             self.lastSelectedButton = selectedNow;
+            FQXScheduleCYLGlassResample(bar, proxy);
+        } else {
+            [self animatePillToButton:selectedNow velocity:0.0];
+        }
+    } else {
+        self.lastSelectedButton = selectedNow;
+        [self syncPillFillSmoothly];
+        if (self.pillView.layer.animationKeys.count == 0 && !self.pressedButton) {
+            CGRect rest = [self restingRectForButton:selectedNow inHost:host];
+            if (!CGRectIsEmpty(rest) &&
+                (fabs(CGRectGetMidX(rest) - self.pillView.center.x) > 0.5 ||
+                 fabs(CGRectGetWidth(rest) - CGRectGetWidth(self.pillView.bounds)) > 0.5 ||
+                 fabs(CGRectGetHeight(rest) - CGRectGetHeight(self.pillView.bounds)) > 0.5)) {
+                [UIView performWithoutAnimation:^{
+                    [self placePill:rest];
+                }];
+            }
         }
     }
 }
 
 - (void)teardown {
-    [self cancelDropletImmediately];
-    [self.dropletView removeFromSuperview];
-    self.dropletView = nil;
+    [self deactivatePillAndRestoreLens];
+    [self.pillView removeFromSuperview];
+    self.pillView = nil;
 }
 
 @end
@@ -2571,6 +2523,65 @@ static void HookHostDramaCommentLayout(UIView *view, SEL cmd) {
 // forcing NO while the host still builds the empty/history section desynchronizes
 // sizeForItemAtIndexPath: (1-column width) from cellForItemAtIndexPath: (full-width buttons).
 
+static void FQXFixShelfHeaderEditFilterOverlap(UIView *header) {
+    if (![header isKindOfClass:UIView.class] || header.hidden || !header.window) return;
+    UIView *editBtn = FQXObjGet(header, "editButton");
+    if (![editBtn isKindOfClass:UIView.class] || editBtn.hidden || editBtn.alpha < 0.01) return;
+    if (![editBtn isDescendantOfView:header]) return;
+    UIView *editParent = editBtn.superview;
+    if (!editParent) return;
+    CGRect editInHeader = [editBtn convertRect:editBtn.bounds toView:header];
+    if (CGRectGetWidth(editInHeader) < 12.0 || CGRectGetHeight(editInHeader) < 12.0) return;
+
+    UIView *candidates[2] = {
+        FQXObjGet(header, "filterButton"),
+        FQXObjGet(header, "fullGenreFilterButton")
+    };
+    CGFloat minFilterLeftInHeader = CGFLOAT_MAX;
+    for (int i = 0; i < 2; ++i) {
+        UIView *f = candidates[i];
+        if (![f isKindOfClass:UIView.class] || f.hidden || f.alpha < 0.01) continue;
+        if (![f isDescendantOfView:header]) continue;
+        CGRect fInHeader = [f convertRect:f.bounds toView:header];
+        if (CGRectGetWidth(fInHeader) < 12.0 || CGRectGetHeight(fInHeader) < 12.0) continue;
+        if (fabs(CGRectGetMidY(fInHeader) - CGRectGetMidY(editInHeader)) < 18.0) {
+            if (CGRectGetMinX(fInHeader) < minFilterLeftInHeader) {
+                minFilterLeftInHeader = CGRectGetMinX(fInHeader);
+            }
+        }
+    }
+    if (minFilterLeftInHeader < CGFLOAT_MAX && CGRectGetMaxX(editInHeader) > minFilterLeftInHeader - 8.0) {
+        CGFloat targetMaxXInHeader = minFilterLeftInHeader - 8.0;
+        CGFloat targetXInHeader = MAX(8.0, targetMaxXInHeader - CGRectGetWidth(editInHeader));
+        CGRect desiredInHeader = editInHeader;
+        desiredInHeader.origin.x = targetXInHeader;
+        CGRect desiredInParent = [header convertRect:desiredInHeader toView:editParent];
+        if (fabs(desiredInParent.origin.x - editBtn.frame.origin.x) > 0.5) {
+            CGRect f = editBtn.frame;
+            f.origin.x = desiredInParent.origin.x;
+            editBtn.frame = f;
+        }
+    }
+}
+
+static void (*OrigShelfFunctionCellLayout)(id, SEL);
+static void HookShelfFunctionCellLayout(UIView *cell, SEL cmd) {
+    if (OrigShelfFunctionCellLayout) OrigShelfFunctionCellLayout(cell, cmd);
+    UIView *header = FQXObjGet(cell, "headerView");
+    if (![header isKindOfClass:UIView.class]) return;
+    FQXFixShelfHeaderEditFilterOverlap(header);
+    if (![objc_getAssociatedObject(header, FQXShelfHeaderFixPendingKey) boolValue]) {
+        objc_setAssociatedObject(header, FQXShelfHeaderFixPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        __weak UIView *weakHeader = header;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *strongHeader = weakHeader;
+            if (!strongHeader) return;
+            objc_setAssociatedObject(strongHeader, FQXShelfHeaderFixPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXFixShelfHeaderEditFilterOverlap(strongHeader);
+        });
+    }
+}
+
 static void (*OrigMineTabBarCurrentTap)(id, SEL, int);
 static void HookMineTabBarCurrentTap(UIViewController *controller, SEL cmd, int index) {
     UIScrollView *list = FQXObjGet(controller, "collectionView");
@@ -3019,12 +3030,12 @@ static void FQXExtendSiblingScrollForCommentBar(UIView *toolbar, BOOL active) {
     UIView *parent = toolbar.superview;
     if (!parent) return;
     CGFloat parentW = CGRectGetWidth(parent.bounds);
-    for (UIView *sub in parent.subviews) {
+    for (UIView *sub in [parent.subviews copy]) {
         if (sub == toolbar || ![sub isKindOfClass:UIScrollView.class]) continue;
         if (CGRectGetWidth(sub.bounds) < parentW * 0.85 || CGRectGetHeight(sub.bounds) < 120.0) continue;
         UIScrollView *sv = (UIScrollView *)sub;
         FQXExtendCommentCollectionForFloatingBar(sv, toolbar, active);
-        for (UIView *inner in sv.subviews) {
+        for (UIView *inner in [sv.subviews copy]) {
             if ([inner isKindOfClass:UICollectionView.class] &&
                 CGRectGetWidth(inner.bounds) >= parentW * 0.85 &&
                 CGRectGetHeight(inner.bounds) >= 120.0) {
@@ -4006,7 +4017,7 @@ static void FQXSetCommentBannerCollapsed(UIView *banner, BOOL hide) {
             banner.frame = bf;
             UIView *parent = banner.superview;
             if (parent) {
-                for (UIView *sib in parent.subviews) {
+                for (UIView *sib in [parent.subviews copy]) {
                     if (sib == banner || sib.hidden) continue;
                     if ([sib isKindOfClass:UIScrollView.class] &&
                         CGRectGetMinY(sib.frame) >= CGRectGetMinY(bf) + reclaimed - 4.0 &&
@@ -4171,7 +4182,7 @@ static void FQXApplyBannerRowState(UIView *leaf, UIView *root, BOOL isSearch) {
     UIView *parent = leaf.superview;
     CGFloat leafMidY = CGRectGetMidY(leaf.frame);
     if (parent && parent != root) {
-        for (UIView *sib in parent.subviews) {
+        for (UIView *sib in [parent.subviews copy]) {
             if ([sib isKindOfClass:UIScrollView.class] || [sib isKindOfClass:UIVisualEffectView.class]) continue;
             if (CGRectGetHeight(sib.bounds) > 48.0) continue;
             if (fabs(CGRectGetMidY(sib.frame) - leafMidY) > 18.0) continue;
@@ -4233,7 +4244,7 @@ static void FQXScanBannerNode(UIView *view, UIView *root, NSInteger depth) {
             }
         }
     }
-    for (UIView *sub in view.subviews) {
+    for (UIView *sub in [view.subviews copy]) {
         FQXScanBannerNode(sub, root, depth + 1);
     }
 }
@@ -5069,6 +5080,7 @@ static CGRect FQXClampAudioIndicatorFrame(UIView *indicator, UIView *parent, CGR
 }
 
 static BOOL FQXAudioDedupInFlight = NO;
+static BOOL FQXAudioFrameClampInFlight = NO;
 
 static BOOL FQXIsPlayIndicatorView(UIView *view, Class audioCls, Class videoCls) {
     if (!view) return NO;
@@ -5077,15 +5089,20 @@ static BOOL FQXIsPlayIndicatorView(UIView *view, Class audioCls, Class videoCls)
     return [clsName containsString:@"PlayIndicatorView"];
 }
 
-static BOOL FQXIsViewInDisappearingReader(UIView *view) {
+static UIViewController *FQXEnclosingReaderController(UIView *view) {
     Class readerVCCls = NSClassFromString(@"BDReaderViewController");
-    if (!readerVCCls) return NO;
+    if (!readerVCCls) return nil;
     for (UIResponder *r = view; r; r = r.nextResponder) {
         if ([r isKindOfClass:readerVCCls]) {
-            return [objc_getAssociatedObject(r, FQXReaderDisappearingKey) boolValue];
+            return (UIViewController *)r;
         }
     }
-    return NO;
+    return nil;
+}
+
+static BOOL FQXIsViewInDisappearingReader(UIView *view) {
+    UIViewController *rvc = FQXEnclosingReaderController(view);
+    return rvc && [objc_getAssociatedObject(rvc, FQXReaderDisappearingKey) boolValue];
 }
 
 static void FQXCollectLiveIndicatorsInView(UIView *view, Class audioCls, Class videoCls, NSMutableArray<UIView *> *out, NSInteger depth) {
@@ -5094,7 +5111,7 @@ static void FQXCollectLiveIndicatorsInView(UIView *view, Class audioCls, Class v
         if (![out containsObject:view]) [out addObject:view];
         return;
     }
-    for (UIView *sub in view.subviews) {
+    for (UIView *sub in [view.subviews copy]) {
         FQXCollectLiveIndicatorsInView(sub, audioCls, videoCls, out, depth + 1);
     }
 }
@@ -5108,9 +5125,9 @@ static void FQXSetIndicatorHiddenQuietly(UIView *indicator, BOOL hidden) {
 }
 
 static void FQXDeduplicateAudioIndicators(UIView *preferred) {
-    if (FQXAudioDedupInFlight || !preferred || !preferred.window) return;
+    if (FQXAudioDedupInFlight) return;
     FQXAudioDedupInFlight = YES;
-    [FQXTrackedAudioIndicators() addObject:preferred];
+    if (preferred) [FQXTrackedAudioIndicators() addObject:preferred];
     Class audioCls = NSClassFromString(@"SSAudioPlayIndicatorView");
     Class videoCls = NSClassFromString(@"SSShortVideoPlayIndicatorView");
     NSMutableArray<UIView *> *found = [NSMutableArray array];
@@ -5124,25 +5141,54 @@ static void FQXDeduplicateAudioIndicators(UIView *preferred) {
             FQXCollectLiveIndicatorsInView(win, audioCls, videoCls, found, 0);
         }
     }
-    UIView *winner = preferred;
-    // If preferred belongs to a BDReaderViewController currently swiping back / disappearing,
-    // prefer a non-reader global/bookshelf indicator so only the destination indicator shows.
-    if (FQXIsViewInDisappearingReader(preferred)) {
-        for (UIView *cand in found) {
-            if (cand != preferred && cand.window && !FQXIsViewInDisappearingReader(cand) && cand.alpha > 0.01) {
-                winner = cand;
-                break;
+    if (!found.count) {
+        FQXAudioDedupInFlight = NO;
+        return;
+    }
+
+    // Check if an active (non-disappearing) BDReaderViewController owns any live indicator.
+    UIView *activeReaderIndicator = nil;
+    UIView *outsideReaderIndicator = nil;
+    for (UIView *cand in found) {
+        if (!cand.window || !cand.superview) continue;
+        UIViewController *rvc = FQXEnclosingReaderController(cand);
+        if (rvc) {
+            if (![objc_getAssociatedObject(rvc, FQXReaderDisappearingKey) boolValue] && !activeReaderIndicator) {
+                activeReaderIndicator = cand;
+            }
+        } else if (!outsideReaderIndicator) {
+            if (!cand.hidden || [objc_getAssociatedObject(cand, FQXAudioIndicatorDedupHiddenKey) boolValue]) {
+                outsideReaderIndicator = cand;
             }
         }
     }
-    if ([objc_getAssociatedObject(winner, FQXAudioIndicatorDedupHiddenKey) boolValue]) {
+
+    UIView *winner = nil;
+    if (activeReaderIndicator) {
+        // Inside active reader: keep reader's indicator as sole winner.
+        winner = (preferred && FQXEnclosingReaderController(preferred) && !FQXIsViewInDisappearingReader(preferred))
+            ? preferred : activeReaderIndicator;
+    } else if (outsideReaderIndicator) {
+        // Outside reader or swiping back from reader: keep non-reader indicator as sole winner.
+        winner = (preferred && preferred.window && !FQXEnclosingReaderController(preferred))
+            ? preferred : outsideReaderIndicator;
+    } else if (preferred && preferred.window && !FQXIsViewInDisappearingReader(preferred)) {
+        winner = preferred;
+    }
+
+    if (winner && ([objc_getAssociatedObject(winner, FQXAudioIndicatorDedupHiddenKey) boolValue] ||
+                   [objc_getAssociatedObject(winner, FQXReaderSwipeHiddenIndicatorKey) boolValue])) {
         objc_setAssociatedObject(winner, FQXAudioIndicatorDedupHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(winner, FQXReaderSwipeHiddenIndicatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (winner.hidden) winner.hidden = NO;
     }
+
     for (UIView *other in found) {
         if (other == winner || !other.window) continue;
         [FQXTrackedAudioIndicators() addObject:other];
-        if (!other.hidden && other.alpha > 0.01) {
+        // Unconditionally suppress any duplicate indicator (including mid-animation fade-ins/outs).
+        if (!other.hidden) {
+            [other.layer removeAllAnimations];
             objc_setAssociatedObject(other, FQXAudioIndicatorDedupHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             other.hidden = YES;
         }
@@ -5257,40 +5303,28 @@ static void HookVideoIndicatorDidMoveWindow(UIView *self, SEL cmd) {
 static void (*OrigReaderViewWillDisappear)(id, SEL, BOOL);
 static void HookReaderViewWillDisappear(UIViewController *self, SEL cmd, BOOL animated) {
     objc_setAssociatedObject(self, FQXReaderDisappearingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    OrigReaderViewWillDisappear(self, cmd, animated);
-    // Immediately deduplicate across reader & bookshelf/window as soon as swipe-back starts.
+    if (OrigReaderViewWillDisappear) OrigReaderViewWillDisappear(self, cmd, animated);
+
+    // Immediately hide ALL reader-owned audio/video floating indicators at frame 0 of swipe-back
+    // BEFORE the destination Bookshelf VC even mounts its own indicator into UIWindow, so two
+    // capsules can never coexist during interactive pop.
     Class audioCls = NSClassFromString(@"SSAudioPlayIndicatorView");
     Class videoCls = NSClassFromString(@"SSShortVideoPlayIndicatorView");
-    NSMutableArray<UIView *> *all = [NSMutableArray array];
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
-            if (win.hidden || win.alpha < 0.01) continue;
-            FQXCollectLiveIndicatorsInView(win, audioCls, videoCls, all, 0);
-        }
-    }
-    UIView *outsideWinner = nil;
     UIView *readerView = self.viewIfLoaded;
-    for (UIView *ind in all) {
-        if (readerView && ![ind isDescendantOfView:readerView] && !ind.hidden && ind.alpha > 0.01) {
-            outsideWinner = ind;
-            break;
-        }
-    }
-    if (outsideWinner) {
-        FQXDeduplicateAudioIndicators(outsideWinner);
-    } else {
-        // Also hide reader indicator if another non-reader indicator is suppressed waiting to appear.
-        for (UIView *ind in all) {
-            if (readerView && ![ind isDescendantOfView:readerView] &&
-                [objc_getAssociatedObject(ind, FQXAudioIndicatorDedupHiddenKey) boolValue]) {
-                FQXSetIndicatorHiddenQuietly(ind, NO);
-                objc_setAssociatedObject(ind, FQXAudioIndicatorDedupHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                FQXDeduplicateAudioIndicators(ind);
-                break;
+    if (readerView) {
+        NSMutableArray<UIView *> *readerInds = [NSMutableArray array];
+        FQXCollectLiveIndicatorsInView(readerView, audioCls, videoCls, readerInds, 0);
+        for (UIView *ind in readerInds) {
+            [FQXTrackedAudioIndicators() addObject:ind];
+            if (!ind.hidden) {
+                [ind.layer removeAllAnimations];
+                objc_setAssociatedObject(ind, FQXReaderSwipeHiddenIndicatorKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                FQXSetIndicatorHiddenQuietly(ind, YES);
             }
         }
     }
+    FQXDeduplicateAudioIndicators(nil);
+
     __weak UIViewController *weakSelf = self;
     id<UIViewControllerTransitionCoordinator> coord = self.transitionCoordinator;
     if (coord) {
@@ -5303,6 +5337,14 @@ static void HookReaderViewWillDisappear(UIViewController *self, SEL cmd, BOOL an
                 if (rv) {
                     NSMutableArray<UIView *> *readerInds = [NSMutableArray array];
                     FQXCollectLiveIndicatorsInView(rv, audioCls, videoCls, readerInds, 0);
+                    for (UIView *ind in readerInds) {
+                        if ([objc_getAssociatedObject(ind, FQXReaderSwipeHiddenIndicatorKey) boolValue] ||
+                            [objc_getAssociatedObject(ind, FQXAudioIndicatorDedupHiddenKey) boolValue]) {
+                            objc_setAssociatedObject(ind, FQXReaderSwipeHiddenIndicatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                            objc_setAssociatedObject(ind, FQXAudioIndicatorDedupHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                            FQXSetIndicatorHiddenQuietly(ind, NO);
+                        }
+                    }
                     UIView *first = readerInds.firstObject;
                     if (first) FQXDeduplicateAudioIndicators(first);
                 }
@@ -5314,23 +5356,55 @@ static void HookReaderViewWillDisappear(UIViewController *self, SEL cmd, BOOL an
 static void (*OrigReaderViewDidAppearForDedup)(id, SEL, BOOL);
 static void HookReaderViewDidAppearForDedup(UIViewController *self, SEL cmd, BOOL animated) {
     objc_setAssociatedObject(self, FQXReaderDisappearingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    OrigReaderViewDidAppearForDedup(self, cmd, animated);
+    if (OrigReaderViewDidAppearForDedup) OrigReaderViewDidAppearForDedup(self, cmd, animated);
+    Class audioCls = NSClassFromString(@"SSAudioPlayIndicatorView");
+    Class videoCls = NSClassFromString(@"SSShortVideoPlayIndicatorView");
+    UIView *rv = self.viewIfLoaded;
+    if (rv) {
+        NSMutableArray<UIView *> *readerInds = [NSMutableArray array];
+        FQXCollectLiveIndicatorsInView(rv, audioCls, videoCls, readerInds, 0);
+        for (UIView *ind in readerInds) {
+            if ([objc_getAssociatedObject(ind, FQXReaderSwipeHiddenIndicatorKey) boolValue]) {
+                objc_setAssociatedObject(ind, FQXReaderSwipeHiddenIndicatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                FQXSetIndicatorHiddenQuietly(ind, NO);
+            }
+        }
+        if (readerInds.firstObject) FQXDeduplicateAudioIndicators(readerInds.firstObject);
+    }
+}
+
+static void (*OrigShelfWillAppearAudioDedup)(id, SEL, BOOL);
+static void HookShelfWillAppearAudioDedup(UIViewController *self, SEL cmd, BOOL animated) {
+    if (OrigShelfWillAppearAudioDedup) OrigShelfWillAppearAudioDedup(self, cmd, animated);
+    FQXDeduplicateAudioIndicators(nil);
 }
 
 static void (*OrigAudioIndicatorSetFrame)(id, SEL, CGRect);
 static void HookAudioIndicatorSetFrame(UIView *self, SEL cmd, CGRect frame) {
+    if (FQXAudioFrameClampInFlight) {
+        if (OrigAudioIndicatorSetFrame) OrigAudioIndicatorSetFrame(self, cmd, frame);
+        return;
+    }
+    FQXAudioFrameClampInFlight = YES;
     CGRect clamped = self.superview ? FQXClampAudioIndicatorFrame(self, self.superview, frame) : frame;
-    OrigAudioIndicatorSetFrame(self, cmd, clamped);
+    if (OrigAudioIndicatorSetFrame) OrigAudioIndicatorSetFrame(self, cmd, clamped);
+    FQXAudioFrameClampInFlight = NO;
 }
 
 static void (*OrigAudioIndicatorLayout)(id, SEL);
 static void HookAudioIndicatorLayout(UIView *self, SEL cmd) {
-    OrigAudioIndicatorLayout(self, cmd);
-    if (self.superview && !self.hidden && self.alpha > 0.01) {
+    if (OrigAudioIndicatorLayout) OrigAudioIndicatorLayout(self, cmd);
+    if (!FQXAudioFrameClampInFlight && self.superview && !self.hidden && self.alpha > 0.01) {
         CGRect cur = self.frame;
         CGRect clamped = FQXClampAudioIndicatorFrame(self, self.superview, cur);
         if (fabs(clamped.origin.y - cur.origin.y) > 0.5 || fabs(clamped.origin.x - cur.origin.x) > 0.5) {
-            OrigAudioIndicatorSetFrame(self, @selector(setFrame:), clamped);
+            FQXAudioFrameClampInFlight = YES;
+            if (OrigAudioIndicatorSetFrame) {
+                OrigAudioIndicatorSetFrame(self, @selector(setFrame:), clamped);
+            } else {
+                self.frame = clamped;
+            }
+            FQXAudioFrameClampInFlight = NO;
         }
         FQXDeduplicateAudioIndicators(self);
     }
@@ -5604,7 +5678,7 @@ static void FQXStyleCommunityInput(UIView *editor) {
     FQXAudioSetHiddenTracked(FQXObjGet(editor, "topMaskView"), glass);
     FQXClearCommentCovers(sheet, CGRectGetWidth(sheet.bounds), glass);
     if (!useEditorHost && sheet && sheet.superview == editor) {
-        for (UIView *sub in editor.subviews) {
+        for (UIView *sub in [editor.subviews copy]) {
             if (sub == sheet || sub == keep || [sub isKindOfClass:UIControl.class] ||
                 [sub isKindOfClass:UIScrollView.class]) continue;
             if (!FQXViewHasVisibleTextContent(sub, 0)) {
@@ -6893,6 +6967,8 @@ void FQXInstallMotionAndAudioHooks(void) {
 } while (0)
 
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
+        HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
+        HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
         HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
         HOOK_INST("SSShortVideoRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigDramaCommentCount, HookDramaCommentCount);
         HOOK_INST("SSShortVideoHostRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigHostDramaCommentCount, HookHostDramaCommentCount);
