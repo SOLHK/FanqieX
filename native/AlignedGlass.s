@@ -1,4 +1,4 @@
-// Source SHA-256: 0a898767bb585fc2a1f0d40f99c25c6baf5a2f9221136026c4d67a56c0af62a5
+// Source SHA-256: 15c1447ba30345b878b4d3757be21db41c4cb6feb98b4787cdc8e7165e5bcb45
 .p2align	2
 LFQH_FQHHostBundle:
 .cfi_startproc
@@ -63615,7 +63615,7 @@ b.le	LFQH_LBB573_2
 mov	x2, x0
 mov	x0, x19
 mov	x1, x19
-mov	w3, #0
+mov	x3, #0
 ldp	x29, x30, [sp, #32]
 ldp	x20, x19, [sp, #16]
 ldp	d9, d8, [sp], #48
@@ -63634,7 +63634,7 @@ ret
 .p2align	2
 LFQH_DramaClampSubviews:
 .cfi_startproc
-cmp	w3, #3
+cmp	x3, #3
 b.hi	LFQH_LBB576_32
 sub	sp, sp, #192
 stp	d15, d14, [sp, #32]
@@ -63959,7 +63959,7 @@ mov	x0, x28
 mov	w2, #1
 bl Lpatch + (0xa5d4 - PATCH_BASE)
 LFQH_LBB576_30:
-add	w3, w19, #1
+add	x3, x19, #1
 mov	x0, x28
 mov	x1, x21
 mov	x2, x20

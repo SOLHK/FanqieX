@@ -2762,7 +2762,7 @@ static B DramaWatchIsEpisode(Obj model) {
 }
 
 static void DramaClampBusyKey(void) {}
-static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double rightLimit,int depth) {
+static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double rightLimit,I depth) {
     if (!container || depth>3) return;
     Obj subs=Get(container,"subviews");
     U count=TabCount(subs);
