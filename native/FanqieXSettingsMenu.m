@@ -8,6 +8,9 @@ static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
 static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.1";
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
+static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
+static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
 
 static id Invoke(id receiver, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -78,9 +81,87 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic) NSInteger commentMaterialChoice;
 @property(nonatomic) BOOL commentAppearanceRow;
+@property(nonatomic, copy) NSString *popoverKey;
+@property(nonatomic, copy) NSArray<NSString *> *popoverOptions;
+@property(nonatomic) NSInteger popoverKind;
 @property(nonatomic) NSInteger matchScore;
 @end
 @implementation FQXSettingRow
+@end
+
+@interface FQXPopoverPickerController : UIViewController <UIPopoverPresentationControllerDelegate>
+@property(nonatomic, copy) NSString *pickerTitle;
+@property(nonatomic, copy) NSArray<NSString *> *options;
+@property(nonatomic) NSInteger selectedIndex;
+@property(nonatomic, copy) void (^onSelect)(NSInteger index);
+@end
+
+@implementation FQXPopoverPickerController
+
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller {
+    (void)controller;
+    return UIModalPresentationNone;
+}
+
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller
+                                                               traitCollection:(UITraitCollection *)traitCollection {
+    (void)controller; (void)traitCollection;
+    return UIModalPresentationNone;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.clearColor;
+    CGFloat width = 236.0;
+    CGFloat padX = 14.0;
+    CGFloat headerY = 16.0;
+    CGFloat headerH = 24.0;
+    CGFloat btnH = 44.0;
+    CGFloat gap = 8.0;
+    CGFloat topY = headerY + headerH + 12.0;
+
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(padX, headerY, width - padX * 2.0, headerH)];
+    titleLabel.text = self.pickerTitle ?: @"";
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightSemibold];
+    titleLabel.textColor = UIColor.labelColor;
+    titleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [self.view addSubview:titleLabel];
+
+    for (NSUInteger i = 0; i < self.options.count; ++i) {
+        CGFloat y = topY + (CGFloat)i * (btnH + gap);
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        btn.frame = CGRectMake(padX, y, width - padX * 2.0, btnH);
+        btn.tag = (NSInteger)i;
+        btn.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        BOOL selected = ((NSInteger)i == self.selectedIndex);
+        NSString *labelText = selected ? [NSString stringWithFormat:@"%@  ✓", self.options[i]] : self.options[i];
+        [btn setTitle:labelText forState:UIControlStateNormal];
+        [btn setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:15.0 weight:(selected ? UIFontWeightSemibold : UIFontWeightMedium)];
+        btn.backgroundColor = selected ? UIColor.secondarySystemFillColor : UIColor.tertiarySystemFillColor;
+        btn.layer.cornerRadius = btnH * 0.5;
+        btn.layer.cornerCurve = kCACornerCurveContinuous;
+        if (selected) {
+            btn.layer.borderWidth = 1.0;
+            btn.layer.borderColor = [UIColor.labelColor colorWithAlphaComponent:0.18].CGColor;
+        }
+        [btn addTarget:self action:@selector(optionTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:btn];
+    }
+
+    CGFloat totalH = topY + (CGFloat)self.options.count * btnH + MAX(0.0, (CGFloat)self.options.count - 1.0) * gap + 14.0;
+    self.preferredContentSize = CGSizeMake(width, totalH);
+}
+
+- (void)optionTapped:(UIButton *)sender {
+    NSInteger idx = sender.tag;
+    void (^handler)(NSInteger) = self.onSelect;
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (handler) handler(idx);
+    }];
+}
+
 @end
 
 @interface FQXSettingsMenu : UITableViewController <UISearchResultsUpdating>
@@ -146,7 +227,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     NSString *title = [ControlTitle(view) stringByReplacingOccurrencesOfString:@"  ›" withString:@""];
     if (!title.length || [title isEqualToString:@"诊断与日志"] || [title isEqualToString:@"广告与福利"] ||
         [title isEqualToString:@"Telegram 频道"] || [title containsString:@"本地激励"] ||
-        [title containsString:@"测试激励"] || [title containsString:@"评论区模糊液态玻璃"]) return;
+        [title containsString:@"测试激励"] || [title containsString:@"评论区模糊液态玻璃"] ||
+        [title isEqualToString:@"底栏仅显示图标"] || [title isEqualToString:@"底栏纯图标"]) return;
     FQXSettingRow *row = [FQXSettingRow new];
     row.title = title;
     row.originalTitle = title;
@@ -201,6 +283,39 @@ static NSInteger CurrentSavedCommentAppearanceMode(void) {
     return (val >= 0 && val <= 2) ? val : 0;
 }
 
+static NSInteger CurrentSavedBottomDisplayMode(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id stored = [ud objectForKey:BottomDisplayModeKey];
+    if (stored && [stored respondsToSelector:@selector(integerValue)]) {
+        NSInteger val = [stored integerValue];
+        if (val >= 0 && val <= 2) return val;
+    }
+    return [ud boolForKey:BottomIconsOnlyLegacyKey] ? 1 : 0;
+}
+
+static NSInteger CurrentSavedCommentComposerStyle(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id stored = [ud objectForKey:CommentComposerStyleKey];
+    if (stored && [stored respondsToSelector:@selector(integerValue)]) {
+        NSInteger val = [stored integerValue];
+        if (val >= 0 && val <= 2) return val;
+    }
+    return CurrentSavedCommentMaterialStyle() > 0 ? 1 : 0;
+}
+
+static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *dockModeRow = [FQXSettingRow new];
+    dockModeRow.title = @"底栏样式";
+    dockModeRow.path = route;
+    dockModeRow.hiddenFromSearch = hiddenFromSearch;
+    dockModeRow.keywords = @"底栏样式 底栏 dock dock栏 仅图标 只显示图标 仅文字 只显示文字 图标与文字 图文 纯图标 无文字 导航栏 样式";
+    dockModeRow.popoverKey = BottomDisplayModeKey;
+    dockModeRow.popoverOptions = @[@"图标与文字", @"仅图标", @"仅文字"];
+    dockModeRow.popoverKind = 1;
+    dockModeRow.height = 52;
+    [menu.catalog addObject:dockModeRow];
+}
+
 static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
     FQXSettingRow *glassRow = [FQXSettingRow new];
     glassRow.title = @"评论区液态玻璃";
@@ -228,6 +343,17 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     appearanceRow.commentAppearanceRow = YES;
     appearanceRow.height = 52;
     [menu.catalog addObject:appearanceRow];
+
+    FQXSettingRow *composerRow = [FQXSettingRow new];
+    composerRow.title = @"发评论输入框样式";
+    composerRow.path = route;
+    composerRow.hiddenFromSearch = hiddenFromSearch;
+    composerRow.keywords = @"发评论 评论 输入框 键盘 样式 原生 贴底 液态玻璃 悬浮 分离 分离式 卡片 酷安 写评论 回复";
+    composerRow.popoverKey = CommentComposerStyleKey;
+    composerRow.popoverOptions = @[@"原生样式", @"贴底液态玻璃", @"悬浮分离卡片"];
+    composerRow.popoverKind = 2;
+    composerRow.height = 52;
+    [menu.catalog addObject:composerRow];
 }
 
 @implementation FQXSettingsMenu
@@ -272,15 +398,19 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             }
         }
     }
-    // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native)
-    // and standalone Comment Appearance selector (Follow App / Light / Dark).
+    // Add Dock 3-way display style popover picker (Icons+Text / Icons Only / Text Only)
+    AddDockDisplayStyleRow(menu, @"外观/玻璃与尺寸", NO);
+    AddDockDisplayStyleRow(menu, @"页面与导航/底栏入口", YES);
+
+    // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native),
+    // standalone Comment Appearance selector (Follow App / Light / Dark), and Composer Style popover.
     AddCommentStyleRows(menu, @"评论区净化", NO);
     AddCommentStyleRows(menu, @"短剧/播放设置", YES);
     AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
 
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
-    NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
+    NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
         @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果", @"comment":@"评论区净化"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
@@ -291,7 +421,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             if ([existing.originalTitle isEqualToString:legacyTitles[option[@"key"]]]) { row = existing; break; }
         BOOL existing = row != nil;
         if (!row) row = [FQXSettingRow new];
-        row.inverted = [@[@"reader", @"mine", @"shelf", @"comment"] containsObject:option[@"category"]];
+        row.inverted = [@[@"reader", @"mine", @"sidebar", @"shelf", @"comment"] containsObject:option[@"category"]];
         row.title = row.inverted ? [option[@"title"] stringByReplacingOccurrencesOfString:@"显示" withString:@"隐藏"] : option[@"title"];
         row.path = paths[option[@"category"]] ?: @"阅读/阅读设置";
         if ([@[@"FanqieX.ReaderEarnMore.1", @"FanqieX.ReaderSpeechFloat.1", @"FanqieX.ReaderChapterEndDrama.1"] containsObject:option[@"key"]])
@@ -301,7 +431,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         if ([@[@"FanqieX.MineScanButton.1", @"FanqieX.MineSearchBar.1", @"FanqieX.MineNightButton.1"] containsObject:option[@"key"]])
             row.path = @"我的页面净化/顶部栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.MinePublish.1"]) row.path = @"我的页面净化/悬浮入口";
-        if ([option[@"key"] isEqualToString:@"FanqieX.ShelfRecommendationBanner.1"]) row.path = @"书架净化/顶部与统计";
+        if ([@[@"FanqieX.ShelfRecommendationBanner.1", @"FanqieX.ShelfEditButton.1"] containsObject:option[@"key"]]) row.path = @"书架净化/顶部与统计";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
@@ -344,6 +474,20 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
             @"FanqieX.ShelfRecommendations.1":@"书架 推荐内容 展开全部 猜你喜欢 为你推荐 书架底部推荐 榜单推荐",
             @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书",
+            @"FanqieX.ShelfEditButton.1":@"书架 编辑 编辑按钮 顶部 编辑入口 隐藏 关闭",
+            @"FanqieX.SidebarMessages.1":@"侧栏 我的消息 系统通知 创作通知 全部消息 消息 抽屉 隐藏",
+            @"FanqieX.SidebarVideoCreate.1":@"侧栏 视频创作 创作 抽屉 隐藏",
+            @"FanqieX.SidebarReadingPref.1":@"侧栏 阅读偏好 偏好 抽屉 隐藏",
+            @"FanqieX.SidebarMyNotes.1":@"侧栏 我的笔记 笔记 抽屉 隐藏",
+            @"FanqieX.SidebarActivityCenter.1":@"侧栏 活动中心 活动 抽屉 隐藏",
+            @"FanqieX.SidebarViewedUsers.1":@"侧栏 看过的人 访客 抽屉 隐藏",
+            @"FanqieX.SidebarFanqieGuide.1":@"侧栏 番茄指南 指南 抽屉 隐藏",
+            @"FanqieX.SidebarMyCharity.1":@"侧栏 我的公益 公益 抽屉 隐藏",
+            @"FanqieX.SidebarVipCenter.1":@"侧栏 会员中心 会员 VIP 抽屉 隐藏",
+            @"FanqieX.SidebarMyContract.1":@"侧栏 我的签约 签约 抽屉 隐藏",
+            @"FanqieX.SidebarMyWallet.1":@"侧栏 我的钱包 钱包 抽屉 隐藏",
+            @"FanqieX.SidebarConversionRecord.1":@"侧栏 转化记录 转化 记录 抽屉 隐藏",
+            @"FanqieX.SidebarPrivacyLinks.1":@"侧栏 底部清单 个人信息清单 三方信息共享清单 协议 抽屉 隐藏",
             @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片 无限流",
             @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币"
         };
@@ -596,6 +740,23 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     if (row.nativeCell) {
         row.nativeCell.accessibilityHint = self.search.searchBar.text.length ? [row.path stringByReplacingOccurrencesOfString:@"/" withString:@"，"] : nil;
         return row.nativeCell;
+    }
+    if (row.popoverKey.length && row.popoverOptions.count) {
+        BOOL searching = self.search.searchBar.text.length > 0;
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+        cell.textLabel.text = row.title;
+        cell.textLabel.numberOfLines = 2;
+        NSInteger curIdx = (row.popoverKind == 1) ? CurrentSavedBottomDisplayMode()
+                         : (row.popoverKind == 2) ? CurrentSavedCommentComposerStyle()
+                         : 0;
+        if (curIdx < 0 || (NSUInteger)curIdx >= row.popoverOptions.count) curIdx = 0;
+        cell.detailTextLabel.text = searching
+            ? [NSString stringWithFormat:@"%@ · %@", row.popoverOptions[(NSUInteger)curIdx], row.path]
+            : row.popoverOptions[(NSUInteger)curIdx];
+        cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
     }
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     if (row.diagnosticExport) {
@@ -866,6 +1027,48 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         [owner.navigationController pushViewController:page animated:YES];
     } else {
         FQXSettingRow *row = self.visibleRows[path.row - self.folders.count];
+        if (row.popoverKey.length && row.popoverOptions.count) {
+            UITableViewCell *cell = [tableView cellForRowAtIndexPath:path];
+            NSInteger curIdx = (row.popoverKind == 1) ? CurrentSavedBottomDisplayMode()
+                             : (row.popoverKind == 2) ? CurrentSavedCommentComposerStyle()
+                             : 0;
+            if (curIdx < 0 || (NSUInteger)curIdx >= row.popoverOptions.count) curIdx = 0;
+            FQXPopoverPickerController *picker = [FQXPopoverPickerController new];
+            picker.pickerTitle = row.title;
+            picker.options = row.popoverOptions;
+            picker.selectedIndex = curIdx;
+            picker.modalPresentationStyle = UIModalPresentationPopover;
+            UIPopoverPresentationController *pop = picker.popoverPresentationController;
+            pop.delegate = picker;
+            pop.permittedArrowDirections = UIPopoverArrowDirectionUp | UIPopoverArrowDirectionDown;
+            if (cell) {
+                pop.sourceView = cell;
+                pop.sourceRect = CGRectMake(MAX(0.0, CGRectGetMaxX(cell.bounds) - 96.0),
+                                            CGRectGetMidY(cell.bounds) - 10.0, 76.0, 20.0);
+            } else {
+                pop.sourceView = self.view;
+                pop.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1.0, 1.0);
+            }
+            __weak FQXSettingsMenu *weakMenu = self;
+            NSString *prefKey = row.popoverKey;
+            NSInteger kind = row.popoverKind;
+            picker.onSelect = ^(NSInteger chosen) {
+                NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+                [ud setInteger:chosen forKey:prefKey];
+                if (kind == 1) {
+                    [ud setBool:(chosen == 1) forKey:BottomIconsOnlyLegacyKey];
+                }
+                Class cleanup = NSClassFromString(@"FQXCleanup");
+                SEL selector = NSSelectorFromString(@"refreshForKey:");
+                if ([cleanup respondsToSelector:selector]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
+                }
+                [weakMenu.tableView reloadData];
+            };
+            UIViewController *presenter = self.presentedViewController ?: self;
+            [presenter presentViewController:picker animated:YES completion:nil];
+            return;
+        }
         if (row.diagnosticExport) {
             [self beginDiagnosticExport];
             return;

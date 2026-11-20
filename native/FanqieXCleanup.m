@@ -28,6 +28,20 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(MinePublish, "MinePublish", "显示我的页面发帖按钮", "mine", YES) \
     X(MineRecommendations, "MineRecommendations", "显示推荐内容", "mine", YES) \
     X(MineBenefits, "MineBenefitsCard", "显示金币与福利卡片", "mine", YES) \
+    X(SidebarMessages, "SidebarMessages", "显示侧栏我的消息", "sidebar", YES) \
+    X(SidebarVideoCreate, "SidebarVideoCreate", "显示侧栏视频创作", "sidebar", YES) \
+    X(SidebarReadingPref, "SidebarReadingPref", "显示侧栏阅读偏好", "sidebar", YES) \
+    X(SidebarMyNotes, "SidebarMyNotes", "显示侧栏我的笔记", "sidebar", YES) \
+    X(SidebarActivityCenter, "SidebarActivityCenter", "显示侧栏活动中心", "sidebar", YES) \
+    X(SidebarViewedUsers, "SidebarViewedUsers", "显示侧栏看过的人", "sidebar", YES) \
+    X(SidebarFanqieGuide, "SidebarFanqieGuide", "显示侧栏番茄指南", "sidebar", YES) \
+    X(SidebarMyCharity, "SidebarMyCharity", "显示侧栏我的公益", "sidebar", YES) \
+    X(SidebarVipCenter, "SidebarVipCenter", "显示侧栏会员中心", "sidebar", YES) \
+    X(SidebarMyContract, "SidebarMyContract", "显示侧栏我的签约", "sidebar", YES) \
+    X(SidebarMyWallet, "SidebarMyWallet", "显示侧栏我的钱包", "sidebar", YES) \
+    X(SidebarConversionRecord, "SidebarConversionRecord", "显示侧栏转化记录", "sidebar", YES) \
+    X(SidebarPrivacyLinks, "SidebarPrivacyLinks", "显示侧栏底部清单", "sidebar", YES) \
+    X(ShelfEditButton, "ShelfEditButton", "显示书架编辑按钮", "shelf", YES) \
     X(ShelfBanner, "ShelfRecommendationBanner", "显示书架推荐横幅", "shelf", YES) \
     X(ShelfImport, "ShelfLocalImport", "显示书架本地书导入入口", "shelf", YES) \
     X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架漫剧推荐", "shelf", YES) \
@@ -63,6 +77,8 @@ CLEANUP_OPTIONS(OPTION_KEY)
 #undef OPTION_KEY
 static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.1";
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
+static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
+static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -597,21 +613,56 @@ static NSArray *MineGlassPreferences(void) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableArray *values = [NSMutableArray array];
     for (NSString *key in @[@"FanqieAdBlock.GlassDisabled.1", @"FanqieX.BottomIconsOnly.1",
+                            @"FanqieX.BottomDisplayMode.1",
                             @"FanqieX.BottomLengthScale.1", @"FanqieX.BottomHeightScale.1",
                             @"FanqieX.BottomButtonWidthScale.1", @"FanqieX.BottomIconPointSize.1",
-                            @"FanqieX.MineQuickIconsOnly.1", MineScanButtonKey, MineSearchBarKey, MineNightButtonKey]) {
+                            @"FanqieX.MineQuickIconsOnly.1", MineScanButtonKey, MineSearchBarKey, MineNightButtonKey, MineShortcutCardKey]) {
         [values addObject:[defaults objectForKey:key] ?: NSNull.null];
     }
     return values;
 }
 
+static void ResetNestedScrollViewsInMine(UIView *view, NSInteger depth) {
+    if (!view || depth > 6) return;
+    for (UIView *sub in view.subviews) {
+        if ([sub isKindOfClass:UIScrollView.class]) {
+            UIScrollView *sv = (UIScrollView *)sub;
+            if (!sv.dragging && !sv.decelerating) {
+                CGFloat innerTop = -sv.adjustedContentInset.top;
+                if (fabs(sv.contentOffset.y - innerTop) > 0.5) {
+                    [sv setContentOffset:CGPointMake(sv.contentOffset.x, innerTop) animated:NO];
+                }
+            }
+        }
+        ResetNestedScrollViewsInMine(sub, depth + 1);
+    }
+}
+
 static void RestoreMinePosition(UIViewController *controller) {
     UIScrollView *list = HostObject(controller, NSSelectorFromString(@"collectionView"));
     if (![list isKindOfClass:UIScrollView.class] || list.dragging || list.decelerating) return;
+    if ([list isKindOfClass:UICollectionView.class]) {
+        [((UICollectionView *)list).collectionViewLayout invalidateLayout];
+    }
+    [controller.view setNeedsLayout];
     [controller.view layoutIfNeeded];
+    ResetNestedScrollViewsInMine(list, 0);
     CGPoint top = list.contentOffset;
     top.y = -list.adjustedContentInset.top;
-    if (!CGPointEqualToPoint(list.contentOffset, top)) [list setContentOffset:top animated:NO];
+    if (fabs(list.contentOffset.y - top.y) > 0.5) [list setContentOffset:top animated:NO];
+}
+
+static void ScheduleMinePositionSettle(UIViewController *controller) {
+    if (!controller) return;
+    __weak UIViewController *weakVC = controller;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIViewController *strongVC = weakVC;
+        if (strongVC && strongVC.isViewLoaded && strongVC.view.window) RestoreMinePosition(strongVC);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIViewController *strongVC = weakVC;
+        if (strongVC && strongVC.isViewLoaded && strongVC.view.window) RestoreMinePosition(strongVC);
+    });
 }
 
 static void (*NativeMineWillAppear)(id, SEL, BOOL);
@@ -628,6 +679,7 @@ static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
     if (previous && ![previous isEqualToArray:current]) {
         objc_setAssociatedObject(owner, &MineGlassPositionPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         RestoreMinePosition(owner);
+        ScheduleMinePositionSettle(owner);
     }
 }
 
@@ -637,6 +689,7 @@ static void MineDidAppear(id owner, SEL cmd, BOOL animated) {
     if (objc_getAssociatedObject(owner, &MineGlassPositionPendingKey)) {
         objc_setAssociatedObject(owner, &MineGlassPositionPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         RestoreMinePosition(owner);
+        ScheduleMinePositionSettle(owner);
     }
 }
 
@@ -1051,6 +1104,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                 id cv = HostObject(mine, NSSelectorFromString(@"collectionView"));
                 if ([cv isKindOfClass:UICollectionView.class]) [(UICollectionView *)cv reloadData];
             }
+            ScheduleMinePositionSettle(mine);
         }
     } else if ([key isEqualToString:AudioControlIconsOnlyKey] || [key isEqualToString:AudioLiquidGlassKey]) {
         Class motion = NSClassFromString(@"FQXDockMotion");
@@ -1091,12 +1145,31 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         }
     } else if ([key isEqualToString:CommentMaterialStyleKey] ||
                [key isEqualToString:CommentAppearanceModeKey] ||
+               [key isEqualToString:CommentComposerStyleKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
                [key isEqualToString:CommentSearchEntranceKey]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshCommentSel = NSSelectorFromString(@"refreshCommentGlass");
         if ([dockMotion respondsToSelector:refreshCommentSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshCommentSel);
+        }
+    } else if ([key isEqualToString:BottomDisplayModeKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshDockSel = NSSelectorFromString(@"refreshDockAppearance");
+        if ([dockMotion respondsToSelector:refreshDockSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
+        }
+    } else if ([key isEqualToString:ShelfEditButtonKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshEditSel = NSSelectorFromString(@"refreshShelfEditButton");
+        if ([dockMotion respondsToSelector:refreshEditSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshEditSel);
+        }
+    } else if ([key hasPrefix:@"FanqieX.Sidebar"]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshSidebarSel = NSSelectorFromString(@"refreshMineSidebar");
+        if ([dockMotion respondsToSelector:refreshSidebarSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSidebarSel);
         }
     } else if ([key isEqualToString:SpeechFloatKey]) {
         UIView *button = LastSpeechButton;

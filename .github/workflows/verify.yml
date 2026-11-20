@@ -1,4 +1,4 @@
-name: Verify FanqieX 1.9.1beta8
+name: Verify FanqieX 1.9.1beta9
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
 
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.9.1beta8'
+        run: test "$(cat VERSION)" = '1.9.1beta9'
 
       - name: Check the runner's preinstalled LLVM and Clang
         shell: bash
@@ -64,13 +64,13 @@ jobs:
             run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then
               gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.dylib
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.validation.json
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.composed.s
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.preextend
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.extension.bin
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.validation.json
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.composed.s
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.preextend
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.extension.bin
               test -s build/xcode27-artifact/build/xcode27/xcode-build-report.json
-              test -s build/xcode27-artifact/build/xcode27/integrated/FanqieX-1.9.1beta8.dylib
+              test -s build/xcode27-artifact/build/xcode27/integrated/FanqieX-1.9.1beta9.dylib
               test -s build/xcode27-artifact/build/xcode27/integrated/book-export-build-report.json
               test -s build/xcode27-artifact/build/xcode27/book-export-smoke.json
               exit 0
@@ -81,7 +81,7 @@ jobs:
           exit 1
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 1.9.1beta8 --output build/ci191b8 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta8.dylib
+        run: python3 scripts/verify162.py --version 1.9.1beta9 --output build/ci191b9 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-1.9.1beta9.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -89,8 +89,8 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci191b8/*.json
-            build/ci191b8/logs/
+            build/ci191b9/*.json
+            build/ci191b9/logs/
           if-no-files-found: warn
           retention-days: 30
 
@@ -99,18 +99,18 @@ jobs:
         run: |
           set -euo pipefail
           # Rebuild the committed distribution from this run after verification.
-          rm -rf dist/1.9.1beta8 verification/1.9.1beta8
-          python3 scripts/package162.py --version 1.9.1beta8 --verification-dir build/ci191b8 --export-dir build/xcode27-artifact/build/xcode27
+          rm -rf dist/1.9.1beta9 verification/1.9.1beta9
+          python3 scripts/package162.py --version 1.9.1beta9 --verification-dir build/ci191b9 --export-dir build/xcode27-artifact/build/xcode27
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-1.9.1beta8
+          name: FanqieX-1.9.1beta9
           path: |
-            dist/1.9.1beta8/FanqieX-1.9.1beta8.dylib
-            dist/1.9.1beta8/FanqieX-1.9.1beta8.zip
-            dist/1.9.1beta8/SHA256SUMS.txt
-            dist/1.9.1beta8/VERIFICATION.json
+            dist/1.9.1beta9/FanqieX-1.9.1beta9.dylib
+            dist/1.9.1beta9/FanqieX-1.9.1beta9.zip
+            dist/1.9.1beta9/SHA256SUMS.txt
+            dist/1.9.1beta9/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30

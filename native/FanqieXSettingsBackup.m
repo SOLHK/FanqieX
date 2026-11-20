@@ -21,6 +21,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomMine.1": @YES,
         @"FanqieX.BottomMall.1": @YES,
         @"FanqieX.BottomIconsOnly.1": @NO,
+        @"FanqieX.BottomDisplayMode.1": @0,
         @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
         @"FanqieX.BottomDramaCompactPosition.1": @0,
@@ -50,6 +51,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaExitCollectAlert.1": @NO,
         @"FanqieX.CommentMaterialStyle.1": @0,
         @"FanqieX.CommentAppearanceMode.1": @0,
+        @"FanqieX.CommentComposerStyle.1": @1,
         @"FanqieX.AudioLiquidGlass.1": @NO,
         @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.CommentSearchEntrance.1": @YES,
@@ -128,6 +130,10 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
+        [key isEqualToString:@"FanqieX.BottomDisplayMode.1"] ||
+        [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
+        [key isEqualToString:@"FanqieX.CommentAppearanceMode.1"] ||
+        [key isEqualToString:@"FanqieX.CommentComposerStyle.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;
