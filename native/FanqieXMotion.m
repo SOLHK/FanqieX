@@ -80,11 +80,7 @@ static FQXCommentMaterialMode FQXCurrentCommentMaterialMode(void) {
     id stored = [ud objectForKey:CommentMaterialModePrefKey];
     if (!stored) {
         if ([ud objectForKey:LegacyCommentGlassFrostedPrefKey]) {
-            BOOL legacyFrosted = [ud boolForKey:LegacyCommentGlassFrostedPrefKey];
-            NSInteger migrated = legacyFrosted ? FQXCommentMaterialIOS18Blur : FQXCommentMaterialDarkGlass;
-            [ud setInteger:migrated forKey:CommentMaterialModePrefKey];
             [ud removeObjectForKey:LegacyCommentGlassFrostedPrefKey];
-            return (FQXCommentMaterialMode)migrated;
         }
         return FQXCommentMaterialDarkGlass;
     }
@@ -243,10 +239,9 @@ static void FQXApplyUnifiedSurfaceCorners(UIVisualEffectView *surface,
     BOOL useBlurCorners = (role != FQXGlassRoleDock &&
                            FQXCurrentCommentMaterialMode() == FQXCommentMaterialIOS18Blur);
     if (useBlurCorners) {
-        SEL setCornerSel = NSSelectorFromString(@"setCornerConfiguration:");
-        if ([surface respondsToSelector:setCornerSel]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(surface, setCornerSel, nil);
-        }
+        // NEVER pass nil to -[UIView setCornerConfiguration:] (nonnull on iOS 26/27, throws
+        // NSInvalidArgumentException). Switching UIGlassEffect <-> UIBlurEffect recreates the
+        // UIVisualEffectView via FQXEnsureUnifiedGlassView so default cornerConfiguration is clean.
         surface.layer.cornerCurve = kCACornerCurveContinuous;
         CGFloat half = MIN(CGRectGetWidth(surface.bounds), CGRectGetHeight(surface.bounds)) * 0.5;
         CGFloat r = radius < 0.0 ? 0.0 : (radius == 0.0 ? half : radius);
@@ -306,6 +301,30 @@ static void FQXSyncUnifiedGlassEffect(UIVisualEffectView *surface, FQXGlassRole 
         }
     }
     FQXApplyUnifiedSurfaceCorners(surface, role, radius, continuousCard);
+}
+
+static UIVisualEffectView *FQXEnsureUnifiedGlassView(UIView *host,
+                                                     const void *assocKey,
+                                                     FQXGlassRole role,
+                                                     CGFloat radius,
+                                                     BOOL continuousCard) {
+    if (!host || !assocKey) return nil;
+    UIVisualEffectView *glass = objc_getAssociatedObject(host, assocKey);
+    BOOL wantsBlur = (role != FQXGlassRoleDock &&
+                      FQXCurrentCommentMaterialMode() == FQXCommentMaterialIOS18Blur);
+    BOOL isBlur = glass && [glass.effect isKindOfClass:UIBlurEffect.class];
+    if (glass && wantsBlur != isBlur) {
+        [glass removeFromSuperview];
+        objc_setAssociatedObject(host, assocKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        glass = nil;
+    }
+    if (!glass) {
+        glass = FQXNewUnifiedGlassView(role, radius, continuousCard);
+        if (glass) {
+            objc_setAssociatedObject(host, assocKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    return glass;
 }
 
 // Lightweight next-runloop Liquid Glass scroll-edge hint for SSTabBarController, adapted from
@@ -475,6 +494,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 @property(nonatomic, strong) NSHashTable<UIButton *> *wiredButtons;
 @property(nonatomic, strong) NSHashTable<UIGestureRecognizer *> *wiredRecognizers;
 @property(nonatomic, strong) NSHashTable<UIControl *> *wiredControls;
+@property(nonatomic, strong) UIView *pillClipView;
 @property(nonatomic, strong) UIView *pillView;
 @property(nonatomic) BOOL pillActive;
 @property(nonatomic) BOOL panning;
@@ -523,7 +543,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 - (CGRect)trackBoundsInHost:(UIView *)host {
     if (!host) return CGRectZero;
-    if (host == self.overlay) return host.bounds;
+    if (host == self.pillClipView || host == self.overlay) return host.bounds;
     if (self.proxy && self.proxy.superview) {
         return [self.proxy.superview convertRect:self.proxy.frame toView:host];
     }
@@ -618,9 +638,9 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat maxX = CGRectGetMaxX(track) - pillW - 3.0;
     CGFloat rawX = centerX - pillW * 0.5;
     if (rawX < minX) {
-        rawX = minX - (minX - rawX) * 0.22;
+        rawX = minX - (minX - rawX) * 0.10;
     } else if (rawX > maxX) {
-        rawX = maxX + (rawX - maxX) * 0.22;
+        rawX = maxX + (rawX - maxX) * 0.10;
     }
     return CGRectMake(rawX, CGRectGetMidY(track) - pillH * 0.5, pillW, pillH);
 }
@@ -679,32 +699,51 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
 }
 
 - (void)orderPillBelowButtonsInHost:(UIView *)host {
-    if (!self.pillView || self.pillView.superview != host) return;
-    if (self.restingLens && self.restingLens.superview == host && !self.panning &&
-        host.subviews.firstObject != self.restingLens) {
-        [host sendSubviewToBack:self.restingLens];
+    UIView *container = self.pillClipView;
+    if (!container) return;
+    UIView *mountHost = (host == container) ? container.superview : host;
+    if (!mountHost || container.superview != mountHost) return;
+    if (self.restingLens && self.restingLens.superview == mountHost && !self.panning &&
+        mountHost.subviews.firstObject != self.restingLens) {
+        [mountHost sendSubviewToBack:self.restingLens];
     }
     UIButton *firstBtn = nil;
-    for (UIView *sub in host.subviews) {
+    for (UIView *sub in mountHost.subviews) {
         if ([sub isKindOfClass:UIButton.class]) {
             firstBtn = (UIButton *)sub;
             break;
         }
     }
     if (firstBtn) {
-        NSUInteger pillIdx = [host.subviews indexOfObjectIdenticalTo:self.pillView];
-        NSUInteger btnIdx = [host.subviews indexOfObjectIdenticalTo:firstBtn];
+        NSUInteger pillIdx = [mountHost.subviews indexOfObjectIdenticalTo:container];
+        NSUInteger btnIdx = [mountHost.subviews indexOfObjectIdenticalTo:firstBtn];
         if (pillIdx == NSNotFound || pillIdx > btnIdx) {
-            [host insertSubview:self.pillView belowSubview:firstBtn];
+            [mountHost insertSubview:container belowSubview:firstBtn];
         }
-    } else if (self.restingLens && self.restingLens.superview == host) {
-        [host insertSubview:self.pillView aboveSubview:self.restingLens];
+    } else if (self.restingLens && self.restingLens.superview == mountHost) {
+        [mountHost insertSubview:container aboveSubview:self.restingLens];
     }
 }
 
 - (UIView *)ensurePillMounted {
     UIView *host = [self mountHostView];
     if (!host || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) return nil;
+    if (!self.pillClipView) {
+        // Capsule-clipped container matching the exact Liquid Glass Dock track so Q-elastic
+        // bounce/stretch on the leftmost & rightmost buttons can never flash outside the glass.
+        UIView *clip = [[UIView alloc] initWithFrame:CGRectZero];
+        if (!clip) return nil;
+        objc_setAssociatedObject(clip, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        clip.userInteractionEnabled = NO;
+        clip.accessibilityElementsHidden = YES;
+        clip.isAccessibilityElement = NO;
+        clip.opaque = NO;
+        clip.backgroundColor = UIColor.clearColor;
+        clip.clipsToBounds = YES;
+        clip.layer.cornerCurve = kCACornerCurveContinuous;
+        clip.hidden = YES;
+        self.pillClipView = clip;
+    }
     if (!self.pillView) {
         // Pure borderless capsule behind tab icons inside the single Liquid Glass Dock proxy:
         // zero nested UIGlassEffect specular white/black border, zero effect->nil backdrop flash,
@@ -728,11 +767,26 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         self.pillView.layer.borderWidth = 0.0;
         self.pillView.layer.borderColor = NULL;
     }
-    if (self.pillView.superview != host) {
-        [host addSubview:self.pillView];
+    if (self.pillClipView.superview != host) {
+        [host addSubview:self.pillClipView];
+    }
+    CGRect track = [self trackBoundsInHost:host];
+    if (!CGRectIsEmpty(track)) {
+        [UIView performWithoutAnimation:^{
+            if (!CGRectEqualToRect(self.pillClipView.frame, track)) {
+                self.pillClipView.frame = track;
+            }
+            CGFloat r = MIN(CGRectGetWidth(track), CGRectGetHeight(track)) * 0.5;
+            if (fabs(self.pillClipView.layer.cornerRadius - r) > 0.25) {
+                self.pillClipView.layer.cornerRadius = r;
+            }
+        }];
+    }
+    if (self.pillView.superview != self.pillClipView) {
+        [self.pillClipView addSubview:self.pillView];
     }
     [self orderPillBelowButtonsInHost:host];
-    return host;
+    return self.pillClipView;
 }
 
 - (void)placePill:(CGRect)frame {
@@ -821,6 +875,9 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
             self.pillView.hidden = YES;
             [self.pillView.layer removeAllAnimations];
         }
+        if (self.pillClipView) {
+            self.pillClipView.hidden = YES;
+        }
     }];
     self.pillActive = NO;
     self.panning = NO;
@@ -838,6 +895,7 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         CGRect start = [self restingRectForButton:seed inHost:host];
         if (CGRectIsEmpty(start)) return nil;
         [UIView performWithoutAnimation:^{
+            self.pillClipView.hidden = NO;
             self.pillView.transform = CGAffineTransformIdentity;
             self.pillView.backgroundColor = [self restingPillFillColor];
             [self placePill:start];
@@ -851,6 +909,7 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
         self.pillActive = YES;
         if (!self.lastSelectedButton) self.lastSelectedButton = seed;
     } else {
+        if (self.pillClipView.hidden) self.pillClipView.hidden = NO;
         if (self.restingLens && (!self.restingLens.hidden || self.restingLens.alpha > 0.001)) {
             [UIView performWithoutAnimation:^{
                 self.restingLens.hidden = YES;
@@ -873,9 +932,10 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     CGFloat slotW = MAX(32.0, CGRectGetWidth(rest));
     CGFloat slots = fabs(dx) / slotW;
     BOOL hasTravel = fabs(dx) > 6.0;
-    CGFloat initVel = hasTravel ? MAX(-3.2, MIN(3.2, velocity / dx)) : 0.0;
-    NSTimeInterval springDuration = hasTravel ? (slots > 1.45 ? 0.54 : 0.49) : 0.38;
-    CGFloat bounce = hasTravel ? 0.44 : 0.48;
+    BOOL isEdgeTab = (button == self.buttons.firstObject || button == self.buttons.lastObject);
+    CGFloat initVel = hasTravel ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
+    NSTimeInterval springDuration = hasTravel ? (slots > 1.45 ? 0.52 : 0.47) : 0.36;
+    CGFloat bounce = isEdgeTab ? (hasTravel ? 0.34 : 0.38) : (hasTravel ? 0.44 : 0.48);
     UIColor *desiredFill = [self restingPillFillColor];
 
     NSUInteger generation = ++self.generation;
@@ -903,22 +963,25 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     //    synchronized icon Q弹 pop on destination button, and subtle Dock glass breath.
     if (!UIAccessibilityIsReduceMotionEnabled()) {
         if (hasTravel) {
-            CGFloat stretchX = MIN(0.30, 0.22 + MIN(0.08, slots * 0.03));
+            CGFloat stretchX = isEdgeTab
+                ? MIN(0.20, 0.14 + MIN(0.06, slots * 0.02))
+                : MIN(0.28, 0.20 + MIN(0.08, slots * 0.03));
             FQXAddAdditiveScalePulse(
                 self.pillView.layer,
                 @"fqx.pill.q",
-                @[@0.0, @(stretchX), @(-0.11), @0.05, @0.0],
-                @[@0.0, @(-0.13), @0.075, @(-0.03), @0.0],
+                @[@0.0, @(stretchX), @(-0.10), @0.045, @0.0],
+                @[@0.0, @(-0.12), @0.07, @(-0.028), @0.0],
                 @[@0.0, @0.20, @0.54, @0.80, @1.0],
-                0.50);
+                0.48);
         } else {
+            CGFloat pop = isEdgeTab ? 0.09 : 0.14;
             FQXAddAdditiveScalePulse(
                 self.pillView.layer,
                 @"fqx.pill.q",
-                @[@0.0, @0.14, @(-0.065), @0.028, @0.0],
-                @[@0.0, @0.14, @(-0.065), @0.028, @0.0],
+                @[@0.0, @(pop), @(-0.055), @0.024, @0.0],
+                @[@0.0, @(pop), @(-0.055), @0.024, @0.0],
                 @[@0.0, @0.24, @0.58, @0.82, @1.0],
-                0.42);
+                0.40);
         }
         FQXAddAdditiveScalePulse(
             button.layer,
@@ -957,10 +1020,13 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     if (sender == selected) {
         CGRect rest = [self restingRectForButton:sender inHost:host];
         if (!CGRectIsEmpty(rest)) {
-            CGRect swell = CGRectInset(rest, -5.0, -2.5);
-            FQXAnimateIOS27Spring(0.24, 0.40, 0.0, ^{
-                [self placePill:swell];
-            }, nil);
+            CGRect safeBounds = CGRectInset(host.bounds, 2.0, 1.5);
+            CGRect swell = CGRectIntersection(CGRectInset(rest, -4.0, -2.0), safeBounds);
+            if (!CGRectIsEmpty(swell)) {
+                FQXAnimateIOS27Spring(0.24, 0.36, 0.0, ^{
+                    [self placePill:swell];
+                }, nil);
+            }
         }
     }
     if (self.proxy && !self.proxy.hidden) {
@@ -1207,6 +1273,8 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     [self deactivatePillAndRestoreLens];
     [self.pillView removeFromSuperview];
     self.pillView = nil;
+    [self.pillClipView removeFromSuperview];
+    self.pillClipView = nil;
 }
 
 @end
@@ -3163,7 +3231,8 @@ static void FQXBoostCommentTypography(UIView *view, NSInteger depth) {
                 id container = ((id (*)(id, SEL))objc_msgSend)(layout, containerSel);
                 if ([lText isKindOfClass:NSAttributedString.class] && container) {
                     NSAttributedString *as = (NSAttributedString *)lText;
-                    NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF) ^ ([container hash] & 0xFFFF);
+                    NSUInteger containerHash = [container respondsToSelector:@selector(hash)] ? ([container hash] & 0xFFFF) : 0;
+                    NSUInteger stamp = ((NSUInteger)mode << 28) ^ (as.string.hash & 0x0FFFFFFF) ^ containerHash;
                     NSNumber *prevStamp = objc_getAssociatedObject(view, FQXCommentTypographyStampKey);
                     if (prevStamp && prevStamp.unsignedIntegerValue == stamp) {
                         handledLayout = YES;
@@ -3419,10 +3488,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     CGRect placedFrame = nestedPill
         ? frame
         : CGRectMake(frame.origin.x - sideBleed, frame.origin.y, CGRectGetWidth(frame) + sideBleed * 2.0, CGRectGetHeight(frame));
-    if (!glass) {
-        glass = FQXNewUnifiedGlassView(role, glassRad, !nestedPill && !topAlignedSheet);
-        objc_setAssociatedObject(host, DramaComposerGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    glass = FQXEnsureUnifiedGlassView(host, DramaComposerGlassKey, role, glassRad, !nestedPill && !topAlignedSheet);
     if (!glass) return NO;
     if (!CGRectEqualToRect(glass.frame, placedFrame)) glass.frame = placedFrame;
     FQXSyncUnifiedGlassEffect(glass, role, glassRad, !nestedPill && !topAlignedSheet);
@@ -3702,14 +3768,19 @@ static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerShee
     BOOL enabled = (commentSheet ? FQXCommentStylingEnabled() : FQXGlassEnabled()) &&
                    CGRectGetWidth(sheet.bounds) > 100.0 &&
                    CGRectGetHeight(sheet.bounds) > 72.0;
-    UIVisualEffectView *glass = objc_getAssociatedObject(sheet, SheetGlassKey);
-    if (enabled && !glass) {
-        UIColor *theme = sheet.backgroundColor;
-        if (!theme || CGColorGetAlpha(theme.CGColor) < 0.01) theme = UIColor.systemBackgroundColor;
-        glass = commentSheet
-            ? FQXNewUnifiedGlassView(FQXGlassRoleCommentSheet, -1.0, NO)
-            : FQXNewGlassViewFull(0, NO, 22.0, YES, [theme colorWithAlphaComponent:0.76]);
-        objc_setAssociatedObject(sheet, SheetGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIVisualEffectView *glass = nil;
+    if (enabled) {
+        if (commentSheet) {
+            glass = FQXEnsureUnifiedGlassView(sheet, SheetGlassKey, FQXGlassRoleCommentSheet, -1.0, NO);
+        } else {
+            glass = objc_getAssociatedObject(sheet, SheetGlassKey);
+            if (!glass) {
+                UIColor *theme = sheet.backgroundColor;
+                if (!theme || CGColorGetAlpha(theme.CGColor) < 0.01) theme = UIColor.systemBackgroundColor;
+                glass = FQXNewGlassViewFull(0, NO, 22.0, YES, [theme colorWithAlphaComponent:0.76]);
+                objc_setAssociatedObject(sheet, SheetGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
     }
     if (!enabled || !glass) {
         FQXRemoveGlassSheet(sheet);
@@ -4613,6 +4684,22 @@ static void FQXInvalidateTypographyStamps(UIView *view, NSInteger depth) {
     }
 }
 
+static void FQXSafeSendVoidMethod(id target, SEL sel) {
+    if (!target || !sel) return;
+    Method m = class_getInstanceMethod(object_getClass(target), sel);
+    if (m && method_getNumberOfArguments(m) == 2) {
+        ((void (*)(id, SEL))objc_msgSend)(target, sel);
+    }
+}
+
+static void FQXSafeSendBoolMethod(id target, SEL sel, BOOL flag) {
+    if (!target || !sel) return;
+    Method m = class_getInstanceMethod(object_getClass(target), sel);
+    if (m && method_getNumberOfArguments(m) == 3) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(target, sel, flag);
+    }
+}
+
 static void FQXReapplyAllTrackedCommentGlass(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXReapplyAllTrackedCommentGlass(); });
@@ -4643,18 +4730,14 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
     for (UIViewController *vc in FQXTrackedCommentPanels().allObjects) {
         if (vc.isViewLoaded && vc.view.window) {
             FQXInvalidateTypographyStamps(vc.view, 0);
-            if ([vc respondsToSelector:darkChangeSel]) {
-                ((void (*)(id, SEL, BOOL))objc_msgSend)(vc, darkChangeSel, darkTheme);
-            }
+            FQXSafeSendBoolMethod(vc, darkChangeSel, darkTheme);
             FQXStyleDramaPanel(vc);
         }
     }
     for (UIViewController *vc in FQXTrackedCommentLists().allObjects) {
         if (vc.isViewLoaded && vc.view.window) {
             FQXInvalidateTypographyStamps(vc.view, 0);
-            if ([vc respondsToSelector:darkChangeSel]) {
-                ((void (*)(id, SEL, BOOL))objc_msgSend)(vc, darkChangeSel, darkTheme);
-            }
+            FQXSafeSendBoolMethod(vc, darkChangeSel, darkTheme);
             FQXStyleDramaCommentList(vc);
         }
     }
@@ -4667,9 +4750,7 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
     for (UIViewController *vc in FQXTrackedReaderCommentLists().allObjects) {
         if (vc.isViewLoaded && vc.view.window) {
             FQXInvalidateTypographyStamps(vc.view, 0);
-            if ([vc respondsToSelector:setupThemeSel]) {
-                ((void (*)(id, SEL))objc_msgSend)(vc, setupThemeSel);
-            }
+            FQXSafeSendVoidMethod(vc, setupThemeSel);
             FQXStyleReaderCommentList(vc);
         }
     }
@@ -4677,9 +4758,7 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
     for (UIView *bar in FQXTrackedCommentBars().allObjects) {
         if (bar.window) {
             FQXInvalidateTypographyStamps(bar, 0);
-            if ([bar respondsToSelector:barThemeSel]) {
-                ((void (*)(id, SEL, BOOL))objc_msgSend)(bar, barThemeSel, darkTheme);
-            }
+            FQXSafeSendBoolMethod(bar, barThemeSel, darkTheme);
             FQXStyleCommentBar(bar);
         }
     }
@@ -4751,10 +4830,7 @@ static void FQXStyleWriteReviewButton(UIView *btn, BOOL active) {
         }
         return;
     }
-    if (!glass) {
-        glass = FQXNewUnifiedGlassView(FQXGlassRoleFloatingPill, 0.0, NO);
-        objc_setAssociatedObject(btn, WriteReviewGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    glass = FQXEnsureUnifiedGlassView(btn, WriteReviewGlassKey, FQXGlassRoleFloatingPill, 0.0, NO);
     if (!glass) return;
     CGRect frame = btn.bounds;
     if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
