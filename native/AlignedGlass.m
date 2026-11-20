@@ -6761,15 +6761,29 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
         edit=ShelfEditPlacement(controller,holder);
         ShelfTopHit(holder,Get(controller,"searchButton"),Get(controller,"moreButton"),edit);
     }
+    ShelfRememberFilterHeader(self);
+    B visible=ShelfFilterVisible();
+    Obj filterBtn=Get(self,"filterButton"),genreBtn=Get(self,"fullGenreFilterButton");
+    ApplyShelfFilterButton(filterBtn,visible);
+    ApplyShelfFilterButton(genreBtn,visible);
     if (!edit) {
         Obj button=Get(self,"editButton");
         ShelfActionGlass(button,0);
-        ShelfRightEdge(button,FQHSurface(button),Enabled());
+        // Only pull editButton to the right margin when no visible filter button shares its row.
+        B hasSameRowFilter=0;
+        if (Kind(button,"UIButton") && !Flag(button,"isHidden") && Get(button,"window")) {
+            Rect eb=Convert(button,Bounds(button),self);
+            if (Kind(filterBtn,"UIButton") && !Flag(filterBtn,"isHidden") && Belongs(filterBtn,self)) {
+                Rect fr=Convert(filterBtn,Bounds(filterBtn),self);
+                if (VisibleRect(fr) && __builtin_fabs((fr.y+fr.height*0.5)-(eb.y+eb.height*0.5))<18.0) hasSameRowFilter=1;
+            }
+            if (!hasSameRowFilter && Kind(genreBtn,"UIButton") && !Flag(genreBtn,"isHidden") && Belongs(genreBtn,self)) {
+                Rect gr=Convert(genreBtn,Bounds(genreBtn),self);
+                if (VisibleRect(gr) && __builtin_fabs((gr.y+gr.height*0.5)-(eb.y+eb.height*0.5))<18.0) hasSameRowFilter=1;
+            }
+        }
+        ShelfRightEdge(button,FQHSurface(button),Enabled() && !hasSameRowFilter);
     }
-    ShelfRememberFilterHeader(self);
-    B visible=ShelfFilterVisible();
-    ApplyShelfFilterButton(Get(self,"filterButton"),visible);
-    ApplyShelfFilterButton(Get(self,"fullGenreFilterButton"),visible);
 }
 static void ShelfLegacyFilterShow(Obj self,Sel cmd,B show) {
     RestoreShelfFilterButton(Get(self,"filterButton"));

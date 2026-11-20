@@ -559,13 +559,30 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 - (void)syncDropletOpticalRim {
     if (!self.dropletView) return;
-    BOOL darkDock = (self.proxy.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
-                    (self.proxy.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
-                     self.proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
-    self.dropletView.layer.borderWidth = 0.5;
-    self.dropletView.layer.borderColor = (darkDock
-        ? [UIColor colorWithWhite:1.0 alpha:0.28]
-        : [UIColor colorWithWhite:1.0 alpha:0.55]).CGColor;
+    // Let native iOS 26/27 UIGlassEffect render its own optical rim without adding a
+    // hard CoreAnimation stroke or clipping the Liquid Glass refraction halo.
+    UIUserInterfaceStyle dockStyle = self.proxy ? self.proxy.overrideUserInterfaceStyle : UIUserInterfaceStyleUnspecified;
+    if (self.glassContainerView && self.glassContainerView.overrideUserInterfaceStyle != dockStyle) {
+        self.glassContainerView.overrideUserInterfaceStyle = dockStyle;
+    }
+    if (self.dropletView.overrideUserInterfaceStyle != dockStyle) {
+        self.dropletView.overrideUserInterfaceStyle = dockStyle;
+    }
+    if (FQXGlassEnabled()) {
+        if (self.dropletView.clipsToBounds) self.dropletView.clipsToBounds = NO;
+        if (self.dropletView.layer.borderWidth > 0.0) {
+            self.dropletView.layer.borderWidth = 0.0;
+            self.dropletView.layer.borderColor = NULL;
+        }
+    } else {
+        BOOL darkDock = (dockStyle == UIUserInterfaceStyleDark) ||
+                        (dockStyle == UIUserInterfaceStyleUnspecified &&
+                         self.proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+        self.dropletView.layer.borderWidth = 0.5;
+        self.dropletView.layer.borderColor = (darkDock
+            ? [UIColor colorWithWhite:1.0 alpha:0.28]
+            : [UIColor colorWithWhite:1.0 alpha:0.55]).CGColor;
+    }
 }
 
 - (UIView *)ensureDropletMounted {
@@ -586,14 +603,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         if (!droplet) return nil;
         objc_setAssociatedObject(droplet, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         droplet.hidden = YES;
-        droplet.clipsToBounds = YES;
+        droplet.clipsToBounds = NO;
         droplet.layer.cornerCurve = kCACornerCurveContinuous;
         droplet.contentView.clipsToBounds = NO;
-        droplet.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
         self.dropletView = droplet;
-    }
-    if (self.dropletView.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
-        self.dropletView.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
     }
     [self syncDropletOpticalRim];
 
@@ -601,8 +614,11 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.glassContainerView) {
         if (self.glassContainerView.hidden) self.glassContainerView.hidden = NO;
         if (self.glassContainerView.alpha < 0.99) self.glassContainerView.alpha = 1.0;
-        if (!CGRectEqualToRect(self.glassContainerView.frame, host.bounds)) {
-            self.glassContainerView.frame = host.bounds;
+        // Pad the UIGlassContainerEffect canvas generously beyond host.bounds so the lifted
+        // Liquid Glass lens and its optical refraction rim are never clipped at y = 0.
+        CGRect paddedFrame = CGRectInset(host.bounds, -24.0, -24.0);
+        if (!CGRectEqualToRect(self.glassContainerView.frame, paddedFrame)) {
+            self.glassContainerView.frame = paddedFrame;
         }
         if (self.dropletView.superview != self.glassContainerView.contentView) {
             [self.glassContainerView.contentView addSubview:self.dropletView];
@@ -625,10 +641,14 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 }
 
 - (void)placeDroplet:(CGRect)frame {
-    self.dropletView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
-    self.dropletView.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+    UIView *host = [self dropletCoordHost];
+    CGRect local = (host && self.dropletView.superview && self.dropletView.superview != host)
+        ? [host convertRect:frame toView:self.dropletView.superview]
+        : frame;
+    self.dropletView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(local), CGRectGetHeight(local));
+    self.dropletView.center = CGPointMake(CGRectGetMidX(local), CGRectGetMidY(local));
     if (!FQXGlassEnabled()) {
-        self.dropletView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
+        self.dropletView.layer.cornerRadius = MIN(CGRectGetWidth(local), CGRectGetHeight(local)) * 0.5;
     }
 }
 
@@ -831,10 +851,10 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGRect originRest = [self restingRectForButton:origin inHost:host];
     BOOL sameTab = (sender == origin);
     CGRect touchTarget = sameTab
-        ? CGRectInset(targetRest, -MIN(6.0, CGRectGetWidth(targetRest) * 0.08),
-                      -MIN(4.0, CGRectGetHeight(targetRest) * 0.08))
-        : CGRectInset(targetRest, -MIN(8.0, CGRectGetWidth(targetRest) * 0.10),
-                      -MIN(3.5, CGRectGetHeight(targetRest) * 0.07));
+        ? CGRectInset(targetRest, -MIN(4.0, CGRectGetWidth(targetRest) * 0.05),
+                      -MIN(2.0, CGRectGetHeight(targetRest) * 0.04))
+        : CGRectInset(targetRest, -MIN(6.0, CGRectGetWidth(targetRest) * 0.07),
+                      -MIN(2.0, CGRectGetHeight(targetRest) * 0.04));
     CGFloat dx = fabs(CGRectGetMidX(targetRest) - CGRectGetMidX(originRest));
     CGFloat travelSlots = CGRectGetWidth(targetRest) > 1.0 ? (dx / CGRectGetWidth(targetRest)) : 0.0;
     NSTimeInterval dur = sameTab ? 0.22 : (travelSlots > 1.35 ? 0.36 : 0.28);
@@ -2538,11 +2558,9 @@ static void HookHostDramaCommentLayout(UIView *view, SEL cmd) {
     FQXRefreshDramaCommentCaption(view);
 }
 
-static BOOL (*OrigShelfShouldShowEmptyBookCell)(id, SEL);
-static BOOL HookShelfShouldShowEmptyBookCell(id self, SEL cmd) {
-    if (!FQXBoolGet(self, "hasLoadBookShelf", YES)) return NO;
-    return OrigShelfShouldShowEmptyBookCell(self, cmd);
-}
+// Note: Do not override SSBookShelfViewModel.shouldShowEmptyBookCell during cold start;
+// forcing NO while the host still builds the empty/history section desynchronizes
+// sizeForItemAtIndexPath: (1-column width) from cellForItemAtIndexPath: (full-width buttons).
 
 static void (*OrigMineTabBarCurrentTap)(id, SEL, int);
 static void HookMineTabBarCurrentTap(UIViewController *controller, SEL cmd, int index) {
@@ -2622,8 +2640,8 @@ static BOOL FQXColorGetRGBA(UIColor *color, CGFloat *r, CGFloat *g, CGFloat *b, 
 }
 
 static UIColor *FQXRichCommentBlueColor(void) {
-    // Rich, saturated, high-contrast vivid blue for links & "大家都在搜" over dark glass.
-    return [UIColor colorWithRed:0.24 green:0.62 blue:1.0 alpha:1.0];
+    // Rich, saturated, deeper vivid blue for links & "大家都在搜" over dark glass.
+    return [UIColor colorWithRed:0.18 green:0.56 blue:1.0 alpha:1.0];
 }
 
 static UIColor *FQXBoostColorForClearGlass(UIColor *color, UITraitCollection *traits, BOOL *changed) {
@@ -2659,7 +2677,7 @@ static UIColor *FQXBoostColorForClearGlass(UIColor *color, UITraitCollection *tr
     }
     if (b > r + 0.12 && b > g + 0.03) {
         // Blue links & search query text -> rich, deeper, saturated luminous blue.
-        if (fabs(r - 0.24) > 0.04 || fabs(g - 0.62) > 0.04 || b < 0.95 || a < 0.98) {
+        if (fabs(r - 0.18) > 0.04 || fabs(g - 0.56) > 0.04 || b < 0.95 || a < 0.98) {
             if (changed) *changed = YES;
             return FQXRichCommentBlueColor();
         }
@@ -3605,6 +3623,7 @@ static void FQXStyleCommentSearchEntrance(UIView *entrance);
 static BOOL FQXStyleDramaCommentList(UIViewController *controller);
 static void FQXStyleReaderCommentList(UIViewController *controller);
 static void FQXScanAndStyleCommentTopBanners(UIView *root);
+static void FQXScheduleDelayedBannerScan(UIViewController *controller);
 
 static void FQXStyleDramaPanel(UIViewController *controller) {
     if (!controller) return;
@@ -3644,6 +3663,7 @@ static void (*OrigDramaPanelAppeared)(id, SEL, BOOL);
 static void HookDramaPanelAppeared(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigDramaPanelAppeared(controller, cmd, animated);
     FQXStyleDramaPanel(controller);
+    FQXScheduleDelayedBannerScan(controller);
 }
 
 static void (*OrigDramaPanelSetupTheme)(id, SEL);
@@ -3693,8 +3713,8 @@ static BOOL FQXStyleDramaCommentList(UIViewController *controller) {
     UICollectionView *collection = FQXObjGet(controller, "collectionView");
     FQXClearCommentCollection(collection, glass);
     FQXClearCommentCovers(root, CGRectGetWidth(root.bounds), glass);
-    FQXScanAndStyleCommentTopBanners(root);
     if (glass) FQXBoostCommentTypography(root, 0);
+    FQXScanAndStyleCommentTopBanners(root);
     Class toolbarClass = NSClassFromString(@"FQCCommentBottomToolBar");
     UIView *bar = nil;
     for (UIView *sub in root.subviews) {
@@ -3714,6 +3734,7 @@ static void (*OrigDramaCommentListAppeared)(id, SEL, BOOL);
 static void HookDramaCommentListAppeared(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigDramaCommentListAppeared(controller, cmd, animated);
     FQXStyleDramaCommentList(controller);
+    FQXScheduleDelayedBannerScan(controller);
 }
 
 static void (*OrigDramaCommentListSetupTheme)(id, SEL);
@@ -3813,33 +3834,63 @@ static void FQXSetLabelColorForce(UIView *view, UIColor *color, BOOL addShadow) 
     }
 }
 
+static NSHashTable<UIView *> *FQXTrackedDynamicSearchBanners(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXTrackedDynamicNoticeBanners(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSAttributedString *FQXSplitStyleSearchAttributed(NSAttributedString *source, NSString *plainText, UIFont *fallbackFont) {
+    UIColor *pureWhite = [UIColor colorWithWhite:1.0 alpha:0.98];
+    UIColor *richBlue = FQXRichCommentBlueColor();
+    NSMutableAttributedString *mut = nil;
+    if (source.length > 0) {
+        mut = [source mutableCopy];
+    } else if (plainText.length > 0) {
+        NSDictionary *attrs = fallbackFont ? @{NSFontAttributeName: fallbackFont} : @{};
+        mut = [[NSMutableAttributedString alloc] initWithString:plainText attributes:attrs];
+    }
+    if (!mut || mut.length == 0) return nil;
+    NSString *txt = mut.string ?: @"";
+    NSRange colonRange = [txt rangeOfString:@"："];
+    if (colonRange.location == NSNotFound) colonRange = [txt rangeOfString:@":"];
+    NSUInteger split = (colonRange.location != NSNotFound)
+        ? NSMaxRange(colonRange)
+        : MIN((NSUInteger)5, mut.length);
+    NSRange prefixRange = NSMakeRange(0, MIN(split, mut.length));
+    [mut addAttribute:NSForegroundColorAttributeName value:pureWhite range:prefixRange];
+    [mut addAttribute:FQXCTForegroundColorAttr value:(id)pureWhite.CGColor range:prefixRange];
+    if (split < mut.length) {
+        NSRange queryRange = NSMakeRange(split, mut.length - split);
+        [mut addAttribute:NSForegroundColorAttributeName value:richBlue range:queryRange];
+        [mut addAttribute:FQXCTForegroundColorAttr value:(id)richBlue.CGColor range:queryRange];
+    }
+    return mut;
+}
+
 static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
-    if (!view || depth > 5 || [view isKindOfClass:UIVisualEffectView.class]) return;
+    if (!view || depth > 6 || [view isKindOfClass:UIVisualEffectView.class]) return;
     UIColor *pureWhite = [UIColor colorWithWhite:1.0 alpha:0.98];
     UIColor *richBlue = FQXRichCommentBlueColor();
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
         NSString *txt = label.text ?: label.attributedText.string ?: @"";
         if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
-            if (label.attributedText.length > 0 && txt.length > 6) {
-                // Single combined attributed string: "大家都在搜：" white + query rich blue
-                NSMutableAttributedString *mut = [label.attributedText mutableCopy];
-                NSRange colonRange = [txt rangeOfString:@"："];
-                if (colonRange.location == NSNotFound) colonRange = [txt rangeOfString:@":"];
-                NSUInteger split = (colonRange.location != NSNotFound)
-                    ? NSMaxRange(colonRange)
-                    : MIN((NSUInteger)5, mut.length);
-                NSRange prefixRange = NSMakeRange(0, MIN(split, mut.length));
-                [mut addAttribute:NSForegroundColorAttributeName value:pureWhite range:prefixRange];
-                [mut addAttribute:FQXCTForegroundColorAttr value:(id)pureWhite.CGColor range:prefixRange];
-                if (split < mut.length) {
-                    NSRange queryRange = NSMakeRange(split, mut.length - split);
-                    [mut addAttribute:NSForegroundColorAttributeName value:richBlue range:queryRange];
-                    [mut addAttribute:FQXCTForegroundColorAttr value:(id)richBlue.CGColor range:queryRange];
+            if (txt.length > 6) {
+                NSAttributedString *styled = FQXSplitStyleSearchAttributed(label.attributedText, txt, label.font);
+                if (styled) {
+                    label.attributedText = styled;
+                    label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
+                    label.shadowOffset = CGSizeMake(0.0, 0.5);
                 }
-                label.attributedText = mut;
-                label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.38];
-                label.shadowOffset = CGSizeMake(0.0, 0.5);
             } else {
                 FQXSetLabelColorForce(label, pureWhite, YES);
             }
@@ -3855,31 +3906,65 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
     if ([view isKindOfClass:UIButton.class]) {
         UIButton *btn = (UIButton *)view;
         NSString *t = [btn titleForState:UIControlStateNormal] ?: @"";
-        FQXSetLabelColorForce(btn, ([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) ? pureWhite : richBlue, YES);
+        if (([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) && t.length > 6) {
+            NSAttributedString *curAttr = [btn attributedTitleForState:UIControlStateNormal];
+            NSAttributedString *styled = FQXSplitStyleSearchAttributed(curAttr, t, btn.titleLabel.font);
+            if (styled) [btn setAttributedTitle:styled forState:UIControlStateNormal];
+        } else {
+            FQXSetLabelColorForce(btn, ([t containsString:@"大家都在搜"] || [t containsString:@"大家在搜"]) ? pureWhite : richBlue, YES);
+        }
         return;
     }
-    // Custom rich-text labels (e.g. YYLabel)
+    // Custom rich-text labels (e.g. YYLabel textLayout + attributedText)
+    SEL getLayout = NSSelectorFromString(@"textLayout");
+    SEL setLayout = NSSelectorFromString(@"setTextLayout:");
+    if ([view respondsToSelector:getLayout] && [view respondsToSelector:setLayout]) {
+        id layout = ((id (*)(id, SEL))objc_msgSend)(view, getLayout);
+        SEL textSel = NSSelectorFromString(@"text");
+        SEL containerSel = NSSelectorFromString(@"container");
+        if (layout && [layout respondsToSelector:textSel] && [layout respondsToSelector:containerSel]) {
+            id lText = ((id (*)(id, SEL))objc_msgSend)(layout, textSel);
+            id container = ((id (*)(id, SEL))objc_msgSend)(layout, containerSel);
+            if ([lText isKindOfClass:NSAttributedString.class] && container) {
+                NSAttributedString *as = (NSAttributedString *)lText;
+                NSString *txt = as.string ?: @"";
+                if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
+                    NSAttributedString *styled = FQXSplitStyleSearchAttributed(as, txt, nil);
+                    Class layoutCls = [layout class];
+                    SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
+                    if (styled && [layoutCls respondsToSelector:makeLayout]) {
+                        id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, styled);
+                        if (newLayout) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                            return;
+                        }
+                    }
+                } else if (txt.length > 0) {
+                    NSMutableAttributedString *mut = [as mutableCopy];
+                    NSRange full = NSMakeRange(0, mut.length);
+                    [mut addAttribute:NSForegroundColorAttributeName value:richBlue range:full];
+                    [mut addAttribute:FQXCTForegroundColorAttr value:(id)richBlue.CGColor range:full];
+                    Class layoutCls = [layout class];
+                    SEL makeLayout = NSSelectorFromString(@"layoutWithContainer:text:");
+                    if ([layoutCls respondsToSelector:makeLayout]) {
+                        id newLayout = ((id (*)(id, SEL, id, id))objc_msgSend)(layoutCls, makeLayout, container, mut);
+                        if (newLayout) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(view, setLayout, newLayout);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
     if ([view respondsToSelector:@selector(attributedText)] && [view respondsToSelector:@selector(setAttributedText:)]) {
         id curAttr = ((id (*)(id, SEL))objc_msgSend)(view, @selector(attributedText));
         if ([curAttr isKindOfClass:NSAttributedString.class] && [(NSAttributedString *)curAttr length] > 0) {
             NSAttributedString *as = (NSAttributedString *)curAttr;
             NSString *txt = as.string ?: @"";
             if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
-                NSMutableAttributedString *mut = [as mutableCopy];
-                NSRange colonRange = [txt rangeOfString:@"："];
-                if (colonRange.location == NSNotFound) colonRange = [txt rangeOfString:@":"];
-                NSUInteger split = (colonRange.location != NSNotFound)
-                    ? NSMaxRange(colonRange)
-                    : MIN((NSUInteger)5, mut.length);
-                NSRange prefixRange = NSMakeRange(0, MIN(split, mut.length));
-                [mut addAttribute:NSForegroundColorAttributeName value:pureWhite range:prefixRange];
-                [mut addAttribute:FQXCTForegroundColorAttr value:(id)pureWhite.CGColor range:prefixRange];
-                if (split < mut.length) {
-                    NSRange queryRange = NSMakeRange(split, mut.length - split);
-                    [mut addAttribute:NSForegroundColorAttributeName value:richBlue range:queryRange];
-                    [mut addAttribute:FQXCTForegroundColorAttr value:(id)richBlue.CGColor range:queryRange];
-                }
-                ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), mut);
+                NSAttributedString *styled = FQXSplitStyleSearchAttributed(as, txt, nil);
+                if (styled) ((void (*)(id, SEL, id))objc_msgSend)(view, @selector(setAttributedText:), styled);
                 return;
             } else if (txt.length > 0) {
                 FQXSetLabelColorForce(view, richBlue, YES);
@@ -3895,6 +3980,11 @@ static void FQXStyleSearchBannerSubtree(UIView *view, NSInteger depth) {
 static void FQXSetCommentBannerCollapsed(UIView *banner, BOOL hide) {
     if (!banner) return;
     FQXAudioSetHiddenTracked(banner, hide);
+    if (hide) {
+        if (banner.alpha > 0.001) banner.alpha = 0.0;
+    } else if (banner.alpha < 0.01) {
+        banner.alpha = 1.0;
+    }
     NSNumber *savedH = objc_getAssociatedObject(banner, FQXCommentBannerSavedHeightKey);
     if (hide) {
         if (CGRectGetHeight(banner.frame) > 0.5) {
@@ -3911,7 +4001,7 @@ static void FQXSetCommentBannerCollapsed(UIView *banner, BOOL hide) {
                     if (sib == banner || sib.hidden) continue;
                     if ([sib isKindOfClass:UIScrollView.class] &&
                         CGRectGetMinY(sib.frame) >= CGRectGetMinY(bf) + reclaimed - 4.0 &&
-                        CGRectGetMinY(sib.frame) <= CGRectGetMinY(bf) + reclaimed + 20.0) {
+                        CGRectGetMinY(sib.frame) <= CGRectGetMinY(bf) + reclaimed + 24.0) {
                         CGRect sf = sib.frame;
                         sf.origin.y -= reclaimed;
                         sf.size.height += reclaimed;
@@ -3977,32 +4067,129 @@ static void FQXStyleCommentSearchEntrance(UIView *entrance) {
     FQXStyleSearchBannerSubtree(entrance, 0);
 }
 
-static void FQXCollectShortText(UIView *view, NSMutableString *out, NSInteger depth) {
-    if (!view || depth > 4 || out.length > 96 || [view isKindOfClass:UIVisualEffectView.class]) return;
+static NSString *FQXDirectTextOfView(UIView *view) {
+    if (!view || [view isKindOfClass:UIVisualEffectView.class]) return nil;
     if ([view isKindOfClass:UILabel.class]) {
-        NSString *t = ((UILabel *)view).text ?: ((UILabel *)view).attributedText.string;
-        if (t.length) [out appendFormat:@" %@", t];
-        return;
+        UILabel *l = (UILabel *)view;
+        return l.text.length ? l.text : l.attributedText.string;
     }
     if ([view isKindOfClass:UIButton.class]) {
-        NSString *t = [((UIButton *)view) titleForState:UIControlStateNormal];
-        if (t.length) [out appendFormat:@" %@", t];
-        return;
+        UIButton *b = (UIButton *)view;
+        NSString *t = [b titleForState:UIControlStateNormal];
+        return t.length ? t : [b attributedTitleForState:UIControlStateNormal].string;
+    }
+    SEL getLayout = NSSelectorFromString(@"textLayout");
+    if ([view respondsToSelector:getLayout]) {
+        id layout = ((id (*)(id, SEL))objc_msgSend)(view, getLayout);
+        SEL textSel = NSSelectorFromString(@"text");
+        if (layout && [layout respondsToSelector:textSel]) {
+            id lt = ((id (*)(id, SEL))objc_msgSend)(layout, textSel);
+            if ([lt isKindOfClass:NSAttributedString.class] && [(NSAttributedString *)lt length] > 0) {
+                return [(NSAttributedString *)lt string];
+            }
+        }
     }
     if ([view respondsToSelector:@selector(attributedText)]) {
         id attr = ((id (*)(id, SEL))objc_msgSend)(view, @selector(attributedText));
         if ([attr isKindOfClass:NSAttributedString.class] && [(NSAttributedString *)attr length] > 0) {
-            [out appendFormat:@" %@", [(NSAttributedString *)attr string]];
-            return;
+            return [(NSAttributedString *)attr string];
         }
+    }
+    return nil;
+}
+
+static void FQXCollectShortText(UIView *view, NSMutableString *out, NSInteger depth) {
+    if (!view || depth > 4 || out.length > 96 || [view isKindOfClass:UIVisualEffectView.class]) return;
+    NSString *direct = FQXDirectTextOfView(view);
+    if (direct.length) {
+        [out appendFormat:@" %@", direct];
+        return;
     }
     for (UIView *sub in view.subviews) {
         FQXCollectShortText(sub, out, depth + 1);
     }
 }
 
-static void FQXScanBannerNode(UIView *view, UIView *root, CGFloat rootW, NSInteger depth) {
-    if (!view || depth > 12 || [view isKindOfClass:UIVisualEffectView.class]) return;
+static BOOL FQXIsInsideUserCommentCell(UIView *view, UIView *root) {
+    for (UIView *cur = view; cur && cur != root; cur = cur.superview) {
+        if ([cur isKindOfClass:UICollectionViewCell.class] || [cur isKindOfClass:UITableViewCell.class]) {
+            NSString *cn = NSStringFromClass(cur.class);
+            if ([cn containsString:@"CommonCell"] || [cn containsString:@"Reply"] ||
+                [cn containsString:@"ParagraphV1"] || [cn containsString:@"SeriesCommentCell"]) {
+                return YES;
+            }
+        }
+    }
+    return NO;
+}
+
+static UIView *FQXFindTightestBannerContainer(UIView *leaf, UIView *root) {
+    UIView *best = nil;
+    for (UIView *cur = leaf.superview; cur && cur != root; cur = cur.superview) {
+        if ([cur isKindOfClass:UIScrollView.class] || [cur isKindOfClass:UIVisualEffectView.class]) break;
+        CGFloat h = CGRectGetHeight(cur.bounds);
+        if (h > 68.0) break;
+        NSMutableString *txt = [NSMutableString string];
+        FQXCollectShortText(cur, txt, 0);
+        // Never collapse the main sheet title/tab header that contains "评论" / "剧评" / "条评论".
+        if ([txt containsString:@"条评论"] || [txt containsString:@"剧评"]) break;
+        best = cur;
+    }
+    return best;
+}
+
+static void FQXApplyBannerRowState(UIView *leaf, UIView *root, BOOL isSearch) {
+    BOOL hide = isSearch ? !FQXCommentSearchEntranceEnabled() : !FQXCommentActivityBannerEnabled();
+    NSHashTable<UIView *> *tracker = isSearch ? FQXTrackedDynamicSearchBanners() : FQXTrackedDynamicNoticeBanners();
+    UIView *container = FQXFindTightestBannerContainer(leaf, root);
+    if (container) {
+        [tracker addObject:container];
+        FQXSetCommentBannerCollapsed(container, hide);
+        if (!hide && FQXGlassEnabled()) {
+            FQXClearCommentSurface(container, YES);
+            if (isSearch) {
+                if (container.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
+                    container.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+                FQXStyleSearchBannerSubtree(container, 0);
+            } else {
+                FQXBoostCommentTypography(container, 0);
+            }
+        }
+        return;
+    }
+    // Leaf sits directly inside a taller header (e.g., alongside 评论/剧评 tabs):
+    // act on the leaf and sibling subviews sharing the same horizontal band.
+    UIView *parent = leaf.superview;
+    CGFloat leafMidY = CGRectGetMidY(leaf.frame);
+    if (parent && parent != root) {
+        for (UIView *sib in parent.subviews) {
+            if ([sib isKindOfClass:UIScrollView.class] || [sib isKindOfClass:UIVisualEffectView.class]) continue;
+            if (CGRectGetHeight(sib.bounds) > 48.0) continue;
+            if (fabs(CGRectGetMidY(sib.frame) - leafMidY) > 18.0) continue;
+            NSString *sibTxt = FQXDirectTextOfView(sib);
+            if (sibTxt && ([sibTxt containsString:@"条评论"] || [sibTxt containsString:@"剧评"] ||
+                           [sibTxt isEqualToString:@"评论"])) continue;
+            [tracker addObject:sib];
+            FQXAudioSetHiddenTracked(sib, hide);
+            sib.alpha = hide ? 0.0 : 1.0;
+            if (!hide && FQXGlassEnabled()) {
+                if (isSearch) FQXStyleSearchBannerSubtree(sib, 0);
+                else FQXBoostCommentTypography(sib, 0);
+            }
+        }
+    } else {
+        [tracker addObject:leaf];
+        FQXAudioSetHiddenTracked(leaf, hide);
+        leaf.alpha = hide ? 0.0 : 1.0;
+        if (!hide && FQXGlassEnabled()) {
+            if (isSearch) FQXStyleSearchBannerSubtree(leaf, 0);
+            else FQXBoostCommentTypography(leaf, 0);
+        }
+    }
+}
+
+static void FQXScanBannerNode(UIView *view, UIView *root, NSInteger depth) {
+    if (!view || depth > 16 || [view isKindOfClass:UIVisualEffectView.class]) return;
     Class searchCls = NSClassFromString(@"FQCShortVideoCommentSearchEntranceView");
     Class titleCls = NSClassFromString(@"FQCShortVideoCommentTitleView");
     if (searchCls && [view isKindOfClass:searchCls]) {
@@ -4011,6 +4198,7 @@ static void FQXScanBannerNode(UIView *view, UIView *root, CGFloat rootW, NSInteg
     }
     if (titleCls && [view isKindOfClass:titleCls]) {
         BOOL hideBanner = !FQXCommentActivityBannerEnabled();
+        [FQXTrackedDynamicNoticeBanners() addObject:view];
         FQXSetCommentBannerCollapsed(view, hideBanner);
         if (!hideBanner && FQXGlassEnabled()) {
             FQXClearCommentSurface(view, YES);
@@ -4018,90 +4206,47 @@ static void FQXScanBannerNode(UIView *view, UIView *root, CGFloat rootW, NSInteg
         }
         return;
     }
-    CGFloat w = CGRectGetWidth(view.bounds);
-    CGFloat h = CGRectGetHeight(view.bounds);
-    BOOL compactRow = (w >= rootW * 0.55 && h >= 18.0 && h <= 62.0 &&
-                       ![view isKindOfClass:UIScrollView.class] &&
-                       ![view isKindOfClass:UILabel.class] &&
-                       ![view isKindOfClass:UIButton.class]);
-    if (compactRow && view != root) {
+    NSString *direct = FQXDirectTextOfView(view);
+    if (direct.length > 0 && view != root && !FQXIsInsideUserCommentCell(view, root)) {
         CGRect inRoot = [view convertRect:view.bounds toView:root];
-        // Only inspect top-half compact banner bars (never bottom toolbars or user comment cells).
-        BOOL isCommentCell = [view isKindOfClass:UICollectionViewCell.class] &&
-                             ([NSStringFromClass(view.class) containsString:@"CommonCell"] ||
-                              [NSStringFromClass(view.class) containsString:@"Reply"] ||
-                              [NSStringFromClass(view.class) containsString:@"ParagraphV1"]);
-        if (!isCommentCell && CGRectGetMinY(inRoot) < CGRectGetHeight(root.bounds) * 0.45) {
-            NSMutableString *txt = [NSMutableString string];
-            FQXCollectShortText(view, txt, 0);
-            if ([txt containsString:@"大家都在搜"] || [txt containsString:@"大家在搜"]) {
-                // Only act on the tightest row container holding the search text.
-                BOOL childHasSearch = NO;
-                for (UIView *sub in view.subviews) {
-                    if (CGRectGetWidth(sub.bounds) >= rootW * 0.55 && CGRectGetHeight(sub.bounds) >= 18.0 && CGRectGetHeight(sub.bounds) <= 62.0) {
-                        NSMutableString *subTxt = [NSMutableString string];
-                        FQXCollectShortText(sub, subTxt, 0);
-                        if ([subTxt containsString:@"大家都在搜"] || [subTxt containsString:@"大家在搜"]) {
-                            childHasSearch = YES;
-                            break;
-                        }
-                    }
-                }
-                if (!childHasSearch) {
-                    BOOL hideSearch = !FQXCommentSearchEntranceEnabled();
-                    FQXSetCommentBannerCollapsed(view, hideSearch);
-                    if (!hideSearch && FQXGlassEnabled()) {
-                        FQXClearCommentSurface(view, YES);
-                        if (view.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
-                            view.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-                        FQXStyleSearchBannerSubtree(view, 0);
-                    }
-                    return;
-                }
+        CGFloat rootH = CGRectGetHeight(root.bounds);
+        if (rootH > 80.0 && CGRectGetMinY(inRoot) < rootH * 0.50) {
+            if ([direct containsString:@"大家都在搜"] || [direct containsString:@"大家在搜"]) {
+                FQXApplyBannerRowState(view, root, YES);
+                return;
             }
-            BOOL isNoticeOrActivity = ([txt containsString:@"社区公约"] ||
-                                       [txt containsString:@"文明发言"] ||
-                                       [txt containsString:@"公告"] ||
-                                       [txt containsString:@"创作者激励"] ||
-                                       [txt containsString:@"创作激励"] ||
-                                       [txt containsString:@"活动规则"] ||
-                                       [txt containsString:@"活动通知"]);
-            if (isNoticeOrActivity) {
-                BOOL childHasNotice = NO;
-                for (UIView *sub in view.subviews) {
-                    if (CGRectGetWidth(sub.bounds) >= rootW * 0.55 && CGRectGetHeight(sub.bounds) >= 18.0 && CGRectGetHeight(sub.bounds) <= 62.0) {
-                        NSMutableString *subTxt = [NSMutableString string];
-                        FQXCollectShortText(sub, subTxt, 0);
-                        if ([subTxt containsString:@"社区公约"] || [subTxt containsString:@"文明发言"] ||
-                            [subTxt containsString:@"公告"] || [subTxt containsString:@"创作者激励"] ||
-                            [subTxt containsString:@"创作激励"] || [subTxt containsString:@"活动规则"]) {
-                            childHasNotice = YES;
-                            break;
-                        }
-                    }
-                }
-                if (!childHasNotice) {
-                    BOOL hideBanner = !FQXCommentActivityBannerEnabled();
-                    FQXSetCommentBannerCollapsed(view, hideBanner);
-                    if (!hideBanner && FQXGlassEnabled()) {
-                        FQXClearCommentSurface(view, YES);
-                        FQXBoostCommentTypography(view, 0);
-                    }
-                    return;
-                }
+            if ([direct containsString:@"社区公约"] || [direct containsString:@"文明发言"] ||
+                [direct containsString:@"创作者激励"] || [direct containsString:@"创作激励"] ||
+                [direct containsString:@"活动规则"] || [direct containsString:@"活动通知"] ||
+                [direct isEqualToString:@"公告"]) {
+                FQXApplyBannerRowState(view, root, NO);
+                return;
             }
         }
     }
     for (UIView *sub in view.subviews) {
-        FQXScanBannerNode(sub, root, rootW, depth + 1);
+        FQXScanBannerNode(sub, root, depth + 1);
     }
 }
 
 static void FQXScanAndStyleCommentTopBanners(UIView *root) {
     if (!root || !root.window) return;
-    CGFloat rootW = CGRectGetWidth(root.bounds);
-    if (rootW < 100.0) return;
-    FQXScanBannerNode(root, root, rootW, 0);
+    if (CGRectGetWidth(root.bounds) < 100.0) return;
+    FQXScanBannerNode(root, root, 0);
+}
+
+static void FQXScheduleDelayedBannerScan(UIViewController *controller) {
+    if (!controller) return;
+    __weak UIViewController *weakVC = controller;
+    void (^scan)(void) = ^{
+        UIViewController *strongVC = weakVC;
+        UIView *root = strongVC.viewIfLoaded;
+        if (root && root.window) {
+            FQXScanAndStyleCommentTopBanners(root);
+        }
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)), dispatch_get_main_queue(), scan);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.60 * NSEC_PER_SEC)), dispatch_get_main_queue(), scan);
 }
 
 static void (*OrigCommentSearchLayout)(id, SEL);
@@ -4122,6 +4267,30 @@ static void HookCommentSearchDidMoveWindow(UIView *entrance, SEL cmd) {
     if (entrance.window) FQXStyleCommentSearchEntrance(entrance);
 }
 
+static void (*OrigCommentSearchSetHidden)(id, SEL, BOOL);
+static void HookCommentSearchSetHidden(UIView *entrance, SEL cmd, BOOL hidden) {
+    BOOL forced = !FQXCommentSearchEntranceEnabled() ? YES : hidden;
+    if (OrigCommentSearchSetHidden) OrigCommentSearchSetHidden(entrance, cmd, forced);
+    [FQXTrackedSearchEntrances() addObject:entrance];
+}
+
+static void (*OrigCommentSearchSetAlpha)(id, SEL, CGFloat);
+static void HookCommentSearchSetAlpha(UIView *entrance, SEL cmd, CGFloat alpha) {
+    CGFloat forced = !FQXCommentSearchEntranceEnabled() ? 0.0 : alpha;
+    if (OrigCommentSearchSetAlpha) OrigCommentSearchSetAlpha(entrance, cmd, forced);
+}
+
+static void (*OrigCommentSearchSetFrame)(id, SEL, CGRect);
+static void HookCommentSearchSetFrame(UIView *entrance, SEL cmd, CGRect frame) {
+    if (!FQXCommentSearchEntranceEnabled()) {
+        if (frame.size.height > 0.5 && !objc_getAssociatedObject(entrance, FQXCommentBannerSavedHeightKey)) {
+            objc_setAssociatedObject(entrance, FQXCommentBannerSavedHeightKey, @(frame.size.height), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        frame.size.height = 0.0;
+    }
+    if (OrigCommentSearchSetFrame) OrigCommentSearchSetFrame(entrance, cmd, frame);
+}
+
 static void (*OrigTopSectionPluginDidLayoutEnd)(id, SEL);
 static void HookTopSectionPluginDidLayoutEnd(id plugin, SEL cmd) {
     OrigTopSectionPluginDidLayoutEnd(plugin, cmd);
@@ -4130,6 +4299,7 @@ static void HookTopSectionPluginDidLayoutEnd(id plugin, SEL cmd) {
     UIView *titleView = FQXRawIvarObj(plugin, "_titleView") ?: FQXObjGet(plugin, "titleView");
     if ([titleView isKindOfClass:UIView.class]) {
         BOOL hideBanner = !FQXCommentActivityBannerEnabled();
+        [FQXTrackedDynamicNoticeBanners() addObject:titleView];
         FQXSetCommentBannerCollapsed(titleView, hideBanner);
         if (!hideBanner && FQXGlassEnabled()) {
             FQXClearCommentSurface(titleView, YES);
@@ -4142,6 +4312,24 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXReapplyAllTrackedCommentGlass(); });
         return;
+    }
+    BOOL hideSearch = !FQXCommentSearchEntranceEnabled();
+    for (UIView *banner in FQXTrackedDynamicSearchBanners().allObjects) {
+        if (!banner.superview) continue;
+        FQXSetCommentBannerCollapsed(banner, hideSearch);
+        if (!hideSearch && FQXGlassEnabled()) {
+            FQXClearCommentSurface(banner, YES);
+            FQXStyleSearchBannerSubtree(banner, 0);
+        }
+    }
+    BOOL hideNotice = !FQXCommentActivityBannerEnabled();
+    for (UIView *banner in FQXTrackedDynamicNoticeBanners().allObjects) {
+        if (!banner.superview) continue;
+        FQXSetCommentBannerCollapsed(banner, hideNotice);
+        if (!hideNotice && FQXGlassEnabled()) {
+            FQXClearCommentSurface(banner, YES);
+            FQXBoostCommentTypography(banner, 0);
+        }
     }
     for (UIViewController *vc in FQXTrackedCommentPanels().allObjects) {
         if (vc.isViewLoaded && vc.view.window) FQXStyleDramaPanel(vc);
@@ -4330,6 +4518,7 @@ static void (*OrigDramaCommentHeaderUpdate)(id, SEL, id);
 static void HookDramaCommentHeaderUpdate(UIView *header, SEL cmd, id model) {
     OrigDramaCommentHeaderUpdate(header, cmd, model);
     FQXClearCommentSurface(FQXObjGet(header, "v727BackgroundView"), FQXGlassEnabled());
+    if (header.window) FQXScanAndStyleCommentTopBanners(header);
 }
 
 static void (*OrigDramaCommentHeaderResume)(id, SEL);
@@ -4361,6 +4550,7 @@ static void HookKMPCommentLayout(UIViewController *controller, SEL cmd) {
     UIView *body = content.viewIfLoaded;
     FQXClearCommentSurface(body, glass);
     FQXClearCommentCovers(body, CGRectGetWidth(body.bounds), glass);
+    if (body && body.window) FQXScanAndStyleCommentTopBanners(body);
 }
 
 static void (*OrigKMPCommentTabLayout)(id, SEL);
@@ -4421,8 +4611,8 @@ static void FQXStyleReaderCommentList(UIViewController *controller) {
         FQXExtendCommentCollectionForFloatingBar(collection, bar, glass);
     }
     FQXStyleCommentBar(bar);
-    FQXScanAndStyleCommentTopBanners(root);
     if (glass) FQXBoostCommentTypography(root, 0);
+    FQXScanAndStyleCommentTopBanners(root);
     FQXAudioHideGradient(FQXObjGet(controller, "textColorMaskLayer"), glass);
 
     Class transitionClass = NSClassFromString(@"FQVTransitionView");
@@ -4593,11 +4783,25 @@ static void (*OrigCommentTitleUpdateModels)(id, SEL, id);
 static void HookCommentTitleUpdateModels(UIView *view, SEL cmd, id models) {
     OrigCommentTitleUpdateModels(view, cmd, models);
     BOOL hide = !FQXCommentActivityBannerEnabled();
-    FQXAudioSetHiddenTracked(view, hide);
+    [FQXTrackedDynamicNoticeBanners() addObject:view];
+    FQXSetCommentBannerCollapsed(view, hide);
     if (!hide && FQXGlassEnabled()) {
         FQXClearCommentSurface(view, YES);
         FQXBoostCommentTypography(view, 0);
     }
+}
+
+static void (*OrigCommentTitleSetHidden)(id, SEL, BOOL);
+static void HookCommentTitleSetHidden(UIView *view, SEL cmd, BOOL hidden) {
+    BOOL forced = !FQXCommentActivityBannerEnabled() ? YES : hidden;
+    if (OrigCommentTitleSetHidden) OrigCommentTitleSetHidden(view, cmd, forced);
+    [FQXTrackedDynamicNoticeBanners() addObject:view];
+}
+
+static void (*OrigCommentTitleSetAlpha)(id, SEL, CGFloat);
+static void HookCommentTitleSetAlpha(UIView *view, SEL cmd, CGFloat alpha) {
+    CGFloat forced = !FQXCommentActivityBannerEnabled() ? 0.0 : alpha;
+    if (OrigCommentTitleSetAlpha) OrigCommentTitleSetAlpha(view, cmd, forced);
 }
 
 // 1b. Reader paragraph comment cells (FQCParagraphV1ListCell / FQCParagraphReplyV1ListCell)
@@ -6635,7 +6839,6 @@ void FQXInstallMotionAndAudioHooks(void) {
     if (_c) FQXInstallOwnedHook(_c, NSSelectorFromString(@selName), NO, enc, (IMP)(hookFn), (IMP *)&(origVar)); \
 } while (0)
 
-        HOOK_INST("SSBookShelfViewModel", "shouldShowEmptyBookCell", "B16@0:8", OrigShelfShouldShowEmptyBookCell, HookShelfShouldShowEmptyBookCell);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
         HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
         HOOK_INST("SSShortVideoRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigDramaCommentCount, HookDramaCommentCount);
@@ -6663,6 +6866,9 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQCShortVideoCommentSearchEntranceView", "layoutSubviews", "v16@0:8", OrigCommentSearchLayout, HookCommentSearchLayout);
         HOOK_INST("FQCShortVideoCommentSearchEntranceView", "configThemeWithDarkMode:", "v20@0:8B16", OrigCommentSearchTheme, HookCommentSearchTheme);
         HOOK_INST("FQCShortVideoCommentSearchEntranceView", "didMoveToWindow", "v16@0:8", OrigCommentSearchDidMoveWindow, HookCommentSearchDidMoveWindow);
+        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setHidden:", "v20@0:8B16", OrigCommentSearchSetHidden, HookCommentSearchSetHidden);
+        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setAlpha:", "v24@0:8d16", OrigCommentSearchSetAlpha, HookCommentSearchSetAlpha);
+        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCommentSearchSetFrame, HookCommentSearchSetFrame);
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigSeriesCommentLayout, HookSeriesCommentLayout);
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesCommentAppeared, HookSeriesCommentAppeared);
         HOOK_INST("FQCShortPlaySeriesCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigSeriesCommentTraitChange, HookSeriesCommentTraitChange);
@@ -6701,6 +6907,8 @@ void FQXInstallMotionAndAudioHooks(void) {
         }
         HOOK_INST("FQCShortVideoCommentTitleView", "layoutSubviews", "v16@0:8", OrigCommentTitleLayout, HookCommentTitleLayout);
         HOOK_INST("FQCShortVideoCommentTitleView", "updateWithModels:", "v24@0:8@16", OrigCommentTitleUpdateModels, HookCommentTitleUpdateModels);
+        HOOK_INST("FQCShortVideoCommentTitleView", "setHidden:", "v20@0:8B16", OrigCommentTitleSetHidden, HookCommentTitleSetHidden);
+        HOOK_INST("FQCShortVideoCommentTitleView", "setAlpha:", "v24@0:8d16", OrigCommentTitleSetAlpha, HookCommentTitleSetAlpha);
         HOOK_INST("FQCParagraphV1ListCell", "bindViewModel:", "v24@0:8@16", OrigParaV1CellBind, HookParaV1CellBind);
         HOOK_INST("FQCParagraphV1ListCell", "setupTheme", "v16@0:8", OrigParaV1CellTheme, HookParaV1CellTheme);
         HOOK_INST("FQCParagraphV1ListCell", "calLayout", "v16@0:8", OrigParaV1CellLayout, HookParaV1CellLayout);
