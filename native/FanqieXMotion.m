@@ -137,28 +137,6 @@ static UIVisualEffect *FQXMakeGlassEffect(NSInteger style, BOOL interactive, UIC
     return [UIBlurEffect effectWithStyle:fallbackStyle];
 }
 
-static UIVisualEffectView *FQXMakeGlassContainerView(CGFloat spacing) {
-    Class containerCls = NSClassFromString(@"UIGlassContainerEffect");
-    if (!containerCls) return nil;
-    id effect = [containerCls new];
-    if (!effect) return nil;
-    SEL spacingSel = NSSelectorFromString(@"setSpacing:");
-    if ([effect respondsToSelector:spacingSel]) {
-        ((void (*)(id, SEL, CGFloat))objc_msgSend)(effect, spacingSel, spacing);
-    }
-    UIVisualEffectView *container = [[UIVisualEffectView alloc] initWithEffect:effect];
-    if (!container) return nil;
-    container.userInteractionEnabled = NO;
-    container.accessibilityElementsHidden = YES;
-    container.isAccessibilityElement = NO;
-    container.opaque = NO;
-    container.clipsToBounds = NO;
-    container.backgroundColor = UIColor.clearColor;
-    container.contentView.backgroundColor = UIColor.clearColor;
-    container.contentView.clipsToBounds = NO;
-    return container;
-}
-
 static NSInteger FQXDesiredGlassStyleForRole(FQXGlassRole role) {
     if (UIAccessibilityIsReduceTransparencyEnabled()) return 0;
     if (role == FQXGlassRoleDock) return 1; // CoolApk crystal-clear Liquid Glass
@@ -321,16 +299,23 @@ static void FQXUpgradeDockProxyToClearGlass(UIView *bar, UIVisualEffectView *pro
             if (!sub.hidden) sub.hidden = YES;
         }
     }
-    // Keep resting selection indicator subtle and airy like CoolApk (no heavy opaque gray blob).
-    if (lens && !lens.effect) {
-        BOOL darkDock = (proxy.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
-                        (proxy.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
-                         proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
-        UIColor *airyFill = darkDock
-            ? [UIColor colorWithWhite:1.0 alpha:0.14]
-            : [UIColor colorWithWhite:0.0 alpha:0.065];
-        if (![lens.contentView.backgroundColor isEqual:airyFill]) {
-            lens.contentView.backgroundColor = airyFill;
+    // Keep resting selection indicator subtle, unclipped, and matched to the dock appearance.
+    if (lens) {
+        UIUserInterfaceStyle dockStyle = proxy.overrideUserInterfaceStyle;
+        if (lens.overrideUserInterfaceStyle != dockStyle) {
+            lens.overrideUserInterfaceStyle = dockStyle;
+        }
+        if (lens.clipsToBounds) lens.clipsToBounds = NO;
+        if (!lens.effect) {
+            BOOL darkDock = (dockStyle == UIUserInterfaceStyleDark) ||
+                            (dockStyle == UIUserInterfaceStyleUnspecified &&
+                             proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+            UIColor *airyFill = darkDock
+                ? [UIColor colorWithWhite:1.0 alpha:0.14]
+                : [UIColor colorWithWhite:0.0 alpha:0.065];
+            if (![lens.contentView.backgroundColor isEqual:airyFill]) {
+                lens.contentView.backgroundColor = airyFill;
+            }
         }
     }
 }
@@ -401,7 +386,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     return fallback;
 }
 
-#pragma mark - Apple Store Tab Bar Refractive Clear Liquid Glass Droplet (iOS 26/27)
+#pragma mark - Official iOS 26/27 Liquid Glass Tab Bar Selection Interaction
 
 @interface FQXTabBarInteraction : NSObject
 @property(nonatomic, weak) UIView *bar;
@@ -413,7 +398,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 @property(nonatomic, strong) NSHashTable<UIButton *> *wiredButtons;
 @property(nonatomic, strong) NSHashTable<UIGestureRecognizer *> *wiredRecognizers;
 @property(nonatomic, strong) NSHashTable<UIControl *> *wiredControls;
-@property(nonatomic, strong) UIVisualEffectView *glassContainerView;
 @property(nonatomic, strong) UIVisualEffectView *dropletView;
 @property(nonatomic, strong) UIViewPropertyAnimator *dropletAnimator;
 @property(nonatomic) BOOL dropletActive;
@@ -462,6 +446,25 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         return [self.proxy.superview convertRect:self.proxy.frame toView:host];
     }
     return host.bounds;
+}
+
+- (BOOL)isDarkDock {
+    UIUserInterfaceStyle dockStyle = self.proxy ? self.proxy.overrideUserInterfaceStyle : UIUserInterfaceStyleUnspecified;
+    if (dockStyle == UIUserInterfaceStyleDark) return YES;
+    if (dockStyle == UIUserInterfaceStyleLight) return NO;
+    return self.proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+}
+
+- (UIColor *)restingPillFillColor {
+    return [self isDarkDock]
+        ? [UIColor colorWithWhite:1.0 alpha:0.14]
+        : [UIColor colorWithWhite:0.0 alpha:0.065];
+}
+
+- (UIVisualEffect *)activeGlassLensEffect {
+    // Official iOS 26/27 interactive Clear Liquid Glass effect: transparent refraction
+    // that keeps tab icons crisp underneath while reacting natively to touch and motion.
+    return FQXMakeGlassEffect(1, YES, nil);
 }
 
 - (UIButton *)currentSelectedButton {
@@ -515,34 +518,44 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
                       pillH);
 }
 
-- (CGRect)bloomRectAtCenterX:(CGFloat)centerX
-                   baseWidth:(CGFloat)baseWidth
-                    velocity:(CGFloat)velocityX
-                      inHost:(UIView *)host {
+// Keep lifted lens tightly cohesive with the Dock capsule (matching Apple's native iOS 26/27
+// UITabBar proportions instead of ballooning past the capsule top/bottom).
+- (CGRect)liftedRectForRest:(CGRect)rest inHost:(UIView *)host {
+    if (!host || CGRectIsEmpty(rest)) return rest;
+    CGRect track = [self trackBoundsInHost:host];
+    CGFloat W = CGRectGetWidth(track);
+    CGFloat H = CGRectGetHeight(track);
+    if (W <= 1.0 || H <= 1.0) return rest;
+    CGFloat targetW = MIN(W - 2.0, CGRectGetWidth(rest) + 4.0);
+    CGFloat targetH = MIN(H - 2.0, CGRectGetHeight(rest) + 3.0);
+    CGFloat minX = CGRectGetMinX(track) + 1.0;
+    CGFloat maxX = CGRectGetMaxX(track) - targetW - 1.0;
+    CGFloat x = MAX(minX, MIN(maxX, CGRectGetMidX(rest) - targetW * 0.5));
+    return CGRectMake(x, CGRectGetMidY(track) - targetH * 0.5, targetW, targetH);
+}
+
+- (CGRect)dragRectAtCenterX:(CGFloat)centerX
+                  baseWidth:(CGFloat)baseWidth
+                     inHost:(UIView *)host {
     if (!host) return CGRectZero;
     CGRect track = [self trackBoundsInHost:host];
     CGFloat W = CGRectGetWidth(track);
     CGFloat H = CGRectGetHeight(track);
     if (W <= 1.0 || H <= 1.0) return CGRectZero;
-    CGFloat speedRatio = MIN(1.0, fabs(velocityX) / 1350.0);
-    CGFloat vOut = 1.5 - speedRatio * 0.5;
-    CGFloat bloomH = H + vOut * 2.0;
-    CGFloat bloomW = MIN(W, baseWidth + 8.0 + speedRatio * 10.0);
-    CGFloat minX = CGRectGetMinX(track) - 4.0;
-    CGFloat maxX = CGRectGetMaxX(track) - bloomW + 4.0;
-    CGFloat rawX = centerX - bloomW * 0.5;
+    CGFloat lensW = MIN(W - 2.0, MAX(32.0, baseWidth + 4.0));
+    CGFloat lensH = MAX(32.0, H - 2.0);
+    CGFloat minX = CGRectGetMinX(track) + 1.0;
+    CGFloat maxX = CGRectGetMaxX(track) - lensW - 1.0;
+    CGFloat rawX = centerX - lensW * 0.5;
     if (rawX < minX) {
-        rawX = minX - (minX - rawX) * 0.22;
+        rawX = minX - (minX - rawX) * 0.18;
     } else if (rawX > maxX) {
-        rawX = maxX + (rawX - maxX) * 0.22;
+        rawX = maxX + (rawX - maxX) * 0.18;
     }
-    return CGRectMake(rawX, CGRectGetMinY(track) - vOut, bloomW, bloomH);
+    return CGRectMake(rawX, CGRectGetMidY(track) - lensH * 0.5, lensW, lensH);
 }
 
 - (UIView *)dropletCoordHost {
-    if (self.glassContainerView && self.dropletView.superview == self.glassContainerView.contentView) {
-        return self.glassContainerView.superview;
-    }
     return self.dropletView.superview;
 }
 
@@ -557,98 +570,85 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     }
 }
 
-- (void)syncDropletOpticalRim {
+- (void)syncDropletAppearance {
     if (!self.dropletView) return;
-    // Let native iOS 26/27 UIGlassEffect render its own optical rim without adding a
-    // hard CoreAnimation stroke or clipping the Liquid Glass refraction halo.
     UIUserInterfaceStyle dockStyle = self.proxy ? self.proxy.overrideUserInterfaceStyle : UIUserInterfaceStyleUnspecified;
-    if (self.glassContainerView && self.glassContainerView.overrideUserInterfaceStyle != dockStyle) {
-        self.glassContainerView.overrideUserInterfaceStyle = dockStyle;
-    }
     if (self.dropletView.overrideUserInterfaceStyle != dockStyle) {
         self.dropletView.overrideUserInterfaceStyle = dockStyle;
     }
-    if (FQXGlassEnabled()) {
-        if (self.dropletView.clipsToBounds) self.dropletView.clipsToBounds = NO;
-        if (self.dropletView.layer.borderWidth > 0.0) {
-            self.dropletView.layer.borderWidth = 0.0;
-            self.dropletView.layer.borderColor = NULL;
-        }
-    } else {
-        BOOL darkDock = (dockStyle == UIUserInterfaceStyleDark) ||
-                        (dockStyle == UIUserInterfaceStyleUnspecified &&
-                         self.proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
-        self.dropletView.layer.borderWidth = 0.5;
-        self.dropletView.layer.borderColor = (darkDock
-            ? [UIColor colorWithWhite:1.0 alpha:0.28]
-            : [UIColor colorWithWhite:1.0 alpha:0.55]).CGColor;
+    if (self.dropletView.clipsToBounds) self.dropletView.clipsToBounds = NO;
+    if (self.dropletView.layer.borderWidth > 0.0) {
+        self.dropletView.layer.borderWidth = 0.0;
+        self.dropletView.layer.borderColor = NULL;
     }
+}
+
+- (void)applyRestingStyleToDropletForFrame:(CGRect)frame {
+    if (!self.dropletView) return;
+    self.dropletView.effect = nil;
+    self.dropletView.contentView.backgroundColor = [self restingPillFillColor];
+    self.dropletView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+    self.dropletView.contentView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
+    self.dropletView.contentView.clipsToBounds = YES;
+}
+
+- (void)applyMaterializedGlassStyleToDroplet {
+    if (!self.dropletView) return;
+    if (!self.dropletView.effect) {
+        UIVisualEffect *effect = [self activeGlassLensEffect];
+        if (effect) {
+            self.dropletView.effect = effect;
+            FQXApplyCornerConfiguration(self.dropletView, 0.0, NO);
+        }
+    }
+    self.dropletView.contentView.backgroundColor = UIColor.clearColor;
+    self.dropletView.contentView.clipsToBounds = NO;
 }
 
 - (UIView *)ensureDropletMounted {
     UIView *host = [self mountHostView];
     if (!host || !FQXGlassEnabled()) return nil;
-    if (!self.glassContainerView) {
-        // Native iOS 26/27 UIGlassContainerEffect groups live glass elements for continuous
-        // optical compositing and liquid edge refraction during motion.
-        self.glassContainerView = FQXMakeGlassContainerView(14.0);
-        if (self.glassContainerView) {
-            objc_setAssociatedObject(self.glassContainerView, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
     if (!self.dropletView) {
-        // Style 1 (UIGlassEffectStyleClear) + interactive = YES enables native touch-reactive
-        // specular refraction & optical lensing from Apple's Liquid Glass compositor.
-        UIVisualEffectView *droplet = FQXNewGlassViewFull(1, YES, 0.0, NO, nil);
+        // Start with effect = nil so UIView.animate { dropletView.effect = glassEffect }
+        // runs Apple's official iOS 26/27 Liquid Glass materialize / dematerialize morph.
+        UIVisualEffectView *droplet = [[UIVisualEffectView alloc] initWithEffect:nil];
         if (!droplet) return nil;
+        FQXApplyCornerConfiguration(droplet, 0.0, NO);
         objc_setAssociatedObject(droplet, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        droplet.userInteractionEnabled = NO;
+        droplet.accessibilityElementsHidden = YES;
+        droplet.isAccessibilityElement = NO;
+        droplet.opaque = NO;
+        droplet.backgroundColor = UIColor.clearColor;
+        droplet.contentView.backgroundColor = UIColor.clearColor;
         droplet.hidden = YES;
         droplet.clipsToBounds = NO;
         droplet.layer.cornerCurve = kCACornerCurveContinuous;
         droplet.contentView.clipsToBounds = NO;
         self.dropletView = droplet;
     }
-    [self syncDropletOpticalRim];
+    [self syncDropletAppearance];
 
-    UIView *mountNode = self.glassContainerView ?: self.dropletView;
-    if (self.glassContainerView) {
-        if (self.glassContainerView.hidden) self.glassContainerView.hidden = NO;
-        if (self.glassContainerView.alpha < 0.99) self.glassContainerView.alpha = 1.0;
-        // Pad the UIGlassContainerEffect canvas generously beyond host.bounds so the lifted
-        // Liquid Glass lens and its optical refraction rim are never clipped at y = 0.
-        CGRect paddedFrame = CGRectInset(host.bounds, -24.0, -24.0);
-        if (!CGRectEqualToRect(self.glassContainerView.frame, paddedFrame)) {
-            self.glassContainerView.frame = paddedFrame;
-        }
-        if (self.dropletView.superview != self.glassContainerView.contentView) {
-            [self.glassContainerView.contentView addSubview:self.dropletView];
-        }
-    }
-    if (mountNode.superview != host) {
+    if (self.dropletView.superview != host) {
         if (self.nativeControl.superview == host) {
-            [host insertSubview:mountNode belowSubview:self.nativeControl];
+            [host insertSubview:self.dropletView belowSubview:self.nativeControl];
         } else {
-            [host addSubview:mountNode];
+            [host addSubview:self.dropletView];
         }
     }
     if (self.dropletActive && (!self.nativeControl || self.nativeControl.superview != host) &&
-        host.subviews.lastObject != mountNode) {
-        // Keep the live Clear Liquid Glass lens above tab buttons (userInteractionEnabled = NO)
-        // so Apple's iOS 26/27 Liquid Glass compositor refracts and magnifies the icons cleanly.
-        [host bringSubviewToFront:mountNode];
+        host.subviews.lastObject != self.dropletView) {
+        [host bringSubviewToFront:self.dropletView];
     }
     return host;
 }
 
 - (void)placeDroplet:(CGRect)frame {
-    UIView *host = [self dropletCoordHost];
-    CGRect local = (host && self.dropletView.superview && self.dropletView.superview != host)
-        ? [host convertRect:frame toView:self.dropletView.superview]
-        : frame;
-    self.dropletView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(local), CGRectGetHeight(local));
-    self.dropletView.center = CGPointMake(CGRectGetMidX(local), CGRectGetMidY(local));
-    if (!FQXGlassEnabled()) {
-        self.dropletView.layer.cornerRadius = MIN(CGRectGetWidth(local), CGRectGetHeight(local)) * 0.5;
+    if (!self.dropletView || CGRectIsEmpty(frame)) return;
+    self.dropletView.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(frame), CGRectGetHeight(frame));
+    self.dropletView.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+    if (!self.dropletView.effect) {
+        self.dropletView.contentView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
     }
 }
 
@@ -677,7 +677,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.liftedButton == button) return;
     UIButton *previous = self.liftedButton;
     self.liftedButton = button;
-    [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.68 initialSpringVelocity:0.0
+    [UIView animateWithDuration:0.20 delay:0.0 usingSpringWithDamping:0.74 initialSpringVelocity:0.0
                         options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
         previous.transform = CGAffineTransformIdentity;
@@ -711,6 +711,8 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         if (self.dropletActive) self.restingLens.hidden = NO;
         [self suppressFallbackSelection:NO];
         self.dropletView.transform = CGAffineTransformIdentity;
+        self.dropletView.effect = nil;
+        self.dropletView.contentView.backgroundColor = UIColor.clearColor;
         self.dropletView.hidden = YES;
         [self.dropletView.layer removeAllAnimations];
     }];
@@ -725,37 +727,31 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 - (UIView *)startDropletFrom:(UIButton *)origin {
     UIView *host = [self ensureDropletMounted];
     if (!host) return nil;
-    UIView *mountNode = self.glassContainerView ?: self.dropletView;
     if (!self.dropletActive) {
         CGRect start = [self restingRectForButton:origin inHost:host];
         if (CGRectIsEmpty(start)) return nil;
         [self stopDropletAnimatorWithoutSnapping];
         [UIView performWithoutAnimation:^{
-            if (self.glassContainerView) {
-                self.glassContainerView.hidden = NO;
-                self.glassContainerView.alpha = 1.0;
-            }
-            if (mountNode.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
-                [host bringSubviewToFront:mountNode];
+            if (self.dropletView.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
+                [host bringSubviewToFront:self.dropletView];
             }
             self.dropletView.transform = CGAffineTransformIdentity;
+            // Frame 0 matches restingLens pixel-for-pixel (effect = nil + airyFill) so
+            // swapping restingLens -> dropletView produces zero pop before glass materializes.
+            [self applyRestingStyleToDropletForFrame:start];
             [self placeDroplet:start];
             self.dropletView.hidden = NO;
             self.restingLens.hidden = YES;
             [self suppressFallbackSelection:YES];
         }];
     } else {
-        // Interruptible mid-flight handoff: capture exact presentation geometry before retargeting.
+        // Interruptible mid-flight / mid-dematerialize handoff: preserve live geometry.
         CGRect live = [self liveDropletFrameInHost:host];
         [self stopDropletAnimatorWithoutSnapping];
         if (!CGRectIsEmpty(live)) {
             [UIView performWithoutAnimation:^{
-                if (self.glassContainerView) {
-                    self.glassContainerView.hidden = NO;
-                    self.glassContainerView.alpha = 1.0;
-                }
-                if (mountNode.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
-                    [host bringSubviewToFront:mountNode];
+                if (self.dropletView.superview == host && (!self.nativeControl || self.nativeControl.superview != host)) {
+                    [host bringSubviewToFront:self.dropletView];
                 }
                 self.dropletView.transform = CGAffineTransformIdentity;
                 [self placeDroplet:live];
@@ -765,6 +761,30 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     self.generation += 1;
     self.dropletActive = YES;
     return host;
+}
+
+- (void)dematerializeAndFinishForGeneration:(NSUInteger)generation restFrame:(CGRect)rest {
+    if (self.generation != generation || !self.dropletActive || self.panning) return;
+    __weak typeof(self) weakSelf = self;
+    // Official iOS 26/27 Liquid Glass dematerialize transition: animate effect -> nil
+    // back into the soft resting pill so the handoff to restingLens is seamless.
+    [UIView animateWithDuration:0.18 delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction |
+                                UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.generation != generation) return;
+        [strongSelf applyRestingStyleToDropletForFrame:rest];
+        [strongSelf placeDroplet:rest];
+    } completion:^(BOOL finished) {
+        (void)finished;
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
+        UIView *bar = strongSelf.bar;
+        UIVisualEffectView *proxy = strongSelf.proxy;
+        [strongSelf cancelDropletImmediately];
+        FQXScheduleCYLGlassResample(bar, proxy);
+    }];
 }
 
 - (void)settleDropletToButton:(UIButton *)button velocity:(CGFloat)velocity duration:(NSTimeInterval)duration {
@@ -789,30 +809,12 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
     CGFloat dx = CGRectGetMidX(rest) - CGRectGetMidX(current);
     CGFloat travelSlots = CGRectGetWidth(rest) > 1.0 ? (fabs(dx) / CGRectGetWidth(rest)) : 0.0;
-    CGFloat springVelX = fabs(dx) > 2.0 ? MAX(-3.5, MIN(3.5, velocity / dx)) : 0.0;
-    CGFloat damping = travelSlots > 1.35 ? 0.72 : 0.76;
-    NSTimeInterval resolvedDuration = MAX(duration, travelSlots > 1.35 ? 0.44 : 0.34);
-
-    // Subtle liquid mercury elongation in flight for multi-tab jumps (leftmost <-> rightmost),
-    // smoothly relaxing back to resting capsule silhouette via spring physics.
-    if (travelSlots > 0.65) {
-        CGFloat stretchX = MIN(1.085, 1.0 + travelSlots * 0.028);
-        CGFloat stretchY = 1.035;
-        [UIView animateWithDuration:0.13 delay:0.0
-                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction |
-                                    UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-            self.dropletView.transform = CGAffineTransformMakeScale(stretchX, stretchY);
-        } completion:^(BOOL finished) {
-            (void)finished;
-            if (self.generation != generation || !self.dropletActive) return;
-            [UIView animateWithDuration:0.26 delay:0.0 usingSpringWithDamping:0.68 initialSpringVelocity:0.0
-                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-                             animations:^{
-                self.dropletView.transform = CGAffineTransformIdentity;
-            } completion:nil];
-        }];
-    }
+    CGFloat springVelX = fabs(dx) > 2.0 ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
+    BOOL hasTravel = fabs(dx) > 3.0;
+    CGFloat damping = hasTravel ? 0.80 : 0.84;
+    NSTimeInterval resolvedDuration = hasTravel
+        ? MAX(duration, travelSlots > 1.35 ? 0.40 : 0.32)
+        : 0.22;
 
     UISpringTimingParameters *timing = [[UISpringTimingParameters alloc]
         initWithDampingRatio:damping
@@ -822,6 +824,12 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     [animator addAnimations:^{
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
+        if (hasTravel) {
+            [strongSelf applyMaterializedGlassStyleToDroplet];
+        } else {
+            // Returning to the same tab: dematerialize smoothly directly during the settle spring.
+            [strongSelf applyRestingStyleToDropletForFrame:rest];
+        }
         [strongSelf placeDroplet:rest];
     }];
     [animator addCompletion:^(UIViewAnimatingPosition finalPosition) {
@@ -829,10 +837,14 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
         strongSelf.dropletAnimator = nil;
-        UIView *bar = strongSelf.bar;
-        UIVisualEffectView *proxy = strongSelf.proxy;
-        [strongSelf cancelDropletImmediately];
-        FQXScheduleCYLGlassResample(bar, proxy);
+        if (hasTravel && strongSelf.dropletView.effect) {
+            [strongSelf dematerializeAndFinishForGeneration:generation restFrame:rest];
+        } else {
+            UIView *bar = strongSelf.bar;
+            UIVisualEffectView *proxy = strongSelf.proxy;
+            [strongSelf cancelDropletImmediately];
+            FQXScheduleCYLGlassResample(bar, proxy);
+        }
     }];
     self.dropletAnimator = animator;
     [animator startAnimation];
@@ -848,23 +860,21 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (!host) return;
     CGRect targetRest = [self restingRectForButton:sender inHost:host];
     if (CGRectIsEmpty(targetRest)) return;
+    CGRect touchTarget = [self liftedRectForRest:targetRest inHost:host];
     CGRect originRest = [self restingRectForButton:origin inHost:host];
     BOOL sameTab = (sender == origin);
-    CGRect touchTarget = sameTab
-        ? CGRectInset(targetRest, -MIN(4.0, CGRectGetWidth(targetRest) * 0.05),
-                      -MIN(2.0, CGRectGetHeight(targetRest) * 0.04))
-        : CGRectInset(targetRest, -MIN(6.0, CGRectGetWidth(targetRest) * 0.07),
-                      -MIN(2.0, CGRectGetHeight(targetRest) * 0.04));
     CGFloat dx = fabs(CGRectGetMidX(targetRest) - CGRectGetMidX(originRest));
     CGFloat travelSlots = CGRectGetWidth(targetRest) > 1.0 ? (dx / CGRectGetWidth(targetRest)) : 0.0;
-    NSTimeInterval dur = sameTab ? 0.22 : (travelSlots > 1.35 ? 0.36 : 0.28);
+    NSTimeInterval dur = sameTab ? 0.24 : (travelSlots > 1.35 ? 0.38 : 0.30);
     self.targetButton = sender;
-    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc] initWithDampingRatio:sameTab ? 0.68 : 0.74];
+    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc] initWithDampingRatio:sameTab ? 0.78 : 0.80];
     UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:dur timingParameters:timing];
     __weak typeof(self) weakSelf = self;
     [animator addAnimations:^{
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
+        // Official iOS 26/27 Liquid Glass materialize morph inside spring animation.
+        [strongSelf applyMaterializedGlassStyleToDroplet];
         [strongSelf placeDroplet:touchTarget];
     }];
     self.dropletAnimator = animator;
@@ -876,8 +886,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         !self.bar || self.proxy.hidden || self.overlay.hidden || !FQXGlassEnabled()) return;
     UIButton *previous = self.lastSelectedButton ?: [self currentSelectedButton] ?: sender;
     self.pressedButton = nil;
-    // Start synchronously (zero dispatch_async delay) so heavy tab VC switches can never
-    // swallow or drop the Liquid Glass gliding animation across leftmost <-> rightmost tabs.
     UIView *host = [self startDropletFrom:previous];
     if (!host) return;
     CGRect rest = [self restingRectForButton:sender inHost:host];
@@ -889,8 +897,8 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     CGFloat travel = fabs(CGRectGetMidX(rest) - CGRectGetMidX(live));
     CGFloat slots = CGRectGetWidth(rest) > 1.0 ? (travel / CGRectGetWidth(rest)) : 0.0;
     [self settleDropletToButton:sender
-                       velocity:slots > 1.0 ? (CGRectGetMidX(rest) > CGRectGetMidX(live) ? 520.0 : -520.0) : 0.0
-                       duration:slots > 1.35 ? 0.46 : 0.36];
+                       velocity:0.0
+                       duration:slots > 1.35 ? 0.40 : 0.32];
 }
 
 - (void)onNativeValueChanged:(UIControl *)sender {
@@ -914,7 +922,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     if (self.dropletActive) {
         UIButton *selected = [self currentSelectedButton] ?: self.lastSelectedButton;
         if (selected) {
-            [self settleDropletToButton:selected velocity:0.0 duration:0.30];
+            [self settleDropletToButton:selected velocity:0.0 duration:0.26];
         } else {
             [self cancelDropletImmediately];
         }
@@ -946,23 +954,28 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
         }
         if (!nearest) return;
         self.targetButton = nearest;
-        CGRect bloom = [self bloomRectAtCenterX:location.x baseWidth:width
-                                        velocity:[pan velocityInView:host].x inHost:host];
+        CGRect target = [self dragRectAtCenterX:location.x baseWidth:width inHost:host];
         [self highlightButton:nearest];
-        [UIView animateWithDuration:began ? 0.16 : 0.06 delay:0.0
-                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction |
-                                    UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-            self.dropletView.transform = CGAffineTransformIdentity;
-            [self placeDroplet:bloom];
-        } completion:nil];
+        if (began) {
+            // Smooth official iOS 26/27 Liquid Glass materialize & lift on drag start.
+            [UIView animateWithDuration:0.22 delay:0.0 usingSpringWithDamping:0.80 initialSpringVelocity:0.0
+                                options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                             animations:^{
+                [self applyMaterializedGlassStyleToDroplet];
+                [self placeDroplet:target];
+            } completion:nil];
+        } else {
+            // Direct 1:1 120Hz tracking during active finger drag (zero queued animation lag).
+            if (!self.dropletView.effect) [self applyMaterializedGlassStyleToDroplet];
+            [self placeDroplet:target];
+        }
     } else if (self.panning) {
         self.panning = NO;
         UIView *coordHost = [self dropletCoordHost];
         CGFloat velocity = (pan.state == UIGestureRecognizerStateEnded && coordHost)
             ? [pan velocityInView:coordHost].x : 0.0;
         UIButton *dest = self.targetButton ?: [self currentSelectedButton];
-        [self settleDropletToButton:dest velocity:velocity duration:0.36];
+        [self settleDropletToButton:dest velocity:velocity duration:0.34];
     }
 }
 
@@ -1056,8 +1069,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
             [self suppressFallbackSelection:YES];
         }];
     } else {
-        // Pre-warm the interactive UIGlassContainerEffect + UIGlassEffect lens once so the
-        // very first tap never stalls compiling Metal glass shaders on the main thread.
         [self ensureDropletMounted];
         if (!self.pressedButton) {
             UIButton *selectedNow = [self currentSelectedButton];
@@ -1073,8 +1084,6 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
     [self cancelDropletImmediately];
     [self.dropletView removeFromSuperview];
     self.dropletView = nil;
-    [self.glassContainerView removeFromSuperview];
-    self.glassContainerView = nil;
 }
 
 @end
@@ -5492,6 +5501,32 @@ static void FQXStyleExpandedCommentInput(UIView *sheet, UIView *text, UIView *em
     }
 }
 
+static BOOL FQXViewHasVisibleTextContent(UIView *view, NSInteger depth) {
+    if (![view isKindOfClass:UIView.class] || view.hidden || view.alpha < 0.05 || depth > 5) return NO;
+    if (CGRectGetWidth(view.bounds) < 4.0 || CGRectGetHeight(view.bounds) < 4.0) return NO;
+    NSString *direct = FQXDirectTextOfView(view);
+    if (direct.length > 0) return YES;
+    for (UIView *sub in view.subviews) {
+        if (FQXViewHasVisibleTextContent(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void FQXClearStaleComposerHost(UIView *host) {
+    if (!host) return;
+    UIVisualEffectView *stale = objc_getAssociatedObject(host, DramaComposerGlassKey);
+    if (stale) {
+        [stale removeFromSuperview];
+        objc_setAssociatedObject(host, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    FQXRestoreSheetTopCornerMask(host);
+    NSNumber *savedClips = objc_getAssociatedObject(host, ExpandedInputSavedClipsKey);
+    if (savedClips) {
+        host.clipsToBounds = savedClips.boolValue;
+        objc_setAssociatedObject(host, ExpandedInputSavedClipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 static void FQXStyleCommunityInput(UIView *editor) {
     if (![editor isKindOfClass:UIView.class]) return;
     UIView *sheet = FQXObjGet(editor, "containerView");
@@ -5500,12 +5535,15 @@ static void FQXStyleCommunityInput(UIView *editor) {
     UIView *emoji = FQXObjGet(editor, "subEmojiPanelView");
     UIView *text = FQXObjGet(input, "textView");
 
-    // In reader paragraph comments, paraBgView ("| quote") can sit above containerView
-    // or at the top of commentInputView. Anchor full-width glass on whichever view covers both.
+    // In reader paragraph comments, paraBgView ("| quote") can sit above containerView.
+    // Only expand the glass card onto editor when paraBgView ACTUALLY displays visible quote text;
+    // otherwise keep glass anchored on containerView so an empty paraBgView never creates a dark
+    // blurred mask band above the rounded composer card.
     UIView *glassHost = sheet;
     CGRect glassFrame = sheet ? CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + 24.0) : CGRectZero;
     BOOL useEditorHost = NO;
-    if (sheet && paraBg && !paraBg.hidden && CGRectGetHeight(paraBg.bounds) > 4.0 &&
+    BOOL paraHasQuote = FQXViewHasVisibleTextContent(paraBg, 0);
+    if (sheet && paraHasQuote &&
         [paraBg isDescendantOfView:editor] && [sheet isDescendantOfView:editor]) {
         CGRect paraInSheet = [paraBg convertRect:paraBg.bounds toView:sheet];
         if (CGRectGetMinY(paraInSheet) < -1.0) {
@@ -5519,17 +5557,9 @@ static void FQXStyleCommunityInput(UIView *editor) {
         }
     }
     if (useEditorHost) {
-        UIVisualEffectView *stale = objc_getAssociatedObject(sheet, DramaComposerGlassKey);
-        if (stale) {
-            [stale removeFromSuperview];
-            objc_setAssociatedObject(sheet, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        FQXClearStaleComposerHost(sheet);
     } else if (editor != sheet) {
-        UIVisualEffectView *stale = objc_getAssociatedObject(editor, DramaComposerGlassKey);
-        if (stale) {
-            [stale removeFromSuperview];
-            objc_setAssociatedObject(editor, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        FQXClearStaleComposerHost(editor);
     }
 
     BOOL glass = NO;
@@ -5556,11 +5586,33 @@ static void FQXStyleCommunityInput(UIView *editor) {
     FQXClearCommentSurface(emoji, glass);
     FQXClearCommentSurface(FQXObjGet(input, "bgView"), glass);
     FQXClearCommentSurface(FQXObjGet(input, "contentView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "backView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "coverView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), glass);
     FQXClearCommentSurface(paraBg, glass);
+    FQXHideLayerGradients(paraBg.layer, glass);
+    FQXHideLayerGradients(editor.layer, glass);
+    FQXHideLayerGradients(sheet.layer, glass);
+    FQXHideLayerGradients(input.layer, glass);
+    if (paraBg && !paraHasQuote) {
+        FQXAudioSetHiddenTracked(paraBg, glass);
+    }
     FQXClearCommentSurface(FQXObjGet(editor, "emoticonContainerView"), glass);
     FQXAudioSetHiddenTracked(FQXObjGet(input, "topLine"), glass);
     FQXAudioSetHiddenTracked(FQXObjGet(input, "topMaskView"), glass);
+    FQXAudioSetHiddenTracked(FQXObjGet(editor, "topMaskView"), glass);
     FQXClearCommentCovers(sheet, CGRectGetWidth(sheet.bounds), glass);
+    if (!useEditorHost && sheet && sheet.superview == editor) {
+        for (UIView *sub in editor.subviews) {
+            if (sub == sheet || sub == keep || [sub isKindOfClass:UIControl.class] ||
+                [sub isKindOfClass:UIScrollView.class]) continue;
+            if (!FQXViewHasVisibleTextContent(sub, 0)) {
+                FQXClearCommentSurface(sub, glass);
+                FQXHideLayerGradients(sub.layer, glass);
+            }
+        }
+    }
     FQXNeutralizeStrayBarGlass(editor, keep, glass, 0);
     if (glass) {
         if (editor.overrideUserInterfaceStyle != UIUserInterfaceStyleDark)
@@ -5613,11 +5665,7 @@ static void HookShortVideoNewEditorLayout(UIView *editor, SEL cmd) {
     UIView *inputContainer = FQXObjGet(editor, "inputContainerView");
     UIView *sheet = (content && (!inputContainer || [inputContainer isDescendantOfView:content])) ? content : inputContainer;
     if (sheet != inputContainer && inputContainer) {
-        UIVisualEffectView *stale = objc_getAssociatedObject(inputContainer, DramaComposerGlassKey);
-        if (stale) {
-            [stale removeFromSuperview];
-            objc_setAssociatedObject(inputContainer, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        FQXClearStaleComposerHost(inputContainer);
     }
     FQXStyleExpandedCommentInput(sheet, FQXObjGet(editor, "textView"), FQXObjGet(editor, "emojiListView"));
     BOOL glass = objc_getAssociatedObject(sheet, DramaComposerGlassKey) != nil;
@@ -5626,6 +5674,11 @@ static void HookShortVideoNewEditorLayout(UIView *editor, SEL cmd) {
     FQXClearCommentSurface(inputContainer, glass);
     FQXClearCommentSurface(FQXObjGet(editor, "emoticonContainerView"), glass);
     FQXClearCommentSurface(FQXObjGet(editor, "funcView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "bgView"), glass);
+    FQXClearCommentSurface(FQXObjGet(editor, "topMaskView"), glass);
+    FQXAudioSetHiddenTracked(FQXObjGet(editor, "topMaskView"), glass);
+    FQXHideLayerGradients(editor.layer, glass);
+    FQXHideLayerGradients(content.layer, glass);
 }
 
 static void (*OrigReaderCommentBarLayout)(id, SEL);

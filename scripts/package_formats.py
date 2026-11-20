@@ -29,7 +29,7 @@ def make_filter_plist(bundles: list[str] | None = None) -> bytes:
 
 
 def make_framework_info_plist(version: str) -> bytes:
-    short = version.split("R", 1)[0]
+    short = version.split("R", 1)[0].split("beta", 1)[0].split("-", 1)[0]
     payload = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": "FanqieX",
@@ -100,7 +100,7 @@ def make_deb(dylib_bytes: bytes, version: str, *, rootless: bool) -> bytes:
     prefix = "./var/jb/Library/MobileSubstrate/DynamicLibraries" if rootless else "./Library/MobileSubstrate/DynamicLibraries"
     dylib_member = f"{prefix}/FanqieX.dylib"
     plist_member = f"{prefix}/FanqieX.plist"
-    deb_version = version.replace("R", ".r")
+    deb_version = version.replace("R", ".r").replace("beta", "~beta")
     control = (
         f"Package: com.solhk.fanqiex\n"
         f"Name: FanqieX\n"
