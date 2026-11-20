@@ -132,6 +132,7 @@ typedef NS_ENUM(NSInteger, FQXGlassRole) {
     FQXGlassRoleCommentSheet = 1,
     FQXGlassRoleFloatingPill = 2,
     FQXGlassRoleExpandedComposer = 3,
+    FQXGlassRoleClearCommentComposer = 4,
 };
 
 static const void *FQXUnifiedClearDockKey = &FQXUnifiedClearDockKey;
@@ -192,9 +193,11 @@ static UIVisualEffect *FQXMakeUnifiedGlassEffect(FQXGlassRole role) {
             : UIBlurEffectStyleSystemChromeMaterialDark;
         return [UIBlurEffect effectWithStyle:blurStyle];
     }
-    BOOL interactive = (role == FQXGlassRoleFloatingPill);
+    BOOL clearComposer = (role == FQXGlassRoleClearCommentComposer);
+    BOOL interactive = (role == FQXGlassRoleFloatingPill || clearComposer);
     NSInteger style = (reduce || role == FQXGlassRoleFloatingPill) ? 0 : 1;
-    UIColor *tint = (mode == FQXCommentMaterialLightGlass && (role != FQXGlassRoleCommentSheet || reduce))
+    UIColor *tint = (mode == FQXCommentMaterialLightGlass && !clearComposer &&
+                     (role != FQXGlassRoleCommentSheet || reduce))
         ? [UIColor colorWithWhite:1.0 alpha:(role == FQXGlassRoleFloatingPill ? 0.34 : 0.24)]
         : nil;
     return FQXMakeGlassEffect(style, interactive, tint);
@@ -670,6 +673,14 @@ static void FQXAnimateIOS27Spring(NSTimeInterval duration,
                      completion:completion];
 }
 
+static CGRect FQXDockLandingPose(CGRect track, CGFloat centerX, CGSize size) {
+    CGRect safe = CGRectInset(track, 3.0, 2.0);
+    CGFloat width = MIN(size.width, CGRectGetWidth(safe));
+    CGFloat height = MIN(size.height, CGRectGetHeight(safe));
+    CGFloat x = MIN(CGRectGetMaxX(safe) - width, MAX(CGRectGetMinX(safe), centerX - width * 0.5));
+    return CGRectMake(x, CGRectGetMidY(safe) - height * 0.5, width, height);
+}
+
 static void FQXAddAdditiveScalePulse(CALayer *layer,
                                      NSString *keyPrefix,
                                      NSArray<NSNumber *> *dxValues,
@@ -727,10 +738,12 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     }
     UIVisualEffectView *lens = self.trackingLens;
     if (lens) {
-        // The tracking glass samples the page and dock while the glyphs stay above it.
         NSArray<UIView *> *siblings = mountHost.subviews;
-        NSUInteger pillIndex = [siblings indexOfObjectIdenticalTo:container];
-        if ([siblings indexOfObjectIdenticalTo:lens] != pillIndex + 1) {
+        if (self.panning) {
+            // Refract the glyphs under a moving finger, then clear the glyphs at release.
+            if (lens.superview != mountHost) [mountHost addSubview:lens];
+            else if (siblings.lastObject != lens) [mountHost bringSubviewToFront:lens];
+        } else if ([siblings indexOfObjectIdenticalTo:lens] != [siblings indexOfObjectIdenticalTo:container] + 1) {
             [mountHost insertSubview:lens aboveSubview:container];
         }
     }
@@ -807,6 +820,13 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     self.pillView.layer.cornerRadius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
     if (self.trackingLens && !self.trackingLens.hidden) {
         self.trackingLens.frame = [self.pillClipView convertRect:frame toView:self.trackingLens.superview];
+    }
+}
+
+- (void)stopPillGeometryAnimations {
+    for (NSString *key in @[@"position", @"bounds", @"cornerRadius"]) {
+        [self.pillView.layer removeAnimationForKey:key];
+        [self.trackingLens.layer removeAnimationForKey:key];
     }
 }
 
@@ -985,49 +1005,73 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
     BOOL isEdgeTab = (button == self.buttons.firstObject || button == self.buttons.lastObject);
     BOOL refracting = [self showTrackingLens];
     CGFloat initVel = (hasTravel && !isEdgeTab) ? MAX(-3.0, MIN(3.0, velocity / dx)) : 0.0;
-    NSTimeInterval springDuration = refracting
-        ? (slots > 1.45 ? 0.30 : 0.25)
-        : (hasTravel ? (slots > 1.45 ? 0.52 : 0.47) : 0.36);
-    CGFloat bounce = refracting ? (isEdgeTab ? 0.0 : 0.23)
-                                : (isEdgeTab ? 0.34 : 0.44);
     UIColor *desiredFill = [self restingPillFillColor];
 
     NSUInteger generation = ++self.generation;
     self.settlingPill = YES;
     self.lastSelectedButton = button;
     [self highlightButton:nil];
-    if (refracting) {
-        [UIView performWithoutAnimation:^{
-            self.pillView.alpha = 0.0;
-            self.pillView.hidden = NO;
-        }];
-    }
-
-    // 1) Official iOS 26/27 perceptual bounce spring (animateWithSpringDuration:bounce:)
-    //    on out-of-process Render Server (backboardd) at 120Hz ProMotion.
     __weak typeof(self) weakSelf = self;
-    FQXAnimateIOS27Spring(springDuration, bounce, initVel, ^{
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.pillView.transform = CGAffineTransformIdentity;
-        strongSelf.pillView.backgroundColor = desiredFill;
-        [strongSelf placePill:rest];
-        if (refracting) {
-            strongSelf.trackingLens.effect = nil;
-            strongSelf.pillView.alpha = 1.0;
-        }
-    }, ^(BOOL finished) {
+    void (^finish)(BOOL) = ^(BOOL finished) {
         (void)finished;
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.generation != generation || strongSelf.panning) return;
         strongSelf.settlingPill = NO;
         if (refracting) strongSelf.trackingLens.hidden = YES;
         FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
-    });
+    };
+    if (refracting) {
+        CGRect track = [self trackBoundsInHost:host];
+        CGFloat centerX = CGRectGetMidX(rest);
+        CGFloat offset = hasTravel && !isEdgeTab
+            ? copysign(MIN(7.0, 3.0 + fabs(velocity) / 300.0), dx) : 0.0;
+        CGFloat compression = MIN(0.15, 0.11 + fabs(velocity) / 16000.0);
+        CGFloat width = CGRectGetWidth(rest);
+        CGFloat height = CGRectGetHeight(rest);
+        CGRect landing = FQXDockLandingPose(track, centerX + offset,
+            CGSizeMake(width * (1.0 + compression), height * 0.88));
+        CGRect recoil = FQXDockLandingPose(track, centerX - offset * 0.42,
+            CGSizeMake(width * 0.93, height * 1.09));
+        NSTimeInterval duration = slots > 1.45 ? 0.36 : 0.32;
+        [UIView performWithoutAnimation:^{
+            [self stopPillGeometryAnimations];
+            self.pillView.transform = CGAffineTransformIdentity;
+            self.pillView.backgroundColor = desiredFill;
+            self.pillView.alpha = 0.0;
+            self.pillView.hidden = NO;
+            [self placePill:live];
+        }];
+        // One bounded squash and recoil works at the outer slots without horizontal overshoot.
+        [UIView animateKeyframesWithDuration:duration delay:0.0
+                                     options:UIViewKeyframeAnimationOptionAllowUserInteraction |
+                                             UIViewKeyframeAnimationOptionCalculationModeLinear
+                                  animations:^{
+            [UIView addKeyframeWithRelativeStartTime:0.0 relativeDuration:0.43
+                                         animations:^{ [self placePill:landing]; }];
+            [UIView addKeyframeWithRelativeStartTime:0.43 relativeDuration:0.24
+                                         animations:^{ [self placePill:recoil]; }];
+            [UIView addKeyframeWithRelativeStartTime:0.67 relativeDuration:0.33
+                                         animations:^{ [self placePill:rest]; }];
+        } completion:finish];
+        [UIView animateWithDuration:duration * 0.54 delay:duration * 0.36
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                         animations:^{
+            self.trackingLens.effect = nil;
+            self.pillView.alpha = 1.0;
+        } completion:nil];
+        return;
+    }
+
+    NSTimeInterval springDuration = hasTravel ? (slots > 1.45 ? 0.52 : 0.47) : 0.36;
+    FQXAnimateIOS27Spring(springDuration, isEdgeTab ? 0.34 : 0.44, initVel, ^{
+        self.pillView.transform = CGAffineTransformIdentity;
+        self.pillView.backgroundColor = desiredFill;
+        [self placePill:rest];
+    }, finish);
 
     // 2) Incompressible liquid-droplet Q弹 stretch + landing jelly recoil on pillView.layer,
     //    synchronized icon Q弹 pop on destination button, and subtle Dock glass breath.
-    if (!refracting && !UIAccessibilityIsReduceMotionEnabled()) {
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
         if (hasTravel) {
             CGFloat stretchX = isEdgeTab
                 ? MIN(0.20, 0.14 + MIN(0.06, slots * 0.02))
@@ -1167,10 +1211,7 @@ static void FQXAddAdditiveScalePulse(CALayer *layer,
             self.dragOffsetX = (initialX >= CGRectGetMinX(rest) && initialX <= CGRectGetMaxX(rest))
                 ? MAX(-8.0, MIN(8.0, initialX - CGRectGetMidX(rest))) : 0.0;
             [self showTrackingLens];
-            for (NSString *key in @[@"position", @"bounds", @"cornerRadius"]) {
-                [self.pillView.layer removeAnimationForKey:key];
-                [self.trackingLens.layer removeAnimationForKey:key];
-            }
+            [self stopPillGeometryAnimations];
         }
         CGFloat centerX = location.x - self.dragOffsetX;
         UIButton *nearest = nil;
@@ -3547,7 +3588,10 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
         return NO;
     }
     FQXCommentMaterialMode mode = FQXCurrentCommentMaterialMode();
-    FQXGlassRole role = nestedPill ? FQXGlassRoleFloatingPill : FQXGlassRoleExpandedComposer;
+    BOOL clearComposer = nestedPill && mode == FQXCommentMaterialLightGlass &&
+                         !UIAccessibilityIsReduceTransparencyEnabled();
+    FQXGlassRole role = FQXGlassRoleExpandedComposer;
+    if (nestedPill) role = clearComposer ? FQXGlassRoleClearCommentComposer : FQXGlassRoleFloatingPill;
     BOOL topAlignedSheet = !nestedPill && frame.origin.y <= 1.0;
     CGFloat sideBleed = (mode == FQXCommentMaterialIOS18Blur) ? 0.0 : 12.0;
     CGFloat glassRad = nestedPill ? 0.0 : (topAlignedSheet ? -1.0 : radius);
@@ -3559,7 +3603,9 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     if (!CGRectEqualToRect(glass.frame, placedFrame)) glass.frame = placedFrame;
     FQXSyncUnifiedGlassEffect(glass, role, glassRad, !nestedPill && !topAlignedSheet);
     UIColor *scrim = nil;
-    if (mode == FQXCommentMaterialLightGlass) {
+    if (clearComposer) {
+        scrim = [UIColor colorWithWhite:1.0 alpha:0.05];
+    } else if (mode == FQXCommentMaterialLightGlass) {
         scrim = nestedPill
             ? [UIColor colorWithWhite:1.0 alpha:0.62]
             : [UIColor colorWithWhite:0.97 alpha:0.78];
@@ -3572,7 +3618,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
     }
     FQXApplyCommentGlassBacking(glass, scrim, glassRad, !nestedPill && !topAlignedSheet);
     if (nestedPill) {
-        glass.contentView.layer.borderWidth = 0.5;
+        glass.contentView.layer.borderWidth = clearComposer ? 0.0 : 0.5;
         UIColor *borderCol = (mode == FQXCommentMaterialLightGlass)
             ? [UIColor colorWithWhite:0.0 alpha:0.10]
             : [UIColor colorWithWhite:1.0 alpha:(mode == FQXCommentMaterialIOS18Blur ? 0.14 : 0.24)];
@@ -3872,7 +3918,7 @@ static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerShee
             if (mode == FQXCommentMaterialLightGlass) {
                 BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
                 BOOL darkBackdrop = readerSheet ? appDark : !FQXDramaCommentNoVideoShiftEnabled();
-                CGFloat lightAlpha = darkBackdrop ? (readerSheet ? 0.56 : 0.54) : 0.48;
+                CGFloat lightAlpha = darkBackdrop ? 0.42 : 0.27;
                 if (reduce) lightAlpha = darkBackdrop ? (readerSheet ? 0.72 : 0.70) : 0.62;
                 scrim = [UIColor colorWithWhite:0.97 alpha:lightAlpha];
                 rimAlpha = reduce ? 0.72 : 0.50;
