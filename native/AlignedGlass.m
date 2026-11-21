@@ -2941,6 +2941,75 @@ static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
     DramaSpacingForView(self);
 }
 
+static void DramaAlbumCaptionKey(void) {}
+static void DramaAlbumTitleVisibilityKey(void) {}
+static void DramaWatchAlbumCaption(Obj self,Obj content,Obj arrow,Rect capsule) {
+    Obj title=Get(self,"titleLabel"),display=objc_getAssociatedObject(self,DramaAlbumCaptionKey);
+    Obj value=Get(title,"attributedText");
+    if (!Kind(title,"YYLabel") || Get(title,"superview")!=content) return;
+    if (!VisibleRect(capsule) || !((U(*)(Obj,Sel))Message)(Get(value,"string"),sel_registerName("length")) ||
+        !Get(self,"albumDetailInfo")) {
+        Obj originallyHidden=objc_getAssociatedObject(title,DramaAlbumTitleVisibilityKey);
+        if (originallyHidden) {
+            VB(title,"setHidden:",Flag(originallyHidden,"boolValue"));
+            objc_setAssociatedObject(title,DramaAlbumTitleVisibilityKey,0,1);
+        }
+        VB(display,"setHidden:",1);
+        return;
+    }
+
+    Rect original=Frame(title);
+    double left=__builtin_fmax(original.x,capsule.x+12);
+    double right=capsule.x+capsule.width-12;
+    if (Get(arrow,"superview")==content && !Flag(arrow,"isHidden") && VisibleRect(Frame(arrow)))
+        right=__builtin_fmin(right,Frame(arrow).x-6);
+    Rect target={left,capsule.y+1,right-left,capsule.height-2};
+    if (!objc_getAssociatedObject(title,DramaAlbumTitleVisibilityKey))
+        objc_setAssociatedObject(title,DramaAlbumTitleVisibilityKey,BoolBox(Flag(title,"isHidden")),1);
+    VB(title,"setHidden:",1);
+    if (!VisibleRect(target)) {
+        VB(display,"setHidden:",1);
+        return;
+    }
+    if (!display) {
+        display=O0(O0(Lookup("UILabel"),"alloc"),"init");
+        if (!display) return;
+        VB(display,"setUserInteractionEnabled:",0);
+        VB(display,"setIsAccessibilityElement:",0);
+        VB(display,"setClipsToBounds:",1);
+        objc_setAssociatedObject(self,DramaAlbumCaptionKey,display,1);
+        V0(display,"release");
+    }
+    if (Get(display,"superview")!=content) V1(content,"addSubview:",display);
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    I mode=((I(*)(Obj,Sel,Obj))Message)(defaults,sel_registerName("integerForKey:"),
+        Text("FanqieX.DramaAlbumTitleLines.1"));
+    Obj string=Get(value,"string");
+    Obj attributes=((Obj(*)(Obj,Sel,U,void *))Message)(value,sel_registerName("attributesAtIndex:effectiveRange:"),0,0);
+    Obj font=O1(attributes,"objectForKey:",Text("NSFont"));
+    if (!font) font=Get(title,"font");
+    if (font && mode==1) {
+        double lineHeight=((double(*)(Obj,Sel))Message)(font,sel_registerName("lineHeight"));
+        double pointSize=((double(*)(Obj,Sel))Message)(font,sel_registerName("pointSize"));
+        double maxLine=__builtin_floor((target.height-1)*0.5);
+        if (lineHeight>maxLine && maxLine>0)
+            font=((Obj(*)(Obj,Sel,double))Message)(font,sel_registerName("fontWithSize:"),pointSize*maxLine/lineHeight);
+    }
+    if (font) V1(display,"setFont:",font);
+    Obj color=O1(attributes,"objectForKey:",Text("NSColor"));
+    if (!color) color=Get(title,"textColor");
+    if (color) V1(display,"setTextColor:",color);
+    string=((Obj(*)(Obj,Sel,Obj,Obj))Message)(string,sel_registerName("stringByReplacingOccurrencesOfString:withString:"),
+        Text("\xef\xbf\xbc"),Text("\xc2\xb7"));
+    if (!((B(*)(Obj,Sel,Obj))Message)(Get(display,"text"),sel_registerName("isEqual:"),string))
+        V1(display,"setText:",string);
+    Q1(display,"setNumberOfLines:",mode==1 ? 2 : 1);
+    Q1(display,"setLineBreakMode:",4); // NSLineBreakByTruncatingTail
+    if (!SameRect(Frame(display),target)) SetFrame(display,target);
+    VB(display,"setHidden:",0);
+    V1(content,"setAccessibilityLabel:",string);
+}
+
 static void DramaWatchAlbumApply(Obj self) {
     Obj content=Get(self,"containerView");
     if (O0(content,"superview")!=self) return;
@@ -2962,6 +3031,9 @@ static void DramaWatchAlbumApply(Obj self) {
         DramaClearBackground(content,0);
     }
     DramaSpacingForView(self);
+    bounds=Bounds(content);
+    Rect captionCapsule=glassEnabled ? (Rect){bounds.x+8,bounds.y+3,bounds.width-16,bounds.height-6} : bounds;
+    DramaWatchAlbumCaption(self,content,Get(self,"arrowImageView"),captionCapsule);
 }
 
 static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
@@ -3288,7 +3360,7 @@ static void LandscapeAdjustGlass178R9(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVLandscapeAdjustButtonBase","fqx178r9_originalLandscapeAdjustLayout"))(self,cmd);
     LandscapeControlGlass178R9(self,self,36);
 }
-static void LandscapeLayoutHook178R9(const char *name,const char *alias,Imp imp) {
+static void InstallInheritedLayoutHook(const char *name,const char *alias,Imp imp) {
     Obj cls=Lookup(name);
     Sel layout=sel_registerName("layoutSubviews"),saved=sel_registerName(alias);
     if (!ClassABI(cls,"layoutSubviews","v16@0:8") || class_getInstanceMethod(cls,saved)) return;
@@ -3298,12 +3370,12 @@ static void LandscapeLayoutHook178R9(const char *name,const char *alias,Imp imp)
         class_addMethod(cls,layout,imp,"v16@0:8");
 }
 static void LandscapeGlassInstall178R9(void) {
-    LandscapeLayoutHook178R9("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout",(Imp)LandscapeInfoGlass178R9);
-    LandscapeLayoutHook178R9("FQVShortVideoPlayerLandscapeBaseControlView","fqx178r9_originalLandscapePlayerLayout",(Imp)LandscapePlayerGlass178R9);
-    LandscapeLayoutHook178R9("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout",(Imp)LandscapeBottomGlass178R9);
-    LandscapeLayoutHook178R9("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeSocialLayout",(Imp)LandscapeSocialGlass178R9);
-    LandscapeLayoutHook178R9("SSShortVideoLandscapeAutoInflowTipView","fqx178r9_originalLandscapeEntryLayout",(Imp)LandscapeEntryGlass178R9);
-    LandscapeLayoutHook178R9("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavSubviews",(Imp)LandscapeNavLaidOut178R9);
+    InstallInheritedLayoutHook("FQVShortVideoPlayerLandscapeBaseInfoView","fqx178r9_originalLandscapeInfoLayout",(Imp)LandscapeInfoGlass178R9);
+    InstallInheritedLayoutHook("FQVShortVideoPlayerLandscapeBaseControlView","fqx178r9_originalLandscapePlayerLayout",(Imp)LandscapePlayerGlass178R9);
+    InstallInheritedLayoutHook("FQVShortVideoLandscapeBottomRightView","fqx178r9_originalLandscapeBottomLayout",(Imp)LandscapeBottomGlass178R9);
+    InstallInheritedLayoutHook("SSShortVideoLandscapeBizInteractionView","fqx178r9_originalLandscapeSocialLayout",(Imp)LandscapeSocialGlass178R9);
+    InstallInheritedLayoutHook("SSShortVideoLandscapeAutoInflowTipView","fqx178r9_originalLandscapeEntryLayout",(Imp)LandscapeEntryGlass178R9);
+    InstallInheritedLayoutHook("FQVShortVideoLandscapeNavBar","fqx178r9_originalLandscapeNavSubviews",(Imp)LandscapeNavLaidOut178R9);
     Hook("FQVLandscapeAdjustButtonBase","layoutSubviews","fqx178r9_originalLandscapeAdjustLayout","v16@0:8",(Imp)LandscapeAdjustGlass178R9);
     Hook("FQVShortVideoLandscapeNavBar","refreshLayout","fqx178r9_originalLandscapeNavLayout","v16@0:8",(Imp)LandscapeNavGlass178R9);
     Hook("SSShortVideoLandscapeBizInteractionView","refreshUI","fqx178r9_originalLandscapeSocialRefresh","v16@0:8",(Imp)LandscapeSocialRefresh178R9);
@@ -3509,13 +3581,13 @@ static void DramaDetailGlassInstall(void) {
         Hook("FQVShortVideoMoreBtnNavBarItem","setUp","fqx178r29_originalMoreSetup","v16@0:8",(Imp)DramaDetailMoreItemSetup);
     Hook("SSShortVideoOriginalNovelEntranceView","layoutSubviews","fqx178r29_originalDetailNovelLayout","v16@0:8",(Imp)DramaDetailOriginalLayout);
     if (Signature("SSShortVideoSingleBottomInsertView","episodeInfoView","@16@0:8"))
-        LandscapeLayoutHook178R9("SSShortVideoSingleBottomInsertView","fqx178r29_originalSingleBottomLayout",(Imp)DramaDetailSingleLayout);
+        InstallInheritedLayoutHook("SSShortVideoSingleBottomInsertView","fqx178r29_originalSingleBottomLayout",(Imp)DramaDetailSingleLayout);
     if (Signature("SSShortVideoTagListBottomInsertView","episodeInfoView","@16@0:8"))
-        LandscapeLayoutHook178R9("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout",(Imp)DramaDetailTagLayout);
+        InstallInheritedLayoutHook("SSShortVideoTagListBottomInsertView","fqx178r29_originalTagBottomLayout",(Imp)DramaDetailTagLayout);
     const char *bottom="FQVShortVideoPlayerBottomView";
     if (Signature(bottom,"episodeInfoView","@16@0:8") && Signature(bottom,"cleanSwitchView","@16@0:8") &&
         Signature(bottom,"isNewSingleSeriesControlViewStyle","B16@0:8"))
-        LandscapeLayoutHook178R9(bottom,"fqx178r30_originalPlayerBottomLayout",(Imp)DramaDetailPlayerBottomLayout);
+        InstallInheritedLayoutHook(bottom,"fqx178r30_originalPlayerBottomLayout",(Imp)DramaDetailPlayerBottomLayout);
     Hook("SSShortVideoBottomDistributionView",
          "applyRelatedInfoUIToContentView:textArray:showTag:recommendTagText:bookInfo:canShowReadTip:",
          "fqx178r30_originalRelatedContent:text:tag:recommendation:book:readTip:","v60@0:8@16@24@32@40@48B56",
@@ -5888,6 +5960,19 @@ static B ProfileCardPlainBox(Obj v) {
     return Kind(v,"UIView") && !Flag(v,"isHidden") && !Kind(v,"UILabel") &&
            !Kind(v,"UIImageView") && !Kind(v,"UIControl") && !Kind(v,"SSMyUserCollectionViewFunCell");
 }
+static void ProfileShortcutScrollClipsKey(void) {}
+static void ProfileShortcutScrollClips(Obj host,Obj view) {
+    if (!Kind(view,"UIScrollView") && !Kind(view,"SSScrollFoldFuncView")) return;
+    Obj tracked=objc_getAssociatedObject(host,ProfileShortcutScrollClipsKey);
+    if (!Flag(view,"clipsToBounds")) {
+        if (!tracked) {
+            tracked=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+            objc_setAssociatedObject(host,ProfileShortcutScrollClipsKey,tracked,1);
+        }
+        V1(tracked,"addObject:",view);
+        VB(view,"setClipsToBounds:",1);
+    }
+}
 static void ProfileShortcutCardGlass(Obj row,B mounted) {
     if (!row || !Kind(row,"UIView")) return;
     Obj cv=Get(row,"contentView");
@@ -5897,6 +5982,9 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         !mounted || !Enabled() || !FQHGlassAvailable() || !VisibleRect(b)) {
         PageRestore(host);
         ProfileCardRestorePaints(host);
+        Obj scrolls=Get(objc_getAssociatedObject(host,ProfileShortcutScrollClipsKey),"allObjects");
+        for (U i=0,n=TabCount(scrolls);i<n;++i) VB(At(scrolls,i),"setClipsToBounds:",0);
+        objc_setAssociatedObject(host,ProfileShortcutScrollClipsKey,0,1);
         ProfileCardSetUnclipped(row,0);
         if (host!=row) ProfileCardSetUnclipped(host,0);
         return;
@@ -5939,6 +6027,7 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         Rect r=Frame(child);
         if (r.width*5<cardFrame.width*4) continue;
         ProfileCardTrackClear(host,child);
+        ProfileShortcutScrollClips(host,child);
         if (!Kind(child,"UIScrollView") && !Kind(child,"SSScrollFoldFuncView"))
             ProfileCardSetUnclipped(child,1);
         Obj grand=Get(child,"subviews");
@@ -5946,8 +6035,10 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
             Obj gc=At(grand,j);
             if (!ProfileCardPlainBox(gc)) continue;
             Rect gr=Frame(gc);
-            if (gr.width*5>=cardFrame.width*4)
+            if (gr.width*5>=cardFrame.width*4) {
                 ProfileCardTrackClear(host,gc);
+                ProfileShortcutScrollClips(host,gc);
+            }
         }
     }
     ApplySurface(host,cardFrame,1);
@@ -6706,6 +6797,15 @@ static B ShelfFunctionSection(Obj controller,I section) {
     return InstanceABI(model,"sectionTypeAtIndex:","q24@0:8q16") &&
         ((I(*)(Obj,Sel,I))Message)(model,sel_registerName("sectionTypeAtIndex:"),section)==1;
 }
+static const double ShelfLegacyFilterHeight=38;
+static B ShelfNeedsLegacyFilterRow(Obj controller) {
+    if (!ShelfFilterVisible() || !Enabled() ||
+        !InstanceABI(controller,"shouldShowFilterHeader","B16@0:8") ||
+        !InstanceABI(controller,"shouldShowFullGenreFilterExposure","B16@0:8")) return 0;
+    Obj function=Get(Get(controller,"viewModel"),"functionModel");
+    return BoolProp(function,"shouldShowFilterOut") &&
+        !Flag(controller,"shouldShowFilterHeader") && !Flag(controller,"shouldShowFullGenreFilterExposure");
+}
 static Size ShelfFunctionSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj index) {
     Size size=((Size(*)(Obj,Sel,Obj,Obj,Obj))Original("SSBookShelfSubViewController","fqx178_originalShelfFunctionSize:layout:index:"))(
         self,cmd,collection,layout,index);
@@ -6722,6 +6822,8 @@ static Size ShelfFunctionSize(Obj self,Sel cmd,Obj collection,Obj layout,Obj ind
                 ShelfCompactEmptyHeight;
         }
     }
+    if (ShelfNeedsLegacyFilterRow(self) && ShelfFunctionSection(self,
+        ((I(*)(Obj,Sel))Message)(index,sel_registerName("section")))) size.height+=ShelfLegacyFilterHeight;
     return size;
 }
 static Rect ShelfFunctionInsets(Obj self,Sel cmd,Obj collection,Obj layout,I section) {
@@ -6740,6 +6842,17 @@ static Rect ShelfFunctionInsets(Obj self,Sel cmd,Obj collection,Obj layout,I sec
 static void ShelfFunctionLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSBookShelfFunctionCell","fqx178_originalShelfFunctionLayout"))(self,cmd);
     Obj controller=Get(self,"delegate");
+    if (ShelfNeedsLegacyFilterRow(controller)) {
+        Obj header=Get(self,"headerView");
+        if (Kind(header,"SS525BookShelfSubHeaderView")) {
+            Rect frame=Frame(header),bounds=Bounds(Get(self,"layoutContainerView"));
+            double height=__builtin_fmax(frame.height,bounds.y+bounds.height-frame.y);
+            if (height>frame.height) {
+                frame.height=height;
+                SetFrame(header,frame);
+            }
+        }
+    }
     if (objc_getAssociatedObject(controller,ShelfCompactKey)!=self ||
         !InstanceABI(self,"showsFilterExposure","B16@0:8")) return;
     Obj clip=Get(self,"filterClipView");
@@ -6789,6 +6902,25 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
     Obj filterBtn=Get(self,"filterButton"),genreBtn=Get(self,"fullGenreFilterButton");
     ApplyShelfFilterButton(filterBtn,visible);
     ApplyShelfFilterButton(genreBtn,visible);
+    if (ShelfNeedsLegacyFilterRow(controller) && !BoolProp(self,"isFiltering")) {
+        Obj filter=Kind(genreBtn,"UIButton") && !Flag(genreBtn,"isHidden") ? genreBtn : filterBtn;
+        Obj parent=Get(filter,"superview");
+        Rect frame=Frame(filter),bounds=Bounds(self);
+        Rect stats=Convert(Get(self,"editButton"),Bounds(Get(self,"editButton")),self);
+        if (parent && !Flag(filter,"isHidden") && VisibleRect(frame) &&
+            bounds.y+bounds.height-stats.y-stats.height>=34) {
+            Rect target={bounds.x+bounds.width-69,bounds.y+bounds.height-33,68,30};
+            target=Convert(self,target,parent);
+            if (!SameRect(frame,target)) SetFrame(filter,target);
+            Q1(filter,"setContentHorizontalAlignment:",0);
+            Obj icon=Get(filter,"currentImage");
+            if (!icon && Responds(Lookup("UIImage"),"systemImageNamed:")) {
+                icon=O1(Lookup("UIImage"),"systemImageNamed:",Text("line.3.horizontal.decrease"));
+                ((void(*)(Obj,Sel,Obj,U))Message)(filter,sel_registerName("setImage:forState:"),icon,0);
+            }
+            ShelfActionGlass(filter,1);
+        }
+    }
     if (!edit) {
         Obj button=Get(self,"editButton");
         ShelfActionGlass(button,0);
@@ -6805,7 +6937,16 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
                 if (VisibleRect(gr) && __builtin_fabs((gr.y+gr.height*0.5)-(eb.y+eb.height*0.5))<18.0) hasSameRowFilter=1;
             }
         }
-        ShelfRightEdge(button,FQHSurface(button),Enabled() && !hasSameRowFilter);
+        if (Enabled() && hasSameRowFilter) {
+            Obj neighbor=Flag(genreBtn,"isHidden") ? filterBtn : genreBtn;
+            Rect frame=Frame(button),other=Convert(neighbor,Bounds(neighbor),Get(button,"superview"));
+            if (VisibleRect(other) && frame.x+frame.width+8>other.x) {
+                frame.x=other.x-frame.width-8;
+                SetFrame(button,frame);
+            }
+        } else {
+            ShelfRightEdge(button,FQHSurface(button),Enabled());
+        }
     }
 }
 static void ShelfLegacyFilterShow(Obj self,Sel cmd,B show) {
@@ -7659,7 +7800,14 @@ static void ReaderScreenshotShare178R14(Obj self,Sel cmd,Obj action) {
         ((void(*)(Obj,Sel,Obj))Original("SSReadingShareScreenshotPendantView","fqx178r14_originalScreenshotShare:"))(self,cmd,action);
     }
 }
+static void RecordRankStage(Obj router,Sel cmd,Obj record) {
+    (void)router; (void)cmd;
+    if (FQDDiagnosticsEnabled()) FQDRecord("bookstoreRank",record);
+}
 void FQHPageInstall(void) {
+    Obj router=Lookup("SSCommunitySaaSRouterServiceManager");
+    if (router) class_addMethod(object_getClass(router),sel_registerName("fqxRecordBookstoreRank:"),
+        (Imp)RecordRankStage,"v24@0:8@16");
     Obj cleanup=Lookup("FQXCleanup");
     if (Responds(cleanup,"install")) V0(cleanup,"install");
     Obj videoExport=Lookup("FQXVideoExport");
@@ -7695,7 +7843,7 @@ void FQHPageInstall(void) {
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
     Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
-    Hook("SSShortVideoAlbumSeriesBottomInsertView","layoutSubviews","fqx192_originalDramaWatchAlbumLayout","v16@0:8",(Imp)DramaWatchAlbumLayout);
+    InstallInheritedLayoutHook("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout",(Imp)DramaWatchAlbumLayout);
     Hook("SSShortVideoAlbumSeriesBottomInsertView","updateAdaptiveSubViews","fqx193_originalDramaWatchAlbumAdapt","v16@0:8",(Imp)DramaWatchAlbumAdapt);
     FullscreenFillInstall();
     Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);

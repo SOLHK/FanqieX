@@ -552,12 +552,17 @@ static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *ancho
         animator = [[UIViewPropertyAnimator alloc] initWithDuration:1 curve:UIViewAnimationCurveLinear animations:^{
             weakBlur.effect = [UIBlurEffect effectWithStyle:style];
         }];
+        animator.pausesOnCompletion = YES;
+        animator.scrubsLinearly = YES;
         [animator startAnimation];
         [animator pauseAnimation];
         objc_setAssociatedObject(blur, &animatorKey, animator, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(blur, &blurStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     CGFloat fraction = MIN(strength, 100) / 100.0;
+    // Material interpolation introduces its tint early. Give the low end more
+    // travel so 1% adds only a small amount over the default glass.
+    if (![preference isEqualToString:AudioButtonBlurPrefKey]) fraction *= fraction;
     if (animator.fractionComplete != fraction) animator.fractionComplete = fraction;
 }
 
@@ -3572,6 +3577,23 @@ static void HookShelfSubHeaderLayoutEditBtn(UIView *self, SEL _cmd) {
 
 static BOOL FQXBookstoreColdLaunchAnchor(__unused id cls, __unused SEL cmd, __unused NSUInteger scene) {
     return NO;
+}
+
+static NSInteger FQXBookstoreAutomaticAnchorCount(__unused id cls, __unused SEL cmd) {
+    return 0;
+}
+
+static void (*OrigBookstoreAfterFirstLoad)(id, SEL);
+static void FQXBookstoreAfterFirstLoad(id controller, SEL cmd) {
+    id model = FQXObjGet(controller, "pageModel");
+    SEL locate = sel_registerName("setLocateToInfinite:");
+    SEL tabType = sel_registerName("tabType");
+    if ([model isKindOfClass:objc_lookUpClass("SSBookStoreDoubleRowTabModel")] &&
+        [model respondsToSelector:locate] && [model respondsToSelector:tabType] &&
+        ((int (*)(id, SEL))objc_msgSend)(model, tabType) == 2) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(model, locate, NO);
+    }
+    OrigBookstoreAfterFirstLoad(controller, cmd);
 }
 
 #pragma mark - Mine Side Drawer Individual Item Visibility ("我的侧栏各项独立开关")
@@ -8966,6 +8988,11 @@ void FQXInstallMotionAndAudioHooks(void) {
         FQXInstallOwnedHook(objc_lookUpClass("SSBookStoreABTestHelper"),
                             sel_registerName("coldLaunchAnchorToDoubleCol:"), YES, "B24@0:8Q16",
                             (IMP)FQXBookstoreColdLaunchAnchor, NULL);
+        FQXInstallOwnedHook(objc_lookUpClass("SSBookStoreABTestHelper"),
+                            sel_registerName("maxTimesOfRecommendTabAnchorToDoubleColAuto"), YES, "q16@0:8",
+                            (IMP)FQXBookstoreAutomaticAnchorCount, NULL);
+        HOOK_INST("SSBookStoreDoubleRowViewController", "afterFirstLoad", "v16@0:8",
+                  OrigBookstoreAfterFirstLoad, FQXBookstoreAfterFirstLoad);
         HOOK_INST("SS525BookShelfSubHeaderView", "layoutSubviews", "v16@0:8", OrigShelfSubHeaderLayoutForEdit, HookShelfSubHeaderLayoutForEdit);
         HOOK_INST("SS525BookShelfSubHeaderView", "layoutEditButton", "v16@0:8", OrigShelfSubHeaderLayoutEditBtn, HookShelfSubHeaderLayoutEditBtn);
         HOOK_INST("SSMyUser621SideBarFunctionEntryListCell", "configureWithModels:titles:icons:darkIcons:", "v48@0:8@16@24@32@40", OrigSidebarConfigureFunctionList, HookSidebarConfigureFunctionList);

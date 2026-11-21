@@ -27,6 +27,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.CommentBlur.1": @0,
         @"FanqieX.AudioButtonBlur.1": @0,
         @"FanqieX.DramaHeaderBlur.1": @0,
+        @"FanqieX.DramaAlbumTitleLines.1": @0,
         @"FanqieX.ReaderHotCommentBadge.1": @YES,
         @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
@@ -135,6 +136,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
+        [key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
         [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
         [key isEqualToString:@"FanqieX.BottomDisplayMode.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
@@ -142,7 +144,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentComposerStyle.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
-        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 1;
+        if ([key isEqualToString:@"FanqieX.DockMaterial.1"] ||
+            [key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
         if ([key isEqualToString:@"FanqieX.CommentMaterialStyle.1"]) maximum = 3;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
             [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"]) maximum = 100;

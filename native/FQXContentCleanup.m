@@ -668,30 +668,34 @@ static NSString *FQXBookstoreRankRoute(NSString *route) {
     if (![url.scheme.lowercaseString isEqualToString:@"sslocal"] ||
         ![url.host.lowercaseString isEqualToString:@"lynxview"]) return route;
 
-    // The rank presenter adds list_gender to surl, and writes an empty surl
-    // when the server supplied the Lynx template in url alone.
+    // The native presenter rewrites both aliases after reading the saved rank
+    // category. Preserve valid URLs and copy the encoded template for a missing alias.
     NSArray<NSURLQueryItem *> *items = url.queryItems;
-    NSUInteger surl = NSNotFound;
-    NSUInteger fallback = NSNotFound;
+    NSArray<NSURLQueryItem *> *encoded = url.percentEncodedQueryItems;
+    NSUInteger urlIndex = NSNotFound, surlIndex = NSNotFound;
     for (NSUInteger i = 0; i < items.count; i++) {
         NSURLQueryItem *item = items[i];
-        if ([item.name isEqualToString:@"surl"]) {
-            if (FQXRankTemplateURLIsUsable(item.value)) return route;
-            if (surl == NSNotFound) surl = i;
-        } else if (fallback == NSNotFound && [item.name isEqualToString:@"url"] &&
-                   FQXRankTemplateURLIsUsable(item.value)) {
-            fallback = i;
-        }
+        if (!FQXRankTemplateURLIsUsable(item.value)) continue;
+        if ([item.name isEqualToString:@"url"] && urlIndex == NSNotFound) urlIndex = i;
+        if ([item.name isEqualToString:@"surl"] && surlIndex == NSNotFound) surlIndex = i;
     }
-    if (fallback == NSNotFound) return route;
+    if (urlIndex == NSNotFound && surlIndex == NSNotFound) return route;
 
-    // Copy the encoded value verbatim. Other query items can contain JSON,
-    // nested query strings and already escaped percent signs.
-    NSMutableArray<NSURLQueryItem *> *encodedItems = [url.percentEncodedQueryItems mutableCopy];
-    NSURLQueryItem *template = [NSURLQueryItem queryItemWithName:@"surl" value:encodedItems[fallback].value];
-    if (surl == NSNotFound) [encodedItems addObject:template];
-    else encodedItems[surl] = template;
-    url.percentEncodedQueryItems = encodedItems;
+    NSMutableArray<NSURLQueryItem *> *updated = [encoded mutableCopy];
+    for (NSString *name in @[@"url", @"surl"]) {
+        NSUInteger own = [name isEqualToString:@"url"] ? urlIndex : surlIndex;
+        NSUInteger source = own != NSNotFound ? own : (urlIndex != NSNotFound ? urlIndex : surlIndex);
+        NSURLQueryItem *replacement = [NSURLQueryItem queryItemWithName:name value:encoded[source].value];
+        BOOL found = NO;
+        for (NSUInteger i = 0; i < items.count; i++) {
+            if (![items[i].name isEqualToString:name]) continue;
+            found = YES;
+            if (!FQXRankTemplateURLIsUsable(items[i].value)) updated[i] = replacement;
+        }
+        if (!found) [updated addObject:replacement];
+    }
+    if ([updated isEqualToArray:encoded]) return route;
+    url.percentEncodedQueryItems = updated;
     return url.string ?: route;
 }
 
@@ -705,12 +709,33 @@ static void FQXInstallRankRouteHook(const char *className, const char *getter) {
         imp_removeBlock(hook);
 }
 
-static BOOL FQXIsBookstoreRankLynxPage(UIViewController *page) {
-    id info = Get(page, "extraInfoDict");
+static BOOL FQXIsBookstoreRankInfo(id info) {
     if (![info isKindOfClass:NSDictionary.class]) return NO;
     id report = info[@"temp_report_info"];
-    if (![report isKindOfClass:NSDictionary.class]) return NO;
-    return [report[@"forum_position"] isEqual:@"store_feed_rank"];
+    return [report isKindOfClass:NSDictionary.class] && [report[@"forum_position"] isEqual:@"store_feed_rank"];
+}
+
+static void FQXRecordRankStage(NSDictionary *record) {
+    Class bridge = objc_lookUpClass("SSCommunitySaaSRouterServiceManager");
+    SEL diagnostic = Sel("fqxRecordBookstoreRank:");
+    if ([bridge respondsToSelector:diagnostic])
+        ((void (*)(id, SEL, id))objc_msgSend)(bridge, diagnostic, record);
+}
+
+static void FQXInstallRankRouter(void) {
+    Class cls = objc_lookUpClass("SSCommunitySaaSRouterServiceManager");
+    SEL open = Sel("handleInnerOpenUrl:extraInfo:");
+    __block IMP original = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id manager, id route, id info) {
+        BOOL rank = FQXIsBookstoreRankInfo(info);
+        id routed = rank ? FQXBookstoreRankRoute(route) : route;
+        BOOL accepted = ((BOOL (*)(id, SEL, id, id))original)(manager, open, routed, info);
+        if (rank)
+            FQXRecordRankStage(@{@"stage": @"route", @"normalized": @(routed != route), @"accepted": @(accepted)});
+        return accepted;
+    });
+    if (!FQXInstallOwnedHook(cls, open, YES, "B32@0:8@16@24", hook, &original))
+        imp_removeBlock(hook);
 }
 
 static void FQXInstallRankLoadRetry(void) {
@@ -724,7 +749,9 @@ static void FQXInstallRankLoadRetry(void) {
     __block IMP original = NULL;
     IMP hook = imp_implementationWithBlock(^(UIViewController *page, id container, NSError *error) {
         ((void (*)(id, SEL, id, id))original)(page, completion, container, error);
-        if (!error || !FQXIsBookstoreRankLynxPage(page)) return;
+        if (!FQXIsBookstoreRankInfo(Get(page, "extraInfoDict"))) return;
+        FQXRecordRankStage(@{@"stage": @"template", @"completed": @(!error), @"code": @(error.code)});
+        if (!error) return;
         __weak UIViewController *weakPage = page;
         // The original callback may still be unwinding the failed load.
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -737,6 +764,16 @@ static void FQXInstallRankLoadRetry(void) {
     });
     if (!FQXInstallOwnedHook(cls, completion, NO, "v32@0:8@16@24", hook, &original))
         imp_removeBlock(hook);
+
+    SEL firstScreen = Sel("readingLynxContainerDidFirstScreen:");
+    __block IMP nativeFirstScreen = NULL;
+    IMP screenHook = imp_implementationWithBlock(^(UIViewController *page, UIView *container) {
+        ((void (*)(id, SEL, id))nativeFirstScreen)(page, firstScreen, container);
+        if (FQXIsBookstoreRankInfo(Get(page, "extraInfoDict")))
+            FQXRecordRankStage(@{@"stage": @"firstScreen"});
+    });
+    if (!FQXInstallOwnedHook(cls, firstScreen, NO, "v24@0:8@16", screenHook, &nativeFirstScreen))
+        imp_removeBlock(screenHook);
 }
 
 void FQXInstallContentCleanupHooks(void){
@@ -744,6 +781,7 @@ void FQXInstallContentCleanupHooks(void){
   FQXInstallRankRouteHook("SSBookStoreRecommendRankListModel", "headerUrlScheme");
   FQXInstallRankRouteHook("SSBookStoreNewType69Model", "headerUrlScheme");
   FQXInstallRankRouteHook("SSBookStoreRank", "linkUrl");
+  FQXInstallRankRouter();
   FQXInstallRankLoadRetry();
   NSString *drama=KEY("DramaAutoplay"),*rating=KEY("ReaderRatingInvite"),*excerpt=KEY("ExcerptWidgetGuide"),*widget=KEY("ContentWidgetGuide"),*publish=KEY("BookstorePublishButton"),*pendant=KEY("ListenPendant"),*story=KEY("StoryAds"),*audio=KEY("AudioAds");
   Bool0("SSShortVideoFeedColdPlayManager","canShowVideoFeedColdPlayVC",NO,drama);

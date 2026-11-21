@@ -265,7 +265,7 @@ static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     material.path = route;
     material.keywords = @"底栏 导航栏 材质 液态玻璃 模糊玻璃 毛玻璃";
     material.popoverKey = DockMaterialKey;
-    material.popoverOptions = @[@"液态玻璃", @"模糊玻璃"];
+    material.popoverOptions = @[@"液态玻璃（原样）", @"模糊玻璃"];
     material.popoverKind = 3;
     material.height = 52;
     [menu.catalog addObject:material];
@@ -378,6 +378,13 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
+    FQXSettingRow *albumTitle = [FQXSettingRow new];
+    albumTitle.title = @"合集标题显示";
+    albumTitle.path = @"短剧/播放设置";
+    albumTitle.popoverKey = @"FanqieX.DramaAlbumTitleLines.1";
+    albumTitle.popoverOptions = @[@"单行省略", @"双行显示"];
+    albumTitle.height = 52;
+    [menu.catalog addObject:albumTitle];
 
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
@@ -731,11 +738,11 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         value.textColor = UIColor.secondaryLabelColor;
         UISlider *slider = [UISlider new];
         slider.maximumValue = 100;
-        slider.continuous = [row.blurKey isEqualToString:DockBlurKey];
+        slider.continuous = ![row.blurKey isEqualToString:@"FanqieX.AudioButtonBlur.1"];
         slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:row.blurKey]));
         slider.accessibilityIdentifier = row.blurKey;
         slider.accessibilityLabel = row.title;
-        value.text = slider.value == 0 ? @"默认" : [NSString stringWithFormat:@"%.0f%%", slider.value];
+        value.text = [NSString stringWithFormat:@"%.0f%%", slider.value];
         slider.accessibilityValue = value.text;
         objc_setAssociatedObject(slider, &BlurValueLabelKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [slider addTarget:self action:@selector(blurChanged:) forControlEvents:UIControlEventValueChanged];
@@ -905,7 +912,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     if ([defaults integerForKey:key] == strength) return;
     [defaults setInteger:strength forKey:key];
     UILabel *value = objc_getAssociatedObject(slider, &BlurValueLabelKey);
-    value.text = strength == 0 ? @"默认" : [NSString stringWithFormat:@"%ld%%", (long)strength];
+    value.text = [NSString stringWithFormat:@"%ld%%", (long)strength];
     slider.accessibilityValue = value.text;
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL refresh = NSSelectorFromString(@"refreshForKey:");

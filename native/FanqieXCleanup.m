@@ -502,19 +502,18 @@ static char MineOriginalHidden;
 static Ivar MinePublishButton;
 static __weak UIViewController *LastMine;
 static void (*NativeUpdatePublish)(id, SEL);
+static void (*NativeMineUpdateLayout)(id, SEL);
+static CGRect (*NativePublishPinFrame)(id, SEL);
+static NSMapTable<UIView *, UIViewController *> *MinePublishOwners;
 
-static void PlaceMinePublishButton(UIViewController *owner) {
-    if (!MinePublishButton || !owner.isViewLoaded ||
-        (Option(MineRecommendationsKey, YES) && Option(MineBenefitsKey, YES) &&
-         Option(@"FanqieX.MineContinueDrama.1", YES))) return;
-    UIView *button = object_getIvar(owner, MinePublishButton);
-    UIView *parent = button.superview;
-    if (!parent || button.hidden || parent.window != owner.view.window) return;
+static CGRect MinePublishFrame(UIViewController *owner, UIView *parent, CGRect frame) {
     CGRect safe = [owner.view convertRect:owner.view.safeAreaLayoutGuide.layoutFrame toView:parent];
-    CGRect frame = button.frame;
     if (CGRectGetWidth(safe) < CGRectGetWidth(frame) + 24.0 ||
-        CGRectGetHeight(safe) < CGRectGetHeight(frame) + 90.0) return;
+        CGRectGetHeight(safe) < CGRectGetHeight(frame) + 90.0) return frame;
 
+    BOOL reduced = !Option(MineRecommendationsKey, YES) || !Option(MineBenefitsKey, YES) ||
+        !Option(@"FanqieX.MineContinueDrama.1", YES);
+    if (!reduced && CGRectContainsRect(safe, frame)) return frame;
     CGFloat bottom = CGRectGetMaxY(safe) - 64.0;
     UITabBar *dock = owner.tabBarController.tabBar;
     if (dock.window && dock.window == parent.window && !dock.hidden) {
@@ -524,7 +523,28 @@ static void PlaceMinePublishButton(UIViewController *owner) {
     }
     frame.origin.x = CGRectGetMaxX(safe) - CGRectGetWidth(frame) - 12.0;
     frame.origin.y = bottom - CGRectGetHeight(frame) - 12.0;
+    return frame;
+}
+
+static void PlaceMinePublishButton(UIViewController *owner) {
+    if (!MinePublishButton || !owner.isViewLoaded) return;
+    UIView *button = object_getIvar(owner, MinePublishButton);
+    if (!button.superview || button.hidden || !button.window || button.window != owner.view.window) return;
+    CGRect frame = MinePublishFrame(owner, button.superview, button.frame);
     if (!CGRectEqualToRect(button.frame, frame)) button.frame = frame;
+}
+
+static CGRect MinePublishPinFrame(UIView *button, SEL cmd) {
+    CGRect frame = NativePublishPinFrame(button, cmd);
+    UIViewController *owner = [MinePublishOwners objectForKey:button];
+    UIWindow *window = button.window;
+    if (!window || !owner.isViewLoaded || window != owner.view.window || CGRectIsEmpty(frame)) return frame;
+    return MinePublishFrame(owner, window, frame);
+}
+
+static void MineUpdateLayout(id owner, SEL cmd) {
+    NativeMineUpdateLayout(owner, cmd);
+    PlaceMinePublishButton(owner);
 }
 
 static void UpdatePublish(id owner, SEL cmd) {
@@ -537,6 +557,8 @@ static void UpdatePublish(id owner, SEL cmd) {
     LastMine = owner;
     button = object_getIvar(owner, MinePublishButton);
     if (!button) return;
+    if (!MinePublishOwners) MinePublishOwners = [NSMapTable weakToWeakObjectsMapTable];
+    [MinePublishOwners setObject:owner forKey:button];
     BOOL hide = !Option(MinePublishKey, YES);
     objc_setAssociatedObject(button, &MineOriginalHidden, hide ? @(button.hidden) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (hide) button.hidden = YES;
@@ -1084,6 +1106,9 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         MinePublishButton = class_getInstanceVariable(NSClassFromString(@"SSMyUser621ViewController"), "_publishButton");
         if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
             REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
+            REPLACE(NativeMineUpdateLayout, "SSMyUser621ViewController", "updateLayout", "v16@0:8", MineUpdateLayout);
+            REPLACE(NativePublishPinFrame, "SSCommunityPublishButton", "preferredPinFrame",
+                    "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", MinePublishPinFrame);
         }
         REPLACE(NativeMineWillAppear, "SSMyUser621ViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
         REPLACE(NativeMineDidAppear, "SSMyUser621ViewController", "viewDidAppear:", "v20@0:8B16", MineDidAppear);
@@ -1190,6 +1215,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
+    } else if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) {
+        Class motion = NSClassFromString(@"FQXDockMotion");
+        SEL refresh = NSSelectorFromString(@"refreshDramaControls");
+        if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:DramaHeaderBlurKey]) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshDramaHeaderBlur");
