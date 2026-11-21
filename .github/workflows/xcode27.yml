@@ -94,6 +94,8 @@ jobs:
             build/xcode27/*.json
             build/xcode27/integrated/*.dylib
             build/xcode27/integrated/*.json
+            build/xcode27/integrated/export-link/*.dylib
+            build/xcode27/integrated/export-rebuild/*.dylib
             build/xcode27/*.zip
             build/xcode27/*.composed.s
             build/xcode27/*.preextend

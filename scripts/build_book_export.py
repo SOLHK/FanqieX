@@ -209,7 +209,23 @@ def main():
         if source_manifest(install_name) != sources:
             raise ValueError("Export companion sources changed during the build")
         if args.core:
-            from merge_book_export import merge
+            from merge_book_export import merge, segments
+            # Keep the linker's real segment layout in failed build reports.
+            # The integration checks rely on both VM and file coordinates;
+            # recording them does not relax any input or output validation.
+            report["input_mappings"] = {
+                label: {
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "size_bytes": len(data),
+                    "segments": [
+                        {key: item[key] for key in
+                         ("name", "vmaddr", "vmsize", "fileoff", "filesize",
+                          "maxprot", "initprot")}
+                        for item in segments(data)
+                    ],
+                }
+                for label, data in (("core", core), ("export", binary.read_bytes()))
+            }
             merged, verification = merge(core, binary.read_bytes())
             rebuilt_image, _ = merge(core, rebuilt.read_bytes())
             if merged != rebuilt_image:
