@@ -57,6 +57,9 @@ static NSString *const CommentComposerStylePrefKey = @"FanqieX.CommentComposerSt
 static NSString *const BottomDisplayModePrefKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialPrefKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
+static NSString *const CommentBlurPrefKey = @"FanqieX.CommentBlur.1";
+static NSString *const AudioButtonBlurPrefKey = @"FanqieX.AudioButtonBlur.1";
+static NSString *const DramaHeaderBlurPrefKey = @"FanqieX.DramaHeaderBlur.1";
 static NSString *const ReaderHotCommentBadgePrefKey = @"FanqieX.ReaderHotCommentBadge.1";
 static NSString *const ShelfEditButtonPrefKey = @"FanqieX.ShelfEditButton.1";
 static NSString *const LegacyCommentMaterialModePrefKey = @"FanqieX.CommentMaterialMode.1";
@@ -75,6 +78,7 @@ typedef NS_ENUM(NSInteger, FQXCommentMaterialStyle) {
     FQXCommentMaterialNative = 0,       // Original Fanqie comment background (neither option enabled)
     FQXCommentMaterialLiquidGlass = 1,  // iOS 26/27 Liquid Glass
     FQXCommentMaterialGaussianBlur = 2, // iOS 18 Gaussian Blur
+    FQXCommentMaterialBookBackground = 3,
 };
 
 typedef NS_ENUM(NSInteger, FQXCommentAppearanceMode) {
@@ -97,6 +101,8 @@ static BOOL FQXShelfEditButtonEnabled(void) {
 static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void);
 
 static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
+    FQXCommentMaterialStyle material = FQXCurrentCommentMaterialStyle();
+    if (material == FQXCommentMaterialBookBackground) return FQXCommentComposerNative;
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentComposerStylePrefKey];
     if (stored && [stored respondsToSelector:@selector(integerValue)]) {
         NSInteger val = [stored integerValue];
@@ -104,7 +110,7 @@ static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
             return (FQXCommentComposerStyle)val;
         }
     }
-    return FQXCurrentCommentMaterialStyle() != FQXCommentMaterialNative
+    return material != FQXCommentMaterialNative
         ? FQXCommentComposerDockedGlass
         : FQXCommentComposerNative;
 }
@@ -128,7 +134,7 @@ static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void) {
     id stored = [ud objectForKey:CommentMaterialStylePrefKey];
     if (!stored) return FQXCommentMaterialNative;
     NSInteger mode = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
-    if (mode < FQXCommentMaterialNative || mode > FQXCommentMaterialGaussianBlur) {
+    if (mode < FQXCommentMaterialNative || mode > FQXCommentMaterialBookBackground) {
         return FQXCommentMaterialNative;
     }
     return (FQXCommentMaterialStyle)mode;
@@ -185,6 +191,7 @@ static BOOL FQXAppIsInNightMode(void) {
 }
 
 static BOOL FQXCommentsUseDarkTheme(void) {
+    if (FQXCurrentCommentMaterialStyle() == FQXCommentMaterialBookBackground) return FQXAppIsInNightMode();
     FQXCommentAppearanceMode appMode = FQXCurrentCommentAppearanceMode();
     if (appMode == FQXCommentAppearanceLight) return NO;
     if (appMode == FQXCommentAppearanceDark) return YES;
@@ -208,12 +215,13 @@ static BOOL FQXAudioGlassEnabled(void) {
 static BOOL FQXCommentStylingEnabled(void) {
     if ([NSUserDefaults.standardUserDefaults integerForKey:GlassDisabledPrefKey] != 0) return NO;
     FQXCommentMaterialStyle style = FQXCurrentCommentMaterialStyle();
-    if (style == FQXCommentMaterialNative) return NO;
+    if (style == FQXCommentMaterialNative || style == FQXCommentMaterialBookBackground) return NO;
     if (style == FQXCommentMaterialGaussianBlur) return YES;
     return FQXGlassEnabled();
 }
 
 static BOOL FQXShouldOverrideCommentTheme(void) {
+    if (FQXCurrentCommentMaterialStyle() == FQXCommentMaterialBookBackground) return NO;
     return FQXCommentStylingEnabled() || FQXCommentAppearanceOverrideActive();
 }
 
@@ -251,6 +259,7 @@ static const void *FQXDockHiddenByCommentKey = &FQXDockHiddenByCommentKey;
 static const void *FQXSheetTopRimLayerKey = &FQXSheetTopRimLayerKey;
 static const void *FQXSheetSavedCornerRadiusKey = &FQXSheetSavedCornerRadiusKey;
 static const void *FQXSheetSavedMaskedCornersKey = &FQXSheetSavedMaskedCornersKey;
+static const void *FQXSheetSavedCornerCurveKey = &FQXSheetSavedCornerCurveKey;
 static const void *FQXCommentBannerSavedHeightKey = &FQXCommentBannerSavedHeightKey;
 static const void *FQXReaderDisappearingKey = &FQXReaderDisappearingKey;
 static const void *FQXReaderSwipeHiddenIndicatorKey = &FQXReaderSwipeHiddenIndicatorKey;
@@ -501,11 +510,12 @@ static BOOL FQXDockUsesFrostedGlass(void) {
     return [NSUserDefaults.standardUserDefaults integerForKey:DockMaterialPrefKey] == 1;
 }
 
-static void FQXApplyDockBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame, BOOL dark) {
+static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
+                                 CGFloat radius, BOOL dark, NSString *preference) {
     static char blurViewKey, animatorKey, blurStyleKey;
     UIVisualEffectView *blur = objc_getAssociatedObject(owner, &blurViewKey);
     UIViewPropertyAnimator *animator = objc_getAssociatedObject(blur, &animatorKey);
-    NSInteger strength = [NSUserDefaults.standardUserDefaults integerForKey:DockBlurPrefKey];
+    NSInteger strength = [NSUserDefaults.standardUserDefaults integerForKey:preference];
     if (!container || strength <= 0 || UIAccessibilityIsReduceTransparencyEnabled()) {
         if (blur) {
             [animator stopAnimation:YES];
@@ -529,8 +539,9 @@ static void FQXApplyDockBlur(UIView *owner, UIView *container, UIView *anchor, C
         else [container insertSubview:blur atIndex:0];
     }
     if (!CGRectEqualToRect(blur.frame, frame)) blur.frame = frame;
-    CGFloat radius = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
-    if (blur.layer.cornerRadius != radius) blur.layer.cornerRadius = radius;
+    CGFloat half = MIN(CGRectGetWidth(frame), CGRectGetHeight(frame)) * 0.5;
+    CGFloat corner = (radius < 0.0) ? half : MIN(radius, half);
+    if (blur.layer.cornerRadius != corner) blur.layer.cornerRadius = corner;
 
     UIBlurEffectStyle style = dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight;
     NSNumber *currentStyle = objc_getAssociatedObject(blur, &blurStyleKey);
@@ -598,7 +609,7 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
             }
         }
     }
-    FQXApplyDockBlur(proxy, proxy.contentView, nil, proxy.contentView.bounds, darkDock);
+    FQXApplyBackdropBlur(proxy, proxy.contentView, nil, proxy.contentView.bounds, -1, darkDock, DockBlurPrefKey);
 }
 
 static id FQXRawIvarObj(id target, const char *ivarName) {
@@ -776,7 +787,7 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         tabBar.standardAppearance = appearance;
         objc_setAssociatedObject(tabBar, &selectionStyleKey, @(useFrostedSelection), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    FQXApplyDockBlur(tabBar, platter.superview, platter, platter.frame, dark);
+    FQXApplyBackdropBlur(tabBar, platter.superview, platter, platter.frame, -1, dark, DockBlurPrefKey);
 }
 
 static NSString *FQXDockSymbolNameForTitle(NSString *title, BOOL selected) {
@@ -1377,6 +1388,7 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
 
 - (void)applyMaterialToOuter:(UIVisualEffectView *)outer isDark:(BOOL)isDark {
     if (!outer || !self.pillGlass) return;
+    FQXApplyBackdropBlur(outer, outer.contentView, nil, outer.bounds, -1, isDark, DramaHeaderBlurPrefKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
@@ -1729,8 +1741,21 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
 
 @end
 
+static NSHashTable<UIView *> *FQXTrackedDramaHeaders(void) {
+    static NSHashTable<UIView *> *headers;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ headers = [NSHashTable weakObjectsHashTable]; });
+    return headers;
+}
+
 static void FQXSyncDramaTopCapsuleForHeader(UIView *header) {
     if (!header || !FQXGlassEnabled()) return;
+    [FQXTrackedDramaHeaders() addObject:header];
+    for (UIView *subview in header.subviews) {
+        if ([subview isKindOfClass:UIButton.class] && [subview.accessibilityLabel isEqualToString:@"搜索"]) {
+            FQXApplyBackdropBlur(subview, subview, nil, subview.bounds, -1, YES, DramaHeaderBlurPrefKey);
+        }
+    }
     id owner = FQXObjGet(header, "delegate");
     UIView *tabs = FQXObjGet(owner, "simpleTabView");
     if (![tabs isKindOfClass:UIView.class]) return;
@@ -1827,6 +1852,7 @@ static void FQXRefreshReaderHotCommentBadges(void);
               lens:(UIVisualEffectView *)lens;
 + (void)refreshAudioGlass;
 + (void)refreshDramaControls;
++ (void)refreshDramaHeaderBlur;
 + (void)refreshDramaPinchClean;
 + (void)refreshCommentGlass;
 + (void)refreshDockAppearance;
@@ -2023,6 +2049,12 @@ static void FQXRefreshReaderHotCommentBadges(void);
 
 + (void)refreshDramaControls {
     FQXRefreshAllDramaControlsInWindows();
+}
+
++ (void)refreshDramaHeaderBlur {
+    for (UIView *header in FQXTrackedDramaHeaders().allObjects) {
+        if (header.window) FQXSyncDramaTopCapsuleForHeader(header);
+    }
 }
 
 + (void)refreshDramaPinchClean {
@@ -3960,6 +3992,8 @@ static void FQXApplyCommentGlassBacking(UIVisualEffectView *glass, UIColor *scri
         glass.contentView.layer.cornerRadius = targetRadius;
     }
     if (!glass.contentView.clipsToBounds) glass.contentView.clipsToBounds = YES;
+    FQXApplyBackdropBlur(glass, glass.contentView, nil, glass.bounds, targetRadius,
+                         FQXCommentsUseDarkTheme(), CommentBlurPrefKey);
 }
 
 static BOOL FQXColorGetRGBA(UIColor *color, CGFloat *r, CGFloat *g, CGFloat *b, CGFloat *a) {
@@ -4540,6 +4574,7 @@ static void FQXApplySheetTopCornerMask(UIView *sheet, CGFloat radius) {
     }
     if (!objc_getAssociatedObject(sheet, FQXSheetSavedMaskedCornersKey)) {
         objc_setAssociatedObject(sheet, FQXSheetSavedMaskedCornersKey, @(sheet.layer.maskedCorners), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sheet, FQXSheetSavedCornerCurveKey, sheet.layer.cornerCurve, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
     if (!sheet.clipsToBounds) sheet.clipsToBounds = YES;
     sheet.layer.cornerCurve = kCACornerCurveContinuous;
@@ -4565,6 +4600,11 @@ static void FQXRestoreSheetTopCornerMask(UIView *sheet) {
     if (savedMask) {
         sheet.layer.maskedCorners = (CACornerMask)savedMask.unsignedIntegerValue;
         objc_setAssociatedObject(sheet, FQXSheetSavedMaskedCornersKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSString *savedCurve = objc_getAssociatedObject(sheet, FQXSheetSavedCornerCurveKey);
+    if (savedCurve) {
+        sheet.layer.cornerCurve = savedCurve;
+        objc_setAssociatedObject(sheet, FQXSheetSavedCornerCurveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
@@ -4902,13 +4942,14 @@ static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController
 
 static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerSheet) {
     if (!sheet) return NO;
+    const CGFloat commentRadius = 36.0;
     BOOL enabled = (commentSheet ? FQXCommentStylingEnabled() : FQXGlassEnabled()) &&
                    CGRectGetWidth(sheet.bounds) > 100.0 &&
                    CGRectGetHeight(sheet.bounds) > 72.0;
     UIVisualEffectView *glass = nil;
     if (enabled) {
         if (commentSheet) {
-            glass = FQXEnsureUnifiedGlassView(sheet, SheetGlassKey, FQXGlassRoleCommentSheet, -1.0, NO);
+            glass = FQXEnsureUnifiedGlassView(sheet, SheetGlassKey, FQXGlassRoleCommentSheet, commentRadius, YES);
         } else {
             glass = objc_getAssociatedObject(sheet, SheetGlassKey);
             if (!glass) {
@@ -4932,30 +4973,26 @@ static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerShee
     [UIView performWithoutAnimation:^{
         FQXCommentMaterialStyle matStyle = FQXCurrentCommentMaterialStyle();
         BOOL darkTheme = FQXCommentsUseDarkTheme();
-        CGFloat sideBleed = (commentSheet && matStyle != FQXCommentMaterialGaussianBlur) ? 12.0 : 0.0;
         CGRect frame = commentSheet
-            ? CGRectMake(-sideBleed, 0.0, CGRectGetWidth(sheet.bounds) + sideBleed * 2.0, CGRectGetHeight(sheet.bounds) + 28.0)
+            ? CGRectMake(0.0, 0.0, CGRectGetWidth(sheet.bounds), CGRectGetHeight(sheet.bounds) + 1.6 * commentRadius)
             : sheet.bounds;
         if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
         if (commentSheet) {
-            FQXSyncUnifiedGlassEffect(glass, FQXGlassRoleCommentSheet, -1.0, NO);
-            FQXApplySheetTopCornerMask(sheet, 28.0);
+            FQXSyncUnifiedGlassEffect(glass, FQXGlassRoleCommentSheet, commentRadius, YES);
+            FQXApplySheetTopCornerMask(sheet, commentRadius);
             UIUserInterfaceStyle desiredUIStyle = FQXDesiredCommentInterfaceStyle();
             if (sheet.overrideUserInterfaceStyle != desiredUIStyle) {
                 sheet.overrideUserInterfaceStyle = desiredUIStyle;
             }
             UIColor *scrim = nil;
-            CGFloat rimAlpha = 0.20;
             if (matStyle == FQXCommentMaterialGaussianBlur) {
                 scrim = darkTheme
                     ? [UIColor colorWithWhite:0.01 alpha:0.28]
                     : [UIColor colorWithWhite:0.98 alpha:0.18];
-                rimAlpha = darkTheme ? 0.14 : 0.42;
             } else if (!darkTheme) {
                 // Unified Light Liquid Glass across Short Drama, Series Reviews, and Novel Comments.
                 BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
                 scrim = [UIColor colorWithWhite:0.97 alpha:(reduce ? 0.68 : 0.34)];
-                rimAlpha = reduce ? 0.72 : 0.50;
             } else {
                 // Unified Dark Liquid Glass calibrated to Short Drama translucency, slightly deeper black.
                 if (!readerSheet && !FQXDramaCommentNoVideoShiftEnabled()) {
@@ -4963,11 +5000,10 @@ static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerShee
                 } else {
                     scrim = [UIColor colorWithWhite:0.01 alpha:0.44];
                 }
-                rimAlpha = 0.20;
             }
-            FQXApplyCommentGlassBacking(glass, scrim, -1.0, NO);
+            FQXApplyCommentGlassBacking(glass, scrim, commentRadius, YES);
             glass.contentView.layer.borderWidth = 0.0;
-            FQXSyncSheetTopRimLayer(sheet, 28.0, 0.5, rimAlpha);
+            FQXRemoveSheetTopRimLayer(sheet);
         }
         if (sheet.subviews.firstObject != glass) [sheet insertSubview:glass atIndex:0];
         FQXAudioClearBackground(sheet, YES);
@@ -7718,6 +7754,8 @@ static UIVisualEffectView *FQXInstallAudioSurfaceFull(UIView *host,
         [mountParent insertSubview:surface atIndex:0];
     }
     [CATransaction commit];
+    FQXApplyBackdropBlur(surface, surface.contentView, nil, surface.bounds,
+                         surface.contentView.layer.cornerRadius, YES, AudioButtonBlurPrefKey);
     return surface;
 }
 

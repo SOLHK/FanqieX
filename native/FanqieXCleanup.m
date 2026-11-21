@@ -44,6 +44,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(SidebarPrivacyLinks, "SidebarPrivacyLinks", "显示侧栏底部清单", "sidebar", YES) \
     X(ShelfEditButton, "ShelfEditButton", "显示书架编辑按钮", "shelf", YES) \
     X(ShelfBanner, "ShelfRecommendationBanner", "显示书架推荐横幅", "shelf", YES) \
+    X(ShelfActivityNotice, "ShelfActivityNotice", "显示书架活动公告", "shelf", YES) \
     X(ShelfImport, "ShelfLocalImport", "显示书架本地书导入入口", "shelf", YES) \
     X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架漫剧推荐", "shelf", YES) \
     X(ShelfRecommendations, "ShelfRecommendations", "显示书架推荐内容", "shelf", YES) \
@@ -82,6 +83,9 @@ static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
+static NSString *const CommentBlurKey = @"FanqieX.CommentBlur.1";
+static NSString *const AudioButtonBlurKey = @"FanqieX.AudioButtonBlur.1";
+static NSString *const DramaHeaderBlurKey = @"FanqieX.DramaHeaderBlur.1";
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     NSNumber *value = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -498,6 +502,31 @@ static char MineOriginalHidden;
 static Ivar MinePublishButton;
 static __weak UIViewController *LastMine;
 static void (*NativeUpdatePublish)(id, SEL);
+
+static void PlaceMinePublishButton(UIViewController *owner) {
+    if (!MinePublishButton || !owner.isViewLoaded ||
+        (Option(MineRecommendationsKey, YES) && Option(MineBenefitsKey, YES) &&
+         Option(@"FanqieX.MineContinueDrama.1", YES))) return;
+    UIView *button = object_getIvar(owner, MinePublishButton);
+    UIView *parent = button.superview;
+    if (!parent || button.hidden || parent.window != owner.view.window) return;
+    CGRect safe = [owner.view convertRect:owner.view.safeAreaLayoutGuide.layoutFrame toView:parent];
+    CGRect frame = button.frame;
+    if (CGRectGetWidth(safe) < CGRectGetWidth(frame) + 24.0 ||
+        CGRectGetHeight(safe) < CGRectGetHeight(frame) + 90.0) return;
+
+    CGFloat bottom = CGRectGetMaxY(safe) - 64.0;
+    UITabBar *dock = owner.tabBarController.tabBar;
+    if (dock.window && dock.window == parent.window && !dock.hidden) {
+        CGRect dockFrame = [dock convertRect:dock.bounds toView:parent];
+        if (CGRectGetMaxY(dockFrame) >= CGRectGetMaxY(safe) - 10.0)
+            bottom = CGRectGetMinY(dockFrame);
+    }
+    frame.origin.x = CGRectGetMaxX(safe) - CGRectGetWidth(frame) - 12.0;
+    frame.origin.y = bottom - CGRectGetHeight(frame) - 12.0;
+    if (!CGRectEqualToRect(button.frame, frame)) button.frame = frame;
+}
+
 static void UpdatePublish(id owner, SEL cmd) {
     // The public getter lazily creates this button. Observe only the native
     // instance that updatePublishBtnIfNeed decided to create.
@@ -511,6 +540,17 @@ static void UpdatePublish(id owner, SEL cmd) {
     BOOL hide = !Option(MinePublishKey, YES);
     objc_setAssociatedObject(button, &MineOriginalHidden, hide ? @(button.hidden) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (hide) button.hidden = YES;
+    else PlaceMinePublishButton(owner);
+}
+
+static BOOL (*NativeShelfShouldShowNotify)(id, SEL);
+static BOOL ShelfShouldShowNotify(id model, SEL cmd) {
+    BOOL show = NativeShelfShouldShowNotify(model, cmd);
+    if (!show || Option(ShelfActivityNoticeKey, YES)) return show;
+    id notify = HostObject(model, sel_registerName("notifyModel"));
+    SEL login = sel_registerName("shouldShowLoginTips");
+    return HostMethod(object_getClass(notify), login, "B16@0:8") &&
+        ((BOOL (*)(id, SEL))objc_msgSend)(notify, login);
 }
 
 static char SpeechRequestedHidden;
@@ -619,7 +659,8 @@ static NSArray *MineGlassPreferences(void) {
                             @"FanqieX.BottomDisplayMode.1",
                             @"FanqieX.BottomLengthScale.1", @"FanqieX.BottomHeightScale.1",
                             @"FanqieX.BottomButtonWidthScale.1", @"FanqieX.BottomIconPointSize.1",
-                            @"FanqieX.MineQuickIconsOnly.1", MineScanButtonKey, MineSearchBarKey, MineNightButtonKey, MineShortcutCardKey]) {
+                            @"FanqieX.MineQuickIconsOnly.1", MineScanButtonKey, MineSearchBarKey, MineNightButtonKey, MineShortcutCardKey,
+                            MineRecommendationsKey, MineBenefitsKey, @"FanqieX.MineContinueDrama.1"]) {
         [values addObject:[defaults objectForKey:key] ?: NSNull.null];
     }
     return values;
@@ -653,6 +694,7 @@ static void RestoreMinePosition(UIViewController *controller) {
     CGPoint top = list.contentOffset;
     top.y = -list.adjustedContentInset.top;
     if (fabs(list.contentOffset.y - top.y) > 0.5) [list setContentOffset:top animated:NO];
+    PlaceMinePublishButton(controller);
 }
 
 static void ScheduleMinePositionSettle(UIViewController *controller) {
@@ -1027,6 +1069,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         REPLACE(NativeImportMenu, "SSBookShelfLocalBookHandler", "moreMenuItems", "@16@0:8", ImportMenu);
         REPLACE(NativeRelatedBanner, "SSBookShelfChaseBookModel", "bookEndRelateVideoBanner", "@16@0:8", RelatedBanner);
         REPLACE(NativeHasUnconsumedBanner, "SSBookShelfChaseBookModel", "hasUnconsumedVideoBanner", "B16@0:8", HasUnconsumedBanner);
+        REPLACE(NativeShelfShouldShowNotify, "SSBookShelfViewModel", "shouldShowNotify", "B16@0:8", ShelfShouldShowNotify);
         REPLACE(NativeHideDoubleColumnRecommend, "SSBookShelfSubVCOpenParams", "hideDoubleColumnRecommend", "B16@0:8", HideDoubleColumnRecommend);
         REPLACE(NativeDoubleColumnRequestData, "SSBookShelfDoubleColumn", "requestDataIfEnabled", "v16@0:8", DoubleColumnRequestData);
         REPLACE(NativeShelfAppeared, "SSBookShelfSubViewController", "viewDidAppear:", "v20@0:8B16", ShelfAppeared);
@@ -1109,7 +1152,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             }
             ScheduleMinePositionSettle(mine);
         }
-    } else if ([key isEqualToString:AudioControlIconsOnlyKey] || [key isEqualToString:AudioLiquidGlassKey]) {
+    } else if ([key isEqualToString:AudioControlIconsOnlyKey] || [key isEqualToString:AudioLiquidGlassKey] ||
+               [key isEqualToString:AudioButtonBlurKey]) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshAudioGlass");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
@@ -1146,7 +1190,12 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
+    } else if ([key isEqualToString:DramaHeaderBlurKey]) {
+        Class motion = NSClassFromString(@"FQXDockMotion");
+        SEL refresh = NSSelectorFromString(@"refreshDramaHeaderBlur");
+        if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:CommentMaterialStyleKey] ||
+               [key isEqualToString:CommentBlurKey] ||
                [key isEqualToString:CommentAppearanceModeKey] ||
                [key isEqualToString:CommentComposerStyleKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
@@ -1188,7 +1237,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if (wasHidden) SpeechHidden(button, @selector(setHidden:), wasHidden.boolValue);
     } else if ([key isEqualToString:BadgeKey] && !Option(BadgeKey, YES) && NativeBadge) {
         NativeBadge(UIApplication.sharedApplication, NSSelectorFromString(@"setApplicationIconBadgeNumber:"), 0);
-    } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfImportKey] ||
+    } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] || [key isEqualToString:ShelfImportKey] ||
                [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfRecommendationsKey]) {
         UIViewController *shelf = LastShelf;
         if ([key isEqualToString:ShelfRecommendationsKey]) {

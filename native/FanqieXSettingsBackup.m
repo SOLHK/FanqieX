@@ -24,6 +24,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomDisplayMode.1": @0,
         @"FanqieX.DockMaterial.1": @0,
         @"FanqieX.DockBlur.1": @0,
+        @"FanqieX.CommentBlur.1": @0,
+        @"FanqieX.AudioButtonBlur.1": @0,
+        @"FanqieX.DramaHeaderBlur.1": @0,
         @"FanqieX.ReaderHotCommentBadge.1": @YES,
         @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
@@ -82,7 +85,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         for (NSDictionary *row in rows) {
             NSString *key = row[@"key"];
             NSNumber *value = row[@"default"];
-            if (key.length && value) defaults[key] = @([value boolValue]);
+            if (key.length && value && !defaults[key]) defaults[key] = @([value boolValue]);
         }
     }
     return defaults;
@@ -123,17 +126,15 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     if (![value isKindOfClass:NSNumber.class]) return nil;
     double number = [value doubleValue];
     if (!isfinite(number)) return nil;
-    if (!fallback || CFGetTypeID((__bridge CFTypeRef)fallback) == CFBooleanGetTypeID()) {
-        if (number != 0 && number != 1) return nil;
-        return @(number == 1);
-    }
-
     if ([key isEqualToString:@"FanqieAdBlock.Options.1"]) {
         return number >= 0 && number <= 0x3FFFF && number == trunc(number) ? @((NSInteger)number) : nil;
     }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||
+        [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
+        [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
+        [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
         [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
         [key isEqualToString:@"FanqieX.BottomDisplayMode.1"] ||
         [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
@@ -142,7 +143,9 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 1;
-        if ([key isEqualToString:@"FanqieX.DockBlur.1"]) maximum = 100;
+        if ([key isEqualToString:@"FanqieX.CommentMaterialStyle.1"]) maximum = 3;
+        if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
+            [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"]) maximum = 100;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;
     }
     NSDictionary<NSString *, NSArray<NSNumber *> *> *ranges = @{
@@ -154,15 +157,25 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         @"FanqieX.DramaOutlinePointSize.1": @[@26, @42],
     };
     NSArray<NSNumber *> *range = ranges[key];
-    return range && number >= range[0].doubleValue && number <= range[1].doubleValue ? @(number) : nil;
+    if (range) return number >= range[0].doubleValue && number <= range[1].doubleValue ? @(number) : nil;
+    // Prior exporters used both JSON booleans and numeric 0/1 for switches.
+    if (number != 0 && number != 1) return nil;
+    return @((BOOL)(number == 1));
 }
 
 static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     NSDictionary<NSString *, id> *defaults = BuiltInSettings();
-    NSMutableDictionary<NSString *, id> *snapshot = [defaults mutableCopy];
+    NSMutableDictionary<NSString *, id> *snapshot = [NSMutableDictionary dictionary];
     // Until explicitly set, these switches inherit the existing per-type
     // setting. Omit the unset overrides so older choices survive export/import.
-    [snapshot removeObjectsForKeys:@[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"]];
+    NSArray *inherited = @[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"];
+    [defaults enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+        (void)stop;
+        if ([inherited containsObject:key]) return;
+        BOOL known;
+        id normalized = ValidSetting(key, value, defaults, &known);
+        if (normalized) snapshot[key] = normalized;
+    }];
     [storage.dictionaryRepresentation enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
         (void)stop;
         BOOL known;
@@ -350,7 +363,9 @@ static NSString *CodecError(FQXSettingsCodecStatus status) {
         if (value) settings[key] = value;
         else if (!known) skipped++;
         else {
-            [self showMessage:@"备份包含无效的设置值，未修改当前设置。" title:@"无法导入设置"];
+            NSString *field = [key hasPrefix:@"FanqieX."] ? [key substringFromIndex:8] : key;
+            [self showMessage:[NSString stringWithFormat:@"备份中的「%@」设置值无效，未修改当前设置。", field]
+                        title:@"无法导入设置"];
             return;
         }
     }

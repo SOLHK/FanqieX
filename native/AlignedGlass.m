@@ -2763,7 +2763,7 @@ static B DramaWatchIsEpisode(Obj model) {
 
 static void DramaClampBusyKey(void) {}
 static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double rightLimit,I depth) {
-    if (!container || depth>3) return;
+    if (!container || depth>5) return;
     Obj subs=Get(container,"subviews");
     U count=TabCount(subs);
     for (U i=0;i<count && i<32;++i) {
@@ -2772,14 +2772,28 @@ static void DramaClampSubviews(Obj container,Obj rootContent,Obj glass,double ri
         Rect sb=Bounds(sub);
         if (sb.width<=0.5 || sb.height<=0.5) continue;
         Rect inRoot=Convert(sub,sb,rootContent);
+        if (Kind(sub,"SSShortVideoBottomDistributionTextView")) {
+            // The title's marquee draws beyond the frame UIKit allocates to it.
+            // Bound the actual text wrapper as well as its individual labels.
+            double excess=inRoot.x+inRoot.width-rightLimit;
+            if (excess>0.5) {
+                Rect f=Frame(sub);
+                f.width=__builtin_fmax(0.0,f.width-excess);
+                SetFrame(sub,f);
+                V0(sub,"setNeedsLayout");
+            }
+            if (!Flag(sub,"clipsToBounds")) VB(sub,"setClipsToBounds:",1);
+            DramaClampSubviews(sub,rootContent,glass,rightLimit,depth+1);
+            continue;
+        }
         B isText=Kind(sub,"UILabel") || Responds(sub,"setLineBreakMode:");
         if (isText) {
-            if (inRoot.x+inRoot.width>rightLimit+0.5 && inRoot.x<rightLimit-16.0) {
+            if (inRoot.x+inRoot.width>rightLimit+0.5) {
                 if (Responds(sub,"setLineBreakMode:")) Q1(sub,"setLineBreakMode:",4);
                 Rect f=Frame(sub);
                 double excess=(inRoot.x+inRoot.width)-rightLimit;
                 double newW=f.width-excess;
-                if (newW<24.0) newW=24.0;
+                if (newW<0.0) newW=0.0;
                 if (newW<f.width-0.5) {
                     f.width=newW;
                     SetFrame(sub,f);
@@ -2927,8 +2941,7 @@ static void DramaWatchRender(Obj self,Sel cmd,Obj model) {
     DramaSpacingForView(self);
 }
 
-static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
-    ((void(*)(Obj,Sel))Original("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout"))(self,cmd);
+static void DramaWatchAlbumApply(Obj self) {
     Obj content=Get(self,"containerView");
     if (O0(content,"superview")!=self) return;
     B glassEnabled=Enabled() && FQHGlassAvailable() && Get(self,"albumDetailInfo");
@@ -2949,6 +2962,16 @@ static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
         DramaClearBackground(content,0);
     }
     DramaSpacingForView(self);
+}
+
+static void DramaWatchAlbumLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout"))(self,cmd);
+    DramaWatchAlbumApply(self);
+}
+
+static void DramaWatchAlbumAdapt(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSShortVideoAlbumSeriesBottomInsertView","fqx193_originalDramaWatchAlbumAdapt"))(self,cmd);
+    DramaWatchAlbumApply(self);
 }
 
 static B DramaSmallGlass(Obj view,B active) {
@@ -7673,6 +7696,7 @@ void FQHPageInstall(void) {
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
     Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
     Hook("SSShortVideoAlbumSeriesBottomInsertView","layoutSubviews","fqx192_originalDramaWatchAlbumLayout","v16@0:8",(Imp)DramaWatchAlbumLayout);
+    Hook("SSShortVideoAlbumSeriesBottomInsertView","updateAdaptiveSubViews","fqx193_originalDramaWatchAlbumAdapt","v16@0:8",(Imp)DramaWatchAlbumAdapt);
     FullscreenFillInstall();
     Hook("SSReaderFanClubEntryContainerView","layoutSubviews","fqx184_originalShelfWrapper","v16@0:8",(Imp)ReaderShelfWrapperLayout);
     Hook("FQReaderUIManager","showBottomBarContainer:","fqx180_originalReaderMenu:","v20@0:8B16",(Imp)ReaderMenuShow);

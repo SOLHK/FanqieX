@@ -12,7 +12,7 @@ static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
-static const char DockBlurValueLabelKey;
+static const char BlurValueLabelKey;
 static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
 
 static id Invoke(id receiver, NSString *name) {
@@ -85,7 +85,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic) NSInteger commentMaterialChoice;
 @property(nonatomic) BOOL commentAppearanceRow;
-@property(nonatomic) BOOL dockBlurRow;
+@property(nonatomic, copy) NSString *blurKey;
 @property(nonatomic, copy) NSString *popoverKey;
 @property(nonatomic, copy) NSArray<NSString *> *popoverOptions;
 @property(nonatomic) NSInteger popoverKind;
@@ -203,7 +203,7 @@ static NSInteger CurrentSavedCommentMaterialStyle(void) {
     id stored = [ud objectForKey:CommentMaterialStyleKey];
     if (!stored) return 0;
     NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
-    return (val >= 0 && val <= 2) ? val : 0;
+    return (val >= 0 && val <= 3) ? val : 0;
 }
 
 static NSInteger CurrentSavedCommentAppearanceMode(void) {
@@ -225,12 +225,14 @@ static NSInteger CurrentSavedBottomDisplayMode(void) {
 
 static NSInteger CurrentSavedCommentComposerStyle(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSInteger material = CurrentSavedCommentMaterialStyle();
+    if (material == 3) return 0;
     id stored = [ud objectForKey:CommentComposerStyleKey];
     if (stored && [stored respondsToSelector:@selector(integerValue)]) {
         NSInteger val = [stored integerValue];
         if (val >= 0 && val <= 2) return val;
     }
-    return CurrentSavedCommentMaterialStyle() > 0 ? 1 : 0;
+    return material > 0 ? 1 : 0;
 }
 
 static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
@@ -246,6 +248,16 @@ static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL 
     [menu.catalog addObject:dockModeRow];
 }
 
+static void AddBlurRow(FQXSettingsMenu *menu, NSString *route, NSString *title, NSString *key) {
+    FQXSettingRow *blur = [FQXSettingRow new];
+    blur.title = title;
+    blur.path = route;
+    blur.keywords = @"模糊程度 模糊强度 自定义 玻璃";
+    blur.blurKey = key;
+    blur.height = 82;
+    [menu.catalog addObject:blur];
+}
+
 static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     NSString *route = @"外观/玻璃与尺寸";
     FQXSettingRow *material = [FQXSettingRow new];
@@ -258,13 +270,7 @@ static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     material.height = 52;
     [menu.catalog addObject:material];
 
-    FQXSettingRow *blur = [FQXSettingRow new];
-    blur.title = @"Dock 模糊程度";
-    blur.path = route;
-    blur.keywords = @"底栏 导航栏 模糊程度 模糊强度 自定义";
-    blur.dockBlurRow = YES;
-    blur.height = 82;
-    [menu.catalog addObject:blur];
+    AddBlurRow(menu, route, @"Dock 模糊程度", DockBlurKey);
 }
 
 static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
@@ -285,6 +291,15 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     blurRow.commentMaterialChoice = 2;
     blurRow.height = 52;
     [menu.catalog addObject:blurRow];
+
+    FQXSettingRow *stockRow = [FQXSettingRow new];
+    stockRow.title = @"评论区原书底色";
+    stockRow.path = route;
+    stockRow.hiddenFromSearch = hiddenFromSearch;
+    stockRow.keywords = @"评论区 原书底色 原生 不透明 默认背景";
+    stockRow.commentMaterialChoice = 3;
+    stockRow.height = 52;
+    [menu.catalog addObject:stockRow];
 
     FQXSettingRow *appearanceRow = [FQXSettingRow new];
     appearanceRow.title = @"评论区外观";
@@ -360,6 +375,9 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     AddCommentStyleRows(menu, @"短剧/播放设置", YES);
     AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
+    AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
+    AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
+    AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
 
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
@@ -383,7 +401,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         if ([@[@"FanqieX.MineScanButton.1", @"FanqieX.MineSearchBar.1", @"FanqieX.MineNightButton.1"] containsObject:option[@"key"]])
             row.path = @"我的页面净化/顶部栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.MinePublish.1"]) row.path = @"我的页面净化/悬浮入口";
-        if ([@[@"FanqieX.ShelfRecommendationBanner.1", @"FanqieX.ShelfEditButton.1"] containsObject:option[@"key"]]) row.path = @"书架净化/顶部与统计";
+        if ([@[@"FanqieX.ShelfRecommendationBanner.1", @"FanqieX.ShelfActivityNotice.1", @"FanqieX.ShelfEditButton.1"] containsObject:option[@"key"]]) row.path = @"书架净化/顶部与统计";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
@@ -675,7 +693,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     if ([self.path hasPrefix:@"阅读/阅读页面净化"]) return @"开启“隐藏”才会移除对应入口，各项独立控制。章末内容在重新进入书籍后应用。";
     if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
-    if ([self.path isEqualToString:@"评论区净化"]) return @"“液态玻璃”与“高斯模糊”二选一开启，全部关闭则使用番茄小说原版评论区；“评论区外观”可跟随软件或独立指定浅色/深色。";
+    if ([self.path isEqualToString:@"评论区净化"]) return @"液态玻璃、高斯模糊和原书底色可任选一种。原书底色使用番茄小说的评论背景与输入框。";
+    if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书按钮模糊程度在听书界面液态玻璃开启时生效。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
     return nil;
@@ -701,7 +720,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         row.nativeCell.accessibilityHint = self.search.searchBar.text.length ? [row.path stringByReplacingOccurrencesOfString:@"/" withString:@"，"] : nil;
         return row.nativeCell;
     }
-    if (row.dockBlurRow) {
+    if (row.blurKey) {
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         UILabel *title = [UILabel new];
@@ -712,13 +731,14 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         value.textColor = UIColor.secondaryLabelColor;
         UISlider *slider = [UISlider new];
         slider.maximumValue = 100;
-        slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:DockBlurKey]));
-        slider.accessibilityIdentifier = DockBlurKey;
+        slider.continuous = [row.blurKey isEqualToString:DockBlurKey];
+        slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:row.blurKey]));
+        slider.accessibilityIdentifier = row.blurKey;
         slider.accessibilityLabel = row.title;
         value.text = slider.value == 0 ? @"默认" : [NSString stringWithFormat:@"%.0f%%", slider.value];
         slider.accessibilityValue = value.text;
-        objc_setAssociatedObject(slider, &DockBlurValueLabelKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [slider addTarget:self action:@selector(dockBlurChanged:) forControlEvents:UIControlEventValueChanged];
+        objc_setAssociatedObject(slider, &BlurValueLabelKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [slider addTarget:self action:@selector(blurChanged:) forControlEvents:UIControlEventValueChanged];
         UIView *content = cell.contentView;
         for (UIView *view in @[title, value, slider]) {
             view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -878,17 +898,18 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     return cell;
 }
 
-- (void)dockBlurChanged:(UISlider *)slider {
+- (void)blurChanged:(UISlider *)slider {
     NSInteger strength = (NSInteger)lroundf(slider.value);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if ([defaults integerForKey:DockBlurKey] == strength) return;
-    [defaults setInteger:strength forKey:DockBlurKey];
-    UILabel *value = objc_getAssociatedObject(slider, &DockBlurValueLabelKey);
+    NSString *key = slider.accessibilityIdentifier;
+    if ([defaults integerForKey:key] == strength) return;
+    [defaults setInteger:strength forKey:key];
+    UILabel *value = objc_getAssociatedObject(slider, &BlurValueLabelKey);
     value.text = strength == 0 ? @"默认" : [NSString stringWithFormat:@"%ld%%", (long)strength];
     slider.accessibilityValue = value.text;
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL refresh = NSSelectorFromString(@"refreshForKey:");
-    if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, DockBlurKey);
+    if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, key);
 }
 
 - (void)commentMaterialSwitchChanged:(UISwitch *)toggle {
