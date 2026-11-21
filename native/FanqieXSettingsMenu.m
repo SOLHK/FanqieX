@@ -280,9 +280,9 @@ static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     FQXSettingRow *material = [FQXSettingRow new];
     material.title = @"Dock 材质";
     material.path = route;
-    material.keywords = @"底栏 导航栏 材质 液态玻璃 模糊玻璃 毛玻璃";
+    material.keywords = @"底栏 导航栏 材质 新液态玻璃 老液态玻璃 液态玻璃 模糊玻璃 毛玻璃 高斯模糊 iOS18";
     material.popoverKey = DockMaterialKey;
-    material.popoverOptions = @[@"液态玻璃（原样）", @"模糊玻璃"];
+    material.popoverOptions = @[@"新液态玻璃", @"老液态玻璃", @"模糊玻璃", @"高斯模糊"];
     material.popoverKind = 3;
     material.height = 52;
     [menu.catalog addObject:material];
@@ -1133,8 +1133,10 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                 message:nil preferredStyle:UIAlertControllerStyleActionSheet];
             UIPopoverPresentationController *popover = picker.popoverPresentationController;
             popover.sourceView = cell ?: self.view;
-            popover.sourceRect = cell ? cell.bounds : CGRectMake(CGRectGetMidX(self.view.bounds),
-                                                                 CGRectGetMidY(self.view.bounds), 1.0, 1.0);
+            popover.sourceRect = cell
+                ? CGRectMake(CGRectGetMaxX(cell.bounds) - 120.0, CGRectGetMaxY(cell.bounds) - 4.0, 100.0, 4.0)
+                : CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1.0, 1.0);
+            popover.permittedArrowDirections = UIPopoverArrowDirectionUp | UIPopoverArrowDirectionDown;
             __weak FQXSettingsMenu *weakMenu = self;
             NSString *prefKey = row.popoverKey;
             NSInteger kind = row.popoverKind;

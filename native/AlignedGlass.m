@@ -5454,8 +5454,13 @@ static void ShelfActionGlass(Obj button,B filter) {
     material.x+=(material.width-width)*0.5; material.width=width;
     material.y+=(material.height-height)*0.5; material.height=height;
     ApplySurface(button,material,0);
-    if (filter) ShelfRightEdge(button,FQHSurface(button),Enabled());
-    if (!filter) {
+    if (filter) {
+        ShelfRightEdge(button,FQHSurface(button),Enabled());
+        if (FQHSurface(button) && !Get(button,"currentImage")) {
+            CenterCaption(Get(button,"titleLabel"),button,
+                (Rect){material.x+6,material.y,material.width-12,material.height},1,1);
+        }
+    } else {
         Obj caption=Get(button,"titleLabel");
         ShelfMinimumFont(caption,FQHSurface(button)!=0 && Equal(Get(caption,"text"),"编辑"));
         CenterCaption(caption,button,
@@ -6966,11 +6971,27 @@ static void ShelfDurationLayout(Obj self,Sel cmd) {
             }
         }
         if (Enabled() && hasSameRowFilter) {
-            Obj neighbor=Flag(genreBtn,"isHidden") ? filterBtn : genreBtn;
+            Obj neighbor=(Kind(genreBtn,"UIButton") && !Flag(genreBtn,"isHidden") && Belongs(genreBtn,self))
+                ? genreBtn : filterBtn;
+            Obj neighborParent=Get(neighbor,"superview");
+            if (Kind(neighbor,"UIButton") && neighborParent) {
+                ShelfEditPadding(neighbor);
+                Rect nFrame=Frame(neighbor),bounds=Bounds(self),eb=Convert(button,Bounds(button),self);
+                Size nFit=((Size(*)(Obj,Sel,Size))Message)(neighbor,sel_registerName("sizeThatFits:"),
+                    (Size){__DBL_MAX__,__DBL_MAX__});
+                double nw=__builtin_fmax(56.0,__builtin_fmax(nFrame.width,nFit.width));
+                double nh=__builtin_fmax(30.0,__builtin_fmax(nFrame.height,nFit.height));
+                Rect nTarget={bounds.x+bounds.width-20.0-nw,eb.y+(eb.height-nh)*0.5,nw,nh};
+                nTarget=Convert(self,nTarget,neighborParent);
+                if (!SameRect(nFrame,nTarget)) SetFrame(neighbor,nTarget);
+                ShelfActionGlass(neighbor,1);
+            }
             Rect frame=Frame(button),other=Convert(neighbor,Bounds(neighbor),Get(button,"superview"));
-            if (VisibleRect(other) && frame.x+frame.width+8>other.x) {
-                frame.x=other.x-frame.width-8;
+            if (VisibleRect(other) &&
+                (frame.x+frame.width+8.0>other.x || frame.x+frame.width+12.0<other.x)) {
+                frame.x=other.x-frame.width-8.0;
                 SetFrame(button,frame);
+                ShelfActionGlass(button,0);
             }
         } else {
             ShelfRightEdge(button,FQHSurface(button),Enabled());

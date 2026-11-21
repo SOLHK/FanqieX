@@ -5,6 +5,7 @@
 static void check_pages(double width, double nativeWidth, double spacing, size_t count) {
     FQXMineShortcutPlan p = FQXPlanMineShortcuts(width, 72, nativeWidth, spacing, 6, 6, count);
     assert(p.valid);
+    assert(p.columns >= 1 && p.columns <= 4);
     size_t visited = 0;
     for (size_t page = 0; page < p.pages; ++page) {
         for (size_t column = 0; column < p.columns; ++column) {
@@ -21,12 +22,12 @@ static void check_pages(double width, double nativeWidth, double spacing, size_t
 }
 
 int main(void) {
-    // 440pt screen with inset card / stale screen-sized native slots.
+    // 440pt screen with inset card / stale screen-sized native slots: cap at 4 buttons per page.
     FQXMineShortcutPlan p = FQXPlanMineShortcuts(408, 72, 86.7, 0, 6, 6, 6);
-    assert(p.valid && p.columns == 5 && p.pages == 2);
-    assert(fabs(p.itemWidth - 81.6) < 1e-9 && p.itemHeight == 60);
-    // Native 6th item begins on page 2 rather than wrapping below page 1.
-    assert(fabs(5 * p.itemWidth - 408) < 1e-9);
+    assert(p.valid && p.columns == 4 && p.pages == 2);
+    assert(fabs(p.itemWidth - 102.0) < 1e-9 && p.itemHeight == 60);
+    // Native 5th item begins on page 2 rather than overflowing or clipping page 1.
+    assert(fabs(4 * p.itemWidth - 408) < 1e-9);
     double widths[] = {288, 343, 376, 408, 440, 596};
     for (size_t i = 0; i < sizeof(widths) / sizeof(widths[0]); ++i)
         for (size_t n = 1; n <= 25; ++n) {

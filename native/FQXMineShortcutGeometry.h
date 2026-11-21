@@ -24,6 +24,7 @@ static inline FQXMineShortcutPlan FQXPlanMineShortcuts(double width, double heig
         lineSpacing < 0.0 || top < 0.0 || bottom < 0.0 || !count) return plan;
     double columns = floor(width / (nativeItemWidth + lineSpacing) + 0.5);
     if (columns < 1.0) columns = 1.0;
+    if (columns > 4.0) columns = 4.0;
     // The existing profile controls need at least a 44pt tappable slot.
     if (columns > floor(width / (44.0 + lineSpacing)))
         columns = floor(width / (44.0 + lineSpacing));

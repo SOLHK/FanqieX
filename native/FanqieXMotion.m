@@ -412,13 +412,40 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     return surface;
 }
 
+@interface FQXBackdropHostView : UIView
+@end
+
+@implementation FQXBackdropHostView
++ (Class)layerClass {
+    static Class cls = Nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cls = NSClassFromString(@"CABackdropLayer") ?: [CALayer class];
+    });
+    return cls;
+}
+@end
+
 @interface FQXBackdropBlurView : UIVisualEffectView
 @property(nonatomic, strong) UIViewPropertyAnimator *blurAnimator;
 @property(nonatomic, weak) UIWindow *animatorWindow;
 @property(nonatomic) UIBlurEffectStyle blurStyle;
 @property(nonatomic) NSInteger percent;
 @property(nonatomic) BOOL applyPending;
+@property(nonatomic, strong) FQXBackdropHostView *backdropHost;
+@property(nonatomic, strong) UIView *tintOverlay;
+@property(nonatomic) BOOL usingHardwareFilter;
+@property(nonatomic) BOOL isDarkStyle;
+@property(nonatomic) CGFloat baseTintAlpha;
+@property(nonatomic) CGFloat maxTintAlpha;
+@property(nonatomic) BOOL matteChromeBorder;
 - (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style;
+- (void)configurePercent:(NSInteger)percent
+                    dark:(BOOL)dark
+                baseTint:(CGFloat)baseTint
+                 maxTint:(CGFloat)maxTint
+            chromeBorder:(BOOL)chromeBorder;
+- (void)applyHardwareBlur;
 - (void)invalidateBlurAnimator;
 - (void)scheduleBlurUpdate;
 @end
@@ -531,14 +558,44 @@ static void FQXScheduleCYLGlassResample(UIView *bar, UIVisualEffectView *proxy) 
     });
 }
 
+typedef NS_ENUM(NSInteger, FQXDockMaterialMode) {
+    FQXDockMaterialNewGlass = 0,      // 新液态玻璃（最新）
+    FQXDockMaterialLegacyGlass = 1,   // 老液态玻璃（beta5 以前）
+    FQXDockMaterialFrostedGlass = 2,  // 模糊玻璃（比 beta5 更模糊）
+    FQXDockMaterialIOS18Gaussian = 3, // 高斯模糊（iOS 18 高斯模糊）
+};
+
+static FQXDockMaterialMode FQXCurrentDockMaterialMode(void) {
+    NSInteger v = [NSUserDefaults.standardUserDefaults integerForKey:DockMaterialPrefKey];
+    return (v >= FQXDockMaterialNewGlass && v <= FQXDockMaterialIOS18Gaussian)
+        ? (FQXDockMaterialMode)v
+        : FQXDockMaterialNewGlass;
+}
+
 static UIColor *FQXDockRestingSelectionColor(BOOL dark) {
     // The beta4 resting pill fill, also used by the compact Dock.
     return dark ? [UIColor colorWithWhite:1.0 alpha:0.14]
                 : [UIColor colorWithWhite:0.0 alpha:0.065];
 }
 
-static BOOL FQXDockUsesFrostedGlass(void) {
-    return [NSUserDefaults.standardUserDefaults integerForKey:DockMaterialPrefKey] == 1;
+static UIColor *FQXDockSelectionColorForMode(FQXDockMaterialMode mode, BOOL dark) {
+    if (mode == FQXDockMaterialFrostedGlass) {
+        return dark ? [UIColor colorWithWhite:1.0 alpha:0.18]
+                    : [UIColor colorWithWhite:0.0 alpha:0.085];
+    }
+    return FQXDockRestingSelectionColor(dark);
+}
+
+static BOOL FQXBackdropFilterAvailable(void) {
+    static BOOL available = NO;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Class bdCls = NSClassFromString(@"CABackdropLayer");
+        Class filterCls = NSClassFromString(@"CAFilter");
+        SEL filterSel = NSSelectorFromString(@"filterWithType:");
+        available = bdCls != Nil && filterCls != Nil && [filterCls respondsToSelector:filterSel];
+    });
+    return available;
 }
 
 
@@ -546,6 +603,7 @@ static BOOL FQXDockUsesFrostedGlass(void) {
 - (instancetype)initWithEffect:(UIVisualEffect *)effect {
     self = [super initWithEffect:effect];
     if (self) {
+        _usingHardwareFilter = FQXBackdropFilterAvailable();
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(blurDidBecomeActive:)
             name:UIApplicationDidBecomeActiveNotification object:nil];
     }
@@ -555,32 +613,189 @@ static BOOL FQXDockUsesFrostedGlass(void) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     if (_blurAnimator.state == UIViewAnimatingStateActive) [_blurAnimator stopAnimation:YES];
 }
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGRect bounds = self.contentView.bounds;
+    if (self.backdropHost && !CGRectEqualToRect(self.backdropHost.frame, bounds)) {
+        self.backdropHost.frame = bounds;
+    }
+    if (self.tintOverlay && !CGRectEqualToRect(self.tintOverlay.frame, bounds)) {
+        self.tintOverlay.frame = bounds;
+    }
+}
 - (void)invalidateBlurAnimator {
     if (self.blurAnimator.state == UIViewAnimatingStateActive) [self.blurAnimator stopAnimation:YES];
     self.blurAnimator = nil;
     self.animatorWindow = nil;
     self.effect = nil;
+    if (self.backdropHost) {
+        @try {
+            [self.backdropHost.layer setValue:nil forKey:@"filters"];
+        } @catch (__unused NSException *e) {}
+        self.backdropHost.hidden = YES;
+    }
+    if (self.tintOverlay) {
+        self.tintOverlay.backgroundColor = UIColor.clearColor;
+    }
+    self.layer.borderWidth = 0.0;
+    self.layer.borderColor = NULL;
 }
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    if (self.usingHardwareFilter) {
+        if (self.window) [self applyHardwareBlur];
+        return;
+    }
     // UIKit can discard backdrop interpolation while a sheet is offscreen.
     [self invalidateBlurAnimator];
     if (self.window) [self scheduleBlurUpdate];
 }
 - (void)blurDidBecomeActive:(NSNotification *)notification {
     (void)notification;
+    if (self.usingHardwareFilter) {
+        if (self.window) [self applyHardwareBlur];
+        return;
+    }
     [self invalidateBlurAnimator];
     if (self.window) [self scheduleBlurUpdate];
 }
-- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style {
-    if (self.blurStyle != style) {
-        [self invalidateBlurAnimator];
-        self.blurStyle = style;
-    }
+- (void)configurePercent:(NSInteger)percent
+                    dark:(BOOL)dark
+                baseTint:(CGFloat)baseTint
+                 maxTint:(CGFloat)maxTint
+            chromeBorder:(BOOL)chromeBorder {
+    self.isDarkStyle = dark;
+    self.baseTintAlpha = baseTint;
+    self.maxTintAlpha = maxTint;
+    self.matteChromeBorder = chromeBorder;
     self.percent = FQXBlurPercent(percent);
-    [self scheduleBlurUpdate];
+    if (self.usingHardwareFilter) {
+        [self applyHardwareBlur];
+    } else {
+        UIBlurEffectStyle targetStyle = dark
+            ? (chromeBorder ? UIBlurEffectStyleSystemChromeMaterialDark : UIBlurEffectStyleSystemUltraThinMaterialDark)
+            : (chromeBorder ? UIBlurEffectStyleSystemChromeMaterialLight : UIBlurEffectStyleSystemUltraThinMaterialLight);
+        if (self.blurStyle != targetStyle) {
+            [self invalidateBlurAnimator];
+            self.blurStyle = targetStyle;
+        }
+        [self scheduleBlurUpdate];
+    }
+}
+- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style {
+    BOOL dark = (style == UIBlurEffectStyleDark ||
+                 style == UIBlurEffectStyleSystemMaterialDark ||
+                 style == UIBlurEffectStyleSystemThinMaterialDark ||
+                 style == UIBlurEffectStyleSystemChromeMaterialDark ||
+                 style == UIBlurEffectStyleSystemUltraThinMaterialDark ||
+                 style == UIBlurEffectStyleSystemThickMaterialDark);
+    BOOL chrome = (style == UIBlurEffectStyleSystemChromeMaterialDark ||
+                   style == UIBlurEffectStyleSystemChromeMaterialLight);
+    if (self.blurStyle != style && !self.usingHardwareFilter) {
+        [self invalidateBlurAnimator];
+    }
+    self.blurStyle = style;
+    [self configurePercent:percent dark:dark baseTint:0.0 maxTint:(chrome ? 0.48 : 0.36) chromeBorder:NO];
+}
+- (void)applyHardwareBlur {
+    if (!self.usingHardwareFilter) return;
+    if (!self.window && self.percent <= 0 && !self.matteChromeBorder && self.baseTintAlpha <= 0.0005) {
+        return;
+    }
+    if (self.effect) self.effect = nil;
+
+    if (!self.backdropHost) {
+        FQXBackdropHostView *host = [[FQXBackdropHostView alloc] initWithFrame:self.contentView.bounds];
+        host.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        host.userInteractionEnabled = NO;
+        host.clipsToBounds = YES;
+        [self.contentView insertSubview:host atIndex:0];
+        self.backdropHost = host;
+    }
+    if (!self.tintOverlay) {
+        UIView *tint = [[UIView alloc] initWithFrame:self.contentView.bounds];
+        tint.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        tint.userInteractionEnabled = NO;
+        [self.contentView addSubview:tint];
+        self.tintOverlay = tint;
+    }
+
+    int p = (int)self.percent;
+    CGFloat radius = FQXBlurGaussianRadius(p);
+    CGFloat sat = FQXBlurSaturation(p);
+    CGFloat tintAlpha = FQXBlurTintAlpha(p, self.baseTintAlpha, self.maxTintAlpha);
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.backdropHost.frame = self.contentView.bounds;
+    self.tintOverlay.frame = self.contentView.bounds;
+    BOOL filterApplied = YES;
+    @try {
+        CALayer *layer = self.backdropHost.layer;
+        if (radius > 0.0) {
+            CGFloat scale = (radius < 4.0) ? 1.0 : 0.5;
+            @try {
+                [layer setValue:@(scale) forKey:@"scale"];
+            } @catch (__unused NSException *ignored) {}
+            NSArray *existing = [layer valueForKey:@"filters"];
+            if ([existing isKindOfClass:NSArray.class] && existing.count == 2) {
+                [layer setValue:@(radius) forKeyPath:@"filters.gaussianBlur.inputRadius"];
+                [layer setValue:@(sat) forKeyPath:@"filters.colorSaturate.inputAmount"];
+            } else {
+                Class filterCls = NSClassFromString(@"CAFilter");
+                SEL filterSel = NSSelectorFromString(@"filterWithType:");
+                id blurFilter = ((id (*)(id, SEL, id))objc_msgSend)(filterCls, filterSel, @"gaussianBlur");
+                id satFilter = ((id (*)(id, SEL, id))objc_msgSend)(filterCls, filterSel, @"colorSaturate");
+                if (blurFilter && satFilter) {
+                    [blurFilter setValue:@"gaussianBlur" forKey:@"name"];
+                    [blurFilter setValue:@YES forKey:@"inputNormalizeEdges"];
+                    [blurFilter setValue:@(radius) forKey:@"inputRadius"];
+                    [satFilter setValue:@"colorSaturate" forKey:@"name"];
+                    [satFilter setValue:@(sat) forKey:@"inputAmount"];
+                    [layer setValue:@[blurFilter, satFilter] forKey:@"filters"];
+                } else {
+                    filterApplied = NO;
+                }
+            }
+            self.backdropHost.hidden = !filterApplied;
+        } else {
+            [layer setValue:nil forKey:@"filters"];
+            self.backdropHost.hidden = YES;
+        }
+    } @catch (__unused NSException *e) {
+        filterApplied = NO;
+    }
+
+    UIColor *tintColor = UIColor.clearColor;
+    if (tintAlpha > 0.0005) {
+        tintColor = self.isDarkStyle
+            ? [UIColor colorWithWhite:0.10 alpha:tintAlpha]
+            : [UIColor colorWithWhite:0.97 alpha:tintAlpha];
+    }
+    self.tintOverlay.backgroundColor = tintColor;
+
+    if (self.matteChromeBorder) {
+        self.layer.borderWidth = 0.5;
+        self.layer.borderColor = (self.isDarkStyle
+            ? [UIColor colorWithWhite:1.0 alpha:0.14]
+            : [UIColor colorWithWhite:0.0 alpha:0.08]).CGColor;
+    } else {
+        self.layer.borderWidth = 0.0;
+        self.layer.borderColor = NULL;
+    }
+    [CATransaction commit];
+
+    if (!filterApplied) {
+        self.usingHardwareFilter = NO;
+        [self invalidateBlurAnimator];
+        if (self.percent > 0) [self scheduleBlurUpdate];
+    }
 }
 - (void)scheduleBlurUpdate {
+    if (self.usingHardwareFilter) {
+        [self applyHardwareBlur];
+        return;
+    }
     if (self.applyPending) return;
     self.applyPending = YES;
     __weak FQXBackdropBlurView *weakSelf = self;
@@ -588,7 +803,7 @@ static BOOL FQXDockUsesFrostedGlass(void) {
     // animator there applies a full material even when fractionComplete is 0.01.
     dispatch_async(dispatch_get_main_queue(), ^{
         FQXBackdropBlurView *view = weakSelf;
-        if (!view) return;
+        if (!view || view.usingHardwareFilter) return;
         view.applyPending = NO;
         if (!view.window || view.percent <= 0) {
             [view invalidateBlurAnimator];
@@ -600,7 +815,9 @@ static BOOL FQXDockUsesFrostedGlass(void) {
             BOOL animationsEnabled = UIView.areAnimationsEnabled;
             if (!animationsEnabled) [UIView setAnimationsEnabled:YES];
             @try {
-                UIBlurEffectStyle style = view.blurStyle;
+                UIBlurEffectStyle style = view.blurStyle ?: (view.isDarkStyle
+                    ? UIBlurEffectStyleSystemUltraThinMaterialDark
+                    : UIBlurEffectStyleSystemUltraThinMaterialLight);
                 __weak FQXBackdropBlurView *weakBlur = view;
                 UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc]
                     initWithDuration:1.0 curve:UIViewAnimationCurveLinear animations:^{
@@ -616,18 +833,20 @@ static BOOL FQXDockUsesFrostedGlass(void) {
                 if (!animationsEnabled) [UIView setAnimationsEnabled:NO];
             }
         }
-        CGFloat fraction = FQXBlurFraction((int)view.percent);
+        CGFloat linear = FQXBlurFraction((int)view.percent);
+        CGFloat fraction = (CGFloat)pow(linear, 1.8);
         if (view.blurAnimator.fractionComplete != fraction) view.blurAnimator.fractionComplete = fraction;
     });
 }
 @end
 
-static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
-                                 CGFloat radius, BOOL dark, NSString *preference) {
+static void FQXApplyDockBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
+                                     CGFloat radius, BOOL dark, FQXDockMaterialMode mode, NSString *preference) {
     static char blurViewKey;
     FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, &blurViewKey);
     NSInteger strength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:preference]);
-    if (!container || strength <= 0 || UIAccessibilityIsReduceTransparencyEnabled()) {
+    BOOL needsView = (strength > 0) || (mode == FQXDockMaterialIOS18Gaussian);
+    if (!container || !needsView || UIAccessibilityIsReduceTransparencyEnabled()) {
         if (blur) {
             [blur invalidateBlurAnimator];
             [blur removeFromSuperview];
@@ -654,23 +873,74 @@ static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *ancho
     CGFloat corner = (radius < 0.0) ? half : MIN(radius, half);
     if (blur.layer.cornerRadius != corner) blur.layer.cornerRadius = corner;
 
-    UIBlurEffectStyle style = dark ? UIBlurEffectStyleDark : UIBlurEffectStyleLight;
-    [blur configurePercent:strength style:style];
+    CGFloat baseTint = 0.0;
+    CGFloat maxTint = dark ? 0.26 : 0.24;
+    BOOL chromeBorder = NO;
+    switch (mode) {
+        case FQXDockMaterialLegacyGlass:
+            baseTint = 0.0;
+            maxTint = dark ? 0.30 : 0.28;
+            break;
+        case FQXDockMaterialFrostedGlass:
+            baseTint = 0.0;
+            maxTint = dark ? 0.38 : 0.36;
+            break;
+        case FQXDockMaterialIOS18Gaussian:
+            baseTint = dark ? 0.24 : 0.28;
+            maxTint = dark ? 0.64 : 0.70;
+            chromeBorder = YES;
+            break;
+        case FQXDockMaterialNewGlass:
+        default:
+            break;
+    }
+    [blur configurePercent:strength dark:dark baseTint:baseTint maxTint:maxTint chromeBorder:chromeBorder];
+}
+
+static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
+                                 CGFloat radius, BOOL dark, NSString *preference) {
+    FQXApplyDockBackdropBlur(owner, container, anchor, frame, radius, dark, FQXDockMaterialNewGlass, preference);
+}
+
+static UIVisualEffect *FQXMakeDockEffectForMode(FQXDockMaterialMode mode, BOOL isDark, BOOL interactive, BOOL reduceTrans) {
+    if (reduceTrans) return FQXMakeGlassEffect(0, interactive, nil);
+    switch (mode) {
+        case FQXDockMaterialLegacyGlass: {
+            UIColor *tint = isDark
+                ? [UIColor colorWithWhite:0.08 alpha:0.16]
+                : [UIColor colorWithWhite:1.0 alpha:0.16];
+            return FQXMakeGlassEffect(1, interactive, tint);
+        }
+        case FQXDockMaterialFrostedGlass: {
+            UIColor *tint = isDark
+                ? [UIColor colorWithWhite:0.08 alpha:0.30]
+                : [UIColor colorWithWhite:0.96 alpha:0.30];
+            return FQXMakeGlassEffect(0, interactive, tint);
+        }
+        case FQXDockMaterialIOS18Gaussian:
+            // Preserve native interactive liquid lens/drag/spring while Gaussian backdrop sits beneath.
+            return FQXMakeGlassEffect(1, interactive, nil);
+        case FQXDockMaterialNewGlass:
+        default: {
+            UIColor *tint = isDark ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+            return FQXMakeGlassEffect(1, interactive, tint);
+        }
+    }
 }
 
 static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UIVisualEffectView *lens) {
     if (!proxy || !FQXGlassEnabled()) return;
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
-    BOOL frosted = FQXDockUsesFrostedGlass();
+    FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     UIUserInterfaceStyle dockStyle = proxy.overrideUserInterfaceStyle;
     BOOL darkDock = dockStyle == UIUserInterfaceStyleDark ||
         (dockStyle == UIUserInterfaceStyleUnspecified && proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
     NSNumber *appliedMode = objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey);
-    NSInteger desiredMode = reduceTrans ? 3 : (frosted ? 2 : 1);
+    NSInteger desiredMode = reduceTrans ? 99 : ((darkDock ? 20 : 10) + (NSInteger)mode);
     if (!appliedMode || appliedMode.integerValue != desiredMode) {
-        UIVisualEffect *clearGlass = FQXMakeGlassEffect((reduceTrans || frosted) ? 0 : 1, YES, nil);
-        if (clearGlass) {
-            proxy.effect = clearGlass;
+        UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, darkDock, YES, reduceTrans);
+        if (effect) {
+            proxy.effect = effect;
             FQXApplyCornerConfiguration(proxy, 0.0, NO);
             objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, @(desiredMode), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -700,13 +970,13 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
         }
         if (lens.clipsToBounds) lens.clipsToBounds = NO;
         if (!lens.effect) {
-            UIColor *airyFill = FQXDockRestingSelectionColor(darkDock);
+            UIColor *airyFill = FQXDockSelectionColorForMode(mode, darkDock);
             if (![lens.contentView.backgroundColor isEqual:airyFill]) {
                 lens.contentView.backgroundColor = airyFill;
             }
         }
     }
-    FQXApplyBackdropBlur(proxy, proxy.contentView, nil, proxy.contentView.bounds, -1, darkDock, DockBlurPrefKey);
+    FQXApplyDockBackdropBlur(proxy, proxy.contentView, nil, proxy.contentView.bounds, -1, darkDock, mode, DockBlurPrefKey);
 }
 
 static id FQXRawIvarObj(id target, const char *ivarName) {
@@ -826,7 +1096,7 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
 }
 
 // Swap only the platter material. UIKit still drives selection and the interactive lens.
-static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted) {
+static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMaterialMode mode) {
     if (!platter) return;
     NSNumber *applied = objc_getAssociatedObject(platter, FQXPlatterAppliedStyleKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
@@ -840,16 +1110,18 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             return;
         }
+        BOOL wantsClear = (mode == FQXDockMaterialIOS18Gaussian);
         // UIKit may rebuild its background when appearance/items change.
-        BOOL hostReset = !current || [current isKindOfClass:UIBlurEffect.class];
-        if (!original || (hostReset && current)) {
+        BOOL hostReset = wantsClear
+            ? (current != nil)
+            : (!current || [current isKindOfClass:UIBlurEffect.class]);
+        if (!original || (!wantsClear && hostReset && current)) {
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        NSInteger desired = (isDark ? 2 : 1) + (frosted ? 2 : 0);
+        NSInteger desired = (isDark ? 10 : 0) + (NSInteger)mode + 1;
         if (!applied || applied.integerValue != desired || hostReset) {
-            UIColor *tint = (isDark && !frosted) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-            surface.effect = FQXMakeGlassEffect(frosted ? 0 : 1, NO, tint);
+            surface.effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, NO, NO);
             surface.backgroundColor = UIColor.clearColor;
             surface.contentView.backgroundColor = UIColor.clearColor;
             FQXApplyCornerConfiguration(surface, 0.0, NO);
@@ -868,7 +1140,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
         [platter setNeedsLayout];
         return;
     }
-    NSInteger desiredStamp = (isDark ? 2 : 1) + (frosted ? 2 : 0);
+    NSInteger desiredStamp = (isDark ? 10 : 0) + (NSInteger)mode + 1;
     if (applied && applied.integerValue == desiredStamp) return;
     if (gFQXPlatterGlassProbed && !gFQXPlatterGlassSupported) return;
 
@@ -896,8 +1168,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
             interactive = ((BOOL (*)(id, SEL))objc_msgSend)(current, isInterSel);
         }
     }
-    UIColor *tint = (isDark && !frosted) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-    UIVisualEffect *effect = FQXMakeGlassEffect(frosted ? 0 : 1, interactive, tint);
+    UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, isDark, interactive, NO);
     if (!effect) return;
     @try {
         [platter setValue:effect forKey:@"glassEffect"];
@@ -910,34 +1181,36 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
 }
 
 static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL dark) {
-    BOOL frosted = FQXDockUsesFrostedGlass();
+    FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     static char originalAppearanceKey, selectionStyleKey;
-    BOOL useFrostedSelection = frosted && !UIAccessibilityIsReduceTransparencyEnabled();
-    if ([objc_getAssociatedObject(tabBar, &selectionStyleKey) boolValue] != useFrostedSelection) {
+    NSInteger desiredSelectionStamp = (mode == FQXDockMaterialNewGlass || reduce) ? 0 : (NSInteger)mode;
+    NSNumber *appliedSelection = objc_getAssociatedObject(tabBar, &selectionStyleKey);
+    if (!appliedSelection || appliedSelection.integerValue != desiredSelectionStamp) {
         UITabBarAppearance *original = objc_getAssociatedObject(tabBar, &originalAppearanceKey);
         if (!original) {
             original = tabBar.standardAppearance;
             objc_setAssociatedObject(tabBar, &originalAppearanceKey, original, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        UITabBarAppearance *appearance = useFrostedSelection ? [original copy] : original;
-        if (useFrostedSelection) {
+        UITabBarAppearance *appearance = (desiredSelectionStamp == 0) ? original : [original copy];
+        if (desiredSelectionStamp != 0) {
             appearance.selectionIndicatorTintColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
-                return FQXDockRestingSelectionColor(traits.userInterfaceStyle == UIUserInterfaceStyleDark);
+                return FQXDockSelectionColorForMode(mode, traits.userInterfaceStyle == UIUserInterfaceStyleDark);
             }];
         }
         tabBar.standardAppearance = appearance;
-        objc_setAssociatedObject(tabBar, &selectionStyleKey, @(useFrostedSelection), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(tabBar, &selectionStyleKey, @(desiredSelectionStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         // Appearance can replace the native background view. Finish that layout
         // before choosing the surface that owns the material and blur animator.
         [tabBar layoutIfNeeded];
         platter = FQXFindDockPlatter(tabBar);
     }
-    FQXApplyDockPlatterGlass(platter, dark, frosted);
+    FQXApplyDockPlatterGlass(platter, dark, mode);
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *surface = (UIVisualEffectView *)platter;
-        FQXApplyBackdropBlur(tabBar, surface.contentView, nil, surface.contentView.bounds, -1, dark, DockBlurPrefKey);
-    } else {
-        FQXApplyBackdropBlur(tabBar, platter.superview, platter, platter.frame, -1, dark, DockBlurPrefKey);
+        FQXApplyDockBackdropBlur(tabBar, surface.contentView, nil, surface.contentView.bounds, -1, dark, mode, DockBlurPrefKey);
+    } else if (platter && platter.superview) {
+        FQXApplyDockBackdropBlur(tabBar, platter.superview, platter, platter.frame, -1, dark, mode, DockBlurPrefKey);
     }
 }
 
@@ -3558,6 +3831,7 @@ static UIView *FQXMineShortcutFold(UIView *view) {
 @property(nonatomic, weak) UICollectionViewFlowLayout *layout;
 @property(nonatomic, weak) UIPageControl *pageControl;
 @property(nonatomic) CGSize savedItemSize;
+@property(nonatomic) UIEdgeInsets savedSectionInset;
 @property(nonatomic) CGSize nativeItemSize;
 @property(nonatomic) CGSize appliedItemSize;
 @property(nonatomic) CGSize viewportSize;
@@ -3575,6 +3849,16 @@ static UIPageControl *FQXMinePageControl(UIView *root, NSInteger depth) {
     for (UIView *child in root.subviews) {
         UIPageControl *page = FQXMinePageControl(child, depth - 1);
         if (page) return page;
+    }
+    return nil;
+}
+
+static UICollectionView *FQXFindMineCollectionView(UIView *root, NSInteger depth) {
+    if ([root isKindOfClass:UICollectionView.class]) return (UICollectionView *)root;
+    if (depth == 0) return nil;
+    for (UIView *child in root.subviews) {
+        UICollectionView *found = FQXFindMineCollectionView(child, depth - 1);
+        if (found) return found;
     }
     return nil;
 }
@@ -3607,13 +3891,43 @@ static BOOL FQXInstallMineItemSizeHook(id delegate) {
     return YES;
 }
 
+static BOOL FQXInstallMineSectionInsetHook(id delegate) {
+    SEL selector = @selector(collectionView:layout:insetForSectionAtIndex:);
+    if (![delegate respondsToSelector:selector]) return YES;
+    static NSMutableSet<NSString *> *installed;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ installed = [NSMutableSet set]; });
+    Class cls = object_getClass(delegate);
+    NSString *name = NSStringFromClass(cls);
+    if ([installed containsObject:name]) return YES;
+    __block IMP original = NULL;
+    IMP hook = imp_implementationWithBlock(^UIEdgeInsets(id owner, UICollectionView *collection,
+                                                        UICollectionViewLayout *layout, NSInteger section) {
+        UIEdgeInsets native = ((UIEdgeInsets (*)(id, SEL, id, id, NSInteger))original)(
+            owner, selector, collection, layout, section);
+        FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
+        if (state.active && state.layout == layout && FQXGlassEnabled()) {
+            return UIEdgeInsetsMake(native.top, 0.0, native.bottom, 0.0);
+        }
+        return native;
+    });
+    if (!FQXInstallOwnedHook(cls, selector, NO, "{UIEdgeInsets=dddd}40@0:8@16@24q32", hook, &original)) {
+        imp_removeBlock(hook);
+        return YES;
+    }
+    [installed addObject:name];
+    return YES;
+}
+
 static void FQXRestoreMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     if (!state) return;
     state.active = NO;
-    if (state.layout == collection.collectionViewLayout &&
-        CGSizeEqualToSize(state.layout.itemSize, state.appliedItemSize)) {
-        state.layout.itemSize = state.savedItemSize;
+    if (state.layout == collection.collectionViewLayout) {
+        if (CGSizeEqualToSize(state.layout.itemSize, state.appliedItemSize)) {
+            state.layout.itemSize = state.savedItemSize;
+        }
+        state.layout.sectionInset = state.savedSectionInset;
         [state.layout invalidateLayout];
     }
     collection.pagingEnabled = state.savedPaging;
@@ -3641,15 +3955,15 @@ static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     UICollectionViewFlowLayout *layout = (id)collection.collectionViewLayout;
     // Custom folding layouts own their model-to-page mapping. Restrict geometry
-    // changes to UIKit's horizontal flow layout and this exact profile viewport.
+    // changes to horizontal flow layouts within this profile shortcut viewport.
     BOOL supported = FQXGlassEnabled() && FQXMineShortcutFold(collection) == fold &&
-        [layout isMemberOfClass:UICollectionViewFlowLayout.class] &&
+        [layout isKindOfClass:UICollectionViewFlowLayout.class] &&
         layout.scrollDirection == UICollectionViewScrollDirectionHorizontal &&
         CGSizeEqualToSize(layout.estimatedItemSize, CGSizeZero) && collection.numberOfSections == 1 &&
         CGSizeEqualToSize(layout.headerReferenceSize, CGSizeZero) &&
         CGSizeEqualToSize(layout.footerReferenceSize, CGSizeZero) &&
         fabs(collection.adjustedContentInset.left) < 0.5 && fabs(collection.adjustedContentInset.right) < 0.5 &&
-        CGRectGetHeight(collection.bounds) <= 120.0;
+        CGRectGetHeight(collection.bounds) <= 144.0;
     if (!supported || (state && state.layout != layout)) {
         FQXRestoreMineFlow(collection);
         if (!supported) return;
@@ -3662,7 +3976,7 @@ static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
         inset = [delegate collectionView:collection layout:layout insetForSectionAtIndex:0];
     if ([delegate respondsToSelector:@selector(collectionView:layout:minimumLineSpacingForSectionAtIndex:)])
         spacing = [delegate collectionView:collection layout:layout minimumLineSpacingForSectionAtIndex:0];
-    if (fabs(inset.left) > 0.5 || fabs(inset.right) > 0.5 || spacing < 0.0) {
+    if (spacing < 0.0) {
         FQXRestoreMineFlow(collection);
         return;
     }
@@ -3680,10 +3994,12 @@ static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
         FQXRestoreMineFlow(collection);
         return;
     }
+    FQXInstallMineSectionInsetHook(delegate);
     if (!state) {
         state = [FQXMineShortcutFlowState new];
         state.layout = layout;
         state.savedItemSize = layout.itemSize;
+        state.savedSectionInset = layout.sectionInset;
         state.nativeItemSize = nativeSize;
         state.savedPaging = collection.pagingEnabled;
         state.pageControl = FQXMinePageControl(fold, 3);
@@ -3691,7 +4007,10 @@ static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
         objc_setAssociatedObject(collection, FQXMineFlowStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     CGSize itemSize = CGSizeMake(plan.itemWidth, plan.itemHeight);
-    BOOL changed = !state.active || !CGSizeEqualToSize(state.appliedItemSize, itemSize) ||
+    UIEdgeInsets activeInset = UIEdgeInsetsMake(inset.top, 0.0, inset.bottom, 0.0);
+    BOOL insetChanged = !UIEdgeInsetsEqualToEdgeInsets(layout.sectionInset, activeInset);
+    BOOL changed = !state.active || insetChanged ||
+                   !CGSizeEqualToSize(state.appliedItemSize, itemSize) ||
                    !CGSizeEqualToSize(state.viewportSize, collection.bounds.size);
     CGFloat oldWidth = state.viewportSize.width;
     state.columns = plan.columns;
@@ -3700,6 +4019,7 @@ static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
     state.active = YES;
     collection.pagingEnabled = YES;
     if (!CGSizeEqualToSize(layout.itemSize, itemSize)) layout.itemSize = itemSize;
+    if (insetChanged) layout.sectionInset = activeInset;
     if (changed) {
         // Preserve the page on rotation, not its obsolete absolute point offset.
         if (oldWidth > 0.0 && oldWidth != state.viewportSize.width &&
@@ -3742,6 +4062,9 @@ static void HookScrollFoldLayout(UIView *self, SEL _cmd) {
     BOOL enabled = FQXGlassEnabled() && FQXMineShortcutFold(self) == self;
     [FQXMineShortcutViewport applyToView:self enabled:enabled];
     UICollectionView *collection = FQXObjGet(self, "collectionView");
+    if (![collection isKindOfClass:UICollectionView.class]) {
+        collection = FQXFindMineCollectionView(self, 2);
+    }
     if (![collection isKindOfClass:UICollectionView.class]) return;
     if (enabled) {
         FQXInstallMineScrollHook(collection);
