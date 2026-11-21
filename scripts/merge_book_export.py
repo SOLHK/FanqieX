@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Join the pinned FanqieX core and the independently linked export code in one iOS image.
 
-Both inputs have preferred base zero and use page-aligned congruent file/VM
-layouts. The core moves by one constant so its ARM64 code/data references stay
-intact. dyld itself resolves all chained pointers and both initializers.
+Both inputs have preferred base zero and page-aligned mappings. The linked
+export may end its __DATA segment with zero-fill pages absent from the file.
+The core moves by one constant so its ARM64 code/data references stay intact.
+dyld itself resolves all chained pointers and both initializers.
 """
 from __future__ import annotations
 
@@ -357,6 +358,32 @@ def relocated_segment(segment, name, delta, section=None):
     return raw
 
 
+def verify_input_mapping(data, image_segments, *, allow_data_zerofill=False):
+    """Accept a zero-fill tail only in the export's last mapped data segment.
+
+    Every copied byte still has equal file and VM coordinates. Only LINKEDIT,
+    which is rebuilt separately, may start earlier in the file than in memory.
+    This keeps all existing code, metadata and chained-pointer locations fixed.
+    """
+    mapped, link = image_segments[:-1], image_segments[-1]
+    need(bool(mapped) and link["name"] == "__LINKEDIT" and
+         all(item["vmaddr"] % PAGE == item["fileoff"] % PAGE == 0 and
+             item["initprot"] & 6 != 6 and
+             0 <= item["filesize"] <= item["vmsize"] and
+             item["fileoff"] + item["filesize"] <= len(data)
+             for item in image_segments) and
+         all(item["vmaddr"] == item["fileoff"] for item in mapped) and
+         all(item["filesize"] == item["vmsize"] for item in mapped[:-1]) and
+         (mapped[-1]["filesize"] == mapped[-1]["vmsize"] or
+          (allow_data_zerofill and mapped[-1]["name"] == "__DATA" and
+           mapped[-1]["initprot"] == 3)) and
+         all(item["fileoff"] + item["filesize"] == following["fileoff"] and
+             item["vmaddr"] + item["vmsize"] == following["vmaddr"]
+             for item, following in zip(image_segments, image_segments[1:])) and
+         link["fileoff"] + link["filesize"] == len(data),
+         "Unexpected image mapping")
+
+
 def merge(core, export):
     core_items, outer_items = commands(core), commands(export)
     core_segs, outer_segs = segments(core), segments(export)
@@ -378,12 +405,7 @@ def merge(core, export):
              not info["encrypted"] and
              verify_signature(data, allow_linker_padding=(data is export))["page_hashes_valid"],
              "Expected valid signed ARM64 iOS dylib")
-        need(all(item["vmaddr"] == item["fileoff"] and item["vmaddr"] % PAGE == 0 and
-                 item["initprot"] & 6 != 6 for item in image_segments) and
-             all(item["fileoff"] + item["filesize"] == following["fileoff"] and
-                 item["filesize"] == item["vmsize"]
-                 for item, following in zip(image_segments, image_segments[1:])),
-             "Unexpected image mapping")
+        verify_input_mapping(data, image_segments, allow_data_zerofill=(data is export))
     need(not linkedit(core, core_items, EXPORTS).strip(b"\0"), "Core exports would require a merged trie")
     need(linkedit(core, core_items, DATA_IN_CODE) == b"", "Core uses unmerged data-in-code")
     core_sections = source_sections(core)
@@ -393,9 +415,14 @@ def merge(core, export):
     need("__fq_unwind" in outer_sections, "Link the export image with the reserved unwind section")
 
     delta = outer_segs[-1]["vmaddr"]
+    outer_file_limit = outer_segs[-1]["fileoff"]
     core_limit = core_segs[-1]["vmaddr"]
     new_linkedit = delta + core_limit
-    output = bytearray(export[:delta] + core[:core_limit])
+    # Leave the export's zero-fill VM tail clear before placing the core. Its
+    # old LINKEDIT begins at a file offset, not necessarily at the VM boundary.
+    output = bytearray(export[:outer_file_limit])
+    output.extend(bytes(delta - outer_file_limit))
+    output.extend(core[:core_limit])
 
     old_outer_starts, outer_imports = fixup_input(export, outer_items, outer_segs)
     old_core_starts, core_imports = fixup_input(core, core_items, core_segs)
@@ -466,7 +493,7 @@ def merge(core, export):
     old_sign_at, old_sign_size = struct.unpack_from("<II", find(outer_items, SIGNATURE)["raw"], 8)
     function_starts = starts_decode(linkedit(export, outer_items, FUNCTIONS))
     function_starts += [value + delta for value in starts_decode(linkedit(core, core_items, FUNCTIONS))]
-    table, link_fields = linkedit_tables(export, outer_items, delta, old_sign_at, {
+    table, link_fields = linkedit_tables(export, outer_items, outer_file_limit, old_sign_at, {
         FIXUPS: imports_blob(starts, all_imports), FUNCTIONS: starts_encode(function_starts),
     })
     output.extend(table)
@@ -581,6 +608,7 @@ def merge(core, export):
     return result, {
         "passed": True, "device_tested": False, "sha256": hashlib.sha256(result).hexdigest(),
         "size_bytes": len(result), "install_name": install, "core_vm_delta": hex(delta),
+        "export_zerofill_gap_bytes": delta - outer_file_limit,
         "uuid": str(image_uuid), "minimum_ios": version(minimum_os), "sdk": version(sdk),
         "core_sdk": version(core_sdk),
         "version": release, "core_input_sha256": hashlib.sha256(core).hexdigest(),

@@ -146,6 +146,11 @@ def build(output, sdk, link_sdk, compiler, linker, sdk_version, install_name=INS
     arguments = [*linker, "-dylib", "-arch", "arm64", "-x", "-platform_version", "ios", "15.0.1",
                  sdk_version, "-syslibroot", link_sdk, "-install_name", install_name,
                  "-adhoc_codesign", "-o", binary, *objects]
+    if platform.system() == "Darwin":
+        # Apple's fast selector stubs add a second equivalent objc_msgSend GOT
+        # slot whose order can vary between links. Small stubs reuse the normal
+        # message-send stub, keeping the two-build byte comparison meaningful.
+        arguments.append("-objc_stubs_small")
     if install_name != INSTALL_NAME:
         reserve = output / "unwind-reserve.bin"
         reserve.write_bytes(bytes(0x8000))
