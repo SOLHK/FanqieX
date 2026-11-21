@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import "FQXBlurControl.h"
 
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
@@ -12,8 +13,24 @@ static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
-static const char BlurValueLabelKey;
+static const char BlurSliderKey;
 static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
+
+@interface FQXBlurSlider : UISlider
+@property(nonatomic, weak) UILabel *valueLabel;
+@property(nonatomic, weak) UIStepper *stepper;
+@end
+
+@implementation FQXBlurSlider
+- (void)accessibilityIncrement {
+    self.value = FQXBlurPercent(self.value + 1.0);
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
+}
+- (void)accessibilityDecrement {
+    self.value = FQXBlurPercent(self.value - 1.0);
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
+}
+@end
 
 static id Invoke(id receiver, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -736,7 +753,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         UILabel *value = [UILabel new];
         value.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
         value.textColor = UIColor.secondaryLabelColor;
-        UISlider *slider = [UISlider new];
+        FQXBlurSlider *slider = [FQXBlurSlider new];
+        slider.minimumValue = 0;
         slider.maximumValue = 100;
         slider.continuous = ![row.blurKey isEqualToString:@"FanqieX.AudioButtonBlur.1"];
         slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:row.blurKey]));
@@ -744,19 +762,37 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         slider.accessibilityLabel = row.title;
         value.text = [NSString stringWithFormat:@"%.0f%%", slider.value];
         slider.accessibilityValue = value.text;
-        objc_setAssociatedObject(slider, &BlurValueLabelKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        slider.valueLabel = value;
+        UIStepper *stepper = [UIStepper new];
+        stepper.minimumValue = 0;
+        stepper.maximumValue = 100;
+        stepper.stepValue = 1;
+        stepper.value = slider.value;
+        stepper.wraps = NO;
+        stepper.accessibilityLabel = [row.title stringByAppendingString:@"，每次调整1%"];
+        stepper.accessibilityValue = value.text;
+        slider.stepper = stepper;
+        objc_setAssociatedObject(stepper, &BlurSliderKey, slider, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [stepper addTarget:self action:@selector(blurStepperChanged:) forControlEvents:UIControlEventValueChanged];
         [slider addTarget:self action:@selector(blurChanged:) forControlEvents:UIControlEventValueChanged];
         UIView *content = cell.contentView;
-        for (UIView *view in @[title, value, slider]) {
+        title.adjustsFontSizeToFitWidth = YES;
+        title.minimumScaleFactor = 0.75;
+        value.textAlignment = NSTextAlignmentRight;
+        for (UIView *view in @[title, value, slider, stepper]) {
             view.translatesAutoresizingMaskIntoConstraints = NO;
             [content addSubview:view];
         }
         UILayoutGuide *margins = content.layoutMarginsGuide;
         [NSLayoutConstraint activateConstraints:@[
             [title.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
-            [title.topAnchor constraintEqualToAnchor:content.topAnchor constant:10],
-            [value.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
-            [value.firstBaselineAnchor constraintEqualToAnchor:title.firstBaselineAnchor],
+            [title.centerYAnchor constraintEqualToAnchor:stepper.centerYAnchor],
+            [title.trailingAnchor constraintLessThanOrEqualToAnchor:value.leadingAnchor constant:-8],
+            [value.widthAnchor constraintEqualToConstant:42],
+            [value.trailingAnchor constraintEqualToAnchor:stepper.leadingAnchor constant:-8],
+            [value.centerYAnchor constraintEqualToAnchor:stepper.centerYAnchor],
+            [stepper.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
+            [stepper.topAnchor constraintEqualToAnchor:content.topAnchor constant:6],
             [slider.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
             [slider.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
             [slider.topAnchor constraintEqualToAnchor:content.topAnchor constant:35],
@@ -905,15 +941,26 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     return cell;
 }
 
-- (void)blurChanged:(UISlider *)slider {
-    NSInteger strength = (NSInteger)lroundf(slider.value);
+- (void)blurStepperChanged:(UIStepper *)stepper {
+    FQXBlurSlider *slider = objc_getAssociatedObject(stepper, &BlurSliderKey);
+    slider.value = FQXBlurPercent(stepper.value);
+    [self blurChanged:slider];
+}
+
+- (void)blurChanged:(FQXBlurSlider *)slider {
+    NSInteger strength = FQXBlurPercent(slider.value);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSString *key = slider.accessibilityIdentifier;
+    if (!key.length) return;
+    // Snap the thumb as well as the value; update controls even at a clamped endpoint.
+    [slider setValue:(float)strength animated:NO];
+    slider.stepper.value = strength;
+    NSString *text = [NSString stringWithFormat:@"%ld%%", (long)strength];
+    slider.valueLabel.text = text;
+    slider.accessibilityValue = text;
+    slider.stepper.accessibilityValue = text;
     if ([defaults integerForKey:key] == strength) return;
     [defaults setInteger:strength forKey:key];
-    UILabel *value = objc_getAssociatedObject(slider, &BlurValueLabelKey);
-    value.text = [NSString stringWithFormat:@"%ld%%", (long)strength];
-    slider.accessibilityValue = value.text;
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL refresh = NSSelectorFromString(@"refreshForKey:");
     if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, key);

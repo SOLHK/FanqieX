@@ -4020,6 +4020,9 @@ static void DramaHeaderSelection(Obj glass,Rect frame) {
         VB(lens,"setClipsToBounds:",1);
         V1(Get(glass,"contentView"),"addSubview:",lens);
         objc_setAssociatedObject(glass,DramaHeaderSelectionKey,lens,1);
+        // Interned selector keys are shared with FanqieXMotion's separately
+        // linked module. Publish the exact fallback, never its child index.
+        objc_setAssociatedObject(glass,sel_registerName("fqx_dramaHeaderFallbackSelection191"),lens,1);
         V0(lens,"release");
     }
     if (!SameRect(Frame(lens),frame)) {
@@ -4028,6 +4031,11 @@ static void DramaHeaderSelection(Obj glass,Rect frame) {
     }
     Obj fill=O0(Lookup("UIColor"),"secondarySystemFillColor");
     if (!SameColor(Get(lens,"backgroundColor"),fill)) V1(lens,"setBackgroundColor:",fill);
+    Obj owner=objc_getAssociatedObject(glass,sel_registerName("fqx_dramaHeaderSelectionOwner191"));
+    B motionOwnsSelection=owner && Get(owner,"superview")==Get(glass,"contentView");
+    double alpha=motionOwnsSelection ? 0 : 1;
+    if (((double(*)(Obj,Sel))Message)(lens,sel_registerName("alpha"))!=alpha)
+        ((void(*)(Obj,Sel,double))Message)(lens,sel_registerName("setAlpha:"),alpha);
     if (Flag(lens,"isHidden")) VB(lens,"setHidden:",0);
 }
 
@@ -4116,6 +4124,9 @@ static void DramaHeaderCategoryGlass(Obj header,Obj categories,Obj tabs,Obj mode
     // rather than using a glass button as a multi-title material container.
     ApplySurface(categories,capsule,1);
     Obj glass=objc_getAssociatedObject(categories,SurfaceKey);
+    Sel motionSurfaceKey=sel_registerName("fqx_dramaHeaderSurface191");
+    if (objc_getAssociatedObject(categories,motionSurfaceKey)!=glass)
+        objc_setAssociatedObject(categories,motionSurfaceKey,glass,1);
     DramaHeaderCenterCategories(header,categories,capsule,glass!=0);
     DramaHeaderPositionCategories(header,categories,capsule,glass!=0);
     if (glass) {
@@ -5964,6 +5975,16 @@ static void ProfileShortcutScrollClipsKey(void) {}
 static void ProfileShortcutScrollClips(Obj host,Obj view) {
     if (!Kind(view,"UIScrollView") && !Kind(view,"SSScrollFoldFuncView")) return;
     Obj tracked=objc_getAssociatedObject(host,ProfileShortcutScrollClipsKey);
+    Obj owner=Lookup("FQXMineShortcutViewport");
+    if (Responds(owner,"applyToView:enabled:") &&
+        ((B(*)(Obj,Sel,Obj,B))Message)(owner,sel_registerName("applyToView:enabled:"),view,1)) {
+        if (!tracked) {
+            tracked=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+            objc_setAssociatedObject(host,ProfileShortcutScrollClipsKey,tracked,1);
+        }
+        V1(tracked,"addObject:",view);
+        return;
+    }
     if (!Flag(view,"clipsToBounds")) {
         if (!tracked) {
             tracked=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
@@ -5983,7 +6004,14 @@ static void ProfileShortcutCardGlass(Obj row,B mounted) {
         PageRestore(host);
         ProfileCardRestorePaints(host);
         Obj scrolls=Get(objc_getAssociatedObject(host,ProfileShortcutScrollClipsKey),"allObjects");
-        for (U i=0,n=TabCount(scrolls);i<n;++i) VB(At(scrolls,i),"setClipsToBounds:",0);
+        Obj clipOwner=Lookup("FQXMineShortcutViewport");
+        for (U i=0,n=TabCount(scrolls);i<n;++i) {
+            Obj scroll=At(scrolls,i);
+            if (Responds(clipOwner,"applyToView:enabled:") &&
+                ((B(*)(Obj,Sel,Obj,B))Message)(clipOwner,sel_registerName("applyToView:enabled:"),scroll,0))
+                V0(scroll,"setNeedsLayout");
+            else VB(scroll,"setClipsToBounds:",0);
+        }
         objc_setAssociatedObject(host,ProfileShortcutScrollClipsKey,0,1);
         ProfileCardSetUnclipped(row,0);
         if (host!=row) ProfileCardSetUnclipped(host,0);
@@ -9046,6 +9074,10 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         Put(record,"compact",BoolBox(BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue")));
         Put(record,"frame",RectArray(Frame(proxy))); Put(record,"iconPointSize",Number(size));
         Put(record,"buttonWidthPercent",Number(BottomValue178(13)));
+        Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+        Put(record,"dockBlurPercent",Number(Double(O1(defaults,"objectForKey:",Text("FanqieX.DockBlur.1")))));
+        Put(record,"commentBlurPercent",Number(Double(O1(defaults,"objectForKey:",Text("FanqieX.CommentBlur.1")))));
+        Put(record,"dramaHeaderBlurPercent",Number(Double(O1(defaults,"objectForKey:",Text("FanqieX.DramaHeaderBlur.1")))));
         Put(record,"renderer",Text(native ? "native" : "buttons"));
         Put(record,"compactTrigger",Text("nativePanAndSettledOffset"));
         Obj previous=objc_getAssociatedObject(proxy,BottomLayoutLog178Key);

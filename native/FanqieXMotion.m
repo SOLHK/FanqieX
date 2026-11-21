@@ -3,6 +3,8 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXHookInstaller.h"
+#import "FQXBlurControl.h"
+#import "FQXMineShortcutGeometry.h"
 
 static const void *DockSnapshotKey = &DockSnapshotKey;
 static const void *DockAnimatorKey = &DockAnimatorKey;
@@ -410,11 +412,36 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     return surface;
 }
 
+@interface FQXBackdropBlurView : UIVisualEffectView
+@property(nonatomic, strong) UIViewPropertyAnimator *blurAnimator;
+@property(nonatomic, weak) UIWindow *animatorWindow;
+@property(nonatomic) UIBlurEffectStyle blurStyle;
+@property(nonatomic) NSInteger percent;
+@property(nonatomic) BOOL applyPending;
+- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style;
+- (void)invalidateBlurAnimator;
+- (void)scheduleBlurUpdate;
+@end
+
+
+static void FQXConfigureGaussianCommentBlur(FQXBackdropBlurView *surface, FQXGlassRole role) {
+    BOOL dark = FQXCommentsUseDarkTheme();
+    UIBlurEffectStyle style = dark
+        ? (role == FQXGlassRoleFloatingPill ? UIBlurEffectStyleSystemThinMaterialDark : UIBlurEffectStyleSystemChromeMaterialDark)
+        : (role == FQXGlassRoleFloatingPill ? UIBlurEffectStyleSystemThinMaterialLight : UIBlurEffectStyleSystemChromeMaterialLight);
+    NSInteger strength = UIAccessibilityIsReduceTransparencyEnabled() ? 100
+        : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:CommentBlurPrefKey]);
+    [surface configurePercent:strength style:style];
+}
+
 static UIVisualEffectView *FQXNewUnifiedGlassView(FQXGlassRole role, CGFloat radius, BOOL continuousCard) {
     UIVisualEffect *effect = FQXMakeUnifiedGlassEffect(role);
     if (!effect) return nil;
-    UIVisualEffectView *surface = [[UIVisualEffectView alloc] initWithEffect:effect];
+    BOOL gaussian = role != FQXGlassRoleDock && FQXCurrentCommentMaterialStyle() == FQXCommentMaterialGaussianBlur;
+    UIVisualEffectView *surface = gaussian ? [[FQXBackdropBlurView alloc] initWithEffect:nil]
+                                         : [[UIVisualEffectView alloc] initWithEffect:effect];
     if (!surface) return nil;
+    if (gaussian) FQXConfigureGaussianCommentBlur((FQXBackdropBlurView *)surface, role);
     FQXApplyUnifiedSurfaceCorners(surface, role, radius, continuousCard);
     objc_setAssociatedObject(surface, FQXCommentGlassStyleAppliedKey, @(FQXDesiredGlassStampForRole(role)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     surface.userInteractionEnabled = NO;
@@ -430,7 +457,10 @@ static void FQXSyncUnifiedGlassEffect(UIVisualEffectView *surface, FQXGlassRole 
     if (!surface) return;
     NSInteger desired = FQXDesiredGlassStampForRole(role);
     NSNumber *applied = objc_getAssociatedObject(surface, FQXCommentGlassStyleAppliedKey);
-    if (!applied || applied.integerValue != desired) {
+    if ([surface isKindOfClass:FQXBackdropBlurView.class]) {
+        FQXConfigureGaussianCommentBlur((FQXBackdropBlurView *)surface, role);
+        objc_setAssociatedObject(surface, FQXCommentGlassStyleAppliedKey, @(desired), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!applied || applied.integerValue != desired) {
         UIVisualEffect *effect = FQXMakeUnifiedGlassEffect(role);
         if (effect) {
             surface.effect = effect;
@@ -449,7 +479,8 @@ static UIVisualEffectView *FQXEnsureUnifiedGlassView(UIView *host,
     UIVisualEffectView *glass = objc_getAssociatedObject(host, assocKey);
     BOOL wantsBlur = (role != FQXGlassRoleDock &&
                       FQXCurrentCommentMaterialStyle() == FQXCommentMaterialGaussianBlur);
-    BOOL isBlur = glass && [glass.effect isKindOfClass:UIBlurEffect.class];
+    BOOL isBlur = [glass isKindOfClass:FQXBackdropBlurView.class] ||
+                  (glass && [glass.effect isKindOfClass:UIBlurEffect.class]);
     if (glass && wantsBlur != isBlur) {
         [glass removeFromSuperview];
         objc_setAssociatedObject(host, assocKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -510,15 +541,95 @@ static BOOL FQXDockUsesFrostedGlass(void) {
     return [NSUserDefaults.standardUserDefaults integerForKey:DockMaterialPrefKey] == 1;
 }
 
+
+@implementation FQXBackdropBlurView
+- (instancetype)initWithEffect:(UIVisualEffect *)effect {
+    self = [super initWithEffect:effect];
+    if (self) {
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(blurDidBecomeActive:)
+            name:UIApplicationDidBecomeActiveNotification object:nil];
+    }
+    return self;
+}
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_blurAnimator.state == UIViewAnimatingStateActive) [_blurAnimator stopAnimation:YES];
+}
+- (void)invalidateBlurAnimator {
+    if (self.blurAnimator.state == UIViewAnimatingStateActive) [self.blurAnimator stopAnimation:YES];
+    self.blurAnimator = nil;
+    self.animatorWindow = nil;
+    self.effect = nil;
+}
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    // UIKit can discard backdrop interpolation while a sheet is offscreen.
+    [self invalidateBlurAnimator];
+    if (self.window) [self scheduleBlurUpdate];
+}
+- (void)blurDidBecomeActive:(NSNotification *)notification {
+    (void)notification;
+    [self invalidateBlurAnimator];
+    if (self.window) [self scheduleBlurUpdate];
+}
+- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style {
+    if (self.blurStyle != style) {
+        [self invalidateBlurAnimator];
+        self.blurStyle = style;
+    }
+    self.percent = FQXBlurPercent(percent);
+    [self scheduleBlurUpdate];
+}
+- (void)scheduleBlurUpdate {
+    if (self.applyPending) return;
+    self.applyPending = YES;
+    __weak FQXBackdropBlurView *weakSelf = self;
+    // Comment layout calls us inside performWithoutAnimation. Creating the effect
+    // animator there applies a full material even when fractionComplete is 0.01.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        FQXBackdropBlurView *view = weakSelf;
+        if (!view) return;
+        view.applyPending = NO;
+        if (!view.window || view.percent <= 0) {
+            [view invalidateBlurAnimator];
+            return;
+        }
+        if (!view.blurAnimator || view.blurAnimator.state != UIViewAnimatingStateActive ||
+            view.animatorWindow != view.window) {
+            [view invalidateBlurAnimator];
+            BOOL animationsEnabled = UIView.areAnimationsEnabled;
+            if (!animationsEnabled) [UIView setAnimationsEnabled:YES];
+            @try {
+                UIBlurEffectStyle style = view.blurStyle;
+                __weak FQXBackdropBlurView *weakBlur = view;
+                UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc]
+                    initWithDuration:1.0 curve:UIViewAnimationCurveLinear animations:^{
+                        weakBlur.effect = [UIBlurEffect effectWithStyle:style];
+                    }];
+                animator.pausesOnCompletion = YES;
+                animator.scrubsLinearly = YES;
+                [animator startAnimation];
+                [animator pauseAnimation];
+                view.blurAnimator = animator;
+                view.animatorWindow = view.window;
+            } @finally {
+                if (!animationsEnabled) [UIView setAnimationsEnabled:NO];
+            }
+        }
+        CGFloat fraction = FQXBlurFraction((int)view.percent);
+        if (view.blurAnimator.fractionComplete != fraction) view.blurAnimator.fractionComplete = fraction;
+    });
+}
+@end
+
 static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
                                  CGFloat radius, BOOL dark, NSString *preference) {
-    static char blurViewKey, animatorKey, blurStyleKey;
-    UIVisualEffectView *blur = objc_getAssociatedObject(owner, &blurViewKey);
-    UIViewPropertyAnimator *animator = objc_getAssociatedObject(blur, &animatorKey);
-    NSInteger strength = [NSUserDefaults.standardUserDefaults integerForKey:preference];
+    static char blurViewKey;
+    FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, &blurViewKey);
+    NSInteger strength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:preference]);
     if (!container || strength <= 0 || UIAccessibilityIsReduceTransparencyEnabled()) {
         if (blur) {
-            [animator stopAnimation:YES];
+            [blur invalidateBlurAnimator];
             [blur removeFromSuperview];
             objc_setAssociatedObject(owner, &blurViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -526,7 +637,7 @@ static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *ancho
     }
 
     if (!blur) {
-        blur = [[UIVisualEffectView alloc] initWithEffect:nil];
+        blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
         blur.userInteractionEnabled = NO;
         blur.accessibilityElementsHidden = YES;
         blur.layer.cornerCurve = kCACornerCurveContinuous;
@@ -543,27 +654,8 @@ static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *ancho
     CGFloat corner = (radius < 0.0) ? half : MIN(radius, half);
     if (blur.layer.cornerRadius != corner) blur.layer.cornerRadius = corner;
 
-    UIBlurEffectStyle style = dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight;
-    NSNumber *currentStyle = objc_getAssociatedObject(blur, &blurStyleKey);
-    if (!animator || currentStyle.integerValue != style) {
-        [animator stopAnimation:YES];
-        blur.effect = nil;
-        __weak UIVisualEffectView *weakBlur = blur;
-        animator = [[UIViewPropertyAnimator alloc] initWithDuration:1 curve:UIViewAnimationCurveLinear animations:^{
-            weakBlur.effect = [UIBlurEffect effectWithStyle:style];
-        }];
-        animator.pausesOnCompletion = YES;
-        animator.scrubsLinearly = YES;
-        [animator startAnimation];
-        [animator pauseAnimation];
-        objc_setAssociatedObject(blur, &animatorKey, animator, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(blur, &blurStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    CGFloat fraction = MIN(strength, 100) / 100.0;
-    // Material interpolation introduces its tint early. Give the low end more
-    // travel so 1% adds only a small amount over the default glass.
-    if (![preference isEqualToString:AudioButtonBlurPrefKey]) fraction *= fraction;
-    if (animator.fractionComplete != fraction) animator.fractionComplete = fraction;
+    UIBlurEffectStyle style = dark ? UIBlurEffectStyleDark : UIBlurEffectStyleLight;
+    [blur configurePercent:strength style:style];
 }
 
 static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UIVisualEffectView *lens) {
@@ -700,13 +792,31 @@ static UIView *FQXFindViewOfClassRecursive(UIView *root, Class cls) {
     return nil;
 }
 
+static UIVisualEffectView *FQXFindDockBackgroundEffect(UITabBar *tabBar) {
+    UIVisualEffectView *best = nil;
+    // The iOS 27 compatibility layout uses a direct background effect next to
+    // _UITabBarItemPlatterView, with no _UITabBarPlatterView at all. Inspect only
+    // this bar's background siblings, never selection/portal descendants.
+    for (UIView *child in tabBar.subviews) {
+        if (![child isKindOfClass:UIVisualEffectView.class] ||
+            [child isKindOfClass:FQXBackdropBlurView.class]) continue;
+        UIVisualEffectView *effectView = (UIVisualEffectView *)child;
+        BOOL background = [effectView.effect isKindOfClass:UIBlurEffect.class] ||
+            objc_getAssociatedObject(effectView, FQXPlatterOriginalGlassKey) != nil;
+        if (!background || child.hidden || CGRectGetHeight(child.bounds) <= 10.0 ||
+            CGRectGetWidth(child.bounds) <= 2.0 * CGRectGetHeight(child.bounds)) continue;
+        if (!best || CGRectGetWidth(child.bounds) > CGRectGetWidth(best.bounds)) best = effectView;
+    }
+    return best;
+}
+
 static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
     static Class platterCls = Nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
-    if (!platterCls || !tabBar) return nil;
+    if (!tabBar) return nil;
     UIView *first = FQXFindViewOfClassRecursive(tabBar, platterCls);
-    if (!first) return nil;
+    if (!first) return FQXFindDockBackgroundEffect(tabBar);
     for (UIView *sib in first.superview.subviews) {
         if ([sib isKindOfClass:platterCls] && fabs(CGRectGetWidth(sib.bounds) - CGRectGetHeight(sib.bounds)) > 1.0) {
             return sib;
@@ -720,6 +830,33 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
     if (!platter) return;
     NSNumber *applied = objc_getAssociatedObject(platter, FQXPlatterAppliedStyleKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    if ([platter isKindOfClass:UIVisualEffectView.class]) {
+        UIVisualEffectView *surface = (UIVisualEffectView *)platter;
+        UIVisualEffect *current = surface.effect;
+        id original = objc_getAssociatedObject(surface, FQXPlatterOriginalGlassKey);
+        if (reduce) {
+            if (original) surface.effect = original == NSNull.null ? nil : original;
+            objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return;
+        }
+        // UIKit may rebuild its background when appearance/items change.
+        BOOL hostReset = !current || [current isKindOfClass:UIBlurEffect.class];
+        if (!original || (hostReset && current)) {
+            objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        NSInteger desired = (isDark ? 2 : 1) + (frosted ? 2 : 0);
+        if (!applied || applied.integerValue != desired || hostReset) {
+            UIColor *tint = (isDark && !frosted) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+            surface.effect = FQXMakeGlassEffect(frosted ? 0 : 1, NO, tint);
+            surface.backgroundColor = UIColor.clearColor;
+            surface.contentView.backgroundColor = UIColor.clearColor;
+            FQXApplyCornerConfiguration(surface, 0.0, NO);
+            objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, @(desired), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return;
+    }
     if (reduce) {
         if (!applied) return;
         id orig = objc_getAssociatedObject(platter, FQXPlatterOriginalGlassKey);
@@ -774,7 +911,6 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, BOOL frosted)
 
 static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL dark) {
     BOOL frosted = FQXDockUsesFrostedGlass();
-    FQXApplyDockPlatterGlass(platter, dark, frosted);
     static char originalAppearanceKey, selectionStyleKey;
     BOOL useFrostedSelection = frosted && !UIAccessibilityIsReduceTransparencyEnabled();
     if ([objc_getAssociatedObject(tabBar, &selectionStyleKey) boolValue] != useFrostedSelection) {
@@ -791,8 +927,18 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         }
         tabBar.standardAppearance = appearance;
         objc_setAssociatedObject(tabBar, &selectionStyleKey, @(useFrostedSelection), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // Appearance can replace the native background view. Finish that layout
+        // before choosing the surface that owns the material and blur animator.
+        [tabBar layoutIfNeeded];
+        platter = FQXFindDockPlatter(tabBar);
     }
-    FQXApplyBackdropBlur(tabBar, platter.superview, platter, platter.frame, -1, dark, DockBlurPrefKey);
+    FQXApplyDockPlatterGlass(platter, dark, frosted);
+    if ([platter isKindOfClass:UIVisualEffectView.class]) {
+        UIVisualEffectView *surface = (UIVisualEffectView *)platter;
+        FQXApplyBackdropBlur(tabBar, surface.contentView, nil, surface.contentView.bounds, -1, dark, DockBlurPrefKey);
+    } else {
+        FQXApplyBackdropBlur(tabBar, platter.superview, platter, platter.frame, -1, dark, DockBlurPrefKey);
+    }
 }
 
 static NSString *FQXDockSymbolNameForTitle(NSString *title, BOOL selected) {
@@ -1364,6 +1510,20 @@ typedef NS_ENUM(NSInteger, FQXTopCapsuleTouchMode) {
 static const void *FQXDramaTopCapsuleKey = &FQXDramaTopCapsuleKey;
 static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
 
+// AlignedGlass publishes only the header surface and its legacy selection.
+// The effect view can also contain an independently adjustable blur at index 0.
+static const void *FQXDramaHeaderSurfaceKey(void) {
+    return (const void *)sel_registerName("fqx_dramaHeaderSurface191");
+}
+
+static const void *FQXDramaHeaderFallbackSelectionKey(void) {
+    return (const void *)sel_registerName("fqx_dramaHeaderFallbackSelection191");
+}
+
+static const void *FQXDramaHeaderSelectionOwnerKey(void) {
+    return (const void *)sel_registerName("fqx_dramaHeaderSelectionOwner191");
+}
+
 @interface FQXDramaTopCapsuleInteraction : NSObject <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) UIView *tabsView;
 @property(nonatomic, weak) UICollectionView *collectionView;
@@ -1648,16 +1808,37 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
     }
 }
 
+- (void)releaseSelectionOwnership {
+    UIVisualEffectView *outer = self.outerGlass;
+    if (outer && self.pillGlass &&
+        objc_getAssociatedObject(outer, FQXDramaHeaderSelectionOwnerKey()) == self.pillGlass) {
+        objc_setAssociatedObject(outer, FQXDramaHeaderSelectionOwnerKey(), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // hidden still describes whether the host has one valid selected item.
+        // Restore only the alpha owned by this replacement, not its geometry.
+        if (self.flatLens.superview == outer.contentView && self.flatLens.alpha == 0.0) {
+            [UIView performWithoutAnimation:^{ self.flatLens.alpha = 1.0; }];
+        }
+    }
+    if (outer) {
+        objc_setAssociatedObject(outer, FQXDramaTopGlassStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    self.flatLens = nil;
+    self.outerGlass = nil;
+}
+
 - (void)invalidate {
     if (self.pressGesture.view) [self.pressGesture.view removeGestureRecognizer:self.pressGesture];
     if (self.dragGesture.view) [self.dragGesture.view removeGestureRecognizer:self.dragGesture];
+    [self releaseSelectionOwnership];
     [self.pillGlass removeFromSuperview];
     self.pillGlass = nil;
-    if (self.flatLens) FQXSetZeroMaskHidden(self.flatLens, NO);
     if (self.mode == FQXTopCapsuleTouchDragging && self.collectionView) {
         self.collectionView.panGestureRecognizer.enabled = YES;
     }
     self.mode = FQXTopCapsuleTouchIdle;
+    self.paging = NO;
+    self.lastSelectedIndex = NSNotFound;
+    self.hoverIndex = NSNotFound;
 }
 
 - (void)syncWithTabs:(UIView *)tabs {
@@ -1667,34 +1848,27 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
     }
     UIView *categories = tabs.superview;
     UICollectionView *cv = FQXObjGet(tabs, "collectionView");
-    if (!categories || ![cv isKindOfClass:UICollectionView.class]) return;
-
-    UIVisualEffectView *outer = nil;
-    for (UIView *sub in categories.subviews) {
-        if ([sub isKindOfClass:UIVisualEffectView.class] && ![sub isKindOfClass:FQXFlexGlassView.class] &&
-            !sub.hidden && CGRectGetWidth(sub.bounds) >= 60.0 && CGRectGetHeight(sub.bounds) <= 48.0) {
-            outer = (UIVisualEffectView *)sub;
-            break;
-        }
+    if (!categories || ![cv isKindOfClass:UICollectionView.class]) {
+        [self invalidate];
+        return;
     }
-    if (!outer) {
-        if (self.pillGlass) self.pillGlass.hidden = YES;
+    UIVisualEffectView *outer = objc_getAssociatedObject(categories, FQXDramaHeaderSurfaceKey());
+    if (![outer isKindOfClass:UIVisualEffectView.class] || outer.superview != categories ||
+        outer.hidden || CGRectGetWidth(outer.bounds) < 60.0 || CGRectGetHeight(outer.bounds) > 48.0) {
+        [self invalidate];
         return;
     }
 
-    UIView *flat = nil;
-    for (UIView *sub in outer.contentView.subviews) {
-        if (sub != self.pillGlass && ![sub isKindOfClass:FQXFlexGlassView.class]) {
-            flat = sub;
-            break;
-        }
+    UIView *flat = objc_getAssociatedObject(outer, FQXDramaHeaderFallbackSelectionKey());
+    if (![flat isKindOfClass:UIView.class] || flat.superview != outer.contentView) flat = nil;
+    if (self.outerGlass != outer || (self.collectionView && self.collectionView != cv)) {
+        [self invalidate];
     }
 
     self.tabsView = tabs;
     self.collectionView = cv;
     self.outerGlass = outer;
     self.flatLens = flat;
-    if (flat) FQXSetZeroMaskHidden(flat, YES);
 
     if (!self.pillGlass) {
         FQXFlexGlassView *pill = [[FQXFlexGlassView alloc] initWithEffect:nil];
@@ -1708,6 +1882,12 @@ static const void *FQXDramaTopGlassStampKey = &FQXDramaTopGlassStampKey;
     if (self.pillGlass.flexSourceView != cv) self.pillGlass.flexSourceView = cv;
     if (self.pillGlass.superview != outer.contentView) {
         [outer.contentView addSubview:self.pillGlass];
+    }
+    if (objc_getAssociatedObject(outer, FQXDramaHeaderSelectionOwnerKey()) != self.pillGlass) {
+        objc_setAssociatedObject(outer, FQXDramaHeaderSelectionOwnerKey(), self.pillGlass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (flat && flat.alpha != 0.0) {
+        [UIView performWithoutAnimation:^{ flat.alpha = 0.0; }];
     }
 
     if (!self.pressGesture) {
@@ -1754,7 +1934,13 @@ static NSHashTable<UIView *> *FQXTrackedDramaHeaders(void) {
 }
 
 static void FQXSyncDramaTopCapsuleForHeader(UIView *header) {
-    if (!header || !FQXGlassEnabled()) return;
+    if (!header) return;
+    if (!FQXGlassEnabled()) {
+        UIView *tabs = FQXObjGet(FQXObjGet(header, "delegate"), "simpleTabView");
+        FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+        [interaction invalidate];
+        return;
+    }
     [FQXTrackedDramaHeaders() addObject:header];
     for (UIView *subview in header.subviews) {
         if ([subview isKindOfClass:UIButton.class] && [subview.accessibilityLabel isEqualToString:@"搜索"]) {
@@ -3292,69 +3478,276 @@ static void HookReaderNavLayoutMotion(UIView *self, SEL cmd) {
     if ([button isKindOfClass:UIButton.class]) FQXCenterReaderBackButton(button);
 }
 
-#pragma mark - Mine Shortcut Card Fold Clipping Fix ("我的" 第6个按钮溢出修复 + 红点/气泡不砍头)
+#pragma mark - Mine shortcut viewport and native flow layout
 
-static const void *FQXMineHorizMaskLayerKey = &FQXMineHorizMaskLayerKey;
-static const void *FQXMineHorizMaskTrackedKey = &FQXMineHorizMaskTrackedKey;
+static const void *FQXMineViewportMaskKey = &FQXMineViewportMaskKey;
+static const void *FQXMineViewportSavedMaskKey = &FQXMineViewportSavedMaskKey;
+static const void *FQXMineViewportSavedClipsKey = &FQXMineViewportSavedClipsKey;
+static const void *FQXMineFlowStateKey = &FQXMineFlowStateKey;
+static const void *FQXMineScrollTrackedKey = &FQXMineScrollTrackedKey;
 
-static void FQXSyncMineHorizontalOnlyMask(UIView *view) {
-    if (!view || !FQXGlassEnabled()) return;
-    CGRect b = view.bounds;
-    if (CGRectGetWidth(b) < 40.0 || CGRectGetHeight(b) < 20.0) return;
-    if (view.clipsToBounds) view.clipsToBounds = NO;
-    CALayer *mask = objc_getAssociatedObject(view, FQXMineHorizMaskLayerKey);
-    if (!mask) {
+static UIView *FQXMineShortcutFold(UIView *view) {
+    UIView *fold = nil;
+    for (UIView *parent = view; parent; parent = parent.superview) {
+        if ([parent isKindOfClass:NSClassFromString(@"SSScrollFoldFuncView")]) fold = parent;
+        if ([parent isKindOfClass:NSClassFromString(@"SSMyUserShortcutCell")] ||
+            ([parent isKindOfClass:NSClassFromString(@"SSMyUserCollectionView1Cell")] &&
+             ![parent respondsToSelector:sel_registerName("lynxVipView")])) return fold;
+    }
+    return nil;
+}
+
+// AlignedGlass calls this owner too; two independent clipping policies must not
+// alternate on successive parent/child layout passes. The outer glass remains
+// unclipped, while only the content viewport clips its own native children.
+@interface FQXMineShortcutViewport : NSObject
++ (BOOL)applyToView:(UIView *)view enabled:(BOOL)enabled;
+@end
+@implementation FQXMineShortcutViewport
++ (BOOL)applyToView:(UIView *)view enabled:(BOOL)enabled {
+    NSNumber *saved = objc_getAssociatedObject(view, FQXMineViewportSavedClipsKey);
+    UIView *fold = FQXMineShortcutFold(view);
+    BOOL viewport = view == fold || ([view isKindOfClass:UICollectionView.class] && fold);
+    if (!viewport && !saved) return NO;
+    CALayer *mask = objc_getAssociatedObject(view, FQXMineViewportMaskKey);
+    if (!enabled || !viewport || !view.superview) {
+        if (saved) {
+            if (view.layer.mask == mask)
+                view.layer.mask = objc_getAssociatedObject(view, FQXMineViewportSavedMaskKey);
+            if (!view.clipsToBounds) view.clipsToBounds = saved.boolValue;
+            objc_setAssociatedObject(view, FQXMineViewportSavedClipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(view, FQXMineViewportSavedMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(view, FQXMineViewportMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return YES;
+    }
+    CGRect bounds = view.bounds;
+    if (CGRectGetWidth(bounds) < 40.0 || CGRectGetHeight(bounds) < 20.0) return YES;
+    if (!saved) {
+        // Preserve a host-owned mask instead of replacing its shape.
+        if (view.layer.mask) return YES;
+        objc_setAssociatedObject(view, FQXMineViewportSavedClipsKey, @(view.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, FQXMineViewportSavedMaskKey, view.layer.mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         mask = [CALayer layer];
         mask.backgroundColor = UIColor.blackColor.CGColor;
-        objc_setAssociatedObject(view, FQXMineHorizMaskLayerKey, mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, FQXMineViewportMaskKey, mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (view.layer.mask && view.layer.mask != mask) {
+        return YES;
     }
-    CGRect target = CGRectMake(b.origin.x, b.origin.y - 28.0, CGRectGetWidth(b), CGRectGetHeight(b) + 56.0);
-    if (view.layer.mask != mask || !CGRectEqualToRect(mask.frame, target)) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        mask.frame = target;
-        if (view.layer.mask != mask) view.layer.mask = mask;
-        [CATransaction commit];
+    CGRect target = bounds;
+    if (view != fold) {
+        // Reserve badge headroom only where the actual card has room. Never
+        // expose an extra row below the collection as the former +/-28 mask did.
+        CGRect card = [fold convertRect:fold.bounds toView:view];
+        CGFloat top = MAX(CGRectGetMinY(card), CGRectGetMinY(bounds) - 12.0);
+        target = CGRectIntersection(card, CGRectMake(CGRectGetMinX(bounds), top,
+                     CGRectGetWidth(bounds), CGRectGetMaxY(bounds) - top));
     }
+    if (CGRectIsNull(target)) target = CGRectZero;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    view.clipsToBounds = NO;
+    mask.frame = target;
+    view.layer.mask = mask;
+    [CATransaction commit];
+    return YES;
+}
+@end
+
+@interface FQXMineShortcutFlowState : NSObject
+@property(nonatomic, weak) UICollectionViewFlowLayout *layout;
+@property(nonatomic, weak) UIPageControl *pageControl;
+@property(nonatomic) CGSize savedItemSize;
+@property(nonatomic) CGSize nativeItemSize;
+@property(nonatomic) CGSize appliedItemSize;
+@property(nonatomic) CGSize viewportSize;
+@property(nonatomic) BOOL savedPaging;
+@property(nonatomic) NSInteger savedPageCount;
+@property(nonatomic) NSUInteger columns;
+@property(nonatomic) BOOL active;
+@end
+@implementation FQXMineShortcutFlowState
+@end
+
+static UIPageControl *FQXMinePageControl(UIView *root, NSInteger depth) {
+    if ([root isKindOfClass:UIPageControl.class]) return (UIPageControl *)root;
+    if (depth == 0 || [root isKindOfClass:UICollectionView.class]) return nil;
+    for (UIView *child in root.subviews) {
+        UIPageControl *page = FQXMinePageControl(child, depth - 1);
+        if (page) return page;
+    }
+    return nil;
 }
 
-static NSMutableSet<NSString *> *FQXHookedMineScrollClasses(void) {
-    static NSMutableSet<NSString *> *set;
+static BOOL FQXInstallMineItemSizeHook(id delegate) {
+    SEL selector = @selector(collectionView:layout:sizeForItemAtIndexPath:);
+    if (![delegate respondsToSelector:selector]) return YES;
+    static NSMutableSet<NSString *> *installed;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
+    dispatch_once(&once, ^{ installed = [NSMutableSet set]; });
+    Class cls = object_getClass(delegate);
+    NSString *name = NSStringFromClass(cls);
+    if ([installed containsObject:name]) return YES;
+    __block IMP original = NULL;
+    IMP hook = imp_implementationWithBlock(^CGSize(id owner, UICollectionView *collection,
+                                                  UICollectionViewLayout *layout, NSIndexPath *index) {
+        CGSize native = ((CGSize (*)(id, SEL, id, id, id))original)(owner, selector, collection, layout, index);
+        FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
+        if (state.active && state.layout == layout && FQXGlassEnabled()) {
+            if (index.section == 0 && index.item == 0) state.nativeItemSize = native;
+            return state.appliedItemSize;
+        }
+        return native;
+    });
+    if (!FQXInstallOwnedHook(cls, selector, NO, "{CGSize=dd}40@0:8@16@24@32", hook, &original)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    [installed addObject:name];
+    return YES;
 }
 
-static void FQXInstallMineScrollMaskHookForView(UIScrollView *sv) {
-    if (![sv isKindOfClass:UIScrollView.class]) return;
-    objc_setAssociatedObject(sv, FQXMineHorizMaskTrackedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    Class cls = object_getClass(sv);
-    NSString *clsName = NSStringFromClass(cls);
-    if (!clsName.length || [FQXHookedMineScrollClasses() containsObject:clsName]) return;
-    [FQXHookedMineScrollClasses() addObject:clsName];
-    __block IMP orig = NULL;
-    IMP hook = imp_implementationWithBlock(^(UIView *selfView) {
-        if (orig) ((void (*)(id, SEL))orig)(selfView, @selector(layoutSubviews));
-        if ([objc_getAssociatedObject(selfView, FQXMineHorizMaskTrackedKey) boolValue]) {
-            FQXSyncMineHorizontalOnlyMask(selfView);
-        }
-    });
-    if (!FQXInstallOwnedHook(cls, @selector(layoutSubviews), NO, "v16@0:8", hook, &orig)) {
-        imp_removeBlock(hook);
+static void FQXRestoreMineFlow(UICollectionView *collection) {
+    FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
+    if (!state) return;
+    state.active = NO;
+    if (state.layout == collection.collectionViewLayout &&
+        CGSizeEqualToSize(state.layout.itemSize, state.appliedItemSize)) {
+        state.layout.itemSize = state.savedItemSize;
+        [state.layout invalidateLayout];
     }
+    collection.pagingEnabled = state.savedPaging;
+    state.pageControl.numberOfPages = state.savedPageCount;
+    objc_setAssociatedObject(collection, FQXMineFlowStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void FQXCompleteMineFlowPage(UICollectionView *collection) {
+    FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
+    if (!state.active || state.layout != collection.collectionViewLayout) return;
+    NSUInteger count = collection.numberOfSections == 1 ? [collection numberOfItemsInSection:0] : 0;
+    if (!count || !state.columns) return;
+    NSUInteger pages = (count + state.columns - 1) / state.columns;
+    CGFloat width = CGRectGetWidth(collection.bounds);
+    CGSize contentSize = CGSizeMake(width * pages, CGRectGetHeight(collection.bounds));
+    if (!CGSizeEqualToSize(collection.contentSize, contentSize)) collection.contentSize = contentSize;
+    if (state.pageControl) {
+        state.pageControl.numberOfPages = pages;
+        state.pageControl.currentPage = MAX(0, MIN((NSInteger)pages - 1,
+            (NSInteger)llround(collection.contentOffset.x / MAX(1.0, width))));
+    }
+}
+
+static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
+    FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
+    UICollectionViewFlowLayout *layout = (id)collection.collectionViewLayout;
+    // Custom folding layouts own their model-to-page mapping. Restrict geometry
+    // changes to UIKit's horizontal flow layout and this exact profile viewport.
+    BOOL supported = FQXGlassEnabled() && FQXMineShortcutFold(collection) == fold &&
+        [layout isMemberOfClass:UICollectionViewFlowLayout.class] &&
+        layout.scrollDirection == UICollectionViewScrollDirectionHorizontal &&
+        CGSizeEqualToSize(layout.estimatedItemSize, CGSizeZero) && collection.numberOfSections == 1 &&
+        CGSizeEqualToSize(layout.headerReferenceSize, CGSizeZero) &&
+        CGSizeEqualToSize(layout.footerReferenceSize, CGSizeZero) &&
+        fabs(collection.adjustedContentInset.left) < 0.5 && fabs(collection.adjustedContentInset.right) < 0.5 &&
+        CGRectGetHeight(collection.bounds) <= 120.0;
+    if (!supported || (state && state.layout != layout)) {
+        FQXRestoreMineFlow(collection);
+        if (!supported) return;
+        state = nil;
+    }
+    id<UICollectionViewDelegateFlowLayout> delegate = (id)collection.delegate;
+    UIEdgeInsets inset = layout.sectionInset;
+    CGFloat spacing = layout.minimumLineSpacing;
+    if ([delegate respondsToSelector:@selector(collectionView:layout:insetForSectionAtIndex:)])
+        inset = [delegate collectionView:collection layout:layout insetForSectionAtIndex:0];
+    if ([delegate respondsToSelector:@selector(collectionView:layout:minimumLineSpacingForSectionAtIndex:)])
+        spacing = [delegate collectionView:collection layout:layout minimumLineSpacingForSectionAtIndex:0];
+    if (fabs(inset.left) > 0.5 || fabs(inset.right) > 0.5 || spacing < 0.0) {
+        FQXRestoreMineFlow(collection);
+        return;
+    }
+    NSUInteger count = [collection numberOfItemsInSection:0];
+    if (!count) return;
+    CGSize nativeSize = state ? state.nativeItemSize : layout.itemSize;
+    if (!state && [delegate respondsToSelector:@selector(collectionView:layout:sizeForItemAtIndexPath:)])
+        nativeSize = [delegate collectionView:collection layout:layout
+                         sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
+    CGFloat contentHeight = CGRectGetHeight(collection.bounds) -
+        collection.adjustedContentInset.top - collection.adjustedContentInset.bottom;
+    FQXMineShortcutPlan plan = FQXPlanMineShortcuts(CGRectGetWidth(collection.bounds),
+        contentHeight, nativeSize.width, spacing, inset.top, inset.bottom, count);
+    if (!plan.valid || !FQXInstallMineItemSizeHook(delegate)) {
+        FQXRestoreMineFlow(collection);
+        return;
+    }
+    if (!state) {
+        state = [FQXMineShortcutFlowState new];
+        state.layout = layout;
+        state.savedItemSize = layout.itemSize;
+        state.nativeItemSize = nativeSize;
+        state.savedPaging = collection.pagingEnabled;
+        state.pageControl = FQXMinePageControl(fold, 3);
+        state.savedPageCount = state.pageControl.numberOfPages;
+        objc_setAssociatedObject(collection, FQXMineFlowStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    CGSize itemSize = CGSizeMake(plan.itemWidth, plan.itemHeight);
+    BOOL changed = !state.active || !CGSizeEqualToSize(state.appliedItemSize, itemSize) ||
+                   !CGSizeEqualToSize(state.viewportSize, collection.bounds.size);
+    CGFloat oldWidth = state.viewportSize.width;
+    state.columns = plan.columns;
+    state.appliedItemSize = itemSize;
+    state.viewportSize = collection.bounds.size;
+    state.active = YES;
+    collection.pagingEnabled = YES;
+    if (!CGSizeEqualToSize(layout.itemSize, itemSize)) layout.itemSize = itemSize;
+    if (changed) {
+        // Preserve the page on rotation, not its obsolete absolute point offset.
+        if (oldWidth > 0.0 && oldWidth != state.viewportSize.width &&
+            !collection.dragging && !collection.decelerating) {
+            NSInteger page = llround(collection.contentOffset.x / oldWidth);
+            collection.contentOffset = CGPointMake(MAX(0, MIN((NSInteger)plan.pages - 1, page)) *
+                                                     state.viewportSize.width, collection.contentOffset.y);
+        }
+        [layout invalidateLayout];
+        [collection setNeedsLayout];
+    }
+    FQXCompleteMineFlowPage(collection);
+}
+
+static void FQXInstallMineScrollHook(UICollectionView *collection) {
+    objc_setAssociatedObject(collection, FQXMineScrollTrackedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    static NSMutableSet<NSString *> *installed;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ installed = [NSMutableSet set]; });
+    Class cls = object_getClass(collection);
+    NSString *name = NSStringFromClass(cls);
+    if ([installed containsObject:name]) return;
+    __block IMP original = NULL;
+    IMP hook = imp_implementationWithBlock(^(UICollectionView *view) {
+        ((void (*)(id, SEL))original)(view, @selector(layoutSubviews));
+        if (![objc_getAssociatedObject(view, FQXMineScrollTrackedKey) boolValue]) return;
+        BOOL enabled = FQXGlassEnabled() && FQXMineShortcutFold(view);
+        [FQXMineShortcutViewport applyToView:view enabled:enabled];
+        if (enabled) FQXCompleteMineFlowPage(view);
+        else FQXRestoreMineFlow(view);
+    });
+    if (FQXInstallOwnedHook(cls, @selector(layoutSubviews), NO, "v16@0:8", hook, &original))
+        [installed addObject:name];
+    else imp_removeBlock(hook);
 }
 
 static void (*OrigScrollFoldLayout)(id, SEL);
 static void HookScrollFoldLayout(UIView *self, SEL _cmd) {
     if (OrigScrollFoldLayout) OrigScrollFoldLayout(self, _cmd);
-    if (FQXGlassEnabled()) {
-        FQXSyncMineHorizontalOnlyMask(self);
-        UICollectionView *cv = FQXObjGet(self, "collectionView");
-        if ([cv isKindOfClass:UICollectionView.class]) {
-            FQXInstallMineScrollMaskHookForView(cv);
-            FQXSyncMineHorizontalOnlyMask(cv);
-        }
-    }
+    BOOL enabled = FQXGlassEnabled() && FQXMineShortcutFold(self) == self;
+    [FQXMineShortcutViewport applyToView:self enabled:enabled];
+    UICollectionView *collection = FQXObjGet(self, "collectionView");
+    if (![collection isKindOfClass:UICollectionView.class]) return;
+    if (enabled) {
+        FQXInstallMineScrollHook(collection);
+        FQXSyncMineFlow(self, collection);
+    } else FQXRestoreMineFlow(collection);
+    [FQXMineShortcutViewport applyToView:collection enabled:enabled];
 }
 
 static void (*OrigMineFunCellLayoutForBadge)(id, SEL);
@@ -4014,8 +4407,12 @@ static void FQXApplyCommentGlassBacking(UIVisualEffectView *glass, UIColor *scri
         glass.contentView.layer.cornerRadius = targetRadius;
     }
     if (!glass.contentView.clipsToBounds) glass.contentView.clipsToBounds = YES;
-    FQXApplyBackdropBlur(glass, glass.contentView, nil, glass.bounds, targetRadius,
-                         FQXCommentsUseDarkTheme(), CommentBlurPrefKey);
+    // Gaussian mode already interpolates its main effect. Adding another full
+    // backdrop would leave the visible blur independent of this percentage.
+    if (![glass isKindOfClass:FQXBackdropBlurView.class]) {
+        FQXApplyBackdropBlur(glass, glass.contentView, nil, glass.bounds, targetRadius,
+                            FQXCommentsUseDarkTheme(), CommentBlurPrefKey);
+    }
 }
 
 static BOOL FQXColorGetRGBA(UIColor *color, CGFloat *r, CGFloat *g, CGFloat *b, CGFloat *a) {
