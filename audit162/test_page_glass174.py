@@ -2983,6 +2983,7 @@ def exercise_drama_glass(data, labels):
     send(cpu, runtime, album, "layoutSubviews")
     require(backing(album_content) == [album_glass], "repeated album layout retains a single material")
     if adaptive_album:
+        runtime._add(runtime.classes["UIView"], "setClipsToBounds:", runtime.LAYOUT_IMP, "v20@0:8B16")
         caption_state = runtime.objects[album_caption].state
         caption_state.update(frame=(16., 0., 440., 40.), bounds=(0., 0., 440., 40.))
         send(cpu, runtime, album, "updateAdaptiveSubViews")
