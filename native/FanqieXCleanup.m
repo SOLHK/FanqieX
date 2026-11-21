@@ -46,8 +46,20 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ShelfBanner, "ShelfRecommendationBanner", "显示书架推荐横幅", "shelf", YES) \
     X(ShelfActivityNotice, "ShelfActivityNotice", "显示书架活动公告", "shelf", YES) \
     X(ShelfImport, "ShelfLocalImport", "显示书架本地书导入入口", "shelf", YES) \
+    X(ShelfHistoryCard, "ShelfHistoryCard", "显示书架浏览历史入口", "shelf", YES) \
     X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架漫剧推荐", "shelf", YES) \
     X(ShelfRecommendations, "ShelfRecommendations", "显示书架推荐内容", "shelf", YES) \
+    X(ShelfTabBookshelf, "ShelfTabBookshelf", "显示书架「书架」标签", "shelf", YES) \
+    X(ShelfTabHistory, "ShelfTabHistory", "显示书架「历史」标签", "shelf", YES) \
+    X(ShelfTabCollect, "ShelfTabCollect", "显示书架「收藏」标签", "shelf", YES) \
+    X(ShelfTabCircle, "ShelfTabCircle", "显示书架「圈子」标签", "shelf", YES) \
+    X(ShelfSearchButton, "ShelfSearchButton", "显示书架搜索按钮", "shelf", YES) \
+    X(ShelfMoreButton, "ShelfMoreButton", "显示书架更多按钮", "shelf", YES) \
+    X(ShelfFilterAll, "ShelfFilterAll", "显示书架「全部」标签", "shelf", YES) \
+    X(ShelfFilterRead, "ShelfFilterRead", "显示书架「阅读」标签", "shelf", YES) \
+    X(ShelfFilterListen, "ShelfFilterListen", "显示书架「听书」标签", "shelf", YES) \
+    X(ShelfFilterComic, "ShelfFilterComic", "显示书架「漫剧」标签", "shelf", YES) \
+    X(ShelfFilterStar, "ShelfFilterStar", "显示书架「星标」标签", "shelf", YES) \
     X(Foreground, "NotificationsForeground", "显示前台通知提醒", "notifications", YES) \
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
@@ -152,6 +164,11 @@ static void DoubleColumnRequestData(id owner, SEL cmd) {
 static BOOL (*NativeImportCell)(id, SEL, NSInteger);
 static BOOL ImportCell(id owner, SEL cmd, NSInteger card) {
     return Option(ShelfImportKey, YES) && NativeImportCell(owner, cmd, card);
+}
+
+static BOOL (*NativeImportCellBool)(id, SEL, BOOL);
+static BOOL ImportCellBool(id owner, SEL cmd, BOOL card) {
+    return Option(ShelfImportKey, YES) && NativeImportCellBool(owner, cmd, card);
 }
 
 static NSArray *(*NativeImportMenu)(id, SEL);
@@ -298,6 +315,185 @@ static char ShelfRecBookSectionKey;
 static char ShelfRecReloadPendingKey;
 static char ShelfRecHiddenViewsKey;
 static char ShelfRecHiddenFlagKey;
+static char ShelfUtilityHiddenMapKey;
+static char ShelfUtilityNativeCountsKey;
+static char ShelfUtilityFilterStampKey;
+
+typedef NS_ENUM(NSInteger, FQXShelfUtilityKind) {
+    FQXShelfUtilityNone = 0,
+    FQXShelfUtilityLocalImport = 1,
+    FQXShelfUtilityHistoryCard = 2,
+};
+
+static BOOL ShelfStringHasNonEmptyBookId(id obj) {
+    if ([obj isKindOfClass:NSString.class]) return [(NSString *)obj length] > 0;
+    if ([obj isKindOfClass:NSNumber.class]) return [(NSNumber *)obj longLongValue] > 0;
+    return NO;
+}
+
+static BOOL ShelfModelIsRealBook(id model) {
+    if (!model) return NO;
+    if (ShelfStringHasNonEmptyBookId(HostObject(model, NSSelectorFromString(@"bookId")))) return YES;
+    id data = HostObject(model, NSSelectorFromString(@"data")) ?: HostObject(model, NSSelectorFromString(@"bookData"));
+    if (ShelfStringHasNonEmptyBookId(HostObject(data, NSSelectorFromString(@"bookId")))) return YES;
+    id collects = HostObject(model, NSSelectorFromString(@"collectDatas"));
+    if ([collects isKindOfClass:NSArray.class] && [(NSArray *)collects count] > 0) {
+        id first = [(NSArray *)collects firstObject];
+        if (ShelfStringHasNonEmptyBookId(HostObject(first, NSSelectorFromString(@"bookId")))) return YES;
+    }
+    return NO;
+}
+
+static FQXShelfUtilityKind ShelfUtilityKindFromViewText(UIView *view, NSInteger depth) {
+    if (![view isKindOfClass:UIView.class] || depth > 5) return FQXShelfUtilityNone;
+    NSString *text = nil;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *label = (UILabel *)view;
+        text = label.text.length ? label.text : label.attributedText.string;
+    } else if ([view isKindOfClass:UIButton.class]) {
+        text = [(UIButton *)view titleForState:UIControlStateNormal];
+    }
+    if (text.length) {
+        if ([text containsString:@"导入本地书"] || [text containsString:@"畅享免费听书"] ||
+            [text containsString:@"从本机导入"]) {
+            return FQXShelfUtilityLocalImport;
+        }
+        if ([text containsString:@"去浏览历史"] || [text containsString:@"看更多书籍"]) {
+            return FQXShelfUtilityHistoryCard;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        FQXShelfUtilityKind kind = ShelfUtilityKindFromViewText(sub, depth + 1);
+        if (kind != FQXShelfUtilityNone) return kind;
+    }
+    return FQXShelfUtilityNone;
+}
+
+static FQXShelfUtilityKind ShelfUtilityKindForModel(id model) {
+    if (!model || ShelfModelIsRealBook(model)) return FQXShelfUtilityNone;
+    NSString *lower = NSStringFromClass([model class]).lowercaseString ?: @"";
+    if ([lower containsString:@"localbook"] || [lower containsString:@"local_book"] ||
+        [lower containsString:@"entryadd"] || [lower containsString:@"addbook"]) {
+        return FQXShelfUtilityLocalImport;
+    }
+    if ([lower containsString:@"historycard"] || [lower containsString:@"browsehistory"] ||
+        [lower containsString:@"historyentry"] || [lower containsString:@"morehistory"]) {
+        return FQXShelfUtilityHistoryCard;
+    }
+    for (NSString *prop in @[@"title", @"text", @"name", @"subTitle", @"tips"]) {
+        id val = HostObject(model, NSSelectorFromString(prop));
+        if (![val isKindOfClass:NSString.class]) continue;
+        NSString *s = (NSString *)val;
+        if ([s containsString:@"导入本地书"] || [s containsString:@"畅享免费听书"] || [s containsString:@"从本机导入"]) {
+            return FQXShelfUtilityLocalImport;
+        }
+        if ([s containsString:@"去浏览历史"] || [s containsString:@"看更多书籍"]) {
+            return FQXShelfUtilityHistoryCard;
+        }
+    }
+    return FQXShelfUtilityNone;
+}
+
+static FQXShelfUtilityKind ShelfUtilityKindForCell(id cell) {
+    if (![cell isKindOfClass:UIView.class]) return FQXShelfUtilityNone;
+    Class funcCls = NSClassFromString(@"SSBookShelfFunctionCell");
+    if (funcCls && [cell isKindOfClass:funcCls]) return FQXShelfUtilityNone;
+    id model = HostObject(cell, NSSelectorFromString(@"cellModel")) ?: HostObject(cell, NSSelectorFromString(@"model"));
+    if (ShelfModelIsRealBook(model)) return FQXShelfUtilityNone;
+    FQXShelfUtilityKind modelKind = ShelfUtilityKindForModel(model);
+    if (modelKind != FQXShelfUtilityNone) return modelKind;
+    NSString *cellLower = NSStringFromClass([cell class]).lowercaseString ?: @"";
+    if ([cellLower containsString:@"localbook"] || [cellLower containsString:@"local_book"] ||
+        [cellLower containsString:@"entryadd"] || [cellLower containsString:@"addbook"]) {
+        return FQXShelfUtilityLocalImport;
+    }
+    if ([cellLower containsString:@"historycard"] || [cellLower containsString:@"browsehistory"] ||
+        [cellLower containsString:@"historyentry"] || [cellLower containsString:@"morehistory"]) {
+        return FQXShelfUtilityHistoryCard;
+    }
+    return ShelfUtilityKindFromViewText((UIView *)cell, 0);
+}
+
+static BOOL ShelfShouldHideUtilityKind(FQXShelfUtilityKind kind) {
+    if (kind == FQXShelfUtilityLocalImport) return !Option(ShelfImportKey, YES);
+    if (kind == FQXShelfUtilityHistoryCard) return !Option(ShelfHistoryCardKey, YES);
+    return NO;
+}
+
+static void ShelfUtilityResetController(id controller) {
+    if (!controller) return;
+    objc_setAssociatedObject(controller, &ShelfUtilityHiddenMapKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(controller, &ShelfUtilityNativeCountsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(controller, &ShelfUtilityFilterStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static NSMutableIndexSet *ShelfUtilityHiddenSetForSection(id controller, NSInteger section, NSInteger nativeCount, BOOL create) {
+    if (!controller || section < 0) return nil;
+    NSInteger stamp = (Option(ShelfImportKey, YES) ? 1 : 0) | (Option(ShelfHistoryCardKey, YES) ? 2 : 0);
+    NSNumber *prevStamp = objc_getAssociatedObject(controller, &ShelfUtilityFilterStampKey);
+    if (!prevStamp || prevStamp.integerValue != stamp) {
+        ShelfUtilityResetController(controller);
+        objc_setAssociatedObject(controller, &ShelfUtilityFilterStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSMutableDictionary *counts = objc_getAssociatedObject(controller, &ShelfUtilityNativeCountsKey);
+    NSMutableDictionary *map = objc_getAssociatedObject(controller, &ShelfUtilityHiddenMapKey);
+    if (!counts) {
+        if (!create) return nil;
+        counts = [NSMutableDictionary dictionary];
+        objc_setAssociatedObject(controller, &ShelfUtilityNativeCountsKey, counts, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!map) {
+        if (!create) return nil;
+        map = [NSMutableDictionary dictionary];
+        objc_setAssociatedObject(controller, &ShelfUtilityHiddenMapKey, map, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSNumber *key = @(section);
+    NSNumber *prevCount = counts[key];
+    if (nativeCount >= 0 && (!prevCount || prevCount.integerValue != nativeCount)) {
+        counts[key] = @(nativeCount);
+        [map removeObjectForKey:key];
+    }
+    NSMutableIndexSet *set = map[key];
+    if (!set && create) {
+        set = [NSMutableIndexSet indexSet];
+        map[key] = set;
+    }
+    return set;
+}
+
+static void ShelfUtilityPrepopulateBookSection(id controller, NSInteger section, NSInteger nativeCount) {
+    if (!controller || nativeCount <= 0) return;
+    if (Option(ShelfImportKey, YES) && Option(ShelfHistoryCardKey, YES)) return;
+    if (ShelfRecSectionType(controller, section) != 4) return;
+    id vm = HostObject(controller, NSSelectorFromString(@"viewModel"));
+    id models = HostObject(vm, NSSelectorFromString(@"showCellModels"));
+    if (![models isKindOfClass:NSArray.class]) return;
+    NSArray *arr = (NSArray *)models;
+    if ((NSInteger)arr.count != nativeCount) return;
+    NSMutableIndexSet *set = ShelfUtilityHiddenSetForSection(controller, section, nativeCount, YES);
+    for (NSUInteger i = 0; i < arr.count; ++i) {
+        FQXShelfUtilityKind kind = ShelfUtilityKindForModel(arr[i]);
+        if (ShelfShouldHideUtilityKind(kind)) [set addIndex:i];
+    }
+}
+
+static NSInteger ShelfUtilityNativeItemForVisibleItem(id controller, id collectionView, NSInteger section, NSInteger visibleItem) {
+    if (visibleItem < 0) return visibleItem;
+    if (Option(ShelfImportKey, YES) && Option(ShelfHistoryCardKey, YES)) return visibleItem;
+    if (ShelfRecSectionType(controller, section) == 1) return visibleItem;
+    NSInteger nativeCount = NativeShelfNumberOfItems ? NativeShelfNumberOfItems(controller, @selector(collectionView:numberOfItemsInSection:), collectionView, section) : -1;
+    NSMutableIndexSet *set = ShelfUtilityHiddenSetForSection(controller, section, nativeCount, NO);
+    if (!set.count || nativeCount <= 0) return visibleItem;
+    NSInteger seenVisible = 0;
+    for (NSInteger nativeIdx = 0; nativeIdx < nativeCount; ++nativeIdx) {
+        if ([set containsIndex:(NSUInteger)nativeIdx]) continue;
+        if (seenVisible == visibleItem) return nativeIdx;
+        seenVisible++;
+    }
+    return visibleItem;
+}
+
+static void ShelfRecScheduleReload(id controller, id collectionView);
 
 static BOOL ShelfRecStringContainsAny(NSString *haystack, NSArray<NSString *> *needles) {
     if (!haystack.length) return NO;
@@ -413,7 +609,8 @@ static void ShelfRecScheduleReload(id controller, id collectionView) {
         if (strongController) {
             objc_setAssociatedObject(strongController, &ShelfRecReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        if (strongCV && strongController && !Option(ShelfRecommendationsKey, YES)) {
+        if (strongCV && strongController &&
+            (!Option(ShelfRecommendationsKey, YES) || !Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
             [strongCV reloadData];
         }
     });
@@ -423,6 +620,9 @@ static NSInteger ShelfRecNumberOfSections(id self, SEL cmd, id collectionView) {
     LastShelf = self;
     ShelfSyncColdStartVisibility(self, collectionView);
     objc_setAssociatedObject(self, &ShelfRecReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (Option(ShelfImportKey, YES) && Option(ShelfHistoryCardKey, YES)) {
+        ShelfUtilityResetController(self);
+    }
     NSInteger count = NativeShelfNumberOfSections(self, cmd, collectionView);
     NSInteger bookSection = -1;
     for (NSInteger s = 0; s < count; ++s) {
@@ -438,20 +638,47 @@ static NSInteger ShelfRecNumberOfSections(id self, SEL cmd, id collectionView) {
 static NSInteger ShelfRecNumberOfItems(id self, SEL cmd, id collectionView, NSInteger section) {
     LastShelf = self;
     if (ShelfRecIsSectionHidden(self, section)) return 0;
-    return NativeShelfNumberOfItems(self, cmd, collectionView, section);
+    NSInteger nativeCount = NativeShelfNumberOfItems(self, cmd, collectionView, section);
+    if ((!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES)) &&
+        ShelfRecSectionType(self, section) != 1 && nativeCount > 0) {
+        ShelfUtilityPrepopulateBookSection(self, section, nativeCount);
+        NSMutableIndexSet *hiddenSet = ShelfUtilityHiddenSetForSection(self, section, nativeCount, YES);
+        NSInteger hidden = (NSInteger)hiddenSet.count;
+        if (hidden > 0 && hidden <= nativeCount) return nativeCount - hidden;
+    }
+    return nativeCount;
 }
 
 static id (*NativeShelfCellForItem)(id, SEL, id, NSIndexPath *);
 static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *indexPath) {
     LastShelf = self;
     ShelfSyncColdStartVisibility(self, collectionView);
-    id cell = NativeShelfCellForItem(self, cmd, collectionView, indexPath);
+    NSIndexPath *queryIP = indexPath;
+    if (indexPath && (!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
+        NSInteger mapped = ShelfUtilityNativeItemForVisibleItem(self, collectionView, indexPath.section, indexPath.item);
+        if (mapped != indexPath.item) {
+            queryIP = [NSIndexPath indexPathForItem:mapped inSection:indexPath.section];
+        }
+    }
+    id cell = NativeShelfCellForItem(self, cmd, collectionView, queryIP);
+    NSInteger section = queryIP.section;
+    NSInteger stype = ShelfRecSectionType(self, section);
+    if (stype != 1 && (!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
+        FQXShelfUtilityKind kind = ShelfUtilityKindForCell(cell);
+        if (ShelfShouldHideUtilityKind(kind)) {
+            NSInteger nativeCount = NativeShelfNumberOfItems ? NativeShelfNumberOfItems(self, @selector(collectionView:numberOfItemsInSection:), collectionView, section) : -1;
+            NSMutableIndexSet *hiddenSet = ShelfUtilityHiddenSetForSection(self, section, nativeCount, YES);
+            BOOL newlyAdded = (queryIP.item >= 0 && ![hiddenSet containsIndex:(NSUInteger)queryIP.item]);
+            if (newlyAdded) [hiddenSet addIndex:(NSUInteger)queryIP.item];
+            ShelfRecHideView(self, cell, YES);
+            if (newlyAdded) ShelfRecScheduleReload(self, collectionView);
+            return cell;
+        }
+    }
     if (Option(ShelfRecommendationsKey, YES)) {
         ShelfRecHideView(self, cell, NO);
         return cell;
     }
-    NSInteger section = indexPath.section;
-    NSInteger stype = ShelfRecSectionType(self, section);
     NSString *clsName = NSStringFromClass([cell class]).lowercaseString ?: @"";
     id model = HostObject(cell, NSSelectorFromString(@"cellModel")) ?: HostObject(cell, NSSelectorFromString(@"model"));
     NSString *modelName = model ? (NSStringFromClass([model class]).lowercaseString ?: @"") : @"";
@@ -482,6 +709,18 @@ static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *
         ShelfRecHideView(self, cell, NO);
     }
     return cell;
+}
+
+static void (*NativeShelfDidSelectItem)(id, SEL, id, NSIndexPath *);
+static void ShelfRecDidSelectItem(id self, SEL cmd, id collectionView, NSIndexPath *indexPath) {
+    NSIndexPath *mappedIP = indexPath;
+    if (indexPath && (!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
+        NSInteger mapped = ShelfUtilityNativeItemForVisibleItem(self, collectionView, indexPath.section, indexPath.item);
+        if (mapped != indexPath.item) {
+            mappedIP = [NSIndexPath indexPathForItem:mapped inSection:indexPath.section];
+        }
+    }
+    if (NativeShelfDidSelectItem) NativeShelfDidSelectItem(self, cmd, collectionView, mappedIP);
 }
 
 static id (*NativeShelfSupplementaryView)(id, SEL, id, id, NSIndexPath *);
@@ -516,7 +755,14 @@ static id ShelfRecSupplementaryView(id self, SEL cmd, id collectionView, id kind
 static CGSize (*NativeShelfSizeForItem)(id, SEL, id, id, NSIndexPath *);
 static CGSize ShelfRecSizeForItem(id self, SEL cmd, id collectionView, id layout, NSIndexPath *indexPath) {
     if (indexPath && ShelfRecIsSectionHidden(self, indexPath.section)) return CGSizeZero;
-    return NativeShelfSizeForItem(self, cmd, collectionView, layout, indexPath);
+    NSIndexPath *queryIP = indexPath;
+    if (indexPath && (!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
+        NSInteger mapped = ShelfUtilityNativeItemForVisibleItem(self, collectionView, indexPath.section, indexPath.item);
+        if (mapped != indexPath.item) {
+            queryIP = [NSIndexPath indexPathForItem:mapped inSection:indexPath.section];
+        }
+    }
+    return NativeShelfSizeForItem(self, cmd, collectionView, layout, queryIP);
 }
 
 static CGSize (*NativeShelfHeaderSize)(id, SEL, id, id, NSInteger);
@@ -800,7 +1046,175 @@ static void MineDidAppear(id owner, SEL cmd, BOOL animated) {
 }
 
 static char DramaActionRequestedHiddenKey;
+static char DramaRailAppliedShiftKey;
 static NSMutableDictionary<NSString *, NSHashTable<UIView *> *> *DramaActionOwners;
+static NSMutableSet<NSString *> *DramaRailHookedContainers;
+
+static BOOL IsDramaRightActionView(UIView *view) {
+    if (![view isKindOfClass:UIView.class]) return NO;
+    for (NSString *clsName in @[@"SSShortVideoRightInteractionCollectView",
+                                @"SSShortVideoRightInteractionCommentView",
+                                @"SSShortVideoHostRightInteractionCommentView",
+                                @"SSShortVideoRightInteractionLikeView",
+                                @"SSShortVideoRightInteractionShareView"]) {
+        Class cls = NSClassFromString(clsName);
+        if (cls && [view isKindOfClass:cls]) return YES;
+    }
+    return NO;
+}
+
+static void CollectDramaRightActions(UIView *root, NSInteger depth, NSMutableArray<UIView *> *outActions) {
+    if (![root isKindOfClass:UIView.class] || depth > 3) return;
+    if (IsDramaRightActionView(root)) {
+        [outActions addObject:root];
+        return;
+    }
+    for (UIView *sub in root.subviews) {
+        CollectDramaRightActions(sub, depth + 1, outActions);
+    }
+}
+
+static UIView *SingleDramaRightActionInSlot(UIView *slot) {
+    if (![slot isKindOfClass:UIView.class]) return nil;
+    if (IsDramaRightActionView(slot)) return slot;
+    NSMutableArray<UIView *> *found = [NSMutableArray array];
+    CollectDramaRightActions(slot, 1, found);
+    return found.count == 1 ? found.firstObject : nil;
+}
+
+static UIView *FindDramaRailRootForAction(UIView *actionView) {
+    if (![actionView isKindOfClass:UIView.class]) return nil;
+    UIView *cur = actionView.superview;
+    for (NSInteger up = 0; up < 4 && cur; ++up, cur = cur.superview) {
+        if ([cur isKindOfClass:UIWindow.class]) break;
+        NSMutableArray<UIView *> *actions = [NSMutableArray array];
+        CollectDramaRightActions(cur, 0, actions);
+        if (actions.count >= 2) return cur;
+    }
+    return actionView.superview;
+}
+
+static void ReflowDramaRightInteractionRail(UIView *container) {
+    if (![container isKindOfClass:UIView.class]) return;
+    NSMutableArray<UIView *> *allSlots = [NSMutableArray array];
+    NSMutableArray<UIView *> *slotActions = [NSMutableArray array];
+    for (UIView *sub in container.subviews) {
+        UIView *act = SingleDramaRightActionInSlot(sub);
+        if (!act) continue;
+        if (![container isKindOfClass:UIStackView.class] &&
+            (CGRectGetWidth(sub.bounds) < 16.0 || CGRectGetHeight(sub.bounds) < 16.0)) {
+            continue;
+        }
+        [allSlots addObject:sub];
+        [slotActions addObject:act];
+    }
+    if (allSlots.count < 2) return;
+
+    if ([container isKindOfClass:UIStackView.class]) {
+        BOOL stackChanged = NO;
+        for (NSUInteger i = 0; i < allSlots.count; ++i) {
+            UIView *slot = allSlots[i];
+            UIView *act = slotActions[i];
+            if (slot != act) {
+                BOOL wantHide = act.hidden || act.alpha <= 0.01;
+                if (slot.hidden != wantHide) {
+                    slot.hidden = wantHide;
+                    stackChanged = YES;
+                }
+            }
+        }
+        if (stackChanged) [container setNeedsLayout];
+        return;
+    }
+
+    NSMutableArray<NSDictionary *> *pairs = [NSMutableArray arrayWithCapacity:allSlots.count];
+    for (NSUInteger i = 0; i < allSlots.count; ++i) {
+        [pairs addObject:@{@"slot": allSlots[i], @"action": slotActions[i]}];
+    }
+    [pairs sortUsingComparator:^NSComparisonResult(NSDictionary *pa, NSDictionary *pb) {
+        UIView *a = pa[@"slot"];
+        UIView *b = pb[@"slot"];
+        CGFloat ay = a.center.y;
+        CGFloat by = b.center.y;
+        if (fabs(ay - by) > 0.5) return ay < by ? NSOrderedAscending : NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+
+    NSMutableArray<UIView *> *sortedSlots = [NSMutableArray arrayWithCapacity:pairs.count];
+    NSMutableArray<UIView *> *visibleSlots = [NSMutableArray arrayWithCapacity:pairs.count];
+    for (NSDictionary *pair in pairs) {
+        UIView *slot = pair[@"slot"];
+        UIView *act = pair[@"action"];
+        [sortedSlots addObject:slot];
+        if (!slot.hidden && slot.alpha > 0.01 && !act.hidden && act.alpha > 0.01) {
+            [visibleSlots addObject:slot];
+        }
+    }
+
+    if (visibleSlots.count == 0 || visibleSlots.count == sortedSlots.count) {
+        for (UIView *slot in sortedSlots) {
+            if (objc_getAssociatedObject(slot, &DramaRailAppliedShiftKey)) {
+                if (!CGAffineTransformIsIdentity(slot.transform)) {
+                    slot.transform = CGAffineTransformIdentity;
+                }
+                objc_setAssociatedObject(slot, &DramaRailAppliedShiftKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+        return;
+    }
+
+    NSUInteger n = sortedSlots.count;
+    NSUInteger k = visibleSlots.count;
+    for (UIView *slot in sortedSlots) {
+        if ([visibleSlots containsObject:slot]) continue;
+        if (objc_getAssociatedObject(slot, &DramaRailAppliedShiftKey)) {
+            if (!CGAffineTransformIsIdentity(slot.transform)) {
+                slot.transform = CGAffineTransformIdentity;
+            }
+            objc_setAssociatedObject(slot, &DramaRailAppliedShiftKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    for (NSUInteger i = 0; i < k; ++i) {
+        UIView *vis = visibleSlots[i];
+        UIView *targetSlot = sortedSlots[(n - k) + i];
+        CGFloat targetBottom = targetSlot.center.y + CGRectGetHeight(targetSlot.bounds) * 0.5;
+        CGFloat ownBottom = vis.center.y + CGRectGetHeight(vis.bounds) * 0.5;
+        CGFloat dy = targetBottom - ownBottom;
+        CGAffineTransform desired = fabs(dy) > 0.5
+            ? CGAffineTransformMakeTranslation(0.0, dy)
+            : CGAffineTransformIdentity;
+        if (!CGAffineTransformEqualToTransform(vis.transform, desired)) {
+            vis.transform = desired;
+        }
+        objc_setAssociatedObject(vis, &DramaRailAppliedShiftKey, @(dy), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void EnsureDramaRailContainerHooked(UIView *container) {
+    if (![container isKindOfClass:UIView.class]) return;
+    Class cls = object_getClass(container);
+    if (!cls || cls == [UIView class] || cls == [UIStackView class]) return;
+    if (!DramaRailHookedContainers) DramaRailHookedContainers = [NSMutableSet set];
+    NSString *clsName = NSStringFromClass(cls);
+    if (!clsName.length || [DramaRailHookedContainers containsObject:clsName]) return;
+    [DramaRailHookedContainers addObject:clsName];
+    SEL layoutSel = @selector(layoutSubviews);
+    __block void (*origLayout)(id, SEL) = NULL;
+    IMP hookLayout = imp_implementationWithBlock(^(UIView *selfView) {
+        if (origLayout) origLayout(selfView, layoutSel);
+        ReflowDramaRightInteractionRail(selfView);
+    });
+    if (!FQXInstallOwnedHook(cls, layoutSel, NO, "v16@0:8", hookLayout, (IMP *)&origLayout)) {
+        imp_removeBlock(hookLayout);
+    }
+}
+
+static void ReflowDramaRightInteractionRailForAction(UIView *actionView) {
+    UIView *railRoot = FindDramaRailRootForAction(actionView);
+    if (!railRoot) return;
+    EnsureDramaRailContainerHooked(railRoot);
+    ReflowDramaRightInteractionRail(railRoot);
+}
 
 static void InstallDramaActionVisibility(NSString *className, NSString *key) {
     Class cls = NSClassFromString(className);
@@ -816,6 +1230,7 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
         [owners addObject:view];
         objc_setAssociatedObject(view, &DramaActionRequestedHiddenKey, @(requested), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         originalHidden(view, hidden, requested || !Option(key, YES));
+        ReflowDramaRightInteractionRailForAction(view);
     });
     if (!FQXInstallOwnedHook(cls, hidden, NO, "v20@0:8B16", hide, (IMP *)&originalHidden)) {
         imp_removeBlock(hide);
@@ -823,12 +1238,40 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
     }
     __block void (*originalRefresh)(id, SEL);
     IMP refreshView = imp_implementationWithBlock(^(UIView *view) {
+        [owners addObject:view];
         originalRefresh(view, refresh);
         NSNumber *requested = objc_getAssociatedObject(view, &DramaActionRequestedHiddenKey);
         [view setHidden:requested ? requested.boolValue : view.hidden];
+        ReflowDramaRightInteractionRailForAction(view);
     });
     if (!FQXInstallOwnedHook(cls, refresh, NO, "v16@0:8", refreshView, (IMP *)&originalRefresh))
         imp_removeBlock(refreshView);
+
+    SEL layoutSel = @selector(layoutSubviews);
+    if (HostMethod(cls, layoutSel, "v16@0:8")) {
+        __block void (*originalLayout)(id, SEL) = NULL;
+        IMP layoutView = imp_implementationWithBlock(^(UIView *view) {
+            [owners addObject:view];
+            if (originalLayout) originalLayout(view, layoutSel);
+            ReflowDramaRightInteractionRailForAction(view);
+        });
+        if (!FQXInstallOwnedHook(cls, layoutSel, NO, "v16@0:8", layoutView, (IMP *)&originalLayout)) {
+            imp_removeBlock(layoutView);
+        }
+    }
+
+    SEL moveWinSel = @selector(didMoveToWindow);
+    if (HostMethod(cls, moveWinSel, "v16@0:8")) {
+        __block void (*originalMoveWin)(id, SEL) = NULL;
+        IMP moveWinView = imp_implementationWithBlock(^(UIView *view) {
+            [owners addObject:view];
+            if (originalMoveWin) originalMoveWin(view, moveWinSel);
+            if (view.window) ReflowDramaRightInteractionRailForAction(view);
+        });
+        if (!FQXInstallOwnedHook(cls, moveWinSel, NO, "v16@0:8", moveWinView, (IMP *)&originalMoveWin)) {
+            imp_removeBlock(moveWinView);
+        }
+    }
 }
 
 static void RefreshMineViewsInSubtree(UIView *view) {
@@ -1108,6 +1551,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "showDivertEntranceInToolBar", ChapterEndDrama);
         SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "hasMoreAdaptionBottomEntrance", ChapterEndDrama);
         SHOW_RULE("SSBookShelfViewModel", "isHotBannerSectionActive", ShelfBanner);
+        SHOW_RULE("SSBookShelfViewModel", "shouldShowLocalBookEntryAddCell", ShelfImport);
+        SHOW_RULE("SSBookShelfViewModel", "shouldShowHistoryCard", ShelfHistoryCard);
+        SHOW_RULE("SSBookShelfViewModel", "shouldShowBrowseHistoryCard", ShelfHistoryCard);
+        SHOW_RULE("SSBookShelfViewModel", "shouldShowBookHistoryCard", ShelfHistoryCard);
+        SHOW_RULE("SSBookShelfViewModel", "shouldShowHistoryEntryCard", ShelfHistoryCard);
+        SHOW_RULE("SSBookShelfViewModel", "canShowHistoryCard", ShelfHistoryCard);
+        SHOW_RULE("SSBookShelfViewModel", "isHistoryCardActive", ShelfHistoryCard);
         SHOW_RULE("SSBookShelfViewModel", "isHotBookCellActive", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumn", "isFeatureEnabled", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumn", "recommendEnabled", ShelfRecommendations);
@@ -1127,6 +1577,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
 #define REPLACE(fn, cls, selector, encoding, impl) \
     fn = (void *)Replace(@cls, NSSelectorFromString(@selector), encoding, (IMP)impl)
         REPLACE(NativeImportCell, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B24@0:8q16", ImportCell);
+        REPLACE(NativeImportCellBool, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B20@0:8B16", ImportCellBool);
+        if (!NativeImportCellBool) {
+            REPLACE(NativeImportCellBool, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B20@0:8c16", ImportCellBool);
+        }
         REPLACE(NativeImportMenu, "SSBookShelfLocalBookHandler", "moreMenuItems", "@16@0:8", ImportMenu);
         REPLACE(NativeRelatedBanner, "SSBookShelfChaseBookModel", "bookEndRelateVideoBanner", "@16@0:8", RelatedBanner);
         REPLACE(NativeHasUnconsumedBanner, "SSBookShelfChaseBookModel", "hasUnconsumedVideoBanner", "B16@0:8", HasUnconsumedBanner);
@@ -1138,6 +1592,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         REPLACE(NativeShelfNumberOfSections, "SSBookShelfSubViewController", "numberOfSectionsInCollectionView:", "q24@0:8@16", ShelfRecNumberOfSections);
         REPLACE(NativeShelfNumberOfItems, "SSBookShelfSubViewController", "collectionView:numberOfItemsInSection:", "q32@0:8@16q24", ShelfRecNumberOfItems);
         REPLACE(NativeShelfCellForItem, "SSBookShelfSubViewController", "collectionView:cellForItemAtIndexPath:", "@32@0:8@16@24", ShelfRecCellForItem);
+        REPLACE(NativeShelfDidSelectItem, "SSBookShelfSubViewController", "collectionView:didSelectItemAtIndexPath:", "v32@0:8@16@24", ShelfRecDidSelectItem);
         REPLACE(NativeShelfSupplementaryView, "SSBookShelfSubViewController", "collectionView:viewForSupplementaryElementOfKind:atIndexPath:", "@40@0:8@16@24@32", ShelfRecSupplementaryView);
         REPLACE(NativeShelfSizeForItem, "SSBookShelfSubViewController", "collectionView:layout:sizeForItemAtIndexPath:", "{CGSize=dd}40@0:8@16@24@32", ShelfRecSizeForItem);
         REPLACE(NativeShelfHeaderSize, "SSBookShelfSubViewController", "collectionView:layout:referenceSizeForHeaderInSection:", "{CGSize=dd}40@0:8@16@24q32", ShelfRecHeaderSize);
@@ -1243,8 +1698,16 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshAudioSel);
         }
     } else if (DramaActionOwners[key]) {
-        for (UIView *view in DramaActionOwners[key].allObjects)
+        NSMutableSet<UIView *> *roots = [NSMutableSet set];
+        for (UIView *view in DramaActionOwners[key].allObjects) {
             view.hidden = [objc_getAssociatedObject(view, &DramaActionRequestedHiddenKey) boolValue];
+            UIView *railRoot = FindDramaRailRootForAction(view);
+            if (railRoot) [roots addObject:railRoot];
+        }
+        for (UIView *railRoot in roots) {
+            EnsureDramaRailContainerHooked(railRoot);
+            ReflowDramaRightInteractionRail(railRoot);
+        }
     } else if ([key isEqualToString:DramaOutlineActionsKey]) {
         Class style = NSClassFromString(@"FQXDramaActionStyle");
         SEL refresh = NSSelectorFromString(@"refresh");
@@ -1263,8 +1726,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshDramaHeaderBlur");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
+    } else if ([key isEqualToString:CommentBlurKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshBlurSel = NSSelectorFromString(@"refreshCommentBlurStrength");
+        if ([dockMotion respondsToSelector:refreshBlurSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshBlurSel);
+        }
     } else if ([key isEqualToString:CommentMaterialStyleKey] ||
-               [key isEqualToString:CommentBlurKey] ||
                [key isEqualToString:CommentAppearanceModeKey] ||
                [key isEqualToString:CommentComposerStyleKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
@@ -1295,6 +1763,24 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshEditSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshEditSel);
         }
+    } else if ([key isEqualToString:ShelfTabBookshelfKey] ||
+               [key isEqualToString:ShelfTabHistoryKey] ||
+               [key isEqualToString:ShelfTabCollectKey] ||
+               [key isEqualToString:ShelfTabCircleKey] ||
+               [key isEqualToString:ShelfSearchButtonKey] ||
+               [key isEqualToString:ShelfMoreButtonKey] ||
+               [key isEqualToString:ShelfFilterAllKey] ||
+               [key isEqualToString:ShelfFilterReadKey] ||
+               [key isEqualToString:ShelfFilterListenKey] ||
+               [key isEqualToString:ShelfFilterComicKey] ||
+               [key isEqualToString:ShelfFilterStarKey] ||
+               [key isEqualToString:@"FanqieX.ShelfReadingDuration.1"] ||
+               [key isEqualToString:@"FanqieX.ShelfFilterButton.1"]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshHeaderSel = NSSelectorFromString(@"refreshShelfHeaderControls");
+        if ([dockMotion respondsToSelector:refreshHeaderSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshHeaderSel);
+        }
     } else if ([key hasPrefix:@"FanqieX.Sidebar"]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshSidebarSel = NSSelectorFromString(@"refreshMineSidebar");
@@ -1307,9 +1793,18 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if (wasHidden) SpeechHidden(button, @selector(setHidden:), wasHidden.boolValue);
     } else if ([key isEqualToString:BadgeKey] && !Option(BadgeKey, YES) && NativeBadge) {
         NativeBadge(UIApplication.sharedApplication, NSSelectorFromString(@"setApplicationIconBadgeNumber:"), 0);
-    } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] || [key isEqualToString:ShelfImportKey] ||
+    } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] ||
+               [key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey] ||
                [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfRecommendationsKey]) {
         UIViewController *shelf = LastShelf;
+        if ([key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey]) {
+            ShelfUtilityResetController(shelf);
+            id vm = HostObject(shelf, NSSelectorFromString(@"viewModel"));
+            SEL rebuild = NSSelectorFromString(@"rebuildShelfPipeline:");
+            if (HostMethod(object_getClass(vm), rebuild, "v24@0:8@16")) {
+                ((void (*)(id, SEL, id))objc_msgSend)(vm, rebuild, @"FanqieXCleanup");
+            }
+        }
         if ([key isEqualToString:ShelfRecommendationsKey]) {
             BOOL show = Option(ShelfRecommendationsKey, YES);
             if (show) ShelfRecRestoreController(shelf);

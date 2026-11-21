@@ -237,7 +237,7 @@ static NSInteger CurrentSavedCommentMaterialStyle(void) {
     id stored = [ud objectForKey:CommentMaterialStyleKey];
     if (!stored) return 0;
     NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
-    return (val >= 0 && val <= 3) ? val : 0;
+    return (val >= 0 && val <= 4) ? val : 0;
 }
 
 static NSInteger CurrentSavedCommentAppearanceMode(void) {
@@ -265,7 +265,7 @@ static NSInteger CurrentSavedCommentComposerStyle(void) {
         NSInteger val = [stored integerValue];
         if (val >= 0 && val <= 2) return val;
     }
-    return (material == 1 || material == 2) ? 1 : 0;
+    return (material == 1 || material == 2 || material == 4) ? 1 : 0;
 }
 
 static void StartupPopoverChoices(NSArray<NSString *> **outOptions, NSArray<NSNumber *> **outValues) {
@@ -299,7 +299,9 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
     } else if (row.popoverKind == 2) {
         idx = CurrentSavedCommentComposerStyle();
     } else if (row.popoverKind == 4) {
-        idx = CurrentSavedCommentMaterialStyle();
+        NSInteger saved = CurrentSavedCommentMaterialStyle();
+        NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
+        idx = (found != NSNotFound) ? (NSInteger)found : 0;
     } else if (row.popoverKind == 5) {
         idx = CurrentSavedCommentAppearanceMode();
     } else if (row.popoverKind == 7) {
@@ -368,9 +370,10 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     materialRow.title = @"评论区材质";
     materialRow.path = route;
     materialRow.hiddenFromSearch = hiddenFromSearch;
-    materialRow.keywords = @"评论区材质 评论区液态玻璃 评论区高斯模糊 评论区原书底色 评论区 原版默认 评价 短剧评论 看书评论 小说评论 段评 液态玻璃 液态玻璃评论区 评论液态玻璃 高斯模糊 高斯模糊评论区 毛玻璃 磨砂 iOS18 原书底色 原生 不透明 默认背景 材质 透明 玻璃";
+    materialRow.keywords = @"评论区材质 评论区清透玻璃 评论区模糊玻璃 评论区液态玻璃 评论区高斯模糊 评论区原书底色 评论区 原版默认 评价 短剧评论 看书评论 小说评论 段评 清透玻璃 模糊玻璃 Clear Regular 液态玻璃 高斯模糊 毛玻璃 磨砂 iOS18 原书底色 原生 不透明 默认背景 材质 透明 玻璃";
     materialRow.popoverKey = CommentMaterialStyleKey;
-    materialRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"高斯模糊", @"原书底色"];
+    materialRow.popoverOptions = @[@"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊", @"原书底色"];
+    materialRow.popoverValues = @[@0, @1, @4, @2, @3];
     materialRow.popoverKind = 4;
     materialRow.height = 52;
     [menu.catalog addObject:materialRow];
@@ -485,6 +488,10 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             row.path = @"我的页面净化/顶部栏";
         if ([option[@"key"] isEqualToString:@"FanqieX.MinePublish.1"]) row.path = @"我的页面净化/悬浮入口";
         if ([@[@"FanqieX.ShelfRecommendationBanner.1", @"FanqieX.ShelfActivityNotice.1", @"FanqieX.ShelfEditButton.1"] containsObject:option[@"key"]]) row.path = @"书架净化/顶部与统计";
+        if ([@[@"FanqieX.ShelfTabBookshelf.1", @"FanqieX.ShelfTabHistory.1", @"FanqieX.ShelfTabCollect.1", @"FanqieX.ShelfTabCircle.1", @"FanqieX.ShelfSearchButton.1", @"FanqieX.ShelfMoreButton.1"] containsObject:option[@"key"]])
+            row.path = @"书架净化/顶部导航栏";
+        if ([@[@"FanqieX.ShelfFilterAll.1", @"FanqieX.ShelfFilterRead.1", @"FanqieX.ShelfFilterListen.1", @"FanqieX.ShelfFilterComic.1", @"FanqieX.ShelfFilterStar.1"] containsObject:option[@"key"]])
+            row.path = @"书架净化/筛选栏标签";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
@@ -526,8 +533,20 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.ReaderChapterEndActions.1":@"最新章节 三个按钮 最新章 章末",
             @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
             @"FanqieX.ShelfRecommendations.1":@"书架 推荐内容 展开全部 猜你喜欢 为你推荐 书架底部推荐 榜单推荐",
-            @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书",
+            @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书 畅享免费听书",
+            @"FanqieX.ShelfHistoryCard.1":@"书架 浏览历史 去浏览历史 看更多书籍 历史入口 卡片 隐藏",
             @"FanqieX.ShelfEditButton.1":@"书架 编辑 编辑按钮 顶部 编辑入口 隐藏 关闭",
+            @"FanqieX.ShelfTabBookshelf.1":@"书架 顶部 书架标签 标签 导航",
+            @"FanqieX.ShelfTabHistory.1":@"书架 顶部 历史标签 历史 阅读历史 标签",
+            @"FanqieX.ShelfTabCollect.1":@"书架 顶部 收藏标签 收藏 标签",
+            @"FanqieX.ShelfTabCircle.1":@"书架 顶部 圈子标签 圈子 书圈 标签",
+            @"FanqieX.ShelfSearchButton.1":@"书架 顶部 搜索 搜索按钮 放大镜",
+            @"FanqieX.ShelfMoreButton.1":@"书架 顶部 更多 更多按钮 三点",
+            @"FanqieX.ShelfFilterAll.1":@"书架 筛选栏 全部 标签 分类",
+            @"FanqieX.ShelfFilterRead.1":@"书架 筛选栏 阅读 标签 分类",
+            @"FanqieX.ShelfFilterListen.1":@"书架 筛选栏 听书 标签 分类",
+            @"FanqieX.ShelfFilterComic.1":@"书架 筛选栏 漫剧 标签 分类",
+            @"FanqieX.ShelfFilterStar.1":@"书架 筛选栏 星标 标签 分类",
             @"FanqieX.SidebarMessages.1":@"侧栏 我的消息 系统通知 创作通知 全部消息 消息 抽屉 隐藏",
             @"FanqieX.SidebarVideoCreate.1":@"侧栏 视频创作 创作 抽屉 隐藏",
             @"FanqieX.SidebarReadingPref.1":@"侧栏 阅读偏好 偏好 抽屉 隐藏",
@@ -834,6 +853,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         objc_setAssociatedObject(stepper, &BlurSliderKey, slider, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [stepper addTarget:self action:@selector(blurStepperChanged:) forControlEvents:UIControlEventValueChanged];
         [slider addTarget:self action:@selector(blurChanged:) forControlEvents:UIControlEventValueChanged];
+        [slider addTarget:self action:@selector(blurDidEndTracking:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
         UIView *content = cell.contentView;
         title.adjustsFontSizeToFitWidth = YES;
         title.minimumScaleFactor = 0.75;
@@ -996,19 +1016,25 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [self blurChanged:slider];
 }
 
+- (void)blurDidEndTracking:(FQXBlurSlider *)slider {
+    NSInteger strength = FQXBlurPercent(slider.value);
+    [slider setValue:(float)strength animated:NO];
+    [self blurChanged:slider];
+}
+
 - (void)blurChanged:(FQXBlurSlider *)slider {
     NSInteger strength = FQXBlurPercent(slider.value);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSString *key = slider.accessibilityIdentifier;
     if (!key.length) return;
-    // Snap the thumb as well as the value; update controls even at a clamped endpoint.
-    [slider setValue:(float)strength animated:NO];
+    // Keep thumb drag smooth while tracking; snap cleanly on release or stepper change.
+    if (!slider.isTracking) [slider setValue:(float)strength animated:NO];
     slider.stepper.value = strength;
     NSString *text = [NSString stringWithFormat:@"%ld%%", (long)strength];
     slider.valueLabel.text = text;
     slider.accessibilityValue = text;
     slider.stepper.accessibilityValue = text;
-    if ([defaults integerForKey:key] == strength) return;
+    if ([defaults objectForKey:key] && [defaults integerForKey:key] == strength) return;
     [defaults setInteger:strength forKey:key];
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL refresh = NSSelectorFromString(@"refreshForKey:");
