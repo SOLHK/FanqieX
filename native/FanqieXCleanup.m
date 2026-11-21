@@ -1274,7 +1274,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshCommentSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshCommentSel);
         }
-    } else if ([key isEqualToString:BottomDisplayModeKey]) {
+    } else if ([key isEqualToString:BottomDisplayModeKey] ||
+               [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshDockSel = NSSelectorFromString(@"refreshDockAppearance");
         if ([dockMotion respondsToSelector:refreshDockSel]) {

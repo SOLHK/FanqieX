@@ -104,7 +104,6 @@ static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void);
 
 static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
     FQXCommentMaterialStyle material = FQXCurrentCommentMaterialStyle();
-    if (material == FQXCommentMaterialBookBackground) return FQXCommentComposerNative;
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentComposerStylePrefKey];
     if (stored && [stored respondsToSelector:@selector(integerValue)]) {
         NSInteger val = [stored integerValue];
@@ -112,7 +111,7 @@ static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
             return (FQXCommentComposerStyle)val;
         }
     }
-    return material != FQXCommentMaterialNative
+    return (material == FQXCommentMaterialLiquidGlass || material == FQXCommentMaterialGaussianBlur)
         ? FQXCommentComposerDockedGlass
         : FQXCommentComposerNative;
 }
@@ -3759,13 +3758,29 @@ static const void *FQXMineViewportSavedClipsKey = &FQXMineViewportSavedClipsKey;
 static const void *FQXMineFlowStateKey = &FQXMineFlowStateKey;
 static const void *FQXMineScrollTrackedKey = &FQXMineScrollTrackedKey;
 
+static UIView *FQXMineShortcutCardForView(UIView *view) {
+    Class shortcutCls = NSClassFromString(@"SSMyUserShortcutCell");
+    Class cell1Cls = NSClassFromString(@"SSMyUserCollectionView1Cell");
+    SEL vipSel = sel_registerName("lynxVipView");
+    for (UIView *parent = view; parent; parent = parent.superview) {
+        if ((shortcutCls && [parent isKindOfClass:shortcutCls]) ||
+            (cell1Cls && [parent isKindOfClass:cell1Cls] && ![parent respondsToSelector:vipSel])) {
+            return parent;
+        }
+    }
+    return nil;
+}
+
 static UIView *FQXMineShortcutFold(UIView *view) {
     UIView *fold = nil;
+    Class foldCls = NSClassFromString(@"SSScrollFoldFuncView");
+    Class shortcutCls = NSClassFromString(@"SSMyUserShortcutCell");
+    Class cell1Cls = NSClassFromString(@"SSMyUserCollectionView1Cell");
+    SEL vipSel = sel_registerName("lynxVipView");
     for (UIView *parent = view; parent; parent = parent.superview) {
-        if ([parent isKindOfClass:NSClassFromString(@"SSScrollFoldFuncView")]) fold = parent;
-        if ([parent isKindOfClass:NSClassFromString(@"SSMyUserShortcutCell")] ||
-            ([parent isKindOfClass:NSClassFromString(@"SSMyUserCollectionView1Cell")] &&
-             ![parent respondsToSelector:sel_registerName("lynxVipView")])) return fold;
+        if (foldCls && [parent isKindOfClass:foldCls]) fold = parent;
+        if ((shortcutCls && [parent isKindOfClass:shortcutCls]) ||
+            (cell1Cls && [parent isKindOfClass:cell1Cls] && ![parent respondsToSelector:vipSel])) return fold;
     }
     return nil;
 }
@@ -3780,7 +3795,8 @@ static UIView *FQXMineShortcutFold(UIView *view) {
 + (BOOL)applyToView:(UIView *)view enabled:(BOOL)enabled {
     NSNumber *saved = objc_getAssociatedObject(view, FQXMineViewportSavedClipsKey);
     UIView *fold = FQXMineShortcutFold(view);
-    BOOL viewport = view == fold || ([view isKindOfClass:UICollectionView.class] && fold);
+    UIView *host = fold ?: FQXMineShortcutCardForView(view);
+    BOOL viewport = (fold && view == fold) || ([view isKindOfClass:UICollectionView.class] && host != nil);
     if (!viewport && !saved) return NO;
     CALayer *mask = objc_getAssociatedObject(view, FQXMineViewportMaskKey);
     if (!enabled || !viewport || !view.superview) {
@@ -3808,10 +3824,10 @@ static UIView *FQXMineShortcutFold(UIView *view) {
         return YES;
     }
     CGRect target = bounds;
-    if (view != fold) {
+    if (view != host) {
         // Reserve badge headroom only where the actual card has room. Never
         // expose an extra row below the collection as the former +/-28 mask did.
-        CGRect card = [fold convertRect:fold.bounds toView:view];
+        CGRect card = [host convertRect:host.bounds toView:view];
         CGFloat top = MAX(CGRectGetMinY(card), CGRectGetMinY(bounds) - 12.0);
         target = CGRectIntersection(card, CGRectMake(CGRectGetMinX(bounds), top,
                      CGRectGetWidth(bounds), CGRectGetMaxY(bounds) - top));
@@ -3828,39 +3844,128 @@ static UIView *FQXMineShortcutFold(UIView *view) {
 @end
 
 @interface FQXMineShortcutFlowState : NSObject
-@property(nonatomic, weak) UICollectionViewFlowLayout *layout;
-@property(nonatomic, weak) UIPageControl *pageControl;
+@property(nonatomic, weak) UICollectionViewLayout *layout;
+@property(nonatomic, weak) UIView *pageControl;
 @property(nonatomic) CGSize savedItemSize;
 @property(nonatomic) UIEdgeInsets savedSectionInset;
+@property(nonatomic) CGFloat savedLineSpacing;
+@property(nonatomic) BOOL hasSavedFlowProps;
+@property(nonatomic) UIEdgeInsets savedContentInset;
+@property(nonatomic) BOOL hasSavedContentInset;
 @property(nonatomic) CGSize nativeItemSize;
 @property(nonatomic) CGSize appliedItemSize;
 @property(nonatomic) CGSize viewportSize;
+@property(nonatomic) CGFloat viewportHeight;
+@property(nonatomic) CGFloat slotWidth;
+@property(nonatomic) CGFloat itemHeight;
+@property(nonatomic) CGFloat topInset;
 @property(nonatomic) BOOL savedPaging;
 @property(nonatomic) NSInteger savedPageCount;
 @property(nonatomic) NSUInteger columns;
+@property(nonatomic) NSUInteger pages;
+@property(nonatomic) NSUInteger totalCount;
 @property(nonatomic) BOOL active;
 @end
 @implementation FQXMineShortcutFlowState
 @end
 
-static UIPageControl *FQXMinePageControl(UIView *root, NSInteger depth) {
-    if ([root isKindOfClass:UIPageControl.class]) return (UIPageControl *)root;
-    if (depth == 0 || [root isKindOfClass:UICollectionView.class]) return nil;
+static BOOL FQXViewIsPageControlLike(UIView *view) {
+    if ([view isKindOfClass:UIPageControl.class]) return YES;
+    if (view.hidden || ![view isKindOfClass:UIView.class]) return NO;
+    SEL setPages = @selector(setNumberOfPages:);
+    SEL setCur = @selector(setCurrentPage:);
+    SEL getPages = @selector(numberOfPages);
+    Class cls = object_getClass(view);
+    Method m1 = class_getInstanceMethod(cls, setPages);
+    Method m2 = class_getInstanceMethod(cls, setCur);
+    Method m3 = class_getInstanceMethod(cls, getPages);
+    if (!m1 || !m2 || !m3) return NO;
+    const char *e1 = method_getTypeEncoding(m1);
+    const char *e2 = method_getTypeEncoding(m2);
+    const char *e3 = method_getTypeEncoding(m3);
+    BOOL ok1 = e1 && (strcmp(e1, "v24@0:8q16") == 0 || strcmp(e1, "v24@0:8Q16") == 0);
+    BOOL ok2 = e2 && (strcmp(e2, "v24@0:8q16") == 0 || strcmp(e2, "v24@0:8Q16") == 0);
+    BOOL ok3 = e3 && (strcmp(e3, "q16@0:8") == 0 || strcmp(e3, "Q16@0:8") == 0);
+    return ok1 && ok2 && ok3;
+}
+
+static UIView *FQXFindMinePageControlInTree(UIView *root, NSInteger depth) {
+    if (FQXViewIsPageControlLike(root)) return root;
+    if (depth <= 0 || [root isKindOfClass:UICollectionView.class]) return nil;
     for (UIView *child in root.subviews) {
-        UIPageControl *page = FQXMinePageControl(child, depth - 1);
-        if (page) return page;
+        UIView *found = FQXFindMinePageControlInTree(child, depth - 1);
+        if (found) return found;
     }
     return nil;
 }
 
+static UIView *FQXMinePageControl(UIView *fold, UIView *card) {
+    UIView *found = fold ? FQXFindMinePageControlInTree(fold, 4) : nil;
+    if (!found && card && card != fold) {
+        found = FQXFindMinePageControlInTree(card, 4);
+    }
+    return found;
+}
+
+static NSInteger FQXReadMinePageControlCount(UIView *pc) {
+    if (!pc) return 0;
+    if ([pc isKindOfClass:UIPageControl.class]) return [(UIPageControl *)pc numberOfPages];
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(pc, @selector(numberOfPages));
+}
+
+static void FQXUpdateMinePageControl(UIView *pc, NSInteger pages, NSInteger current) {
+    if (!pc || pages <= 0) return;
+    if ([pc isKindOfClass:UIPageControl.class]) {
+        UIPageControl *uipc = (UIPageControl *)pc;
+        if (uipc.numberOfPages != pages) uipc.numberOfPages = pages;
+        if (uipc.currentPage != current) uipc.currentPage = current;
+        return;
+    }
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(pc, @selector(setNumberOfPages:), pages);
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(pc, @selector(setCurrentPage:), current);
+}
+
 static UICollectionView *FQXFindMineCollectionView(UIView *root, NSInteger depth) {
     if ([root isKindOfClass:UICollectionView.class]) return (UICollectionView *)root;
-    if (depth == 0) return nil;
+    if (depth <= 0) return nil;
     for (UIView *child in root.subviews) {
         UICollectionView *found = FQXFindMineCollectionView(child, depth - 1);
         if (found) return found;
     }
     return nil;
+}
+
+static NSUInteger FQXMineTotalItemCount(UICollectionView *collection) {
+    if (!collection) return 0;
+    NSInteger sections = [collection numberOfSections];
+    NSUInteger total = 0;
+    for (NSInteger s = 0; s < sections; ++s) {
+        NSInteger n = [collection numberOfItemsInSection:s];
+        if (n > 0) total += (NSUInteger)n;
+    }
+    return total;
+}
+
+static NSUInteger FQXMineFlatIndexForIndexPath(UICollectionView *collection, NSIndexPath *indexPath) {
+    if (!collection || !indexPath || indexPath.section < 0 || indexPath.item < 0) return NSNotFound;
+    NSInteger sections = [collection numberOfSections];
+    if (indexPath.section >= sections) return NSNotFound;
+    NSUInteger flat = 0;
+    for (NSInteger s = 0; s < indexPath.section; ++s) {
+        NSInteger n = [collection numberOfItemsInSection:s];
+        if (n > 0) flat += (NSUInteger)n;
+    }
+    NSInteger inSec = [collection numberOfItemsInSection:indexPath.section];
+    if (indexPath.item >= inSec) return NSNotFound;
+    return flat + (NSUInteger)indexPath.item;
+}
+
+static CGRect FQXMineFrameForFlatIndex(FQXMineShortcutFlowState *state, NSUInteger flatIndex) {
+    NSUInteger cols = MAX(1u, state.columns);
+    NSUInteger page = flatIndex / cols;
+    NSUInteger col = flatIndex % cols;
+    CGFloat x = (CGFloat)page * state.viewportSize.width + (CGFloat)col * state.slotWidth;
+    return CGRectMake(x, state.topInset, state.slotWidth, state.itemHeight);
 }
 
 static BOOL FQXInstallMineItemSizeHook(id delegate) {
@@ -3907,7 +4012,7 @@ static BOOL FQXInstallMineSectionInsetHook(id delegate) {
             owner, selector, collection, layout, section);
         FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
         if (state.active && state.layout == layout && FQXGlassEnabled()) {
-            return UIEdgeInsetsMake(native.top, 0.0, native.bottom, 0.0);
+            return UIEdgeInsetsMake(state.topInset, 0.0, native.bottom, 0.0);
         }
         return native;
     });
@@ -3919,107 +4024,260 @@ static BOOL FQXInstallMineSectionInsetHook(id delegate) {
     return YES;
 }
 
+static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
+    if (!layout) return;
+    static NSMutableSet<NSString *> *installedSize;
+    static NSMutableSet<NSString *> *installedItem;
+    static NSMutableSet<NSString *> *installedRect;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        installedSize = [NSMutableSet set];
+        installedItem = [NSMutableSet set];
+        installedRect = [NSMutableSet set];
+    });
+    Class cls = object_getClass(layout);
+    NSString *name = NSStringFromClass(cls);
+    if (!name.length) return;
+
+    if (![installedSize containsObject:name]) {
+        SEL sel = @selector(collectionViewContentSize);
+        __block IMP origSize = NULL;
+        IMP sizeHook = imp_implementationWithBlock(^CGSize(UICollectionViewLayout *owner) {
+            UICollectionView *cv = owner.collectionView;
+            FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
+            if (state.active && state.layout == owner && FQXGlassEnabled() &&
+                state.pages > 0 && state.viewportSize.width > 0.0 && state.viewportHeight > 0.0) {
+                return CGSizeMake(state.viewportSize.width * (CGFloat)state.pages, state.viewportHeight);
+            }
+            return ((CGSize (*)(id, SEL))origSize)(owner, sel);
+        });
+        if (FQXInstallOwnedHook(cls, sel, NO, "{CGSize=dd}16@0:8", sizeHook, &origSize)) {
+            [installedSize addObject:name];
+        } else {
+            imp_removeBlock(sizeHook);
+        }
+    }
+
+    if (![installedItem containsObject:name]) {
+        SEL sel = @selector(layoutAttributesForItemAtIndexPath:);
+        __block IMP origItem = NULL;
+        IMP itemHook = imp_implementationWithBlock(^UICollectionViewLayoutAttributes *(
+            UICollectionViewLayout *owner, NSIndexPath *indexPath) {
+            UICollectionViewLayoutAttributes *native =
+                ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))origItem)(owner, sel, indexPath);
+            UICollectionView *cv = owner.collectionView;
+            FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
+            if (!state.active || state.layout != owner || !FQXGlassEnabled() ||
+                !state.columns || state.slotWidth < 44.0) {
+                return native;
+            }
+            NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(cv, indexPath);
+            if (flatIdx == NSNotFound) return native;
+            UICollectionViewLayoutAttributes *attrs = native
+                ? [native copy]
+                : [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
+            attrs.frame = FQXMineFrameForFlatIndex(state, flatIdx);
+            attrs.hidden = NO;
+            attrs.alpha = 1.0;
+            return attrs;
+        });
+        if (FQXInstallOwnedHook(cls, sel, NO, "@24@0:8@16", itemHook, &origItem)) {
+            [installedItem addObject:name];
+        } else {
+            imp_removeBlock(itemHook);
+        }
+    }
+
+    if (![installedRect containsObject:name]) {
+        SEL sel = @selector(layoutAttributesForElementsInRect:);
+        __block IMP origRect = NULL;
+        IMP rectHook = imp_implementationWithBlock(^NSArray<UICollectionViewLayoutAttributes *> *(
+            UICollectionViewLayout *owner, CGRect rect) {
+            NSArray<UICollectionViewLayoutAttributes *> *native =
+                ((NSArray *(*)(id, SEL, CGRect))origRect)(owner, sel, rect);
+            UICollectionView *cv = owner.collectionView;
+            FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
+            if (!state.active || state.layout != owner || !FQXGlassEnabled() ||
+                !state.columns || state.slotWidth < 44.0) {
+                return native;
+            }
+            NSMutableArray<UICollectionViewLayoutAttributes *> *result = [NSMutableArray array];
+            for (UICollectionViewLayoutAttributes *attr in native) {
+                if (attr.representedElementCategory != UICollectionElementCategoryCell) {
+                    [result addObject:[attr copy]];
+                }
+            }
+            NSInteger sections = [cv numberOfSections];
+            NSUInteger flatIdx = 0;
+            for (NSInteger s = 0; s < sections; ++s) {
+                NSInteger countInSec = [cv numberOfItemsInSection:s];
+                for (NSInteger item = 0; item < countInSec; ++item) {
+                    CGRect frame = FQXMineFrameForFlatIndex(state, flatIdx);
+                    if (CGRectIntersectsRect(frame, rect)) {
+                        NSIndexPath *ip = [NSIndexPath indexPathForItem:item inSection:s];
+                        UICollectionViewLayoutAttributes *cellAttr = [owner layoutAttributesForItemAtIndexPath:ip];
+                        if (cellAttr) [result addObject:cellAttr];
+                    }
+                    flatIdx++;
+                }
+            }
+            return result;
+        });
+        if (FQXInstallOwnedHook(cls, sel, NO, "@48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", rectHook, &origRect)) {
+            [installedRect addObject:name];
+        } else {
+            imp_removeBlock(rectHook);
+        }
+    }
+}
+
 static void FQXRestoreMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     if (!state) return;
     state.active = NO;
     if (state.layout == collection.collectionViewLayout) {
-        if (CGSizeEqualToSize(state.layout.itemSize, state.appliedItemSize)) {
-            state.layout.itemSize = state.savedItemSize;
+        if (state.hasSavedFlowProps && [state.layout isKindOfClass:UICollectionViewFlowLayout.class]) {
+            UICollectionViewFlowLayout *flow = (UICollectionViewFlowLayout *)state.layout;
+            if (CGSizeEqualToSize(flow.itemSize, state.appliedItemSize)) {
+                flow.itemSize = state.savedItemSize;
+            }
+            flow.sectionInset = state.savedSectionInset;
+            flow.minimumLineSpacing = state.savedLineSpacing;
         }
-        state.layout.sectionInset = state.savedSectionInset;
         [state.layout invalidateLayout];
     }
+    if (state.hasSavedContentInset) {
+        UIEdgeInsets ins = collection.contentInset;
+        ins.left = state.savedContentInset.left;
+        ins.right = state.savedContentInset.right;
+        collection.contentInset = ins;
+    }
     collection.pagingEnabled = state.savedPaging;
-    state.pageControl.numberOfPages = state.savedPageCount;
+    FQXUpdateMinePageControl(state.pageControl, state.savedPageCount, 0);
     objc_setAssociatedObject(collection, FQXMineFlowStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static void FQXCompleteMineFlowPage(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     if (!state.active || state.layout != collection.collectionViewLayout) return;
-    NSUInteger count = collection.numberOfSections == 1 ? [collection numberOfItemsInSection:0] : 0;
+    NSUInteger count = FQXMineTotalItemCount(collection);
     if (!count || !state.columns) return;
     NSUInteger pages = (count + state.columns - 1) / state.columns;
+    state.totalCount = count;
+    state.pages = pages;
     CGFloat width = CGRectGetWidth(collection.bounds);
-    CGSize contentSize = CGSizeMake(width * pages, CGRectGetHeight(collection.bounds));
+    CGFloat vh = state.viewportHeight > 0.0 ? state.viewportHeight : CGRectGetHeight(collection.bounds);
+    CGSize contentSize = CGSizeMake(width * pages, vh);
     if (!CGSizeEqualToSize(collection.contentSize, contentSize)) collection.contentSize = contentSize;
     if (state.pageControl) {
-        state.pageControl.numberOfPages = pages;
-        state.pageControl.currentPage = MAX(0, MIN((NSInteger)pages - 1,
+        NSInteger cur = MAX(0, MIN((NSInteger)pages - 1,
             (NSInteger)llround(collection.contentOffset.x / MAX(1.0, width))));
+        FQXUpdateMinePageControl(state.pageControl, (NSInteger)pages, cur);
     }
 }
 
-static void FQXSyncMineFlow(UIView *fold, UICollectionView *collection) {
+static void FQXSyncMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-    UICollectionViewFlowLayout *layout = (id)collection.collectionViewLayout;
-    // Custom folding layouts own their model-to-page mapping. Restrict geometry
-    // changes to horizontal flow layouts within this profile shortcut viewport.
-    BOOL supported = FQXGlassEnabled() && FQXMineShortcutFold(collection) == fold &&
-        [layout isKindOfClass:UICollectionViewFlowLayout.class] &&
-        layout.scrollDirection == UICollectionViewScrollDirectionHorizontal &&
-        CGSizeEqualToSize(layout.estimatedItemSize, CGSizeZero) && collection.numberOfSections == 1 &&
-        CGSizeEqualToSize(layout.headerReferenceSize, CGSizeZero) &&
-        CGSizeEqualToSize(layout.footerReferenceSize, CGSizeZero) &&
-        fabs(collection.adjustedContentInset.left) < 0.5 && fabs(collection.adjustedContentInset.right) < 0.5 &&
-        CGRectGetHeight(collection.bounds) <= 144.0;
+    UICollectionViewLayout *layout = collection.collectionViewLayout;
+    UIView *fold = FQXMineShortcutFold(collection);
+    UIView *card = FQXMineShortcutCardForView(collection);
+    NSUInteger count = FQXMineTotalItemCount(collection);
+    CGFloat width = CGRectGetWidth(collection.bounds);
+    CGFloat boundsHeight = CGRectGetHeight(collection.bounds);
+    BOOL supported = FQXGlassEnabled() && card != nil && layout != nil &&
+        count > 0 && count <= 40 && width >= 176.0 && boundsHeight >= 44.0 && boundsHeight <= 180.0;
     if (!supported || (state && state.layout != layout)) {
         FQXRestoreMineFlow(collection);
         if (!supported) return;
         state = nil;
     }
+
+    UICollectionViewFlowLayout *flow = [layout isKindOfClass:UICollectionViewFlowLayout.class]
+        ? (UICollectionViewFlowLayout *)layout : nil;
     id<UICollectionViewDelegateFlowLayout> delegate = (id)collection.delegate;
-    UIEdgeInsets inset = layout.sectionInset;
-    CGFloat spacing = layout.minimumLineSpacing;
-    if ([delegate respondsToSelector:@selector(collectionView:layout:insetForSectionAtIndex:)])
-        inset = [delegate collectionView:collection layout:layout insetForSectionAtIndex:0];
-    if ([delegate respondsToSelector:@selector(collectionView:layout:minimumLineSpacingForSectionAtIndex:)])
-        spacing = [delegate collectionView:collection layout:layout minimumLineSpacingForSectionAtIndex:0];
-    if (spacing < 0.0) {
+    UIEdgeInsets inset = flow ? flow.sectionInset : UIEdgeInsetsZero;
+    if (flow && [delegate respondsToSelector:@selector(collectionView:layout:insetForSectionAtIndex:)]) {
+        inset = [delegate collectionView:collection layout:flow insetForSectionAtIndex:0];
+    }
+    CGFloat topInset = MAX(0.0, inset.top);
+    CGFloat bottomInset = MAX(0.0, inset.bottom);
+    CGFloat contentHeight = boundsHeight - collection.adjustedContentInset.top - collection.adjustedContentInset.bottom;
+    if (contentHeight < 44.0) contentHeight = boundsHeight;
+    if (contentHeight - topInset - bottomInset < 44.0) {
+        topInset = 0.0;
+        bottomInset = 0.0;
+    }
+    FQXMineShortcutPlan plan = FQXPlanMineShortcuts(width, contentHeight, width / 5.0,
+                                                    0.0, topInset, bottomInset, count);
+    if (!plan.valid || plan.columns != 4) {
         FQXRestoreMineFlow(collection);
         return;
     }
-    NSUInteger count = [collection numberOfItemsInSection:0];
-    if (!count) return;
-    CGSize nativeSize = state ? state.nativeItemSize : layout.itemSize;
-    if (!state && [delegate respondsToSelector:@selector(collectionView:layout:sizeForItemAtIndexPath:)])
-        nativeSize = [delegate collectionView:collection layout:layout
-                         sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
-    CGFloat contentHeight = CGRectGetHeight(collection.bounds) -
-        collection.adjustedContentInset.top - collection.adjustedContentInset.bottom;
-    FQXMineShortcutPlan plan = FQXPlanMineShortcuts(CGRectGetWidth(collection.bounds),
-        contentHeight, nativeSize.width, spacing, inset.top, inset.bottom, count);
-    if (!plan.valid || !FQXInstallMineItemSizeHook(delegate)) {
-        FQXRestoreMineFlow(collection);
-        return;
+
+    FQXInstallMineLayoutHooks(layout);
+    if (flow) {
+        FQXInstallMineItemSizeHook(delegate);
+        FQXInstallMineSectionInsetHook(delegate);
     }
-    FQXInstallMineSectionInsetHook(delegate);
+
     if (!state) {
         state = [FQXMineShortcutFlowState new];
         state.layout = layout;
-        state.savedItemSize = layout.itemSize;
-        state.savedSectionInset = layout.sectionInset;
-        state.nativeItemSize = nativeSize;
+        if (flow) {
+            state.savedItemSize = flow.itemSize;
+            state.savedSectionInset = flow.sectionInset;
+            state.savedLineSpacing = flow.minimumLineSpacing;
+            state.hasSavedFlowProps = YES;
+        }
+        state.savedContentInset = collection.contentInset;
+        state.hasSavedContentInset = YES;
+        state.nativeItemSize = flow ? flow.itemSize : CGSizeZero;
         state.savedPaging = collection.pagingEnabled;
-        state.pageControl = FQXMinePageControl(fold, 3);
-        state.savedPageCount = state.pageControl.numberOfPages;
+        state.pageControl = FQXMinePageControl(fold, card);
+        state.savedPageCount = FQXReadMinePageControlCount(state.pageControl);
         objc_setAssociatedObject(collection, FQXMineFlowStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!state.pageControl) {
+        state.pageControl = FQXMinePageControl(fold, card);
+        if (state.pageControl) state.savedPageCount = FQXReadMinePageControlCount(state.pageControl);
     }
+
     CGSize itemSize = CGSizeMake(plan.itemWidth, plan.itemHeight);
-    UIEdgeInsets activeInset = UIEdgeInsetsMake(inset.top, 0.0, inset.bottom, 0.0);
-    BOOL insetChanged = !UIEdgeInsetsEqualToEdgeInsets(layout.sectionInset, activeInset);
-    BOOL changed = !state.active || insetChanged ||
-                   !CGSizeEqualToSize(state.appliedItemSize, itemSize) ||
+    UIEdgeInsets activeInset = UIEdgeInsetsMake(topInset, 0.0, bottomInset, 0.0);
+    BOOL flowChanged = flow && (
+        !UIEdgeInsetsEqualToEdgeInsets(flow.sectionInset, activeInset) ||
+        !CGSizeEqualToSize(flow.itemSize, itemSize) ||
+        fabs(flow.minimumLineSpacing) > 0.25);
+    BOOL changed = !state.active || flowChanged ||
+                   state.columns != plan.columns ||
+                   state.pages != plan.pages ||
+                   state.totalCount != count ||
+                   fabs(state.slotWidth - plan.itemWidth) > 0.25 ||
+                   fabs(state.itemHeight - plan.itemHeight) > 0.25 ||
+                   fabs(state.topInset - topInset) > 0.25 ||
                    !CGSizeEqualToSize(state.viewportSize, collection.bounds.size);
     CGFloat oldWidth = state.viewportSize.width;
     state.columns = plan.columns;
+    state.pages = plan.pages;
+    state.totalCount = count;
+    state.slotWidth = plan.itemWidth;
+    state.itemHeight = plan.itemHeight;
+    state.topInset = topInset;
     state.appliedItemSize = itemSize;
     state.viewportSize = collection.bounds.size;
+    state.viewportHeight = contentHeight;
     state.active = YES;
-    collection.pagingEnabled = YES;
-    if (!CGSizeEqualToSize(layout.itemSize, itemSize)) layout.itemSize = itemSize;
-    if (insetChanged) layout.sectionInset = activeInset;
+    if (!collection.pagingEnabled) collection.pagingEnabled = YES;
+    UIEdgeInsets cInset = collection.contentInset;
+    if (fabs(cInset.left) > 0.5 || fabs(cInset.right) > 0.5) {
+        cInset.left = 0.0;
+        cInset.right = 0.0;
+        collection.contentInset = cInset;
+    }
+    if (flow) {
+        if (!CGSizeEqualToSize(flow.itemSize, itemSize)) flow.itemSize = itemSize;
+        if (!UIEdgeInsetsEqualToEdgeInsets(flow.sectionInset, activeInset)) flow.sectionInset = activeInset;
+        if (fabs(flow.minimumLineSpacing) > 0.25) flow.minimumLineSpacing = 0.0;
+    }
     if (changed) {
         // Preserve the page on rotation, not its obsolete absolute point offset.
         if (oldWidth > 0.0 && oldWidth != state.viewportSize.width &&
@@ -4044,9 +4302,15 @@ static void FQXInstallMineScrollHook(UICollectionView *collection) {
     if ([installed containsObject:name]) return;
     __block IMP original = NULL;
     IMP hook = imp_implementationWithBlock(^(UICollectionView *view) {
+        BOOL tracked = [objc_getAssociatedObject(view, FQXMineScrollTrackedKey) boolValue];
+        UIView *card = tracked ? FQXMineShortcutCardForView(view) : nil;
+        BOOL enabled = tracked && FQXGlassEnabled() && card != nil;
+        if (enabled && CGRectGetWidth(view.bounds) >= 176.0) {
+            FQXSyncMineFlow(view);
+        }
         ((void (*)(id, SEL))original)(view, @selector(layoutSubviews));
-        if (![objc_getAssociatedObject(view, FQXMineScrollTrackedKey) boolValue]) return;
-        BOOL enabled = FQXGlassEnabled() && FQXMineShortcutFold(view);
+        if (!tracked) return;
+        enabled = FQXGlassEnabled() && (FQXMineShortcutCardForView(view) != nil);
         [FQXMineShortcutViewport applyToView:view enabled:enabled];
         if (enabled) FQXCompleteMineFlowPage(view);
         else FQXRestoreMineFlow(view);
@@ -4063,13 +4327,32 @@ static void HookScrollFoldLayout(UIView *self, SEL _cmd) {
     [FQXMineShortcutViewport applyToView:self enabled:enabled];
     UICollectionView *collection = FQXObjGet(self, "collectionView");
     if (![collection isKindOfClass:UICollectionView.class]) {
-        collection = FQXFindMineCollectionView(self, 2);
+        collection = FQXFindMineCollectionView(self, 4);
     }
     if (![collection isKindOfClass:UICollectionView.class]) return;
     if (enabled) {
         FQXInstallMineScrollHook(collection);
-        FQXSyncMineFlow(self, collection);
+        FQXSyncMineFlow(collection);
     } else FQXRestoreMineFlow(collection);
+    [FQXMineShortcutViewport applyToView:collection enabled:enabled];
+}
+
+static void (*OrigMineShortcutCardLayout)(id, SEL);
+static void HookMineShortcutCardLayout(UIView *self, SEL _cmd) {
+    if (OrigMineShortcutCardLayout) OrigMineShortcutCardLayout(self, _cmd);
+    if (!FQXMineShortcutCardForView(self)) return;
+    UICollectionView *collection = FQXObjGet(self, "collectionView");
+    if (![collection isKindOfClass:UICollectionView.class]) {
+        collection = FQXFindMineCollectionView(self, 4);
+    }
+    if (![collection isKindOfClass:UICollectionView.class]) return;
+    BOOL enabled = FQXGlassEnabled();
+    if (enabled) {
+        FQXInstallMineScrollHook(collection);
+        FQXSyncMineFlow(collection);
+    } else {
+        FQXRestoreMineFlow(collection);
+    }
     [FQXMineShortcutViewport applyToView:collection enabled:enabled];
 }
 
@@ -4077,6 +4360,20 @@ static void (*OrigMineFunCellLayoutForBadge)(id, SEL);
 static void HookMineFunCellLayoutForBadge(UICollectionViewCell *self, SEL _cmd) {
     if (OrigMineFunCellLayoutForBadge) OrigMineFunCellLayoutForBadge(self, _cmd);
     if (!FQXGlassEnabled()) return;
+    UICollectionView *ownerCV = nil;
+    for (UIView *cur = self.superview; cur && !ownerCV; cur = cur.superview) {
+        if ([cur isKindOfClass:UICollectionView.class]) ownerCV = (UICollectionView *)cur;
+    }
+    if (ownerCV && FQXMineShortcutCardForView(ownerCV)) {
+        FQXMineShortcutFlowState *state = objc_getAssociatedObject(ownerCV, FQXMineFlowStateKey);
+        if (!state || !state.active ||
+            !CGSizeEqualToSize(state.viewportSize, ownerCV.bounds.size) ||
+            state.totalCount != FQXMineTotalItemCount(ownerCV)) {
+            FQXInstallMineScrollHook(ownerCV);
+            FQXSyncMineFlow(ownerCV);
+            [FQXMineShortcutViewport applyToView:ownerCV enabled:YES];
+        }
+    }
     UIView *content = self.contentView;
     if (!content) return;
     UIView *glyph = FQXObjGet(self, "image") ?: FQXObjGet(self, "productImage");
@@ -9692,6 +9989,7 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQReaderSaasNavigationView", "layoutSubviews", "v16@0:8", OrigReaderNavLayoutMotion, HookReaderNavLayoutMotion);
         HOOK_INST("SSReaderNavigationBarCommunitySwitchBtnInsertObject", "updateHotCommentBubble:", "v20@0:8B16", OrigUpdateReaderHotCommentBubble, HookUpdateReaderHotCommentBubble);
         HOOK_INST("SSScrollFoldFuncView", "layoutSubviews", "v16@0:8", OrigScrollFoldLayout, HookScrollFoldLayout);
+        HOOK_INST("SSMyUserShortcutCell", "layoutSubviews", "v16@0:8", OrigMineShortcutCardLayout, HookMineShortcutCardLayout);
         HOOK_INST("SSMyUserCollectionViewFunCell", "layoutSubviews", "v16@0:8", OrigMineFunCellLayoutForBadge, HookMineFunCellLayoutForBadge);
 
         // 5b. Short Drama progress bar right-overflow clamp & cold-start spacing sync
