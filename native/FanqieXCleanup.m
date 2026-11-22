@@ -3,6 +3,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <pthread.h>
+#include <stdatomic.h>
 #import "FQXHookInstaller.h"
 extern void FQXInstallContentCleanupHooks(void);
 extern void FQXInstallMotionAndAudioHooks(void);
@@ -105,16 +106,21 @@ static NSString *const DramaHeaderBlurKey = @"FanqieX.DramaHeaderBlur.1";
 
 static pthread_mutex_t FQXOptionCacheLock = PTHREAD_MUTEX_INITIALIZER;
 static NSMutableDictionary<NSString *, id> *FQXOptionCache = nil;
+static _Atomic uint64_t FQXOptionCacheGen = 1;
+static uint64_t FQXOptionCacheSeenGen = 0;
 
 static void FQXInvalidateOptionCache(void) {
-    pthread_mutex_lock(&FQXOptionCacheLock);
-    [FQXOptionCache removeAllObjects];
-    pthread_mutex_unlock(&FQXOptionCacheLock);
+    atomic_fetch_add_explicit(&FQXOptionCacheGen, 1, memory_order_release);
 }
 
 static BOOL Option(NSString *key, BOOL defaultValue) {
     if (!key.length) return defaultValue;
+    uint64_t gen = atomic_load_explicit(&FQXOptionCacheGen, memory_order_acquire);
     pthread_mutex_lock(&FQXOptionCacheLock);
+    if (FQXOptionCacheSeenGen != gen) {
+        [FQXOptionCache removeAllObjects];
+        FQXOptionCacheSeenGen = gen;
+    }
     id cached = FQXOptionCache[key];
     pthread_mutex_unlock(&FQXOptionCacheLock);
     if (cached) {
@@ -123,8 +129,10 @@ static BOOL Option(NSString *key, BOOL defaultValue) {
     id value = [NSUserDefaults.standardUserDefaults objectForKey:key];
     id stored = [value isKindOfClass:NSNumber.class] ? @(((NSNumber *)value).boolValue) : (id)NSNull.null;
     pthread_mutex_lock(&FQXOptionCacheLock);
-    if (!FQXOptionCache) FQXOptionCache = [NSMutableDictionary dictionaryWithCapacity:64];
-    FQXOptionCache[key] = stored;
+    if (FQXOptionCacheSeenGen == gen) {
+        if (!FQXOptionCache) FQXOptionCache = [NSMutableDictionary dictionaryWithCapacity:64];
+        FQXOptionCache[key] = stored;
+    }
     pthread_mutex_unlock(&FQXOptionCacheLock);
     return stored == NSNull.null ? defaultValue : [stored boolValue];
 }
@@ -242,10 +250,11 @@ static void ShelfRefreshVisibleHeaderLayout(UIView *cv) {
     static Class funcCls = Nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ funcCls = NSClassFromString(@"SSBookShelfFunctionCell"); });
-    for (UICollectionViewCell *cell in collection.visibleCells) {
-        if (!funcCls || [cell isKindOfClass:funcCls]) {
-            [cell setNeedsLayout];
-            id header = HostObject(cell, @selector(headerView));
+    for (UIView *sub in collection.subviews) {
+        if (![sub isKindOfClass:UICollectionViewCell.class]) continue;
+        if (!funcCls || [sub isKindOfClass:funcCls]) {
+            [sub setNeedsLayout];
+            id header = HostObject(sub, @selector(headerView));
             if ([header isKindOfClass:UIView.class]) [(UIView *)header setNeedsLayout];
         }
     }
@@ -303,9 +312,10 @@ static BOOL ShelfHasRealBooksNow(id controller, id collectionViewObj) {
             }
         }
     }
-    if ([collectionViewObj isKindOfClass:UICollectionView.class]) {
-        for (UICollectionViewCell *cell in [(UICollectionView *)collectionViewObj visibleCells]) {
-            id m = HostObject(cell, @selector(cellModel)) ?: HostObject(cell, @selector(model));
+    if ([collectionViewObj isKindOfClass:UIView.class]) {
+        for (UIView *sub in [(UIView *)collectionViewObj subviews]) {
+            if (![sub isKindOfClass:UICollectionViewCell.class]) continue;
+            id m = HostObject(sub, @selector(cellModel)) ?: HostObject(sub, @selector(model));
             if (ShelfModelIsRealBook(m)) {
                 objc_setAssociatedObject(controller, &ShelfColdStartSawRealBookKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 return YES;
@@ -373,42 +383,63 @@ static void ShelfSetColdStartEmptyMuted(id controller, UIView *view, BOOL mute) 
     }
 }
 
-static void ShelfRestoreColdStartMutedViews(id controller) {
+static void ShelfRestoreColdStartMutedViews(id controller, BOOL allowHeaderRefresh) {
     if (!controller) return;
     NSHashTable *views = objc_getAssociatedObject(controller, &ShelfColdStartMutedViewsKey);
-    for (UIView *view in views) {
+    if (!views) return;
+    NSArray *snapshot = [views allObjects];
+    objc_setAssociatedObject(controller, &ShelfColdStartMutedViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    BOOL restoredAny = NO;
+    for (UIView *view in snapshot) {
         if ([view isKindOfClass:UIView.class] && objc_getAssociatedObject(view, &ShelfColdStartViewMutedKey)) {
             if (view.alpha < 0.999) view.alpha = 1.0;
             objc_setAssociatedObject(view, &ShelfColdStartViewMutedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            restoredAny = YES;
         }
     }
-    objc_setAssociatedObject(controller, &ShelfColdStartMutedViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    UIView *cv = HostObject(controller, @selector(collectionView));
-    if ([cv isKindOfClass:UICollectionView.class]) ShelfRefreshVisibleHeaderLayout(cv);
+    if (restoredAny && allowHeaderRefresh) {
+        __weak id weakController = controller;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            id strongController = weakController;
+            if (!strongController) return;
+            UIView *cv = HostObject(strongController, @selector(collectionView));
+            if ([cv isKindOfClass:UICollectionView.class]) ShelfRefreshVisibleHeaderLayout(cv);
+        });
+    }
 }
 
+static void ShelfEnsureColdStartRestoreTimer(id controller) {
+    if (!controller || [objc_getAssociatedObject(controller, &ShelfColdStartTimerKey) boolValue]) return;
+    objc_setAssociatedObject(controller, &ShelfColdStartTimerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak id weakController = controller;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        id strongController = weakController;
+        if (!strongController) return;
+        objc_setAssociatedObject(strongController, &ShelfColdStartDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        ShelfRestoreColdStartMutedViews(strongController, YES);
+    });
+}
+
+static BOOL ShelfColdStartSyncInFlight = NO;
+
 static void ShelfSyncColdStartVisibility(id controller, id collectionViewObj) {
-    if (!controller) return;
+    if (!controller || ShelfColdStartSyncInFlight) return;
+    ShelfColdStartSyncInFlight = YES;
     UIView *cv = [collectionViewObj isKindOfClass:UIView.class]
         ? (UIView *)collectionViewObj
         : HostObject(controller, @selector(collectionView));
     if (!ShelfIsInColdStartEmptyGrace(controller, cv)) {
-        ShelfRestoreColdStartMutedViews(controller);
+        ShelfRestoreColdStartMutedViews(controller, YES);
+        ShelfColdStartSyncInFlight = NO;
         return;
     }
 
     if ([cv isKindOfClass:UICollectionView.class]) {
         UICollectionView *collection = (UICollectionView *)cv;
-        for (UICollectionViewCell *cell in collection.visibleCells) {
-            if (ShelfViewIsEmptyBookPlaceholder(cell, 0)) {
-                ShelfSetColdStartEmptyMuted(controller, cell, YES);
-            }
-        }
         if (collection.backgroundView && ShelfViewIsEmptyBookPlaceholder(collection.backgroundView, 0)) {
             ShelfSetColdStartEmptyMuted(controller, collection.backgroundView, YES);
         }
         for (UIView *sub in collection.subviews) {
-            if ([sub isKindOfClass:UICollectionViewCell.class]) continue;
             if (ShelfViewIsEmptyBookPlaceholder(sub, 0)) {
                 ShelfSetColdStartEmptyMuted(controller, sub, YES);
             }
@@ -424,29 +455,13 @@ static void ShelfSyncColdStartVisibility(id controller, id collectionViewObj) {
         }
     }
 
-    if (![objc_getAssociatedObject(controller, &ShelfColdStartTimerKey) boolValue]) {
-        objc_setAssociatedObject(controller, &ShelfColdStartTimerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        __weak id weakController = controller;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            id strongController = weakController;
-            if (!strongController) return;
-            objc_setAssociatedObject(strongController, &ShelfColdStartDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            ShelfRestoreColdStartMutedViews(strongController);
-        });
-    }
-}
-
-static void (*NativeShelfViewDidLoad)(id, SEL);
-static void ShelfViewDidLoad(id owner, SEL cmd) {
-    LastShelf = owner;
-    if (NativeShelfViewDidLoad) NativeShelfViewDidLoad(owner, cmd);
-    ShelfSyncColdStartVisibility(owner, nil);
+    ShelfEnsureColdStartRestoreTimer(controller);
+    ShelfColdStartSyncInFlight = NO;
 }
 
 static void (*NativeShelfWillAppear)(id, SEL, BOOL);
 static void ShelfWillAppear(id owner, SEL cmd, BOOL animated) {
     LastShelf = owner;
-    ShelfSyncColdStartVisibility(owner, nil);
     if (NativeShelfWillAppear) NativeShelfWillAppear(owner, cmd, animated);
     ShelfSyncColdStartVisibility(owner, nil);
 }
@@ -454,7 +469,6 @@ static void ShelfWillAppear(id owner, SEL cmd, BOOL animated) {
 static void (*NativeShelfAppeared)(id, SEL, BOOL);
 static void ShelfAppeared(id owner, SEL cmd, BOOL animated) {
     LastShelf = owner;
-    ShelfSyncColdStartVisibility(owner, nil);
     if (NativeShelfAppeared) NativeShelfAppeared(owner, cmd, animated);
     ShelfSyncColdStartVisibility(owner, nil);
 }
@@ -743,7 +757,7 @@ static void ShelfRecRestoreController(id controller) {
     objc_setAssociatedObject(controller, &ShelfRecTypesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(controller, &ShelfRecReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     NSHashTable *views = objc_getAssociatedObject(controller, &ShelfRecHiddenViewsKey);
-    for (UIView *view in views) ShelfRecHideView(controller, view, NO);
+    for (UIView *view in [views allObjects]) ShelfRecHideView(controller, view, NO);
     objc_setAssociatedObject(controller, &ShelfRecHiddenViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
@@ -768,7 +782,10 @@ static void ShelfRecScheduleReload(id controller, id collectionView) {
 
 static NSInteger ShelfRecNumberOfSections(id self, SEL cmd, id collectionView) {
     LastShelf = self;
-    ShelfSyncColdStartVisibility(self, collectionView);
+    if (![objc_getAssociatedObject(self, &ShelfColdStartDoneKey) boolValue] &&
+        !ShelfIsInColdStartEmptyGrace(self, collectionView)) {
+        ShelfRestoreColdStartMutedViews(self, NO);
+    }
     objc_setAssociatedObject(self, &ShelfRecReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (Option(ShelfImportKey, YES) && Option(ShelfHistoryCardKey, YES)) {
         ShelfUtilityResetController(self);
@@ -802,7 +819,6 @@ static NSInteger ShelfRecNumberOfItems(id self, SEL cmd, id collectionView, NSIn
 static id (*NativeShelfCellForItem)(id, SEL, id, NSIndexPath *);
 static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *indexPath) {
     LastShelf = self;
-    ShelfSyncColdStartVisibility(self, collectionView);
     NSIndexPath *queryIP = indexPath;
     if (indexPath && (!Option(ShelfImportKey, YES) || !Option(ShelfHistoryCardKey, YES))) {
         NSInteger mapped = ShelfUtilityNativeItemForVisibleItem(self, collectionView, indexPath.section, indexPath.item);
@@ -816,7 +832,7 @@ static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *
         if (![objc_getAssociatedObject(self, &ShelfColdStartDoneKey) boolValue]) {
             objc_setAssociatedObject(self, &ShelfColdStartSawRealBookKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(self, &ShelfColdStartDoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            ShelfRestoreColdStartMutedViews(self);
+            ShelfRestoreColdStartMutedViews(self, NO);
         }
         if (objc_getAssociatedObject(cell, &ShelfColdStartViewMutedKey)) {
             ShelfSetColdStartEmptyMuted(self, cell, NO);
@@ -824,7 +840,7 @@ static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *
     } else if (ShelfIsInColdStartEmptyGrace(self, collectionView) &&
                ShelfViewIsEmptyBookPlaceholder(cell, 0)) {
         ShelfSetColdStartEmptyMuted(self, cell, YES);
-        ShelfSyncColdStartVisibility(self, collectionView);
+        ShelfEnsureColdStartRestoreTimer(self);
     } else if (objc_getAssociatedObject(cell, &ShelfColdStartViewMutedKey)) {
         ShelfSetColdStartEmptyMuted(self, cell, NO);
     }
@@ -900,7 +916,7 @@ static id ShelfRecSupplementaryView(id self, SEL cmd, id collectionView, id kind
     id view = NativeShelfSupplementaryView(self, cmd, collectionView, kind, indexPath);
     if (ShelfIsInColdStartEmptyGrace(self, collectionView) && ShelfViewIsEmptyBookPlaceholder(view, 0)) {
         ShelfSetColdStartEmptyMuted(self, view, YES);
-        ShelfSyncColdStartVisibility(self, collectionView);
+        ShelfEnsureColdStartRestoreTimer(self);
     } else if (objc_getAssociatedObject(view, &ShelfColdStartViewMutedKey)) {
         ShelfSetColdStartEmptyMuted(self, view, NO);
     }
@@ -1775,7 +1791,6 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         REPLACE(NativeShelfShouldShowNotify, "SSBookShelfViewModel", "shouldShowNotify", "B16@0:8", ShelfShouldShowNotify);
         REPLACE(NativeHideDoubleColumnRecommend, "SSBookShelfSubVCOpenParams", "hideDoubleColumnRecommend", "B16@0:8", HideDoubleColumnRecommend);
         REPLACE(NativeDoubleColumnRequestData, "SSBookShelfDoubleColumn", "requestDataIfEnabled", "v16@0:8", DoubleColumnRequestData);
-        REPLACE(NativeShelfViewDidLoad, "SSBookShelfSubViewController", "viewDidLoad", "v16@0:8", ShelfViewDidLoad);
         REPLACE(NativeShelfWillAppear, "SSBookShelfSubViewController", "viewWillAppear:", "v20@0:8B16", ShelfWillAppear);
         REPLACE(NativeShelfAppeared, "SSBookShelfSubViewController", "viewDidAppear:", "v20@0:8B16", ShelfAppeared);
         REPLACE(NativeShelfNumberOfSections, "SSBookShelfSubViewController", "numberOfSectionsInCollectionView:", "q24@0:8@16", ShelfRecNumberOfSections);

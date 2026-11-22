@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.1beta24 测试版
+## FanqieX 1.9.1beta25 测试版
 
-修复短剧顶部标签胶囊与右上角搜索按钮高度及纵向对齐差异；恢复短剧及小说评论区底部悬浮液态玻璃发评输入框，并保持背后整块面板 `Regular`/`Clear` 无接缝纯原生渲染；全链路强制「我的」快捷入口每页显示 4 图标（含 `FQXMineShortcutViewport` 联动、`IGListAdapterProxy`/`NSProxy` 解包与三类 Cell `setFrame:`/`applyLayoutAttributes:` 拦截）；冷启动期间仅定向隐藏「书架暂无书籍」空白占位而非整表隐藏；同时补充高频设置内存缓存、`dispatch_once` 类查找缓存与死代码清理。
+紧急修复 1.9.1beta24 注入后卡开屏无法打开的启动冻结回归：消除 `FanqieXCleanup.m` 书架数据源回调内调用 `UICollectionView.visibleCells` 及 `SSBookShelfSubViewController viewDidLoad` 挂钩导致的 UIKit 重入卡死，移除 `FQXHotPrefsGet()` 的 `dispatch_once` 内同步删键死锁并改为原子代次+互斥快照 `FQXHotPrefsSnapshot()`，同步移除短剧顶栏 `layoutIfNeeded` 与「我的」`applyLayoutAttributes:`/`setFrame:` 同步重排、弱 ivar 裸读及 `FQXFindMineCollectionView` 的 `visibleCells` 调用。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.1beta24.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.1beta25.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta24。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta25。
 
 ## FanqieX 1.76
 
