@@ -1038,8 +1038,8 @@ static FQXDockMaterialMode FQXCurrentDockMaterialMode(void) {
 }
 
 static UIColor *FQXDockRestingSelectionColor(BOOL dark) {
-    // The beta4 resting pill fill, also used by the compact Dock.
-    return dark ? [UIColor colorWithWhite:1.0 alpha:0.14]
+    // Subtle neutral recessed pill fill — never adds a white disc on Clear glass.
+    return dark ? [UIColor colorWithWhite:0.0 alpha:0.20]
                 : [UIColor colorWithWhite:0.0 alpha:0.065];
 }
 
@@ -1047,6 +1047,10 @@ static UIColor *FQXDockSelectionColorForMode(FQXDockMaterialMode mode, BOOL dark
     if (mode == FQXDockMaterialFrostedGlass) {
         return dark ? [UIColor colorWithWhite:1.0 alpha:0.18]
                     : [UIColor colorWithWhite:0.0 alpha:0.085];
+    }
+    if (mode == FQXDockMaterialLegacyGlass) {
+        return dark ? [UIColor colorWithWhite:1.0 alpha:0.14]
+                    : [UIColor colorWithWhite:0.0 alpha:0.065];
     }
     return FQXDockRestingSelectionColor(dark);
 }
@@ -1420,12 +1424,21 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
         (dockStyle == UIUserInterfaceStyleUnspecified && proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
     NSNumber *appliedMode = objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey);
     NSInteger desiredMode = reduceTrans ? 99 : ((darkTint ? 100 : 0) + (darkDock ? 20 : 10) + (NSInteger)mode);
-    if (!appliedMode || appliedMode.integerValue != desiredMode) {
+    BOOL effectLost = (!proxy.effect || [proxy.effect isKindOfClass:UIBlurEffect.class]);
+    if (!appliedMode || appliedMode.integerValue != desiredMode || effectLost) {
         UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, darkDock, YES, reduceTrans);
         if (effect) {
             proxy.effect = effect;
             FQXApplyCornerConfiguration(proxy, 0.0, NO);
             objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, @(desiredMode), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_proxy_material", @{
+                @"mode": @((NSInteger)mode),
+                @"darkTint": @(darkTint),
+                @"darkDock": @(darkDock),
+                @"overrideStyle": @((NSInteger)proxy.overrideUserInterfaceStyle),
+                @"hasTint": @((mode == FQXDockMaterialNewGlass && darkDock && darkTint && !reduceTrans) ? YES : NO),
+                @"reduceTransparency": @(reduceTrans),
+            }, NO);
         }
     }
     if (proxy.backgroundColor && ![proxy.backgroundColor isEqual:UIColor.clearColor]) {
@@ -1437,10 +1450,17 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
     if (bar && bar.backgroundColor && ![bar.backgroundColor isEqual:UIColor.clearColor]) {
         bar.backgroundColor = UIColor.clearColor;
     }
-    // Eliminate duplicate/milky sibling blur layers inside the tab bar so only one clean glass exists.
-    // Never hide our own interactive UIGlassContainerEffect / droplet lens views.
+    // Eliminate duplicate/milky sibling blur layers inside the tab bar so only one clean glass exists,
+    // and ensure the compact expand button never carries an opaque/white backing.
     if (bar) {
+        Class compactBtnCls = NSClassFromString(@"FanqieXCompactBottomButton178R7");
         for (UIView *sub in [bar.subviews copy]) {
+            if (compactBtnCls && [sub isKindOfClass:compactBtnCls]) {
+                if (sub.backgroundColor && ![sub.backgroundColor isEqual:UIColor.clearColor]) {
+                    sub.backgroundColor = UIColor.clearColor;
+                }
+                continue;
+            }
             if (sub == proxy || sub == lens || ![sub isKindOfClass:UIVisualEffectView.class]) continue;
             if ([objc_getAssociatedObject(sub, FQXOwnedGlassElementKey) boolValue]) continue;
             if (!sub.hidden) sub.hidden = YES;
@@ -1661,6 +1681,14 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     }
     objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [platter setNeedsLayout];
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_glass_material", @{
+        @"mode": @((NSInteger)mode),
+        @"isDark": @(isDark),
+        @"darkTint": @(FQXGlassDarkTintEnabled()),
+        @"platterClass": NSStringFromClass(platter.class) ?: @"",
+        @"hasTint": @((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) ? YES : NO),
+        @"interactive": @(interactive),
+    }, NO);
 }
 
 static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL dark) {
@@ -1696,6 +1724,16 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         }
     }
     FQXApplyDockPlatterGlass(platter, dark, mode);
+    static Class platterCls = Nil;
+    static dispatch_once_t pOnce;
+    dispatch_once(&pOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
+    if (platterCls && platter && platter.superview) {
+        for (UIView *sib in platter.superview.subviews) {
+            if (sib != platter && [sib isKindOfClass:platterCls]) {
+                FQXApplyDockPlatterGlass(sib, dark, mode);
+            }
+        }
+    }
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *surface = (UIVisualEffectView *)platter;
         FQXApplyDockBackdropBlur(tabBar, surface.contentView, nil, surface.contentView.bounds, -1, dark, mode, DockBlurPrefKey);
@@ -1934,13 +1972,10 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 }
 
 - (UIUserInterfaceStyle)desiredDockGlassStyle {
-    // Decouple glass material polarity from icon/text ink polarity:
-    // When NewGlass does not apply a dark base tint (default OFF), keep UITabBar in Light
-    // glass mode so both the outer platter and _UITabSelectionView remain crystal-clear
-    // refractive Liquid Glass without a dark charcoal fill, while icons still adapt to page ink.
-    if (FQXCurrentDockMaterialMode() == FQXDockMaterialNewGlass && !FQXGlassDarkTintEnabled()) {
-        return UIUserInterfaceStyleLight;
-    }
+    // Match the page's optical backdrop polarity (Dark on full-screen video/night, Light on
+    // bright pages). On iOS 26/27, forcing Light override on a dark video page makes
+    // UIGlassEffectStyleClear render Light-mode's milky-white luminosity veil, whereas Dark
+    // override with tintColor == nil renders pure colorless refractive glass with zero tint.
     return [self isDarkDock] ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
 }
 
@@ -2466,6 +2501,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
     }
 
+    // Pre-sync proxy glass material once while expanded so collapsing to compact Dock
+    // never flashes AlignedGlass's default frosted Regular (0) material on frame 0.
+    if (!objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey)) {
+        FQXApplyDockProxyMaterial(bar, proxy, nil);
+    }
+
     [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
     [self setNativeDockVisible:YES restoreProxy:NO];
 }
@@ -2560,44 +2601,111 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
     return self;
 }
 
+- (BOOL)currentResolvedDarkState {
+    UIView *categories = self.tabsView.superview;
+    UIView *header = categories.superview;
+    if (header) return FQXDramaHeaderHostIsDark(header, self.tabsView);
+    UIVisualEffectView *outer = self.outerGlass;
+    return (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
+           (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
+            outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+}
+
+- (void)syncRestingPillCorners {
+    if (!self.pillGlass) return;
+    CGRect pb = self.pillGlass.contentView.bounds;
+    CGFloat radius = MIN(CGRectGetWidth(pb), CGRectGetHeight(pb)) * 0.5;
+    if (radius > 0.5) {
+        self.pillGlass.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        if (fabs(self.pillGlass.contentView.layer.cornerRadius - radius) > 0.25) {
+            self.pillGlass.contentView.layer.cornerRadius = radius;
+        }
+        if (!self.pillGlass.contentView.clipsToBounds) {
+            self.pillGlass.contentView.clipsToBounds = YES;
+        }
+    }
+}
+
 - (void)applyMaterialToOuter:(UIVisualEffectView *)outer isDark:(BOOL)isDark {
     if (!outer || !self.pillGlass) return;
     BOOL darkTint = FQXGlassDarkTintEnabled();
     BOOL blurDark = darkTint ? isDark : FQXAppIsInNightMode();
     FQXApplyBackdropBlur(outer, outer.contentView, nil, outer.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
-    UIUserInterfaceStyle uiStyle = (darkTint && isDark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    // Follow the page's optical backdrop polarity (Dark on video feed, Light on bright subtabs).
+    // Forcing Light override over dark video causes iOS 26/27 Clear glass to paint a white haze,
+    // while Dark override + tintColor == nil keeps the capsule crystal-clear and colorless.
+    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
     if (outer.overrideUserInterfaceStyle != uiStyle) {
         outer.overrideUserInterfaceStyle = uiStyle;
     }
     if (self.pillGlass.overrideUserInterfaceStyle != uiStyle) {
         self.pillGlass.overrideUserInterfaceStyle = uiStyle;
     }
+    if (outer.backgroundColor && ![outer.backgroundColor isEqual:UIColor.clearColor]) {
+        outer.backgroundColor = UIColor.clearColor;
+    }
+    if (outer.contentView.backgroundColor && ![outer.contentView.backgroundColor isEqual:UIColor.clearColor]) {
+        outer.contentView.backgroundColor = UIColor.clearColor;
+    }
 
-    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0);
+    // Avoid double-stacking two untinted UIGlassEffectStyleClear surfaces at rest (which compounds
+    // into a milky-white solid oval on the selected tab). At rest when darkTint is OFF, keep outer
+    // as the sole Clear Liquid Glass and render a clean recessed non-white capsule indicator; during
+    // active press/drag, materialize live interactive Clear glass on pillGlass for fluid refraction.
+    BOOL pillInteractiveLens = darkTint || reduce || (self.mode != FQXTopCapsuleTouchIdle);
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (pillInteractiveLens ? 16 : 0);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
-    if (applied && applied.integerValue == stamp) return;
+    BOOL outerLost = (!outer.effect || [outer.effect isKindOfClass:UIBlurEffect.class]);
+    if (applied && applied.integerValue == stamp && !outerLost) {
+        if (!pillInteractiveLens) [self syncRestingPillCorners];
+        return;
+    }
     objc_setAssociatedObject(outer, FQXDramaTopGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     NSInteger glassStyle = reduce ? 0 : 1;
     UIColor *outerTint = (!reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-    UIColor *pillTint = nil;
-    if (darkTint) {
-        pillTint = [UIColor colorWithWhite:0.0 alpha:(isDark ? 0.50 : 0.10)];
-    } else if (reduce) {
-        pillTint = [UIColor colorWithWhite:(isDark ? 1.0 : 0.0) alpha:0.12];
+    UIVisualEffect *outerEffect = FQXMakeGlassEffect(glassStyle, NO, outerTint);
+    UIVisualEffect *pillEffect = nil;
+    UIColor *pillContentFill = UIColor.clearColor;
+    if (pillInteractiveLens) {
+        UIColor *pillTint = nil;
+        if (darkTint) {
+            pillTint = [UIColor colorWithWhite:0.0 alpha:(isDark ? 0.45 : 0.10)];
+        } else if (reduce) {
+            pillTint = [UIColor colorWithWhite:(isDark ? 1.0 : 0.0) alpha:0.12];
+        }
+        pillEffect = FQXMakeGlassEffect(glassStyle, YES, pillTint);
+    } else {
+        pillContentFill = isDark
+            ? [UIColor colorWithWhite:0.0 alpha:0.18]
+            : [UIColor colorWithWhite:0.0 alpha:0.08];
     }
+
     void (^changes)(void) = ^{
         outer.overrideUserInterfaceStyle = uiStyle;
-        outer.effect = FQXMakeGlassEffect(glassStyle, NO, outerTint);
+        outer.effect = outerEffect;
         self.pillGlass.overrideUserInterfaceStyle = uiStyle;
-        self.pillGlass.effect = FQXMakeGlassEffect(glassStyle, YES, pillTint);
+        self.pillGlass.effect = pillEffect;
+        self.pillGlass.backgroundColor = UIColor.clearColor;
+        self.pillGlass.contentView.backgroundColor = pillContentFill;
+        if (!pillInteractiveLens) {
+            [self syncRestingPillCorners];
+        }
     };
     if (applied) {
         [UIView animateWithDuration:0.20 animations:changes];
     } else {
         changes();
     }
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_top_glass_material", @{
+        @"isDark": @(isDark),
+        @"darkTint": @(darkTint),
+        @"overrideStyle": @((NSInteger)uiStyle),
+        @"outerHasTint": @(outerTint != nil),
+        @"pillInteractiveLens": @(pillInteractiveLens),
+        @"reduceTransparency": @(reduce),
+    }, NO);
 }
 
 - (NSArray<NSValue *> *)visibleItemRectsInCollection:(NSMutableArray<NSNumber *> *)outIndices {
@@ -2713,10 +2821,12 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
                                     UIViewAnimationOptionAllowUserInteraction
                          animations:^{
             self.pillGlass.frame = target;
+            if (!self.pillGlass.effect) [self syncRestingPillCorners];
         } completion:nil];
     } else {
         [UIView performWithoutAnimation:^{
             self.pillGlass.frame = target;
+            if (!self.pillGlass.effect) [self syncRestingPillCorners];
         }];
     }
 }
@@ -2764,6 +2874,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
         UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:idx inSection:0]];
         if (!attr) return;
         self.mode = FQXTopCapsuleTouchPressing;
+        [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
         self.anchorX = CGRectGetMidX(attr.frame);
         [self placePill:[self pillRectForAnchorX:self.anchorX] animated:YES];
     } else if (gr.state == UIGestureRecognizerStateEnded ||
@@ -2771,6 +2882,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
                gr.state == UIGestureRecognizerStateFailed) {
         if (self.mode != FQXTopCapsuleTouchPressing) return;
         self.mode = FQXTopCapsuleTouchIdle;
+        [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
         __weak typeof(self) weakSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{
             typeof(self) s = weakSelf;
@@ -2804,6 +2916,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
     if (!cv || !tabs) return;
     if (gr.state == UIGestureRecognizerStateBegan) {
         self.mode = FQXTopCapsuleTouchDragging;
+        [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
         self.hoverIndex = [self currentHostSelectedIndex];
         cv.panGestureRecognizer.enabled = NO;
         UIImpactFeedbackGenerator *impact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
@@ -2813,6 +2926,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
         [self updateDragAtGesture:gr animated:NO];
     } else if (self.mode == FQXTopCapsuleTouchDragging) {
         self.mode = FQXTopCapsuleTouchIdle;
+        [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
         cv.panGestureRecognizer.enabled = YES;
         NSInteger target = self.hoverIndex;
         self.hoverIndex = NSNotFound;
@@ -2995,16 +3109,20 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn, BOOL isDark) {
     if (!searchBtn) return;
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL darkTint = FQXGlassDarkTintEnabled();
-    UIUserInterfaceStyle uiStyle = (darkTint && isDark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
     if (searchBtn.overrideUserInterfaceStyle != uiStyle) {
         searchBtn.overrideUserInterfaceStyle = uiStyle;
     }
+    if (searchBtn.backgroundColor && ![searchBtn.backgroundColor isEqual:UIColor.clearColor]) {
+        searchBtn.backgroundColor = UIColor.clearColor;
+    }
     NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0);
     NSNumber *applied = objc_getAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey);
-    if (applied && applied.integerValue == stamp) return;
-
     UIButtonConfiguration *cur = searchBtn.configuration;
     if (!cur) return;
+    BOOL effectMissing = (!cur.background.visualEffect || [cur.background.visualEffect isKindOfClass:UIBlurEffect.class]);
+    if (applied && applied.integerValue == stamp && !effectMissing) return;
+
     SEL clearSel = NSSelectorFromString(@"clearGlassButtonConfiguration");
     SEL regSel = NSSelectorFromString(@"glassButtonConfiguration");
     UIButtonConfiguration *cfg = nil;
@@ -3013,15 +3131,23 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn, BOOL isDark) {
     } else if ([UIButtonConfiguration respondsToSelector:regSel]) {
         cfg = ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, regSel);
     }
-    if (!cfg) return;
+    if (!cfg) cfg = [UIButtonConfiguration plainButtonConfiguration];
     cfg.image = cur.image;
     cfg.contentInsets = cur.contentInsets;
-    if (!reduce && darkTint && isDark) {
-        UIVisualEffect *tinted = FQXMakeGlassEffect(1, YES, [UIColor colorWithWhite:0.0 alpha:0.30]);
-        if (tinted) cfg.background.visualEffect = tinted;
-    }
+    UIColor *tint = (!reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIVisualEffect *glassEffect = FQXMakeGlassEffect(reduce ? 0 : 1, YES, tint);
+    if (glassEffect) cfg.background.visualEffect = glassEffect;
+    cfg.background.backgroundColor = UIColor.clearColor;
+    cfg.baseBackgroundColor = UIColor.clearColor;
     searchBtn.configuration = cfg;
     objc_setAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_search_glass_material", @{
+        @"isDark": @(isDark),
+        @"darkTint": @(darkTint),
+        @"overrideStyle": @((NSInteger)uiStyle),
+        @"hasTint": @(tint != nil),
+        @"reduceTransparency": @(reduce),
+    }, NO);
 }
 
 static NSHashTable<UIView *> *FQXTrackedDramaHeaders(void) {
@@ -3410,6 +3536,11 @@ static void FQXRefreshDynamicIslandState(void);
 }
 
 + (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button {
+    if ([dock isKindOfClass:UIVisualEffectView.class]) {
+        // Ensure compact Dock proxy already carries Clear Liquid Glass (never AlignedGlass's
+        // default frosted Regular white veil) before frame 0 of the collapse/expand morph.
+        FQXApplyDockProxyMaterial(dock.superview, (UIVisualEffectView *)dock, nil);
+    }
     NSValue *captured = objc_getAssociatedObject(dock, DockSnapshotKey);
     objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UIViewPropertyAnimator *previous = objc_getAssociatedObject(dock, DockAnimatorKey);
@@ -3536,6 +3667,10 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshDockMaterial {
     FQXInvalidateHotPrefsCache();
     for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+        if (inter.proxy) {
+            objc_setAssociatedObject(inter.proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.nativeDockActive ? nil : inter.restingLens);
+        }
         if (inter.nativeDockActive) {
             UITabBar *tabBar = inter.nativeDockBar;
             if (!tabBar) continue;
@@ -3553,8 +3688,6 @@ static void FQXRefreshDynamicIslandState(void);
             FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), glassDark);
             [inter syncDetachedDockMaterial:glassDark];
             [inter applyDockItemImages];
-        } else {
-            FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.restingLens);
         }
     }
 }
@@ -8555,9 +8688,22 @@ static BOOL FQXHasVisibleCommentSheetInWindow(UIWindow *window, UIViewController
     return NO;
 }
 
+static NSHashTable<UIView *> *FQXTrackedCommentDimmers(void);
+static void FQXSetCommentDimmerZeroMask(UIView *view, BOOL masked);
+static void FQXClearCommentSurface(UIView *view, BOOL clear);
+
 static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController *excludingVC) {
     if (!window) return;
-    BOOL shouldHideDock = FQXCommentStylingEnabled() && FQXHasVisibleCommentSheetInWindow(window, excludingVC);
+    BOOL hasVisibleSheet = FQXHasVisibleCommentSheetInWindow(window, excludingVC);
+    BOOL shouldHideDock = FQXCommentStylingEnabled() && hasVisibleSheet;
+    if (!shouldHideDock) {
+        for (UIView *dimmer in FQXTrackedCommentDimmers().allObjects) {
+            if (!dimmer.window || dimmer.window == window) {
+                FQXSetCommentDimmerZeroMask(dimmer, NO);
+                FQXClearCommentSurface(dimmer, NO);
+            }
+        }
+    }
     Class tabBarCls = NSClassFromString(@"SSTabBar");
     if (!tabBarCls) return;
     NSMutableArray<UIView *> *bars = [NSMutableArray array];
@@ -8859,6 +9005,138 @@ static void FQXClearCommentCovers(UIView *view, CGFloat width, BOOL clear) {
 }
 
 static const void *FQXCommentTransitionSheetKey = &FQXCommentTransitionSheetKey;
+static const void *FQXCommentDimmerMaskKey = &FQXCommentDimmerMaskKey;
+static const void *FQXCommentDimmerSavedMaskKey = &FQXCommentDimmerSavedMaskKey;
+static const void *FQXCommentBackdropDiagStampKey = &FQXCommentBackdropDiagStampKey;
+
+static NSHashTable<UIView *> *FQXTrackedCommentDimmers(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+// Visually mask a modal dimming scrim without changing hidden/alpha/userInteractionEnabled,
+// so tap-to-dismiss gestures stay intact while host alpha/color animations cannot re-darken
+// the reading page behind Light-mode Clear Liquid Glass.
+static void FQXSetCommentDimmerZeroMask(UIView *view, BOOL masked) {
+    if (![view isKindOfClass:UIView.class]) return;
+    CALayer *ownedMask = objc_getAssociatedObject(view, FQXCommentDimmerMaskKey);
+    if (masked) {
+        [FQXTrackedCommentDimmers() addObject:view];
+        if (!ownedMask) {
+            if (view.layer.mask) {
+                objc_setAssociatedObject(view, FQXCommentDimmerSavedMaskKey, view.layer.mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            ownedMask = [CALayer layer];
+            ownedMask.frame = CGRectZero;
+            objc_setAssociatedObject(view, FQXCommentDimmerMaskKey, ownedMask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (view.layer.mask != ownedMask) {
+            view.layer.mask = ownedMask;
+        }
+    } else if (ownedMask) {
+        if (view.layer.mask == ownedMask) {
+            CALayer *saved = objc_getAssociatedObject(view, FQXCommentDimmerSavedMaskKey);
+            view.layer.mask = saved;
+        }
+        objc_setAssociatedObject(view, FQXCommentDimmerMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, FQXCommentDimmerSavedMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static BOOL FQXColorIsDarkDimmingScrim(UIColor *color, UITraitCollection *traits, CGFloat viewAlpha) {
+    if (!color) return NO;
+    UIColor *resolved = traits ? [color resolvedColorWithTraitCollection:traits] : color;
+    CGFloat r = 0.0, g = 0.0, b = 0.0, a = 0.0;
+    if (!FQXColorGetRGBA(resolved, &r, &g, &b, &a)) return NO;
+    CGFloat effAlpha = a * MAX(0.0, MIN(1.0, viewAlpha));
+    CGFloat lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return (effAlpha >= 0.04 && effAlpha <= 0.92 && lum <= 0.28);
+}
+
+static BOOL FQXViewHasDarkDimmingFill(UIView *view) {
+    if (!view) return NO;
+    UITraitCollection *traits = view.traitCollection;
+    CGFloat vAlpha = view.alpha;
+    if (FQXColorIsDarkDimmingScrim(view.backgroundColor, traits, vAlpha)) return YES;
+    if (view.layer.backgroundColor) {
+        UIColor *lCol = [UIColor colorWithCGColor:view.layer.backgroundColor];
+        if (FQXColorIsDarkDimmingScrim(lCol, traits, vAlpha)) return YES;
+    }
+    CGFloat vw = CGRectGetWidth(view.bounds);
+    CGFloat vh = CGRectGetHeight(view.bounds);
+    for (CALayer *sub in view.layer.sublayers) {
+        if (sub.hidden || sub.opacity < 0.04f) continue;
+        if (CGRectGetWidth(sub.bounds) < vw * 0.70 || CGRectGetHeight(sub.bounds) < vh * 0.40) continue;
+        if (sub.backgroundColor) {
+            UIColor *sCol = [UIColor colorWithCGColor:sub.backgroundColor];
+            if (FQXColorIsDarkDimmingScrim(sCol, traits, vAlpha * sub.opacity)) return YES;
+        }
+        if ([sub isKindOfClass:CAGradientLayer.class]) {
+            CAGradientLayer *gl = (CAGradientLayer *)sub;
+            for (id cgObj in gl.colors) {
+                UIColor *gCol = [UIColor colorWithCGColor:(__bridge CGColorRef)cgObj];
+                if (FQXColorIsDarkDimmingScrim(gCol, traits, vAlpha * sub.opacity)) return YES;
+            }
+        }
+    }
+    return NO;
+}
+
+static BOOL FQXSubtreeHasVisibleContent(UIView *view, NSInteger depth) {
+    if (!view || depth > 4 || view.hidden || view.alpha < 0.01) return NO;
+    if ([view isKindOfClass:UIScrollView.class] ||
+        [view isKindOfClass:UITextView.class] ||
+        [view isKindOfClass:UICollectionView.class] ||
+        [view isKindOfClass:UITableView.class]) {
+        return YES;
+    }
+    NSString *clsName = NSStringFromClass(view.class);
+    if (clsName && [clsName containsString:@"WebView"]) return YES;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)view;
+        if (lbl.text.length > 0 || lbl.attributedText.length > 0) return YES;
+    } else if ([view isKindOfClass:UIImageView.class]) {
+        if (((UIImageView *)view).image != nil) return YES;
+    } else if ([view isKindOfClass:UIButton.class]) {
+        UIButton *btn = (UIButton *)view;
+        if (btn.currentTitle.length > 0 || btn.currentImage != nil || btn.currentAttributedTitle.length > 0) return YES;
+    }
+    for (UIView *sub in view.subviews) {
+        if (FQXSubtreeHasVisibleContent(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static BOOL FQXClassNameLooksLikeDimmer(NSString *clsName) {
+    if (!clsName.length) return NO;
+    NSArray<NSString *> *tokens = @[@"Dim", @"Mask", @"Overlay", @"Backdrop", @"Scrim", @"Shadow", @"Cover"];
+    for (NSString *tok in tokens) {
+        if ([clsName rangeOfString:tok options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
+    }
+    return NO;
+}
+
+static BOOL FQXViewLooksLikePureDimmingScrim(UIView *view, CGSize winSize) {
+    if (![view isKindOfClass:UIView.class]) return NO;
+    if ([view isKindOfClass:FQXCommentGlassSurfaceView.class] ||
+        [view isKindOfClass:FQXBackdropBlurView.class]) return NO;
+    // Never suppress any view controller's own root view (e.g., BDReaderViewController or SSTabBarController).
+    if ([view.nextResponder isKindOfClass:UIViewController.class]) return NO;
+    if (objc_getAssociatedObject(view, FQXCommentDimmerMaskKey) != nil) return YES;
+    if (winSize.width < 100.0 || winSize.height < 100.0) return NO;
+    if (CGRectGetWidth(view.bounds) < winSize.width * 0.72 ||
+        CGRectGetHeight(view.bounds) < winSize.height * 0.40) return NO;
+    if (FQXSubtreeHasVisibleContent(view, 0)) return NO;
+    if ([view isKindOfClass:UIVisualEffectView.class]) return YES;
+    if (FQXViewHasDarkDimmingFill(view)) return YES;
+    NSString *clsName = NSStringFromClass(view.class);
+    if (FQXClassNameLooksLikeDimmer(clsName) && (view.backgroundColor != nil || view.layer.backgroundColor != NULL || view.alpha < 0.98)) {
+        return YES;
+    }
+    return NO;
+}
 
 static void FQXPurgeNestedSheetGlassDepth(UIView *view, UIView *activeSheet, NSInteger depth) {
     if (![view isKindOfClass:UIView.class] || depth > 8) return;
@@ -8870,17 +9148,22 @@ static void FQXPurgeNestedSheetGlassDepth(UIView *view, UIView *activeSheet, NSI
     }
 }
 
-static void FQXCleanTransitionBackdrop(UIView *transition, UIView *sheet, BOOL glass) {
+static void FQXCleanTransitionBackdrop(UIView *transition, UIView *sheet, BOOL glass, NSMutableArray<NSString *> *clearedOut) {
     if (![transition isKindOfClass:UIView.class]) return;
     FQXClearCommentSurface(transition, glass);
     NSArray<NSString *> *keys = @[
         @"bgView", @"backgroundView", @"dimView", @"dimmingView",
-        @"coverView", @"overlayView", @"backdropView", @"maskBgView"
+        @"coverView", @"overlayView", @"backdropView", @"maskBgView",
+        @"maskView", @"blackMaskView", @"bgMaskView", @"tapView",
+        @"shadowView", @"alphaView", @"contentBgView"
     ];
     for (NSString *key in keys) {
         UIView *v = FQXObjGet(transition, key.UTF8String);
-        if ([v isKindOfClass:UIView.class] && v != sheet && ![sheet isDescendantOfView:v]) {
+        if ([v isKindOfClass:UIView.class] && v != sheet && ![sheet isDescendantOfView:v] &&
+            ![v.nextResponder isKindOfClass:UIViewController.class]) {
             FQXClearCommentSurface(v, glass);
+            FQXSetCommentDimmerZeroMask(v, glass);
+            if (glass && clearedOut) [clearedOut addObject:[NSString stringWithFormat:@"ivar:%@(%@)", key, NSStringFromClass(v.class) ?: @""]];
         }
     }
     UIView *tEffect = FQXObjGet(transition, "effectView");
@@ -8892,21 +9175,106 @@ static void FQXCleanTransitionBackdrop(UIView *transition, UIView *sheet, BOOL g
     UIView *scrollCarrier = FQXObjGet(transition, "scrollView");
     if (scrollCarrier && [sheet isDescendantOfView:scrollCarrier]) FQXClearCommentSurface(scrollCarrier, glass);
 
+    CGSize winSize = transition.window ? transition.window.bounds.size : transition.bounds.size;
     CGFloat transW = CGRectGetWidth(transition.bounds);
     for (UIView *sub in transition.subviews) {
         if (sub == sheet || [sheet isDescendantOfView:sub] || [sub isDescendantOfView:sheet]) continue;
         if ([sub isKindOfClass:UIVisualEffectView.class]) {
             FQXNeutralizeHostEffectView((UIVisualEffectView *)sub, glass);
+            if (glass && clearedOut) [clearedOut addObject:[NSString stringWithFormat:@"transEffect:%@", NSStringFromClass(sub.class) ?: @""]];
             continue;
         }
         BOOL isDimmerButton = [sub isKindOfClass:UIButton.class] &&
                               ![(UIButton *)sub currentTitle].length &&
                               ![(UIButton *)sub currentImage];
-        if (([sub isMemberOfClass:UIView.class] || [sub isMemberOfClass:UIControl.class] || isDimmerButton) &&
-            transW > 40.0 &&
-            CGRectGetWidth(sub.bounds) >= transW * 0.80 &&
-            CGRectIntersectsRect(sub.frame, sheet.frame)) {
+        BOOL legacyMatch = ([sub isMemberOfClass:UIView.class] || [sub isMemberOfClass:UIControl.class] || isDimmerButton) &&
+                           transW > 40.0 &&
+                           CGRectGetWidth(sub.bounds) >= transW * 0.80 &&
+                           CGRectIntersectsRect(sub.frame, sheet.frame);
+        if (legacyMatch || FQXViewLooksLikePureDimmingScrim(sub, winSize)) {
             FQXClearCommentSurface(sub, glass);
+            FQXSetCommentDimmerZeroMask(sub, glass);
+            if (glass && clearedOut) [clearedOut addObject:[NSString stringWithFormat:@"transSub:%@", NSStringFromClass(sub.class) ?: @""]];
+        }
+    }
+}
+
+static void FQXCleanCommentPresentationBackdrops(UIView *sheet, UIView *transition, BOOL glass) {
+    if (![sheet isKindOfClass:UIView.class]) return;
+    NSMutableArray<NSString *> *cleared = glass ? [NSMutableArray array] : nil;
+    if (transition) {
+        FQXCleanTransitionBackdrop(transition, sheet, glass, cleared);
+    }
+
+    UIWindow *win = sheet.window;
+    CGSize winSize = win ? win.bounds.size : CGSizeZero;
+    UIView *branchChild = sheet;
+    UIView *anc = sheet.superview;
+    for (NSInteger level = 0; anc && level < 7; ++level) {
+        if (anc != win && anc != transition) {
+            // Clear a modal wrapper's own dark dimming backgroundColor without masking the
+            // wrapper itself (since sheet is inside it).
+            if (![anc.nextResponder isKindOfClass:UIViewController.class] &&
+                (FQXViewHasDarkDimmingFill(anc) || objc_getAssociatedObject(anc, AudioSavedBgKey) != nil)) {
+                FQXClearCommentSurface(anc, glass);
+                if (glass && cleared) [cleared addObject:[NSString stringWithFormat:@"ancBg:%@", NSStringFromClass(anc.class) ?: @""]];
+            }
+        }
+        NSArray<UIView *> *siblings = anc.subviews;
+        NSUInteger branchIdx = [siblings indexOfObjectIdenticalTo:branchChild];
+        if (branchIdx != NSNotFound) {
+            // Only inspect siblings stacked BEHIND the comment sheet branch so nothing presented
+            // above the sheet (keyboards, toasts, alerts) is ever touched.
+            for (NSUInteger i = 0; i < branchIdx; ++i) {
+                UIView *sib = siblings[i];
+                if (sib == sheet || [sheet isDescendantOfView:sib] || [sib isDescendantOfView:sheet]) continue;
+                if ([sib.nextResponder isKindOfClass:UIViewController.class]) continue;
+                if (FQXViewLooksLikePureDimmingScrim(sib, winSize)) {
+                    if ([sib isKindOfClass:UIVisualEffectView.class]) {
+                        FQXNeutralizeHostEffectView((UIVisualEffectView *)sib, glass);
+                    } else {
+                        FQXClearCommentSurface(sib, glass);
+                        FQXSetCommentDimmerZeroMask(sib, glass);
+                    }
+                    if (glass && cleared) [cleared addObject:[NSString stringWithFormat:@"sibL%ld:%@", (long)level, NSStringFromClass(sib.class) ?: @""]];
+                    continue;
+                }
+                // Check 1 level inside non-VC overlay container wrappers (e.g., UITransitionView / custom backdrop host).
+                if (CGRectGetWidth(sib.bounds) >= winSize.width * 0.72 &&
+                    CGRectGetHeight(sib.bounds) >= winSize.height * 0.40 &&
+                    !FQXSubtreeHasVisibleContent(sib, 0)) {
+                    for (UIView *inner in sib.subviews) {
+                        if (FQXViewLooksLikePureDimmingScrim(inner, winSize)) {
+                            if ([inner isKindOfClass:UIVisualEffectView.class]) {
+                                FQXNeutralizeHostEffectView((UIVisualEffectView *)inner, glass);
+                            } else {
+                                FQXClearCommentSurface(inner, glass);
+                                FQXSetCommentDimmerZeroMask(inner, glass);
+                            }
+                            if (glass && cleared) [cleared addObject:[NSString stringWithFormat:@"sibInnerL%ld:%@", (long)level, NSStringFromClass(inner.class) ?: @""]];
+                        }
+                    }
+                }
+            }
+        }
+        if (anc == win) break;
+        branchChild = anc;
+        anc = anc.superview;
+    }
+
+    if (glass && cleared.count > 0) {
+        NSString *sig = [NSString stringWithFormat:@"%lu|%@", (unsigned long)cleared.count, [cleared componentsJoinedByString:@","]];
+        NSString *prev = objc_getAssociatedObject(sheet, FQXCommentBackdropDiagStampKey);
+        if (![prev isEqualToString:sig]) {
+            objc_setAssociatedObject(sheet, FQXCommentBackdropDiagStampKey, sig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"comment_backdrop_clean", @{
+                @"sheetClass": NSStringFromClass(sheet.class) ?: @"",
+                @"transitionClass": transition ? (NSStringFromClass(transition.class) ?: @"") : @"",
+                @"darkTheme": @(FQXCommentsUseDarkTheme()),
+                @"materialStyle": @((NSInteger)FQXCurrentCommentMaterialStyle()),
+                @"clearedCount": @(cleared.count),
+                @"cleared": cleared,
+            }, NO);
         }
     }
 }
@@ -8973,8 +9341,8 @@ static BOOL FQXStyleCommentSheet(UIView *root, BOOL reader) {
             [trackedSheets removeAllObjects];
             [trackedSheets addObject:sheet];
         }
-        FQXCleanTransitionBackdrop(transition, sheet, glass);
     }
+    FQXCleanCommentPresentationBackdrops(sheet, transition, glass);
     FQXClearCommentCovers(sheet, rootW, glass);
     if (glass) FQXBoostCommentTypography(sheet, 0);
     FQXSyncDockHiddenForCommentSheets(root.window, nil);
@@ -9831,6 +10199,10 @@ static void FQXReapplyAllTrackedCommentGlass(void) {
                 FQXAudioSetHiddenTracked(edge, NO);
             }
         }
+        for (UIView *dimmer in FQXTrackedCommentDimmers().allObjects) {
+            FQXSetCommentDimmerZeroMask(dimmer, NO);
+            FQXClearCommentSurface(dimmer, NO);
+        }
         for (UIView *cleaned in FQXTrackedCommentCleanedViews().allObjects) {
             FQXClearCommentSurface(cleaned, NO);
         }
@@ -10201,10 +10573,24 @@ static void HookReaderCommentV1Theme(UIViewController *controller, SEL cmd) {
     FQXStyleReaderCommentList(controller);
 }
 
+static void FQXScheduleDelayedReaderCommentRestyle(UIViewController *controller) {
+    if (!controller) return;
+    __weak UIViewController *weakVC = controller;
+    void (^restyle)(void) = ^{
+        UIViewController *strongVC = weakVC;
+        if (strongVC && strongVC.isViewLoaded && strongVC.viewIfLoaded.window && FQXCommentStylingEnabled()) {
+            FQXStyleReaderCommentList(strongVC);
+        }
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), restyle);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)), dispatch_get_main_queue(), restyle);
+}
+
 static void (*OrigReaderCommentV1Appeared)(id, SEL, BOOL);
 static void HookReaderCommentV1Appeared(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigReaderCommentV1Appeared(controller, cmd, animated);
     FQXStyleReaderCommentList(controller);
+    FQXScheduleDelayedReaderCommentRestyle(controller);
 }
 
 static void (*OrigReaderCommentV1Layout)(id, SEL);
@@ -10224,7 +10610,7 @@ static void HookReaderCommentTransitionLayout(UIView *transition, SEL cmd) {
     }
     if (FQXCommentStylingEnabled() && transition.window) {
         UIView *sheet = FQXTrackedSheetInTransition(transition);
-        if (sheet) FQXCleanTransitionBackdrop(transition, sheet, YES);
+        if (sheet) FQXCleanCommentPresentationBackdrops(sheet, transition, YES);
     }
 }
 
@@ -10520,6 +10906,7 @@ static void FQXCompactRuntimeMemory(void) {
     FQXCompactWeakTable(FQXTrackedCommentSheetHosts());
     FQXCompactWeakTable(FQXTrackedCommentComposerHosts());
     FQXCompactWeakTable(FQXTrackedCommentCleanedViews());
+    FQXCompactWeakTable(FQXTrackedCommentDimmers());
     FQXCompactWeakTable(FQXTrackedNeutralizedEffectViews());
     FQXCompactWeakTable(FQXTrackedSuppressedScrollEdges());
 }
@@ -10587,7 +10974,7 @@ static void HookTransitionShowInView(UIView *self, SEL cmd, UIView *parent, BOOL
         UIView *strongTrans = weakTrans;
         if (!strongTrans || !strongTrans.window || !FQXCommentStylingEnabled()) return;
         UIView *sheet = FQXTrackedSheetInTransition(strongTrans);
-        if (sheet) FQXCleanTransitionBackdrop(strongTrans, sheet, YES);
+        if (sheet) FQXCleanCommentPresentationBackdrops(sheet, strongTrans, YES);
     };
     if (win) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -11535,6 +11922,7 @@ static void (*OrigReaderCommentListAppeared)(id, SEL, BOOL);
 static void HookReaderCommentListAppeared(UIViewController *controller, SEL cmd, BOOL animated) {
     OrigReaderCommentListAppeared(controller, cmd, animated);
     FQXStyleReaderCommentList(controller);
+    FQXScheduleDelayedReaderCommentRestyle(controller);
 }
 
 static void (*OrigSharePanelLayout)(id, SEL);

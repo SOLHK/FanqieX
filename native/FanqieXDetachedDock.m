@@ -312,7 +312,8 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     if (selectionColor && ![self.selectionLens.backgroundColor isEqual:selectionColor]) {
         self.selectionLens.backgroundColor = selectionColor;
     }
-    if (self.appliedGlassStamp != styleStamp) {
+    BOOL effectLost = (effect != nil && !self.internalGlassView.effect);
+    if (self.appliedGlassStamp != styleStamp || effectLost) {
         self.appliedGlassStamp = styleStamp;
         self.internalGlassView.effect = effect;
         self.internalGlassView.backgroundColor = reduceTransparency
