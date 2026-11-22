@@ -1326,17 +1326,28 @@ static BOOL FQXBackdropFilterAvailable(void) {
 }
 @end
 
+static const void *FQXDockBackdropBlurViewKey = &FQXDockBackdropBlurViewKey;
+
+static void FQXClearDockBackdropBlur(UIView *owner) {
+    if (!owner) return;
+    FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, FQXDockBackdropBlurViewKey);
+    if (blur) {
+        [blur invalidateBlurAnimator];
+        [blur removeFromSuperview];
+        objc_setAssociatedObject(owner, FQXDockBackdropBlurViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 static void FQXApplyDockBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
                                      CGFloat radius, BOOL dark, FQXDockMaterialMode mode, NSString *preference) {
-    static char blurViewKey;
-    FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, &blurViewKey);
+    FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, FQXDockBackdropBlurViewKey);
     NSInteger strength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:preference]);
     BOOL needsView = (strength > 0) || (mode == FQXDockMaterialIOS18Gaussian);
     if (!container || !needsView || UIAccessibilityIsReduceTransparencyEnabled()) {
         if (blur) {
             [blur invalidateBlurAnimator];
             [blur removeFromSuperview];
-            objc_setAssociatedObject(owner, &blurViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(owner, FQXDockBackdropBlurViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         return;
     }
@@ -1347,7 +1358,7 @@ static void FQXApplyDockBackdropBlur(UIView *owner, UIView *container, UIView *a
         blur.accessibilityElementsHidden = YES;
         blur.layer.cornerCurve = kCACornerCurveContinuous;
         blur.clipsToBounds = YES;
-        objc_setAssociatedObject(owner, &blurViewKey, blur, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(owner, FQXDockBackdropBlurViewKey, blur, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(blur, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (blur.superview != container) {
@@ -1414,8 +1425,87 @@ static UIVisualEffect *FQXMakeDockEffectForMode(FQXDockMaterialMode mode, BOOL i
     }
 }
 
+typedef NS_ENUM(NSInteger, FQXDockMaterialOwner) {
+    FQXDockMaterialOwnerNone = 0,
+    FQXDockMaterialOwnerNative = 1, // Expanded: UITabBar platter (+ optional detached circle) owns all visible glass; proxy.effect MUST stay nil
+    FQXDockMaterialOwnerProxy = 2,  // Compact or legacy segmented fallback: proxy owns the single visible glass
+};
+
+static const void *FQXDockMaterialOwnerKey = &FQXDockMaterialOwnerKey;
+static NSUInteger gFQXProxyBlockedWriteCount = 0;
+static BOOL gFQXAllowOwnedProxyEffectWrite = NO;
+static void (*OrigVisualEffectSetEffectForOwner)(id, SEL, id);
+
+static FQXDockMaterialOwner FQXGetDockMaterialOwner(UIVisualEffectView *proxy) {
+    if (!proxy) return FQXDockMaterialOwnerNone;
+    NSNumber *num = objc_getAssociatedObject(proxy, FQXDockMaterialOwnerKey);
+    return num ? (FQXDockMaterialOwner)num.integerValue : FQXDockMaterialOwnerNone;
+}
+
+static NSString *FQXDockMaterialOwnerName(FQXDockMaterialOwner owner) {
+    switch (owner) {
+        case FQXDockMaterialOwnerNative: return @"native_tabbar";
+        case FQXDockMaterialOwnerProxy: return @"proxy_compact_or_fallback";
+        case FQXDockMaterialOwnerNone:
+        default: return @"none";
+    }
+}
+
+static void FQXWriteProxyEffectDirectly(UIVisualEffectView *proxy, UIVisualEffect *effect) {
+    if (![proxy isKindOfClass:UIVisualEffectView.class]) return;
+    if (proxy.effect == effect) return;
+    BOOL prev = gFQXAllowOwnedProxyEffectWrite;
+    gFQXAllowOwnedProxyEffectWrite = YES;
+    if (OrigVisualEffectSetEffectForOwner) {
+        OrigVisualEffectSetEffectForOwner(proxy, @selector(setEffect:), effect);
+    } else {
+        proxy.effect = effect;
+    }
+    gFQXAllowOwnedProxyEffectWrite = prev;
+}
+
+static void HookVisualEffectSetEffectForOwner(UIVisualEffectView *view, SEL cmd, UIVisualEffect *effect) {
+    if (!gFQXAllowOwnedProxyEffectWrite) {
+        NSNumber *ownerNum = objc_getAssociatedObject(view, FQXDockMaterialOwnerKey);
+        if (ownerNum) {
+            FQXDockMaterialOwner owner = (FQXDockMaterialOwner)ownerNum.integerValue;
+            if (owner == FQXDockMaterialOwnerNative && FQXGlassEnabled()) {
+                // Expanded Dock is owned by nativeDockBar (+ detached circle). Block
+                // repair162/material_lifecycle.s (Lmaterial_update) from re-attaching
+                // Regular (0) milky glass onto proxy on every layout pass.
+                if (effect != nil) gFQXProxyBlockedWriteCount++;
+                if (view.effect != nil && OrigVisualEffectSetEffectForOwner) {
+                    OrigVisualEffectSetEffectForOwner(view, cmd, nil);
+                }
+                return;
+            }
+            if (owner == FQXDockMaterialOwnerProxy && effect != nil && FQXGlassEnabled()) {
+                // In compact/fallback mode, keep the user's configured Clear/Legacy/Frosted/Gaussian
+                // effect rather than letting Lmaterial_update overwrite it with Regular (0).
+                BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
+                FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
+                UIUserInterfaceStyle dockStyle = view.overrideUserInterfaceStyle;
+                BOOL darkDock = (dockStyle == UIUserInterfaceStyleDark) ||
+                    (dockStyle == UIUserInterfaceStyleUnspecified &&
+                     view.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+                UIVisualEffect *ownedEffect = FQXMakeDockEffectForMode(mode, darkDock, YES, reduceTrans);
+                if (ownedEffect) effect = ownedEffect;
+            }
+        }
+    }
+    if (OrigVisualEffectSetEffectForOwner) {
+        OrigVisualEffectSetEffectForOwner(view, cmd, effect);
+    }
+}
+
 static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UIVisualEffectView *lens) {
     if (!proxy || !FQXGlassEnabled()) return;
+    // Never materialize glass on proxy while native UITabBar owns the expanded Dock.
+    if (FQXGetDockMaterialOwner(proxy) == FQXDockMaterialOwnerNative) {
+        FQXWriteProxyEffectDirectly(proxy, nil);
+        FQXClearDockBackdropBlur(proxy);
+        return;
+    }
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     BOOL darkTint = FQXGlassDarkTintEnabled();
@@ -1428,7 +1518,7 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
     if (!appliedMode || appliedMode.integerValue != desiredMode || effectLost) {
         UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, darkDock, YES, reduceTrans);
         if (effect) {
-            proxy.effect = effect;
+            FQXWriteProxyEffectDirectly(proxy, effect);
             FQXApplyCornerConfiguration(proxy, 0.0, NO);
             objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, @(desiredMode), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_proxy_material", @{
@@ -1438,6 +1528,7 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
                 @"overrideStyle": @((NSInteger)proxy.overrideUserInterfaceStyle),
                 @"hasTint": @((mode == FQXDockMaterialNewGlass && darkDock && darkTint && !reduceTrans) ? YES : NO),
                 @"reduceTransparency": @(reduceTrans),
+                @"owner": FQXDockMaterialOwnerName(FQXGetDockMaterialOwner(proxy)),
             }, NO);
         }
     }
@@ -1574,7 +1665,7 @@ static UIVisualEffectView *FQXFindDockBackgroundEffect(UITabBar *tabBar) {
         if (![child isKindOfClass:UIVisualEffectView.class] ||
             [child isKindOfClass:FQXBackdropBlurView.class]) continue;
         UIVisualEffectView *effectView = (UIVisualEffectView *)child;
-        BOOL background = [effectView.effect isKindOfClass:UIBlurEffect.class] ||
+        BOOL background = effectView.effect != nil ||
             objc_getAssociatedObject(effectView, FQXPlatterOriginalGlassKey) != nil;
         if (!background || child.hidden || CGRectGetHeight(child.bounds) <= 10.0 ||
             CGRectGetWidth(child.bounds) <= 2.0 * CGRectGetHeight(child.bounds)) continue;
@@ -1605,6 +1696,16 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
 }
 
 // Swap only the platter material. UIKit still drives selection and the interactive lens.
+static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, FQXDockMaterialMode mode) {
+    if (!effectObj) return (mode != FQXDockMaterialIOS18Gaussian);
+    if ([effectObj isKindOfClass:UIBlurEffect.class]) return YES;
+    if (mode == FQXDockMaterialNewGlass || mode == FQXDockMaterialLegacyGlass) {
+        NSInteger curStyle = FQXIntGet(effectObj, "style", -1);
+        if (curStyle == 0) return YES; // UIKit reverted Clear (1) back to milky Regular (0)
+    }
+    return NO;
+}
+
 static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMaterialMode mode) {
     if (!platter) return;
     NSNumber *applied = objc_getAssociatedObject(platter, FQXPlatterAppliedStyleKey);
@@ -1623,7 +1724,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         // UIKit may rebuild its background when appearance/items change.
         BOOL hostReset = wantsClear
             ? (current != nil)
-            : (!current || [current isKindOfClass:UIBlurEffect.class]);
+            : FQXGlassEffectNeedsStyleReapply(current, mode);
         if (!original || (!wantsClear && hostReset && current)) {
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -1635,6 +1736,15 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             surface.contentView.backgroundColor = UIColor.clearColor;
             FQXApplyCornerConfiguration(surface, 0.0, NO);
             objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, @(desired), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_glass_material", @{
+                @"mode": @((NSInteger)mode),
+                @"isDark": @(isDark),
+                @"darkTint": @(FQXGlassDarkTintEnabled()),
+                @"platterClass": NSStringFromClass(surface.class) ?: @"",
+                @"hasTint": @((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) ? YES : NO),
+                @"interactive": @YES,
+                @"hostReset": @(hostReset),
+            }, NO);
         }
         return;
     }
@@ -1649,8 +1759,6 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         [platter setNeedsLayout];
         return;
     }
-    NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
-    if (applied && applied.integerValue == desiredStamp) return;
     if (gFQXPlatterGlassProbed && !gFQXPlatterGlassSupported) return;
 
     id current = nil;
@@ -1663,6 +1771,10 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     }
     gFQXPlatterGlassProbed = YES;
     gFQXPlatterGlassSupported = YES;
+
+    NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
+    BOOL hostReset = FQXGlassEffectNeedsStyleReapply(current, mode);
+    if (applied && applied.integerValue == desiredStamp && !hostReset) return;
 
     if (!objc_getAssociatedObject(platter, FQXPlatterOriginalGlassKey)) {
         objc_setAssociatedObject(platter, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
@@ -1694,10 +1806,18 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         @"platterClass": NSStringFromClass(platter.class) ?: @"",
         @"hasTint": @((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) ? YES : NO),
         @"interactive": @(interactive),
+        @"hostReset": @(hostReset),
     }, NO);
 }
 
 static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL dark) {
+    if (!tabBar) return;
+    if (tabBar.backgroundColor && ![tabBar.backgroundColor isEqual:UIColor.clearColor]) {
+        tabBar.backgroundColor = UIColor.clearColor;
+    }
+    if (tabBar.barTintColor != nil) {
+        tabBar.barTintColor = nil;
+    }
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     static char originalAppearanceKey, selectionStyleKey;
@@ -1729,6 +1849,9 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
             objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
+    if (platter && platter.backgroundColor && ![platter.backgroundColor isEqual:UIColor.clearColor]) {
+        platter.backgroundColor = UIColor.clearColor;
+    }
     FQXApplyDockPlatterGlass(platter, dark, mode);
     static Class platterCls = Nil;
     static dispatch_once_t pOnce;
@@ -1736,6 +1859,9 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
     if (platterCls && platter && platter.superview) {
         for (UIView *sib in platter.superview.subviews) {
             if (sib != platter && [sib isKindOfClass:platterCls]) {
+                if (sib.backgroundColor && ![sib.backgroundColor isEqual:UIColor.clearColor]) {
+                    sib.backgroundColor = UIColor.clearColor;
+                }
                 FQXApplyDockPlatterGlass(sib, dark, mode);
             }
         }
@@ -1869,8 +1995,18 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
 }
 
 static const void *FQXZeroMaskLayerKey = &FQXZeroMaskLayerKey;
-static const void *FQXProxySuppressedKey = &FQXProxySuppressedKey;
 static const void *FQXProxySuppressDiagLoggedKey = &FQXProxySuppressDiagLoggedKey;
+static const void *FQXDockVisibleLayersSigKey = &FQXDockVisibleLayersSigKey;
+static const void *FQXDockDetachedLayoutSigKey = &FQXDockDetachedLayoutSigKey;
+
+static NSArray<NSNumber *> *FQXDockRectArray(CGRect r) {
+    return @[
+        @(round(r.origin.x * 10.0) / 10.0),
+        @(round(r.origin.y * 10.0) / 10.0),
+        @(round(r.size.width * 10.0) / 10.0),
+        @(round(r.size.height * 10.0) / 10.0),
+    ];
+}
 
 // Visually hide a view without modifying hidden/alpha/layer.opacity, so Lvisible_to() in
 // native_surface.s still sees alpha == 1.0 and NEVER enters a reset/layout death spiral.
@@ -1897,93 +2033,206 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     }
 }
 
-// On iOS 26/27, UIGlassEffect's Metal backdrop/SDF layers ignore CALayer.mask = CGRectZero,
-// allowing AlignedGlass's underlying proxy UIVisualEffectView to remain visible directly behind
-// our native UITabBar (double-stacking a second glass layer and exposing a full-width ghost
-// capsule behind 2/3-tab or detached Docks). Suppress only non-contentView child views and
-// non-contentView sublayers while keeping proxy.hidden == NO, proxy.alpha == 1.0, proxy.bounds,
-// proxy.effect, and proxy.contentView.hidden completely untouched so Lvisible_to / LMmaterial_update
-// and compact Dock detection remain 100% intact.
-static void FQXEnforceProxyGlassSuppression(UIVisualEffectView *proxy, BOOL suppressed) {
+// Keep proxy completely effect-free and non-interactive while nativeDockBar owns the expanded Dock.
+// Proxy stays hidden == NO, alpha == 1.0, bounds intact, contentView.hidden untouched so
+// repair162's Lvisible_to() and compact-Dock detection continue functioning without reset loops.
+static void FQXEnforceNativeProxyNeutralized(UIVisualEffectView *proxy) {
     if (![proxy isKindOfClass:UIVisualEffectView.class]) return;
-    UIView *content = proxy.contentView;
-    CALayer *contentLayer = content.layer;
-    NSMutableArray<NSString *> *subviewClasses = nil;
-    NSMutableArray<NSString *> *sublayerClasses = nil;
-    BOOL logDiag = suppressed && !objc_getAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey);
-    if (logDiag) {
-        subviewClasses = [NSMutableArray array];
-        sublayerClasses = [NSMutableArray array];
+    if (FQXGetDockMaterialOwner(proxy) != FQXDockMaterialOwnerNative || !FQXGlassEnabled()) return;
+    if (proxy.effect != nil) {
+        FQXWriteProxyEffectDirectly(proxy, nil);
+    }
+    FQXClearDockBackdropBlur(proxy);
+    if (proxy.backgroundColor && ![proxy.backgroundColor isEqual:UIColor.clearColor]) {
+        proxy.backgroundColor = UIColor.clearColor;
+    }
+    if (proxy.contentView.backgroundColor && ![proxy.contentView.backgroundColor isEqual:UIColor.clearColor]) {
+        proxy.contentView.backgroundColor = UIColor.clearColor;
+    }
+    if (proxy.userInteractionEnabled) {
+        proxy.userInteractionEnabled = NO;
+    }
+    FQXSetZeroMaskHidden(proxy, NO);
+    if (proxy.contentView) {
+        FQXSetZeroMaskHidden(proxy.contentView, YES);
+    }
+}
+
+static void FQXSetDockMaterialOwner(UIView *bar,
+                                    UIVisualEffectView *proxy,
+                                    FQXDockMaterialOwner owner,
+                                    BOOL detachedActive) {
+    (void)bar;
+    if (![proxy isKindOfClass:UIVisualEffectView.class]) return;
+    FQXDockMaterialOwner prevOwner = FQXGetDockMaterialOwner(proxy);
+    NSString *effectBefore = proxy.effect ? (NSStringFromClass(proxy.effect.class) ?: @"UIVisualEffect") : @"nil";
+    objc_setAssociatedObject(proxy, FQXDockMaterialOwnerKey, @(owner), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    if (owner == FQXDockMaterialOwnerNative) {
+        FQXEnforceNativeProxyNeutralized(proxy);
+        BOOL shouldLogSuppress = (prevOwner != FQXDockMaterialOwnerNative) ||
+            !objc_getAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey);
+        if (shouldLogSuppress) {
+            objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_proxy_suppressed", @{
+                @"reason": @"native_tabbar_owns_expanded_dock",
+                @"clearedEffectClass": effectBefore,
+                @"proxyEffectAfter": proxy.effect ? (NSStringFromClass(proxy.effect.class) ?: @"") : @"nil",
+                @"proxyUserInteractionEnabled": @(proxy.userInteractionEnabled),
+                @"detachedActive": @(detachedActive),
+                @"blockedExternalWrites": @(gFQXProxyBlockedWriteCount),
+                @"proxyFrame": FQXDockRectArray(proxy.frame),
+            }, NO);
+        }
+    } else if (owner == FQXDockMaterialOwnerProxy) {
+        if (!proxy.userInteractionEnabled) {
+            proxy.userInteractionEnabled = YES;
+        }
+        FQXSetZeroMaskHidden(proxy, NO);
+        if (proxy.contentView) {
+            FQXSetZeroMaskHidden(proxy.contentView, NO);
+        }
+        objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (prevOwner != FQXDockMaterialOwnerProxy) {
+            objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [proxy setNeedsLayout];
+        }
+    } else {
+        if (!proxy.userInteractionEnabled) proxy.userInteractionEnabled = YES;
+        FQXSetZeroMaskHidden(proxy, NO);
+        if (proxy.contentView) FQXSetZeroMaskHidden(proxy.contentView, NO);
+        objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    for (UIView *sub in proxy.subviews) {
-        if (sub == content) continue;
-        if (logDiag) [subviewClasses addObject:(NSStringFromClass(sub.class) ?: @"UIView")];
-        if (suppressed) {
-            if (!sub.hidden) sub.hidden = YES;
-            if (sub.alpha != 0.0) sub.alpha = 0.0;
-        } else {
-            if (sub.hidden) sub.hidden = NO;
-            if (sub.alpha != 1.0) sub.alpha = 1.0;
-        }
-    }
-    for (CALayer *sublayer in proxy.layer.sublayers) {
-        if (sublayer == contentLayer) continue;
-        if (logDiag) [sublayerClasses addObject:(NSStringFromClass(sublayer.class) ?: @"CALayer")];
-        if (suppressed) {
-            if (!sublayer.hidden) sublayer.hidden = YES;
-            if (sublayer.opacity != 0.0f) sublayer.opacity = 0.0f;
-        } else {
-            if (sublayer.hidden) sublayer.hidden = NO;
-            if (sublayer.opacity != 1.0f) sublayer.opacity = 1.0f;
-        }
-    }
-    [CATransaction commit];
-
-    if (logDiag && (subviewClasses.count > 0 || sublayerClasses.count > 0)) {
-        objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_proxy_suppressed", @{
-            @"suppressedSubviews": subviewClasses,
-            @"suppressedSublayers": sublayerClasses,
-            @"proxyFrame": @[
-                @(round(proxy.frame.origin.x * 10.0) / 10.0),
-                @(round(proxy.frame.origin.y * 10.0) / 10.0),
-                @(round(proxy.frame.size.width * 10.0) / 10.0),
-                @(round(proxy.frame.size.height * 10.0) / 10.0),
-            ],
+    if (prevOwner != owner) {
+        FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_material_owner", @{
+            @"prevOwner": FQXDockMaterialOwnerName(prevOwner),
+            @"owner": FQXDockMaterialOwnerName(owner),
+            @"detachedActive": @(detachedActive),
+            @"proxyEffectBefore": effectBefore,
+            @"proxyEffectAfter": proxy.effect ? (NSStringFromClass(proxy.effect.class) ?: @"") : @"nil",
+            @"proxyUserInteractionEnabled": @(proxy.userInteractionEnabled),
+            @"dockMode": @((NSInteger)FQXCurrentDockMaterialMode()),
         }, NO);
     }
 }
 
-static void FQXSetProxyGlassSuppressed(UIVisualEffectView *proxy, BOOL suppressed) {
-    if (![proxy isKindOfClass:UIVisualEffectView.class]) return;
-    objc_setAssociatedObject(proxy, FQXProxySuppressedKey, suppressed ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    FQXSetZeroMaskHidden(proxy, suppressed);
-    if (proxy.contentView) {
-        FQXSetZeroMaskHidden(proxy.contentView, suppressed);
+static void FQXAuditVisibleDockGlassLayers(UIView *bar,
+                                           UIVisualEffectView *proxy,
+                                           UITabBar *tabBar,
+                                           FQXDetachedDockButtonView *detached) {
+    if (!bar) return;
+    NSMutableArray<NSDictionary *> *layers = [NSMutableArray array];
+    NSMutableString *sig = [NSMutableString string];
+    BOOL proxyHasEffect = NO;
+    NSUInteger nativePlatterCount = 0;
+    NSUInteger detachedGlassCount = 0;
+
+    if ([proxy isKindOfClass:UIVisualEffectView.class]) {
+        BOOL hasEff = (proxy.effect != nil && !proxy.hidden && proxy.alpha > 0.01);
+        proxyHasEffect = hasEff;
+        NSString *effCls = proxy.effect ? (NSStringFromClass(proxy.effect.class) ?: @"") : @"nil";
+        [sig appendFormat:@"p:%d:%@:%d|", hasEff ? 1 : 0, effCls, (int)FQXGetDockMaterialOwner(proxy)];
+        if (hasEff) {
+            [layers addObject:@{
+                @"role": @"proxy",
+                @"class": NSStringFromClass(proxy.class) ?: @"UIVisualEffectView",
+                @"effectClass": effCls,
+                @"owner": FQXDockMaterialOwnerName(FQXGetDockMaterialOwner(proxy)),
+                @"frame": FQXDockRectArray(proxy.frame),
+            }];
+        }
     }
-    FQXEnforceProxyGlassSuppression(proxy, suppressed);
-    if (!suppressed) {
-        objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [proxy setNeedsLayout];
+
+    if (tabBar && !tabBar.hidden && tabBar.alpha > 0.01) {
+        UIView *platter = FQXFindDockPlatter(tabBar);
+        if (platter && !platter.hidden && platter.alpha > 0.01) {
+            NSString *effCls = @"none";
+            if ([platter isKindOfClass:UIVisualEffectView.class]) {
+                UIVisualEffect *eff = ((UIVisualEffectView *)platter).effect;
+                effCls = eff ? (NSStringFromClass(eff.class) ?: @"UIVisualEffect") : @"nil";
+            } else {
+                @try {
+                    id ge = [platter valueForKey:@"glassEffect"];
+                    effCls = ge ? (NSStringFromClass([ge class]) ?: @"UIGlassEffect") : @"nil";
+                } @catch (__unused NSException *e) {
+                    effCls = @"platter";
+                }
+            }
+            if (![effCls isEqualToString:@"nil"]) {
+                nativePlatterCount++;
+                CGRect pfInBar = [platter convertRect:platter.bounds toView:bar];
+                [layers addObject:@{
+                    @"role": @"native_tabbar_platter",
+                    @"class": NSStringFromClass(platter.class) ?: @"UIView",
+                    @"effectClass": effCls,
+                    @"frame": FQXDockRectArray(pfInBar),
+                }];
+            }
+            [sig appendFormat:@"n:%@:%.0fx%.0f|", effCls, CGRectGetWidth(platter.bounds), CGRectGetHeight(platter.bounds)];
+        }
     }
+
+    if (detached && !detached.hidden && detached.alpha > 0.01 && detached.superview == bar) {
+        UIVisualEffectView *dg = detached.glassView;
+        NSString *effCls = dg.effect ? (NSStringFromClass(dg.effect.class) ?: @"UIVisualEffect") : @"nil";
+        if (dg && dg.effect != nil && !dg.hidden && dg.alpha > 0.01) {
+            detachedGlassCount++;
+            [layers addObject:@{
+                @"role": @"detached_circle",
+                @"class": NSStringFromClass(dg.class) ?: @"UIVisualEffectView",
+                @"effectClass": effCls,
+                @"frame": FQXDockRectArray(detached.frame),
+            }];
+        }
+        [sig appendFormat:@"d:%@:%.0f|", effCls, CGRectGetMinX(detached.frame)];
+    }
+
+    // Check any unexpected sibling UIVisualEffectView directly inside bar with a live effect.
+    NSUInteger extraGlass = 0;
+    for (UIView *sub in bar.subviews) {
+        if (sub == proxy || sub == tabBar || sub == detached || sub.hidden || sub.alpha <= 0.01) continue;
+        if (![sub isKindOfClass:UIVisualEffectView.class]) continue;
+        UIVisualEffectView *ve = (UIVisualEffectView *)sub;
+        if (ve.effect != nil) {
+            extraGlass++;
+            [layers addObject:@{
+                @"role": @"extra_bar_effect",
+                @"class": NSStringFromClass(ve.class) ?: @"UIVisualEffectView",
+                @"effectClass": NSStringFromClass(ve.effect.class) ?: @"",
+                @"frame": FQXDockRectArray(ve.frame),
+            }];
+        }
+    }
+    [sig appendFormat:@"x:%lu", (unsigned long)extraGlass];
+
+    NSString *prevSig = objc_getAssociatedObject(bar, FQXDockVisibleLayersSigKey);
+    if (prevSig && [prevSig isEqualToString:sig]) return;
+    objc_setAssociatedObject(bar, FQXDockVisibleLayersSigKey, [sig copy], OBJC_ASSOCIATION_COPY_NONATOMIC);
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_visible_glass_layers", @{
+        @"visibleGlassCount": @(layers.count),
+        @"proxyHasEffect": @(proxyHasEffect),
+        @"nativePlatterCount": @(nativePlatterCount),
+        @"detachedGlassCount": @(detachedGlassCount),
+        @"extraBarEffectCount": @(extraGlass),
+        @"owner": FQXDockMaterialOwnerName(FQXGetDockMaterialOwner(proxy)),
+        @"layers": layers,
+    }, NO);
 }
 
 static void (*OrigVisualEffectLayoutForProxyGuard)(id, SEL);
 static void HookVisualEffectLayoutForProxyGuard(UIVisualEffectView *view, SEL cmd) {
     if (OrigVisualEffectLayoutForProxyGuard) OrigVisualEffectLayoutForProxyGuard(view, cmd);
-    if (objc_getAssociatedObject(view, FQXProxySuppressedKey)) {
-        FQXEnforceProxyGlassSuppression(view, YES);
+    if (FQXGetDockMaterialOwner(view) == FQXDockMaterialOwnerNative) {
+        FQXEnforceNativeProxyNeutralized(view);
     }
 }
 
 static void (*OrigVisualEffectWindowForProxyGuard)(id, SEL);
 static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cmd) {
     if (OrigVisualEffectWindowForProxyGuard) OrigVisualEffectWindowForProxyGuard(view, cmd);
-    if (objc_getAssociatedObject(view, FQXProxySuppressedKey)) {
-        FQXEnforceProxyGlassSuppression(view, YES);
+    if (FQXGetDockMaterialOwner(view) == FQXDockMaterialOwnerNative) {
+        FQXEnforceNativeProxyNeutralized(view);
     }
 }
 
@@ -2019,13 +2268,75 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
              native:(UIView *)native
                lens:(UIVisualEffectView *)lens;
 - (void)updateLens:(UIVisualEffectView *)lens native:(UIView *)native;
+- (void)ensureDockZOrderInBar:(UIView *)bar;
+- (void)triggerHostNavigationForHostIndex:(NSUInteger)hostIdx
+                           fallbackButton:(UIButton *)fallbackBtn
+                                   source:(NSString *)source;
 - (BOOL)syncDockItems;
 - (void)applyDockItemImages;
 - (void)syncDetachedDockMaterial:(BOOL)glassDark;
 - (void)syncSelectionExclusivityAnimated:(BOOL)animated;
 - (void)layoutNativeDockInBar:(UIView *)bar proxy:(UIVisualEffectView *)proxy forceMeasure:(BOOL)forceMeasure;
+- (void)setNativeDockVisible:(BOOL)visible restoreProxy:(BOOL)restoreProxy;
 - (void)teardown;
 @end
+
+static NSHashTable<FQXTabBarInteraction *> *FQXTrackedDockInteractions(void);
+
+static FQXTabBarInteraction *FQXActiveDockInteractionForBar(UIView *bar) {
+    if (!bar) return nil;
+    for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+        if (inter.bar == bar && inter.nativeDockActive) {
+            return inter;
+        }
+    }
+    return nil;
+}
+
+static BOOL (*OrigSSTabBarPointInside)(id, SEL, CGPoint, id);
+static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent *event) {
+    FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
+    if (inter && inter.detachedHostIndex != NSNotFound) {
+        FQXDetachedDockButtonView *det = inter.detachedButton;
+        if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
+            CGPoint ptInDet = [det convertPoint:point fromView:bar];
+            if ([det pointInside:ptInDet withEvent:event]) {
+                return YES;
+            }
+        }
+    }
+    return OrigSSTabBarPointInside ? OrigSSTabBarPointInside(bar, cmd, point, event) : NO;
+}
+
+static UIView *(*OrigSSTabBarHitTest)(id, SEL, CGPoint, id);
+static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent *event) {
+    FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
+    if (inter && inter.detachedHostIndex != NSNotFound) {
+        FQXDetachedDockButtonView *det = inter.detachedButton;
+        if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
+            CGPoint ptInDet = [det convertPoint:point fromView:bar];
+            if ([det pointInside:ptInDet withEvent:event]) {
+                UIView *resolved = [det hitTest:ptInDet withEvent:event] ?: (det.hitButton ?: det);
+                static CFTimeInterval lastHitDiagTs = 0;
+                CFTimeInterval now = CACurrentMediaTime();
+                if (now - lastHitDiagTs >= 0.15) {
+                    lastHitDiagTs = now;
+                    FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_hit_test", @{
+                        @"moduleTitle": det.moduleTitle ?: @"",
+                        @"hostIndex": @(inter.detachedHostIndex),
+                        @"pointInBar": @[@(round(point.x * 10.0) / 10.0), @(round(point.y * 10.0) / 10.0)],
+                        @"pointInDetached": @[@(round(ptInDet.x * 10.0) / 10.0), @(round(ptInDet.y * 10.0) / 10.0)],
+                        @"detachedFrame": FQXDockRectArray(det.frame),
+                        @"barBounds": FQXDockRectArray(bar.bounds),
+                        @"resolvedClass": NSStringFromClass(resolved.class) ?: @"",
+                    }, NO);
+                }
+                return resolved;
+            }
+        }
+    }
+    return OrigSSTabBarHitTest ? OrigSSTabBarHitTest(bar, cmd, point, event) : nil;
+}
 
 static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSInteger depth) {
     if (!root || depth > 5) return;
@@ -2094,6 +2405,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
                 if (idx != NSNotFound && idx < self.buttons.count) return idx;
             }
         }
+        id barDelegate = FQXObjGet(self.bar, "delegate");
+        if (barDelegate) {
+            NSInteger delIdx = FQXIntGet(barDelegate, "selectedIndex", -1);
+            if (delIdx >= 0 && (NSUInteger)delIdx < self.buttons.count) return (NSUInteger)delIdx;
+        }
     }
     for (NSUInteger i = 0; i < self.buttons.count; ++i) {
         UIButton *btn = self.buttons[i];
@@ -2116,6 +2432,137 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         return bestIdx;
     }
     return 0;
+}
+
+- (void)ensureDockZOrderInBar:(UIView *)bar {
+    if (!bar) return;
+    UITabBar *tabBar = self.nativeDockBar;
+    FQXDetachedDockButtonView *det = self.detachedButton;
+    BOOL showDetached = (self.detachedHostIndex != NSNotFound && det != nil && !det.hidden);
+
+    if (tabBar && tabBar.superview == bar) {
+        UIView *anchor = nil;
+        NSUInteger proxyIdx = (self.proxy && self.proxy.superview == bar)
+            ? [bar.subviews indexOfObjectIdenticalTo:self.proxy] : NSNotFound;
+        NSUInteger overlayIdx = (self.overlay && self.overlay.superview == bar)
+            ? [bar.subviews indexOfObjectIdenticalTo:self.overlay] : NSNotFound;
+        if (proxyIdx != NSNotFound && overlayIdx != NSNotFound) {
+            anchor = (overlayIdx > proxyIdx) ? self.overlay : self.proxy;
+        } else if (overlayIdx != NSNotFound) {
+            anchor = self.overlay;
+        } else if (proxyIdx != NSNotFound) {
+            anchor = self.proxy;
+        }
+        if (anchor) {
+            NSUInteger tabIdx = [bar.subviews indexOfObjectIdenticalTo:tabBar];
+            NSUInteger anchorIdx = [bar.subviews indexOfObjectIdenticalTo:anchor];
+            if (tabIdx != NSNotFound && anchorIdx != NSNotFound && tabIdx < anchorIdx) {
+                [bar insertSubview:tabBar aboveSubview:anchor];
+            }
+        }
+    }
+
+    if (showDetached) {
+        if (det.superview != bar) {
+            if (tabBar && tabBar.superview == bar) {
+                [bar insertSubview:det aboveSubview:tabBar];
+            } else {
+                [bar addSubview:det];
+            }
+        } else if (bar.subviews.lastObject != det) {
+            [bar bringSubviewToFront:det];
+        }
+    }
+}
+
+- (void)triggerHostNavigationForHostIndex:(NSUInteger)hostIdx
+                           fallbackButton:(UIButton *)fallbackBtn
+                                   source:(NSString *)source {
+    NSUInteger beforeSel = [self currentSelectedIndex];
+    UIButton *hostBtn = (hostIdx < self.buttons.count && [self.buttons[hostIdx] isKindOfClass:UIButton.class])
+        ? self.buttons[hostIdx]
+        : ([fallbackBtn isKindOfClass:UIButton.class] ? fallbackBtn : nil);
+    NSString *methodUsed = @"none";
+    BOOL triggered = NO;
+
+    if (hostBtn && [hostBtn allTargets].count > 0) {
+        [hostBtn sendActionsForControlEvents:UIControlEventTouchUpInside];
+        methodUsed = @"host_button_touch_up_inside";
+        triggered = YES;
+    }
+
+    NSUInteger afterBtnSel = [self currentSelectedIndex];
+    // Fallback 1: invoke SSTabBar's real host delegate tabBar:didSelectItem: using the host item.
+    if ((!triggered || afterBtnSel != hostIdx) && self.bar) {
+        id barDelegate = FQXObjGet(self.bar, "delegate");
+        NSArray *barItems = FQXObjGet(self.bar, "items");
+        SEL didSel = @selector(tabBar:didSelectItem:);
+        if (barDelegate && [barDelegate respondsToSelector:didSel] &&
+            [barItems isKindOfClass:NSArray.class] && hostIdx < barItems.count) {
+            Method m = class_getInstanceMethod(object_getClass(barDelegate), didSel);
+            if (m && strcmp(method_getTypeEncoding(m), "v32@0:8@16@24") == 0) {
+                id item = barItems[hostIdx];
+                if ([self.bar respondsToSelector:@selector(setSelectedItem:)]) {
+                    Method sm = class_getInstanceMethod(object_getClass(self.bar), @selector(setSelectedItem:));
+                    if (sm && strcmp(method_getTypeEncoding(sm), "v24@0:8@16") == 0) {
+                        ((void (*)(id, SEL, id))objc_msgSend)(self.bar, @selector(setSelectedItem:), item);
+                    }
+                }
+                ((void (*)(id, SEL, id, id))objc_msgSend)(barDelegate, didSel, self.bar, item);
+                methodUsed = triggered ? @"host_button_plus_bar_delegate" : @"bar_delegate_did_select_item";
+                triggered = YES;
+            }
+        }
+    }
+
+    // Fallback 2: directly set selectedIndex on SSTabBarController / UITabBarController.
+    NSUInteger afterDelegateSel = [self currentSelectedIndex];
+    if ((!triggered || afterDelegateSel != hostIdx) && self.bar) {
+        id owner = FQXObjGet(self.bar, "delegate");
+        UITabBarController *tbc = [owner isKindOfClass:UITabBarController.class] ? (UITabBarController *)owner : nil;
+        if (!tbc) {
+            UIResponder *resp = self.bar.nextResponder;
+            NSInteger hops = 0;
+            while (resp && hops < 12) {
+                if ([resp isKindOfClass:UITabBarController.class]) {
+                    tbc = (UITabBarController *)resp;
+                    break;
+                }
+                resp = resp.nextResponder;
+                hops++;
+            }
+        }
+        if (tbc && hostIdx < tbc.viewControllers.count) {
+            tbc.selectedIndex = hostIdx;
+            methodUsed = triggered ? @"fallback_tabbar_controller" : @"tabbar_controller_selected_index";
+            triggered = YES;
+        }
+    }
+
+    NSUInteger finalSel = [self currentSelectedIndex];
+    [self syncSelectionExclusivityAnimated:YES];
+    [self ensureDockZOrderInBar:self.bar];
+    FQXScheduleCYLGlassResample(self.bar, self.proxy);
+
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_navigation", @{
+        @"source": source ?: @"detached_tap",
+        @"targetHostIndex": @(hostIdx),
+        @"moduleTitle": self.detachedButton.moduleTitle ?: @"",
+        @"beforeIndex": @(beforeSel),
+        @"afterIndex": @(finalSel),
+        @"hadHostButton": @(hostBtn != nil),
+        @"methodUsed": methodUsed,
+        @"triggered": @(triggered),
+    }, NO);
+
+    __weak FQXTabBarInteraction *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        FQXTabBarInteraction *laterSelf = weakSelf;
+        if (laterSelf && laterSelf.nativeDockActive) {
+            [laterSelf syncSelectionExclusivityAnimated:YES];
+            [laterSelf ensureDockZOrderInBar:laterSelf.bar];
+        }
+    });
 }
 
 - (NSInteger)dockDisplayMode {
@@ -2271,18 +2718,21 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
                 objc_setAssociatedObject(circle, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(circle.glassView, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 __weak FQXTabBarInteraction *weakSelf = self;
+                circle.onTouchDiagnostic = ^(NSString *stage, NSDictionary<NSString *, id> *info) {
+                    FQXTabBarInteraction *strongSelf = weakSelf;
+                    NSMutableDictionary<NSString *, id> *payload = [NSMutableDictionary dictionaryWithDictionary:(info ?: @{})];
+                    payload[@"stage"] = stage ?: @"";
+                    payload[@"hostIndex"] = @(strongSelf ? strongSelf.detachedHostIndex : NSNotFound);
+                    FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_touch", payload, NO);
+                };
                 circle.onTapModule = ^(UIButton *hostButton) {
-                    [hostButton sendActionsForControlEvents:UIControlEventTouchUpInside];
                     FQXTabBarInteraction *strongSelf = weakSelf;
                     if (!strongSelf) return;
-                    [strongSelf syncSelectionExclusivityAnimated:YES];
-                    FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        FQXTabBarInteraction *laterSelf = weakSelf;
-                        if (laterSelf && laterSelf.nativeDockActive) {
-                            [laterSelf syncSelectionExclusivityAnimated:YES];
-                        }
-                    });
+                    NSInteger targetIdx = strongSelf.detachedHostIndex;
+                    if (targetIdx == NSNotFound) return;
+                    [strongSelf triggerHostNavigationForHostIndex:(NSUInteger)targetIdx
+                                                   fallbackButton:hostButton
+                                                           source:@"detached_circle_tap"];
                 };
                 self.detachedButton = circle;
             }
@@ -2342,13 +2792,16 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             [self syncDetachedDockMaterial:isDark];
         }
         [self syncSelectionExclusivityAnimated:NO];
+        [self ensureDockZOrderInBar:bar];
         return;
     }
 
     CGFloat barH = MAX(CGRectGetHeight(bar.bounds), CGRectGetHeight(proxyFrame) + 12.0);
-    CGFloat targetW = CGRectGetWidth(proxyFrame);
+    CGFloat sideMargin = (barW >= 390.0) ? 16.0 : 12.0;
+    CGFloat maxGroupW = MAX(180.0, barW - sideMargin * 2.0);
+    CGFloat targetW = hasDetached ? MIN(CGRectGetWidth(proxyFrame), maxGroupW) : CGRectGetWidth(proxyFrame);
     CGFloat targetH = CGRectGetHeight(proxyFrame);
-    CGFloat gap = 12.0;
+    CGFloat gap = (barW >= 410.0) ? 12.0 : ((barW >= 375.0) ? 10.0 : 8.0);
     CGFloat circleD = targetH;
     CGFloat availCapsuleW = hasDetached ? MAX(96.0, targetW - gap - circleD) : targetW;
     CGFloat maxAllowedBarW = MAX(220.0, barW + 48.0);
@@ -2397,19 +2850,48 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         CGRect pf = (platter && CGRectGetHeight(platter.bounds) > 10.0)
             ? [platter convertRect:platter.bounds toView:tabBar]
             : CGRectZero;
-        CGFloat actualCapsuleW = (CGRectGetWidth(pf) > 20.0)
-            ? MIN(availCapsuleW, CGRectGetWidth(pf) * finalScale)
-            : availCapsuleW;
-        CGFloat actualCapsuleH = (CGRectGetHeight(pf) > 10.0)
-            ? (CGRectGetHeight(pf) * finalScale)
-            : targetH;
-        circleD = round(actualCapsuleH);
-        CGFloat groupW = actualCapsuleW + gap + circleD;
-        CGFloat groupMinX = CGRectGetMidX(proxyFrame) - groupW * 0.5;
-        if (barW > groupW + 16.0) {
-            groupMinX = MAX(8.0, MIN(barW - groupW - 8.0, groupMinX));
+        // CRITICAL: Never clamp rendered platter width smaller than UIKit's real platter
+        // width (doing so caused the left capsule to physically collide with the right circle).
+        CGFloat pfW = (CGRectGetWidth(pf) > 20.0) ? CGRectGetWidth(pf) : (availCapsuleW / finalScale);
+        CGFloat pfH = (CGRectGetHeight(pf) > 10.0) ? CGRectGetHeight(pf) : MAX(20.0, self.dockPlatterHeight);
+        CGFloat realCapsuleW = pfW * finalScale;
+        CGFloat realCapsuleH = pfH * finalScale;
+        circleD = round(realCapsuleH);
+
+        CGFloat totalGroupW = realCapsuleW + gap + circleD;
+        if (totalGroupW > maxGroupW) {
+            if (gap > 8.0) {
+                gap = MAX(8.0, gap - (totalGroupW - maxGroupW));
+                totalGroupW = realCapsuleW + gap + circleD;
+            }
+            if (totalGroupW > maxGroupW && (pfW + pfH) > 1.0) {
+                CGFloat shrinkScale = (maxGroupW - gap) / (pfW + pfH);
+                finalScale = MAX(0.64, MIN(finalScale, shrinkScale));
+                realCapsuleW = pfW * finalScale;
+                realCapsuleH = pfH * finalScale;
+                circleD = round(realCapsuleH);
+            }
         }
-        CGFloat capsuleMidX = groupMinX + actualCapsuleW * 0.5;
+
+        CGFloat groupW = realCapsuleW + gap + circleD;
+        CGFloat groupMinX = CGRectGetMidX(proxyFrame) - groupW * 0.5;
+        if (barW >= groupW + sideMargin * 2.0) {
+            groupMinX = MAX(sideMargin, MIN(barW - groupW - sideMargin, groupMinX));
+        } else {
+            groupMinX = MAX(6.0, (barW - groupW) * 0.5);
+        }
+        CGFloat capsuleRealMaxX = groupMinX + realCapsuleW;
+        CGFloat circleMinX = round(capsuleRealMaxX + gap);
+        if (circleMinX - capsuleRealMaxX < 8.0) {
+            circleMinX = ceil(capsuleRealMaxX + 8.0);
+        }
+        if (circleMinX + circleD > barW - 6.0) {
+            CGFloat excess = (circleMinX + circleD) - (barW - 6.0);
+            groupMinX = MAX(6.0, groupMinX - excess);
+            capsuleRealMaxX = groupMinX + realCapsuleW;
+            circleMinX = ceil(capsuleRealMaxX + MAX(8.0, gap));
+        }
+        CGFloat capsuleMidX = groupMinX + realCapsuleW * 0.5;
         CGPoint center = CGPointMake(capsuleMidX - self.dockPlatterMidOffsetX * finalScale,
                                      CGRectGetMidY(proxyFrame) - self.dockPlatterMidOffsetY * finalScale);
         if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
@@ -2420,24 +2902,44 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             tabBar.transform = xform;
         }
 
-        if (self.detachedButton.superview != bar) {
-            [bar insertSubview:self.detachedButton aboveSubview:tabBar];
-        } else {
-            NSUInteger tabPos = [bar.subviews indexOfObjectIdenticalTo:tabBar];
-            NSUInteger detPos = [bar.subviews indexOfObjectIdenticalTo:self.detachedButton];
-            if (tabPos != NSNotFound && detPos != NSNotFound && detPos < tabPos) {
-                [bar insertSubview:self.detachedButton aboveSubview:tabBar];
-            }
-        }
-        CGRect circleFrame = CGRectMake(round(groupMinX + actualCapsuleW + gap),
+        CGRect circleFrame = CGRectMake(circleMinX,
                                         round(CGRectGetMidY(proxyFrame) - circleD * 0.5),
                                         circleD,
                                         circleD);
+        if (self.detachedButton.superview != bar) {
+            [bar insertSubview:self.detachedButton aboveSubview:tabBar];
+        }
         if (!CGRectEqualToRect(self.detachedButton.frame, circleFrame)) {
             self.detachedButton.frame = circleFrame;
             [self.detachedButton layoutIfNeeded];
         }
         [self syncDetachedDockMaterial:isDark];
+        [self ensureDockZOrderInBar:bar];
+
+        CGRect platterInBar = platter ? [platter convertRect:platter.bounds toView:bar]
+                                      : CGRectMake(groupMinX, CGRectGetMidY(proxyFrame) - realCapsuleH * 0.5, realCapsuleW, realCapsuleH);
+        CGFloat actualGap = CGRectGetMinX(circleFrame) - CGRectGetMaxX(platterInBar);
+        CGFloat overlapPt = MAX(0.0, CGRectGetMaxX(platterInBar) - CGRectGetMinX(circleFrame));
+        NSString *layoutSig = [NSString stringWithFormat:@"%ld|%.0f|%.0f|%.0f|%.0f|%.1f",
+                               (long)self.detachedHostIndex,
+                               CGRectGetMinX(platterInBar), CGRectGetMaxX(platterInBar),
+                               CGRectGetMinX(circleFrame), CGRectGetWidth(circleFrame), actualGap];
+        NSString *prevLayoutSig = objc_getAssociatedObject(bar, FQXDockDetachedLayoutSigKey);
+        if (!prevLayoutSig || ![prevLayoutSig isEqualToString:layoutSig]) {
+            objc_setAssociatedObject(bar, FQXDockDetachedLayoutSigKey, layoutSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_layout", @{
+                @"detachedModule": self.detachedButton.moduleTitle ?: @"",
+                @"detachedHostIndex": @(self.detachedHostIndex),
+                @"capsuleCount": @(itemCount),
+                @"capsulePlatterFrameInBar": FQXDockRectArray(platterInBar),
+                @"detachedFrameInBar": FQXDockRectArray(circleFrame),
+                @"actualGapPt": @(round(actualGap * 10.0) / 10.0),
+                @"overlapPt": @(round(overlapPt * 10.0) / 10.0),
+                @"finalScale": @(round(finalScale * 1000.0) / 1000.0),
+                @"proxyFrameInBar": FQXDockRectArray(proxyFrame),
+                @"barBounds": FQXDockRectArray(bar.bounds),
+            }, NO);
+        }
     } else {
         if (self.detachedButton && !self.detachedButton.hidden) {
             self.detachedButton.hidden = YES;
@@ -2451,6 +2953,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
             tabBar.transform = xform;
         }
+        [self ensureDockZOrderInBar:bar];
     }
 
     [self syncSelectionExclusivityAnimated:NO];
@@ -2463,26 +2966,29 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (self.nativeDockBar && self.nativeDockBar.hidden == visible) {
         self.nativeDockBar.hidden = !visible;
     }
-    BOOL showDetached = visible && (self.detachedHostIndex != NSNotFound);
+    BOOL showDetached = visible && (self.detachedHostIndex != NSNotFound) && (self.detachedButton != nil);
     if (self.detachedButton && self.detachedButton.hidden == showDetached) {
         self.detachedButton.hidden = !showDetached;
     }
     if (visible) {
-        FQXSetProxyGlassSuppressed(self.proxy, YES);
+        self.nativeDockActive = YES;
+        FQXSetDockMaterialOwner(self.bar, self.proxy, FQXDockMaterialOwnerNative, showDetached);
         if (self.overlay) {
             FQXSetZeroMaskHidden(self.overlay, YES);
             if (self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = NO;
         }
-        self.nativeDockActive = YES;
+        [self ensureDockZOrderInBar:self.bar];
+        FQXAuditVisibleDockGlassLayers(self.bar, self.proxy, self.nativeDockBar, showDetached ? self.detachedButton : nil);
     } else {
+        self.nativeDockActive = NO;
         if (restoreProxy) {
-            FQXSetProxyGlassSuppressed(self.proxy, NO);
+            FQXSetDockMaterialOwner(self.bar, self.proxy, FQXDockMaterialOwnerProxy, NO);
             if (self.overlay) {
                 FQXSetZeroMaskHidden(self.overlay, NO);
                 if (!self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = YES;
             }
+            FQXAuditVisibleDockGlassLayers(self.bar, self.proxy, nil, nil);
         }
-        self.nativeDockActive = NO;
     }
 }
 
@@ -2501,6 +3007,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         [self.detachedButton setModuleSelected:NO animated:YES];
     }
     [btn sendActionsForControlEvents:UIControlEventTouchUpInside];
+    [self ensureDockZOrderInBar:self.bar];
     FQXScheduleCYLGlassResample(self.bar, self.proxy);
 }
 
@@ -2516,10 +3023,18 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         if (lens.superview && lens.superview != self.proxy && lens.superview.superview == self.bar) {
             self.overlay = lens.superview;
         }
-        if (self.nativeDockActive && self.overlay) {
+    }
+    // Runs inside FQHBottomPolish178R7 AFTER Lrepair_front and Lmaterial_update.
+    // Re-enforce single-owner proxy neutralization and topmost z-order for detachedButton.
+    if (self.nativeDockActive) {
+        BOOL showDetached = (self.detachedHostIndex != NSNotFound && self.detachedButton != nil);
+        FQXSetDockMaterialOwner(self.bar, self.proxy, FQXDockMaterialOwnerNative, showDetached);
+        if (self.overlay) {
             FQXSetZeroMaskHidden(self.overlay, YES);
             if (self.overlay.userInteractionEnabled) self.overlay.userInteractionEnabled = NO;
         }
+        [self ensureDockZOrderInBar:self.bar];
+        FQXAuditVisibleDockGlassLayers(self.bar, self.proxy, self.nativeDockBar, showDetached ? self.detachedButton : nil);
     }
 }
 
@@ -2586,14 +3101,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (self.nativeDockBar.superview != bar) {
         [bar addSubview:self.nativeDockBar];
     }
-    UIView *anchor = (overlay && overlay.superview == bar) ? overlay : (proxy.superview == bar ? proxy : nil);
-    if (anchor) {
-        NSUInteger nativeIdx = [bar.subviews indexOfObjectIdenticalTo:self.nativeDockBar];
-        NSUInteger anchorIdx = [bar.subviews indexOfObjectIdenticalTo:anchor];
-        if (nativeIdx == NSNotFound || (anchorIdx != NSNotFound && nativeIdx < anchorIdx)) {
-            [bar insertSubview:self.nativeDockBar aboveSubview:anchor];
-        }
-    }
+    [self ensureDockZOrderInBar:bar];
 
     UIUserInterfaceStyle desiredStyle = [self desiredDockGlassStyle];
     BOOL styleChanged = (self.dockAppliedStyle != desiredStyle) ||
@@ -2615,15 +3123,21 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         UIView *curPlatter = FQXFindDockPlatter(self.nativeDockBar);
         if (curPlatter) {
             objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            static Class platterCls = Nil;
+            static dispatch_once_t spOnce;
+            dispatch_once(&spOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
+            if (platterCls && curPlatter.superview) {
+                for (UIView *sib in curPlatter.superview.subviews) {
+                    if ([sib isKindOfClass:platterCls]) {
+                        objc_setAssociatedObject(sib, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                }
+            }
         }
     }
 
-    // Pre-sync proxy glass material once while expanded so collapsing to compact Dock
-    // never flashes AlignedGlass's default frosted Regular (0) material on frame 0.
-    if (!objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey)) {
-        FQXApplyDockProxyMaterial(bar, proxy, nil);
-    }
-
+    // Do NOT apply glass to proxy while expanded: nativeDockBar (+ detached circle) is the sole
+    // material owner. Proxy switches to FQXDockMaterialOwnerProxy cleanly on collapse/fallback.
     [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
     [self setNativeDockVisible:YES restoreProxy:NO];
 }
@@ -2689,7 +3203,7 @@ static const void *FQXDramaHeaderSelectionOwnerKey(void) {
     return (const void *)sel_registerName("fqx_dramaHeaderSelectionOwner191");
 }
 
-static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
+static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__autoreleasing *outSource);
 
 @interface FQXDramaTopCapsuleInteraction : NSObject <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) UIView *tabsView;
@@ -2704,6 +3218,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
 @property(nonatomic) BOOL paging;
 @property(nonatomic) NSInteger hoverIndex;
 @property(nonatomic) CGFloat anchorX;
+@property(nonatomic, copy) NSString *lastDarkSource;
 - (void)placePillAtRestingAnimated:(BOOL)animated;
 @end
 
@@ -2721,8 +3236,14 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
 - (BOOL)currentResolvedDarkState {
     UIView *categories = self.tabsView.superview;
     UIView *header = categories.superview;
-    if (header) return FQXDramaHeaderHostIsDark(header, self.tabsView);
+    if (header) {
+        NSString *src = nil;
+        BOOL dark = FQXDramaHeaderHostIsDark(header, self.tabsView, &src);
+        self.lastDarkSource = src;
+        return dark;
+    }
     UIVisualEffectView *outer = self.outerGlass;
+    self.lastDarkSource = @"outer_trait";
     return (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
            (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
             outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
@@ -2815,12 +3336,18 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
     } else {
         changes();
     }
+    NSInteger blurStrength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:DramaHeaderBlurPrefKey]);
     FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_top_glass_material", @{
         @"isDark": @(isDark),
+        @"darkSource": self.lastDarkSource ?: @"unknown",
         @"darkTint": @(darkTint),
         @"overrideStyle": @((NSInteger)uiStyle),
         @"outerHasTint": @(outerTint != nil),
+        @"outerEffectClass": outerEffect ? (NSStringFromClass(outerEffect.class) ?: @"") : @"nil",
+        @"pillEffectClass": pillEffect ? (NSStringFromClass(pillEffect.class) ?: @"") : @"nil",
         @"pillInteractiveLens": @(pillInteractiveLens),
+        @"visibleGlassLayers": @(pillEffect ? 2 : 1),
+        @"blurStrength": @(blurStrength),
         @"reduceTransparency": @(reduce),
     }, NO);
 }
@@ -3166,10 +3693,12 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
     }
 
     UIView *header = categories.superview;
-    BOOL isDark = header ? FQXDramaHeaderHostIsDark(header, tabs)
+    NSString *darkSource = nil;
+    BOOL isDark = header ? FQXDramaHeaderHostIsDark(header, tabs, &darkSource)
                          : ((outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
                             (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
                              outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark));
+    self.lastDarkSource = darkSource ?: @"outer_trait";
     [self applyMaterialToOuter:outer isDark:isDark];
 
     if (self.mode == FQXTopCapsuleTouchIdle) {
@@ -3182,10 +3711,40 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
 
 @end
 
-static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs) {
+static UILabel *FQXFindFirstVisibleLabel(UIView *root, NSInteger depth) {
+    if (!root || root.hidden || root.alpha <= 0.01 || depth > 4) return nil;
+    if ([root isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)root;
+        if (lbl.text.length > 0 && lbl.textColor) return lbl;
+    }
+    for (UIView *sub in root.subviews) {
+        UILabel *found = FQXFindFirstVisibleLabel(sub, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static BOOL FQXColorLuminance(UIColor *color, UITraitCollection *traits, CGFloat *outLuma) {
+    if (![color isKindOfClass:UIColor.class]) return NO;
+    UIColor *resolved = traits ? [color resolvedColorWithTraitCollection:traits] : color;
+    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+    if ([resolved getRed:&r green:&g blue:&b alpha:&a]) {
+        if (a >= 0.45) {
+            if (outLuma) *outLuma = (r + g * 2.0 + b) * 0.25;
+            return YES;
+        }
+    } else if ([resolved getWhite:&w alpha:&a]) {
+        if (a >= 0.45) {
+            if (outLuma) *outLuma = w;
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__autoreleasing *outSource) {
     id feed = FQXObjGet(header, "delegate");
     UIView *content = FQXObjGet(feed, "contentView");
-    UIColor *color = FQXObjGet(content, "backgroundColor");
     id owner = FQXObjGet(feed, "rootTabBarController");
     NSArray *models = FQXObjGet(feed, "tabModels");
     NSArray *cells = FQXObjGet(tabs, "dataSource");
@@ -3198,25 +3757,51 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs) {
             }
         }
     }
+
+    // 1. Authoritative host tab-model background polarity when available.
     SEL bgSel = sel_registerName("bottomTabBackgroundColorWithTabModel:");
     if (selected >= 0 && [models isKindOfClass:NSArray.class] && (NSUInteger)selected < models.count &&
         owner && [owner respondsToSelector:bgSel]) {
         Method m = class_getInstanceMethod(object_getClass(owner), bgSel);
         if (m && strcmp(method_getTypeEncoding(m), "@24@0:8@16") == 0) {
-            color = ((id (*)(id, SEL, id))objc_msgSend)(owner, bgSel, models[(NSUInteger)selected]);
+            UIColor *tabColor = ((id (*)(id, SEL, id))objc_msgSend)(owner, bgSel, models[(NSUInteger)selected]);
+            CGFloat luma = 0.0;
+            if (FQXColorLuminance(tabColor, content ? content.traitCollection : header.traitCollection, &luma)) {
+                if (outSource) *outSource = @"tab_model_bg";
+                return luma < 0.5;
+            }
         }
     }
-    if ([color isKindOfClass:UIColor.class]) {
-        if (content) {
-            color = [color resolvedColorWithTraitCollection:content.traitCollection];
-        }
-        CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
-        if ([color getRed:&r green:&g blue:&b alpha:&a]) {
-            if (a >= 0.5) return ((r + g * 2.0 + b) * 0.25) < 0.5;
-        } else if ([color getWhite:&w alpha:&a]) {
-            if (a >= 0.5) return w < 0.5;
+
+    // 2. Inspect active category label ink luminance (white ink => dark video backdrop;
+    // dark ink => light content page), matching real visual polarity immediately on tab switch.
+    UICollectionView *cv = FQXObjGet(tabs, "collectionView");
+    if ([cv isKindOfClass:UICollectionView.class] && selected >= 0) {
+        NSIndexPath *ip = [NSIndexPath indexPathForItem:selected inSection:0];
+        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
+        UILabel *lbl = cell ? FQXFindFirstVisibleLabel(cell, 0) : nil;
+        CGFloat inkLuma = 0.0;
+        if (lbl && FQXColorLuminance(lbl.textColor, lbl.traitCollection, &inkLuma)) {
+            if (inkLuma >= 0.68) {
+                if (outSource) *outSource = @"active_label_ink";
+                return YES;
+            }
+            if (inkLuma <= 0.38) {
+                if (outSource) *outSource = @"active_label_ink";
+                return NO;
+            }
         }
     }
+
+    // 3. Fallback to feed contentView background color.
+    UIColor *contentBg = FQXObjGet(content, "backgroundColor");
+    CGFloat bgLuma = 0.0;
+    if (FQXColorLuminance(contentBg, content ? content.traitCollection : header.traitCollection, &bgLuma)) {
+        if (outSource) *outSource = @"content_bg";
+        return bgLuma < 0.5;
+    }
+
+    if (outSource) *outSource = @"default_dark";
     return YES;
 }
 
@@ -3252,7 +3837,10 @@ static FQXFlexGlassView *FQXEnsureDramaSearchCircleGlass(UIButton *searchBtn) {
     return circle;
 }
 
-static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn, BOOL isDark) {
+static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
+                                          BOOL isDark,
+                                          NSString *darkSource,
+                                          CGRect outerFrameInHeader) {
     if (!searchBtn) return;
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL darkTint = FQXGlassDarkTintEnabled();
@@ -3304,13 +3892,23 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn, BOOL isDark) {
         [searchBtn sendSubviewToBack:circle];
     }
     objc_setAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSInteger blurStrength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:DramaHeaderBlurPrefKey]);
+    CGFloat centerDelta = CGRectIsEmpty(outerFrameInHeader)
+        ? 0.0
+        : (CGRectGetMidY(searchBtn.frame) - CGRectGetMidY(outerFrameInHeader));
     FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_search_glass_material", @{
         @"isDark": @(isDark),
+        @"darkSource": darkSource ?: @"unknown",
         @"darkTint": @(darkTint),
         @"overrideStyle": @((NSInteger)uiStyle),
         @"hasTint": @(tint != nil),
+        @"effectClass": glassEffect ? (NSStringFromClass(glassEffect.class) ?: @"") : @"nil",
+        @"blurStrength": @(blurStrength),
         @"reduceTransparency": @(reduce),
         @"singleLayer": @YES,
+        @"circleFrame": FQXDockRectArray(searchBtn.frame),
+        @"outerHeight": @(round(CGRectGetHeight(outerFrameInHeader) * 10.0) / 10.0),
+        @"alignedCenterYDelta": @(round(centerDelta * 10.0) / 10.0),
     }, NO);
 }
 
@@ -3340,17 +3938,16 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
 
     id headerOwner = FQXObjGet(header, "delegate");
     UIView *headerTabs = FQXObjGet(headerOwner, "simpleTabView");
-    BOOL isDark = FQXDramaHeaderHostIsDark(header, headerTabs);
+    NSString *darkSource = nil;
+    BOOL isDark = FQXDramaHeaderHostIsDark(header, headerTabs, &darkSource);
     BOOL blurDark = FQXGlassDarkTintEnabled() ? isDark : FQXAppIsInNightMode();
-    if (searchBtn && !searchBtn.hidden) {
-        FQXSyncDramaSearchButtonGlass(searchBtn, isDark);
-    }
 
     UIView *categories = FQXObjGet(header, "tabContainer");
     UIVisualEffectView *outer = categories ? objc_getAssociatedObject(categories, FQXDramaHeaderSurfaceKey()) : nil;
     if (![outer isKindOfClass:UIVisualEffectView.class] || outer.superview != categories ||
         outer.hidden || CGRectGetWidth(outer.bounds) < 60.0 || CGRectGetHeight(outer.bounds) > 48.0) {
         if (searchBtn && !searchBtn.hidden) {
+            FQXSyncDramaSearchButtonGlass(searchBtn, isDark, darkSource, CGRectZero);
             FQXFlexGlassView *circle = objc_getAssociatedObject(searchBtn, FQXSearchBtnCircleGlassKey);
             UIView *blurHost = circle ? circle.contentView : searchBtn;
             FQXApplyBackdropBlur(searchBtn, blurHost, nil, blurHost.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
@@ -3411,6 +4008,7 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
             fabs(CGRectGetHeight(curSearch) - targetSearch.size.height) > 0.5) {
             searchBtn.frame = targetSearch;
         }
+        FQXSyncDramaSearchButtonGlass(searchBtn, isDark, darkSource, outerInHeader);
         FQXFlexGlassView *circle = FQXEnsureDramaSearchCircleGlass(searchBtn);
         if (circle) {
             FQXApplyCornerConfiguration(circle, 0.0, NO);
@@ -3542,6 +4140,9 @@ static void FQXRefreshAllDockAppearances(void) {
             [inter applyDockItemImages];
             if (inter.bar && inter.proxy) {
                 [inter layoutNativeDockInBar:inter.bar proxy:inter.proxy forceMeasure:YES];
+                if (inter.nativeDockActive) {
+                    [inter setNativeDockVisible:YES restoreProxy:NO];
+                }
             }
         }
         [inter.bar setNeedsLayout];
@@ -3683,12 +4284,16 @@ static void FQXRefreshDynamicIslandState(void);
     if ([dock isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *proxy = (UIVisualEffectView *)dock;
         if (compact) {
-            // Reveal proxy's Clear Liquid Glass cleanly before frame 0 of the collapse morph.
-            FQXSetProxyGlassSuppressed(proxy, NO);
+            // Transfer material ownership cleanly to proxy before frame 0 of the collapse morph.
+            FQXSetDockMaterialOwner(dock.superview, proxy, FQXDockMaterialOwnerProxy, NO);
+            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
+        } else if (FQXGetDockMaterialOwner(proxy) != FQXDockMaterialOwnerNative) {
+            // Only style proxy when native UITabBar does NOT own the expanded Dock (e.g. fallback).
+            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
+        } else {
+            // Expanded Dock is owned by nativeDockBar; keep proxy neutralized so zero milky flash occurs.
+            FQXEnforceNativeProxyNeutralized(proxy);
         }
-        // Ensure compact Dock proxy already carries Clear Liquid Glass (never AlignedGlass's
-        // default frosted Regular white veil) before frame 0 of the collapse/expand morph.
-        FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
     }
     NSValue *captured = objc_getAssociatedObject(dock, DockSnapshotKey);
     objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -3816,14 +4421,11 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshDockMaterial {
     FQXInvalidateHotPrefsCache();
     for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
-        if (inter.proxy) {
-            objc_setAssociatedObject(inter.proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.nativeDockActive ? nil : inter.restingLens);
-            if (inter.nativeDockActive) {
-                FQXSetProxyGlassSuppressed(inter.proxy, YES);
-            }
-        }
         if (inter.nativeDockActive) {
+            BOOL showDetached = (inter.detachedHostIndex != NSNotFound && inter.detachedButton != nil);
+            if (inter.proxy) {
+                FQXSetDockMaterialOwner(inter.bar, inter.proxy, FQXDockMaterialOwnerNative, showDetached);
+            }
             UITabBar *tabBar = inter.nativeDockBar;
             if (!tabBar) continue;
             UIUserInterfaceStyle desiredStyle = [inter desiredDockGlassStyle];
@@ -3831,15 +4433,32 @@ static void FQXRefreshDynamicIslandState(void);
                 inter.dockAppliedStyle = desiredStyle;
                 tabBar.overrideUserInterfaceStyle = desiredStyle;
                 [tabBar layoutIfNeeded];
-                UIView *curPlatter = FQXFindDockPlatter(tabBar);
-                if (curPlatter) {
-                    objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            UIView *curPlatter = FQXFindDockPlatter(tabBar);
+            if (curPlatter) {
+                objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                static Class platterCls = Nil;
+                static dispatch_once_t rmOnce;
+                dispatch_once(&rmOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
+                if (platterCls && curPlatter.superview) {
+                    for (UIView *sib in curPlatter.superview.subviews) {
+                        if ([sib isKindOfClass:platterCls]) {
+                            objc_setAssociatedObject(sib, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        }
+                    }
                 }
             }
             BOOL glassDark = (desiredStyle == UIUserInterfaceStyleDark);
-            FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), glassDark);
+            FQXApplyNativeDockMaterial(tabBar, curPlatter, glassDark);
             [inter syncDetachedDockMaterial:glassDark];
             [inter applyDockItemImages];
+            [inter ensureDockZOrderInBar:inter.bar];
+            FQXAuditVisibleDockGlassLayers(inter.bar, inter.proxy, tabBar, showDetached ? inter.detachedButton : nil);
+        } else if (inter.proxy) {
+            FQXSetDockMaterialOwner(inter.bar, inter.proxy, FQXDockMaterialOwnerProxy, NO);
+            objc_setAssociatedObject(inter.proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.restingLens);
+            FQXAuditVisibleDockGlassLayers(inter.bar, inter.proxy, nil, nil);
         }
     }
 }
@@ -15235,12 +15854,16 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQVShortVideoProgressView", "didMoveToWindow", "v16@0:8", OrigDramaProgDidMoveWindow, HookDramaProgDidMoveWindow);
         HOOK_INST("FQVShortVideoVPlayerControlView", "didMoveToWindow", "v16@0:8", OrigDramaControlDidMoveWindow, HookDramaControlDidMoveWindow);
 
-        // 5c. Bookshelf bookstore anchor & Mine side drawer individual item filters
+        // 5c. Bookshelf bookstore anchor, single-owner Dock material guard, detached hit-test routing & Mine sidebar filters
         FQXInstallBookstoreAntiAutoScrollHooks();
+        FQXInstallOwnedHook(UIVisualEffectView.class, @selector(setEffect:), NO, "v24@0:8@16",
+                            (IMP)HookVisualEffectSetEffectForOwner, (IMP *)&OrigVisualEffectSetEffectForOwner);
         FQXInstallOwnedHook(UIVisualEffectView.class, @selector(layoutSubviews), NO, "v16@0:8",
                             (IMP)HookVisualEffectLayoutForProxyGuard, (IMP *)&OrigVisualEffectLayoutForProxyGuard);
         FQXInstallOwnedHook(UIVisualEffectView.class, @selector(didMoveToWindow), NO, "v16@0:8",
                             (IMP)HookVisualEffectWindowForProxyGuard, (IMP *)&OrigVisualEffectWindowForProxyGuard);
+        HOOK_INST("SSTabBar", "pointInside:withEvent:", "B40@0:8{CGPoint=dd}16@32", OrigSSTabBarPointInside, HookSSTabBarPointInside);
+        HOOK_INST("SSTabBar", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigSSTabBarHitTest, HookSSTabBarHitTest);
         HOOK_INST("SSMyUser621SideBarFunctionEntryListCell", "configureWithModels:titles:icons:darkIcons:", "v48@0:8@16@24@32@40", OrigSidebarConfigureFunctionList, HookSidebarConfigureFunctionList);
         IMP sidebarHeight = NULL;
         if (FQXInstallOwnedHook(objc_lookUpClass("SSMyUser621SideBarFunctionEntryListCell"),

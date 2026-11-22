@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.5beta3 测试版
+## FanqieX 1.9.5beta4 测试版
 
-修复底栏底层 `proxy` 玻璃穿透导致的双层叠白与多机型/独立圆键重影错位；修复短剧顶部胶囊与右上角搜索按钮双层叠加发白及底部裁切白角；修复打开书城首页冷启动自动下滑跳过「推荐榜」的问题；修复听书页「音色设置」内「配乐版 / 多角色」右移裁切；修正诊断中心高速 `TTHttpTaskChromium` 请求误报为失败的问题。
+建立底栏单材质所有权机制（`FQXDockMaterialOwner` + `-[UIVisualEffectView setEffect:]` 守卫），彻底消除 `Lmaterial_update` 在展开态反复向底层 `proxy` 写入乳白 `Regular (0)` 玻璃导致的深浅色泛白、书架白色蒙层与左右胶囊粘连桥接；彻底修复「Dock 独立圆形模块」（含「我的」等任意可见模块）与左侧胶囊真实几何分离（8~12pt 间距零重叠）、顶层 Z 序维护、`SSTabBar` 命中路由直达与真实宿主导航回退链；增强短剧顶部明暗极性判定并新增 9 项低噪节流诊断事件。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.5beta3.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.5beta4.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta3。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta4。
 
 ## FanqieX 1.76
 

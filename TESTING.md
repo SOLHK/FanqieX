@@ -1,6 +1,6 @@
 # FanqieX 测试版与正式版发布规范
 
-当前测试候选：**1.9.5beta3**
+当前测试候选：**1.9.5beta4**
 
 测试分支：`test`  
 正式版分支：`main`（保持 1.76，不自动合并测试改动）
@@ -16,9 +16,9 @@
 - 测试代码和后续修复只推送到 `test`；不得因为构建成功就自动更新 `main`。正式发布必须单独明确操作。
 - 每个测试版在修改日志、GitHub 测试说明和后续打包文件名中使用相同的 R 编号；提交前检查版本与实际构建标识的一致性。不得把不同的构建产物仅改名冒充新编译版本。
 
-## 1.9.5beta3 本轮修复
+## 1.9.5beta4 本轮修复
 
-验证短剧顶部胶囊与搜索圆钮无底部裁切白角、无双层叠加发白；验证 2~5 键及开启独立圆形模块后底栏无底层宽胶囊重影或偏移；冷启动进入书城首页确认停留在「推荐榜」顶部不自动下滑；进入听书页确认「音色设置」内「升级版」「配乐版」与「多角色」角标完整居中不裁切；导出诊断 JSON 确认 `dock_proxy_suppressed`、`bookstore_autoscroll_blocked` 与 `snssdkMonitorSummary` 统计准确。见 [本版说明](docs/REPAIR_1.9.5beta3.md)。
+在短剧与书架/书城/我的页面验证展开态底栏仅存在单一清透液态玻璃（无乳白蒙层、无重影、无宽胶囊底托）；开启「Dock 独立圆形模块」选择「我的」或任意可见模块，验证左侧胶囊与右侧独立圆形按钮具备 8~12pt 清晰间距、点击「我的」可稳定进入个人中心且左右选中态互斥；测试 2~5 模块增减、开关切换、自动收缩展开及短剧顶部胶囊/搜索钮明暗切换；导出诊断 JSON 检查 `dock_material_owner`、`dock_visible_glass_layers`、`dock_detached_layout`、`dock_detached_hit_test`、`dock_detached_touch`、`dock_detached_navigation`、`dock_proxy_suppressed`、`drama_top_glass_material`、`drama_search_glass_material`。见 [本版说明](docs/REPAIR_1.9.5beta4.md)。
 
 ## 1.9.1beta9 本轮修复
 

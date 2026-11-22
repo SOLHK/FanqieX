@@ -14,9 +14,11 @@ NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles);
 @interface FQXDetachedDockButtonView : UIView
 @property(nonatomic, strong, readonly) UIVisualEffectView *glassView;
 @property(nonatomic, strong, readonly) UIView *selectionLens;
+@property(nonatomic, strong, readonly) UIButton *hitButton;
 @property(nonatomic, weak, nullable) UIButton *targetHostButton;
 @property(nonatomic, copy, nullable) NSString *moduleTitle;
-@property(nonatomic, copy, nullable) void (^onTapModule)(UIButton *hostButton);
+@property(nonatomic, copy, nullable) void (^onTapModule)(UIButton * _Nullable hostButton);
+@property(nonatomic, copy, nullable) void (^onTouchDiagnostic)(NSString *stage, NSDictionary<NSString *, id> *info);
 @property(nonatomic, readonly, getter=isModuleSelected) BOOL moduleSelected;
 
 - (void)setModuleSelected:(BOOL)selected animated:(BOOL)animated;

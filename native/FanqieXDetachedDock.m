@@ -156,7 +156,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 @property(nonatomic, strong) UIView *contentScaleHost;
 @property(nonatomic, strong) UIImageView *iconView;
 @property(nonatomic, strong) UIView *unreadDot;
-@property(nonatomic, strong) UIButton *hitButton;
+@property(nonatomic, strong, readwrite) UIButton *hitButton;
 @property(nonatomic, strong, nullable) UIImage *normalImage;
 @property(nonatomic, strong, nullable) UIImage *selectedImage;
 @property(nonatomic, readwrite, getter=isModuleSelected) BOOL moduleSelected;
@@ -175,11 +175,13 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.backgroundColor = UIColor.clearColor;
         self.opaque = NO;
         self.clipsToBounds = NO;
+        self.userInteractionEnabled = YES;
         _appliedGlassStamp = NSIntegerMin;
 
         FQXDetachedCircleGlassView *glass = [[FQXDetachedCircleGlassView alloc] initWithEffect:nil];
         glass.frame = self.bounds;
         glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glass.userInteractionEnabled = NO;
         glass.backgroundColor = UIColor.clearColor;
         glass.contentView.backgroundColor = UIColor.clearColor;
         glass.clipsToBounds = NO;
@@ -216,15 +218,19 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         [scaleHost addSubview:dot];
         _unreadDot = dot;
 
+        // Place hitButton as the topmost direct sibling above internalGlassView so iOS 26/27
+        // UIGlassEffect internal views can never intercept taps, while interactionSourceView
+        // still routes fluid liquid-glass press physics to internalGlassView.
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        btn.frame = glass.contentView.bounds;
+        btn.frame = self.bounds;
         btn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         btn.backgroundColor = UIColor.clearColor;
         btn.isAccessibilityElement = YES;
+        btn.exclusiveTouch = YES;
         [btn addTarget:self action:@selector(handleTouchDown) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
         [btn addTarget:self action:@selector(handleTouchRelease) forControlEvents:UIControlEventTouchCancel | UIControlEventTouchDragExit | UIControlEventTouchUpOutside];
         [btn addTarget:self action:@selector(handleTapUpInside) forControlEvents:UIControlEventTouchUpInside];
-        [glass.contentView addSubview:btn];
+        [self addSubview:btn];
         glass.interactionSourceView = btn;
         _hitButton = btn;
     }
@@ -236,6 +242,22 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     self.hitButton.accessibilityLabel = moduleTitle;
 }
 
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    (void)event;
+    if (self.hidden || self.alpha <= 0.01 || !self.userInteractionEnabled) return NO;
+    CGRect bounds = self.bounds;
+    if (CGRectGetWidth(bounds) < 12.0 || CGRectGetHeight(bounds) < 12.0) return NO;
+    return CGRectContainsPoint(CGRectInset(bounds, -4.0, -4.0), point);
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (![self pointInside:point withEvent:event]) return nil;
+    if (self.hitButton && !self.hitButton.hidden && self.hitButton.enabled && self.hitButton.userInteractionEnabled) {
+        return self.hitButton;
+    }
+    return [super hitTest:point withEvent:event];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGRect bounds = self.bounds;
@@ -245,6 +267,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     FQXApplyCapsuleCornerToGlass(self.internalGlassView);
 
     CGRect contentBounds = self.internalGlassView.contentView.bounds;
+    if (CGRectIsEmpty(contentBounds)) contentBounds = bounds;
     CGRect lensRect = CGRectInset(contentBounds, 4.0, 4.0);
     if (CGRectGetWidth(lensRect) > 4.0 && CGRectGetHeight(lensRect) > 4.0) {
         self.selectionLens.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(lensRect), CGRectGetHeight(lensRect));
@@ -256,7 +279,12 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     self.iconView.frame = CGRectInset(contentBounds, 4.0, 4.0);
     CGFloat d = MIN(CGRectGetWidth(contentBounds), CGRectGetHeight(contentBounds));
     self.unreadDot.center = CGPointMake(d - 13.0, 12.0);
-    self.hitButton.frame = contentBounds;
+    if (!CGRectEqualToRect(self.hitButton.frame, bounds)) {
+        self.hitButton.frame = bounds;
+    }
+    if (self.hitButton.superview == self && self.subviews.lastObject != self.hitButton) {
+        [self bringSubviewToFront:self.hitButton];
+    }
 }
 
 - (void)updateImagesNormal:(UIImage *)normalImage selected:(UIImage *)selectedImage {
@@ -349,6 +377,12 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 }
 
 - (void)handleTouchDown {
+    if (self.onTouchDiagnostic) {
+        self.onTouchDiagnostic(@"touch_down", @{
+            @"moduleTitle": self.moduleTitle ?: @"",
+            @"hasTargetHostButton": @(self.targetHostButton != nil),
+        });
+    }
     if (UIAccessibilityIsReduceMotionEnabled()) return;
     [UIView animateWithDuration:0.14
                           delay:0.0
@@ -389,8 +423,24 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 - (void)handleTapUpInside {
     [self animateReleaseBounce];
     UIButton *hostBtn = self.targetHostButton;
-    if (self.onTapModule && [hostBtn isKindOfClass:UIButton.class]) {
-        self.onTapModule(hostBtn);
+    if (self.onTouchDiagnostic) {
+        CGRect f = self.frame;
+        CGRect b = self.bounds;
+        self.onTouchDiagnostic(@"touch_up_inside", @{
+            @"moduleTitle": self.moduleTitle ?: @"",
+            @"frame": @[@(round(f.origin.x * 10.0) / 10.0), @(round(f.origin.y * 10.0) / 10.0),
+                        @(round(f.size.width * 10.0) / 10.0), @(round(f.size.height * 10.0) / 10.0)],
+            @"bounds": @[@(round(b.origin.x * 10.0) / 10.0), @(round(b.origin.y * 10.0) / 10.0),
+                         @(round(b.size.width * 10.0) / 10.0), @(round(b.size.height * 10.0) / 10.0)],
+            @"superviewClass": self.superview ? (NSStringFromClass(self.superview.class) ?: @"") : @"",
+            @"hasTargetHostButton": @(hostBtn != nil),
+            @"hostButtonClass": hostBtn ? (NSStringFromClass(hostBtn.class) ?: @"") : @"",
+            @"hostButtonEnabled": @(hostBtn ? hostBtn.enabled : NO),
+            @"hostTargetsCount": @(hostBtn ? [hostBtn allTargets].count : 0),
+        });
+    }
+    if (self.onTapModule) {
+        self.onTapModule([hostBtn isKindOfClass:UIButton.class] ? hostBtn : nil);
     } else if ([hostBtn isKindOfClass:UIButton.class]) {
         [hostBtn sendActionsForControlEvents:UIControlEventTouchUpInside];
     }
