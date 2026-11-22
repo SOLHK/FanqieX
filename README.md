@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.1beta23 测试版
+## FanqieX 1.9.1beta24 测试版
 
-全面对标 DYKiller 对齐评论区原生 `UIGlassEffect`（`Regular` 模糊玻璃与 `Clear` 清透玻璃）渲染管线：修复无裁剪圆角宿主上 `containerConcentricRadius` 放大到屏幕 ~50pt 弧度的变形问题、「模糊玻璃 + 跟随软件」下误覆写宿主字色与浅/深色 trait 导致对比度发白发灰的问题、0 尺寸早熟构建材质及并发 materialize 闪烁问题，以及 `FQVTransitionView` 展示动画后暗幕遮罩残留，确保原生 `Regular`/`Clear` 观感通透自然。
+修复短剧顶部标签胶囊与右上角搜索按钮高度及纵向对齐差异；恢复短剧及小说评论区底部悬浮液态玻璃发评输入框，并保持背后整块面板 `Regular`/`Clear` 无接缝纯原生渲染；全链路强制「我的」快捷入口每页显示 4 图标（含 `FQXMineShortcutViewport` 联动、`IGListAdapterProxy`/`NSProxy` 解包与三类 Cell `setFrame:`/`applyLayoutAttributes:` 拦截）；冷启动期间仅定向隐藏「书架暂无书籍」空白占位而非整表隐藏；同时补充高频设置内存缓存、`dispatch_once` 类查找缓存与死代码清理。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.1beta23.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.1beta24.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta23。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta24。
 
 ## FanqieX 1.76
 
