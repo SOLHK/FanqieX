@@ -88,7 +88,8 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(StoryAds, "StoryAds", "短篇正文广告处理", "ads", NO) \
     X(HotLaunchAds, "HotLaunchAds", "热启动广告专项拦截", "ads", NO) \
     X(AudioAds, "AudioAds", "听书广告专项控制", "ads", NO) \
-    X(ChapterTitle, "ChapterTitle", "返回标题固定为章节名称", "readerFeatures", NO)
+    X(ChapterTitle, "ChapterTitle", "返回标题固定为章节名称", "readerFeatures", NO) \
+    X(GlassDarkTint, "GlassDarkTint", "液态玻璃叠加深色底色", "appearance", NO)
 
 #define OPTION_KEY(name, suffix, title, category, defaultValue) \
     static NSString *const name##Key = @"FanqieX." suffix ".1";
@@ -1991,6 +1992,16 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SEL refreshSidebarSel = NSSelectorFromString(@"refreshMineSidebar");
         if ([dockMotion respondsToSelector:refreshSidebarSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSidebarSel);
+        }
+    } else if ([key isEqualToString:GlassDarkTintKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshDockSel = NSSelectorFromString(@"refreshDockMaterial");
+        SEL refreshTopSel = NSSelectorFromString(@"refreshDramaHeaderBlur");
+        if ([dockMotion respondsToSelector:refreshDockSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
+        }
+        if ([dockMotion respondsToSelector:refreshTopSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshTopSel);
         }
     } else if ([key isEqualToString:AudioDynamicIslandKey] ||
                [key isEqualToString:DramaDynamicIslandKey]) {

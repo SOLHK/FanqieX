@@ -492,6 +492,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             row.path = @"书架净化/顶部导航栏";
         if ([@[@"FanqieX.ShelfFilterAll.1", @"FanqieX.ShelfFilterRead.1", @"FanqieX.ShelfFilterListen.1", @"FanqieX.ShelfFilterComic.1", @"FanqieX.ShelfFilterStar.1"] containsObject:option[@"key"]])
             row.path = @"书架净化/筛选栏标签";
+        if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"])
+            row.path = @"外观/玻璃与尺寸";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
         NSDictionary *aliases = @{
             @"FanqieX.MinePublish.1":@"发帖 羽毛 写帖子 右下角",
@@ -563,13 +565,25 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.SidebarConversionRecord.1":@"侧栏 转化记录 转化 记录 抽屉 隐藏",
             @"FanqieX.SidebarPrivacyLinks.1":@"侧栏 底部清单 个人信息清单 三方信息共享清单 协议 抽屉 隐藏",
             @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片 无限流",
-            @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币"
+            @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币",
+            @"FanqieX.GlassDarkTint.1":@"液态玻璃 深色底色 底色 黑色 染色 压暗 通透 透明 无底色 顶部 顶栏 顶部分类 搜索按钮 底栏 Dock 新液态玻璃 短剧"
         };
         if (aliases[option[@"key"]]) row.keywords = [row.keywords stringByAppendingFormat:@" %@", aliases[option[@"key"]]];
         row.option = option;
         row.height = 52;
         // Reuse the original switch for shared keys so its refresh action runs.
         if (!existing) [menu.catalog addObject:row];
+        if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"]) {
+            for (NSString *mirrorPath in @[@"短剧/顶部分类", @"短剧/播放设置"]) {
+                FQXSettingRow *mirror = [FQXSettingRow new];
+                mirror.title = row.title;
+                mirror.path = mirrorPath;
+                mirror.hiddenFromSearch = YES;
+                mirror.option = option;
+                mirror.height = 52;
+                [menu.catalog addObject:mirror];
+            }
+        }
     }
     FQXSettingRow *video = [FQXSettingRow new];
     video.title = @"导出当前视频";

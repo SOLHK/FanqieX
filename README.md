@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.1beta25 测试版
+## FanqieX 1.9.1beta26 测试版
 
-紧急修复 1.9.1beta24 注入后卡开屏无法打开的启动冻结回归：消除 `FanqieXCleanup.m` 书架数据源回调内调用 `UICollectionView.visibleCells` 及 `SSBookShelfSubViewController viewDidLoad` 挂钩导致的 UIKit 重入卡死，移除 `FQXHotPrefsGet()` 的 `dispatch_once` 内同步删键死锁并改为原子代次+互斥快照 `FQXHotPrefsSnapshot()`，同步移除短剧顶栏 `layoutIfNeeded` 与「我的」`applyLayoutAttributes:`/`setFrame:` 同步重排、弱 ivar 裸读及 `FQXFindMineCollectionView` 的 `visibleCells` 调用。
+修复底栏「新液态玻璃」与短剧顶部区域（分类胶囊、选中透镜、右上角搜索按钮）默认叠加深色底色及深灰选中块的问题：解耦底栏玻璃材质外观档与图标墨水极性，默认采用 `tintColor = nil` 的纯无底色 `UIGlassEffectStyleClear` 与 `clearGlassButtonConfiguration` 还原清透折射液态玻璃；并在 `外观 › 玻璃与尺寸` 与 `短剧 › 顶部分类` 新增「液态玻璃叠加深色底色」开关（默认关闭，支持实时切换与备份恢复）。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.1beta25.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.1beta26.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta25。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta26。
 
 ## FanqieX 1.76
 

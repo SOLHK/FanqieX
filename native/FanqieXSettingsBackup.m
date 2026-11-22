@@ -23,6 +23,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomIconsOnly.1": @NO,
         @"FanqieX.BottomDisplayMode.1": @0,
         @"FanqieX.DockMaterial.1": @0,
+        @"FanqieX.GlassDarkTint.1": @NO,
         @"FanqieX.DockBlur.1": @0,
         @"FanqieX.CommentBlur.1": @0,
         @"FanqieX.AudioButtonBlur.1": @0,

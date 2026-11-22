@@ -69,6 +69,7 @@ static NSString *const CommentAppearanceModePrefKey = @"FanqieX.CommentAppearanc
 static NSString *const CommentComposerStylePrefKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModePrefKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialPrefKey = @"FanqieX.DockMaterial.1";
+static NSString *const GlassDarkTintPrefKey = @"FanqieX.GlassDarkTint.1";
 static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurPrefKey = @"FanqieX.CommentBlur.1";
 static NSString *const AudioButtonBlurPrefKey = @"FanqieX.AudioButtonBlur.1";
@@ -119,6 +120,7 @@ typedef struct {
     NSInteger dockMaterialMode;
     BOOL hasStoredComposerStyle;
     BOOL glassDisabled;
+    BOOL glassDarkTint;
     BOOL shelfEditButton;
     BOOL dramaCommentNoVideoShift;
     BOOL dramaExitCollectAlert;
@@ -171,6 +173,7 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     NSInteger dockMat = [ud integerForKey:DockMaterialPrefKey];
     fresh.dockMaterialMode = (dockMat >= 0 && dockMat <= 3) ? dockMat : 0;
     fresh.glassDisabled = ([ud integerForKey:GlassDisabledPrefKey] != 0);
+    fresh.glassDarkTint = [ud boolForKey:GlassDarkTintPrefKey];
 
     id editObj = [ud objectForKey:ShelfEditButtonPrefKey];
     fresh.shelfEditButton = editObj ? [editObj boolValue] : YES;
@@ -196,6 +199,10 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
 
 static BOOL FQXShelfEditButtonEnabled(void) {
     return FQXHotPrefsSnapshot().shelfEditButton;
+}
+
+static BOOL FQXGlassDarkTintEnabled(void) {
+    return FQXHotPrefsSnapshot().glassDarkTint;
 }
 
 static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void) {
@@ -1395,7 +1402,7 @@ static UIVisualEffect *FQXMakeDockEffectForMode(FQXDockMaterialMode mode, BOOL i
             return FQXMakeGlassEffect(1, interactive, nil);
         case FQXDockMaterialNewGlass:
         default: {
-            UIColor *tint = isDark ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+            UIColor *tint = (isDark && FQXGlassDarkTintEnabled()) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
             return FQXMakeGlassEffect(1, interactive, tint);
         }
     }
@@ -1405,11 +1412,12 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
     if (!proxy || !FQXGlassEnabled()) return;
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
+    BOOL darkTint = FQXGlassDarkTintEnabled();
     UIUserInterfaceStyle dockStyle = proxy.overrideUserInterfaceStyle;
     BOOL darkDock = dockStyle == UIUserInterfaceStyleDark ||
         (dockStyle == UIUserInterfaceStyleUnspecified && proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
     NSNumber *appliedMode = objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey);
-    NSInteger desiredMode = reduceTrans ? 99 : ((darkDock ? 20 : 10) + (NSInteger)mode);
+    NSInteger desiredMode = reduceTrans ? 99 : ((darkTint ? 100 : 0) + (darkDock ? 20 : 10) + (NSInteger)mode);
     if (!appliedMode || appliedMode.integerValue != desiredMode) {
         UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, darkDock, YES, reduceTrans);
         if (effect) {
@@ -1592,9 +1600,9 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        NSInteger desired = (isDark ? 10 : 0) + (NSInteger)mode + 1;
+        NSInteger desired = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
         if (!applied || applied.integerValue != desired || hostReset) {
-            surface.effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, NO, NO);
+            surface.effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, YES, NO);
             surface.backgroundColor = UIColor.clearColor;
             surface.contentView.backgroundColor = UIColor.clearColor;
             FQXApplyCornerConfiguration(surface, 0.0, NO);
@@ -1613,7 +1621,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         [platter setNeedsLayout];
         return;
     }
-    NSInteger desiredStamp = (isDark ? 10 : 0) + (NSInteger)mode + 1;
+    NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
     if (applied && applied.integerValue == desiredStamp) return;
     if (gFQXPlatterGlassProbed && !gFQXPlatterGlassSupported) return;
 
@@ -1659,7 +1667,11 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
     static char originalAppearanceKey, selectionStyleKey;
     NSInteger desiredSelectionStamp = (mode == FQXDockMaterialNewGlass || reduce) ? 0 : (NSInteger)mode;
     NSNumber *appliedSelection = objc_getAssociatedObject(tabBar, &selectionStyleKey);
-    if (!appliedSelection || appliedSelection.integerValue != desiredSelectionStamp) {
+    if (!appliedSelection && desiredSelectionStamp == 0) {
+        // Leave factory floating UITabBar standardAppearance untouched in NewGlass mode
+        // so _UITabBarVisualProvider keeps its pure native Liquid Glass selection lens.
+        objc_setAssociatedObject(tabBar, &selectionStyleKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!appliedSelection || appliedSelection.integerValue != desiredSelectionStamp) {
         UITabBarAppearance *original = objc_getAssociatedObject(tabBar, &originalAppearanceKey);
         if (!original) {
             original = tabBar.standardAppearance;
@@ -1677,6 +1689,9 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         // before choosing the surface that owns the material and blur animator.
         [tabBar layoutIfNeeded];
         platter = FQXFindDockPlatter(tabBar);
+        if (platter) {
+            objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
     }
     FQXApplyDockPlatterGlass(platter, dark, mode);
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
@@ -1846,6 +1861,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
 @property(nonatomic, copy) NSString *dockSignature;
 @property(nonatomic, copy) NSArray<NSString *> *dockTitles;
 @property(nonatomic) UIUserInterfaceStyle dockAppliedStyle;
+@property(nonatomic) NSInteger dockAppliedInkState;
 @property(nonatomic) BOOL dockPlatterMeasured;
 @property(nonatomic) CGFloat dockPlatterHeight;
 @property(nonatomic) CGFloat dockPlatterInset;
@@ -1873,6 +1889,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     if (self) {
         _wiredControls = [NSHashTable weakObjectsHashTable];
         _dockAppliedStyle = UIUserInterfaceStyleUnspecified;
+        _dockAppliedInkState = -1;
         _dockPlatterHeight = 62.0;
         _dockPlatterInset = 21.0;
     }
@@ -1890,6 +1907,17 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     if (dockStyle == UIUserInterfaceStyleDark) return YES;
     if (dockStyle == UIUserInterfaceStyleLight) return NO;
     return self.proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+}
+
+- (UIUserInterfaceStyle)desiredDockGlassStyle {
+    // Decouple glass material polarity from icon/text ink polarity:
+    // When NewGlass does not apply a dark base tint (default OFF), keep UITabBar in Light
+    // glass mode so both the outer platter and _UITabSelectionView remain crystal-clear
+    // refractive Liquid Glass without a dark charcoal fill, while icons still adapt to page ink.
+    if (FQXCurrentDockMaterialMode() == FQXDockMaterialNewGlass && !FQXGlassDarkTintEnabled()) {
+        return UIUserInterfaceStyleLight;
+    }
+    return [self isDarkDock] ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
 }
 
 - (NSUInteger)currentSelectedIndex {
@@ -1954,7 +1982,8 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
 - (void)applyDockItemImages {
     UITabBar *tabBar = self.nativeDockBar;
     if (!tabBar || tabBar.items.count == 0) return;
-    BOOL isDark = (self.dockAppliedStyle == UIUserInterfaceStyleDark);
+    BOOL isDark = [self isDarkDock];
+    self.dockAppliedInkState = isDark ? 1 : 0;
     CGFloat white = isDark ? 1.0 : 0.0;
     UIColor *selectedInk = [UIColor colorWithWhite:white alpha:1.0];
     UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
@@ -2145,6 +2174,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
         self.dockSignature = nil;
         self.dockPlatterMeasured = NO;
         self.dockAppliedStyle = UIUserInterfaceStyleUnspecified;
+        self.dockAppliedInkState = -1;
     }
     self.bar = bar;
     self.proxy = proxy;
@@ -2198,8 +2228,9 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
         }
     }
 
-    UIUserInterfaceStyle desiredStyle = [self isDarkDock] ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
-    BOOL styleChanged = (self.dockAppliedStyle != desiredStyle);
+    UIUserInterfaceStyle desiredStyle = [self desiredDockGlassStyle];
+    BOOL styleChanged = (self.dockAppliedStyle != desiredStyle) ||
+                        (self.nativeDockBar.overrideUserInterfaceStyle != desiredStyle);
     if (styleChanged) {
         self.dockAppliedStyle = desiredStyle;
         if (self.nativeDockBar.overrideUserInterfaceStyle != desiredStyle) {
@@ -2207,9 +2238,17 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
         }
     }
 
+    NSInteger desiredInk = [self isDarkDock] ? 1 : 0;
+    BOOL inkChanged = (self.dockAppliedInkState != desiredInk);
     BOOL itemsRebuilt = [self syncDockItems];
-    if (styleChanged && !itemsRebuilt) {
+    if (inkChanged && !itemsRebuilt) {
         [self applyDockItemImages];
+    }
+    if (styleChanged || itemsRebuilt) {
+        UIView *curPlatter = FQXFindDockPlatter(self.nativeDockBar);
+        if (curPlatter) {
+            objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
     }
 
     [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
@@ -2224,6 +2263,8 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     self.dockSignature = nil;
     self.dockTitles = nil;
     self.dockPlatterMeasured = NO;
+    self.dockAppliedStyle = UIUserInterfaceStyleUnspecified;
+    self.dockAppliedInkState = -1;
 }
 
 @end
@@ -2270,6 +2311,8 @@ static const void *FQXDramaHeaderSelectionOwnerKey(void) {
     return (const void *)sel_registerName("fqx_dramaHeaderSelectionOwner191");
 }
 
+static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs);
+
 @interface FQXDramaTopCapsuleInteraction : NSObject <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) UIView *tabsView;
 @property(nonatomic, weak) UICollectionView *collectionView;
@@ -2299,17 +2342,31 @@ static const void *FQXDramaHeaderSelectionOwnerKey(void) {
 
 - (void)applyMaterialToOuter:(UIVisualEffectView *)outer isDark:(BOOL)isDark {
     if (!outer || !self.pillGlass) return;
-    FQXApplyBackdropBlur(outer, outer.contentView, nil, outer.bounds, -1, isDark, DramaHeaderBlurPrefKey);
+    BOOL darkTint = FQXGlassDarkTintEnabled();
+    BOOL blurDark = darkTint ? isDark : FQXAppIsInNightMode();
+    FQXApplyBackdropBlur(outer, outer.contentView, nil, outer.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
-    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0);
+    UIUserInterfaceStyle uiStyle = (darkTint && isDark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    if (outer.overrideUserInterfaceStyle != uiStyle) {
+        outer.overrideUserInterfaceStyle = uiStyle;
+    }
+    if (self.pillGlass.overrideUserInterfaceStyle != uiStyle) {
+        self.pillGlass.overrideUserInterfaceStyle = uiStyle;
+    }
+
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
     if (applied && applied.integerValue == stamp) return;
     objc_setAssociatedObject(outer, FQXDramaTopGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
     NSInteger glassStyle = reduce ? 0 : 1;
-    UIColor *outerTint = (!reduce && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-    UIColor *pillTint = [UIColor colorWithWhite:0.0 alpha:(isDark ? 0.50 : 0.10)];
+    UIColor *outerTint = (!reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIColor *pillTint = nil;
+    if (darkTint) {
+        pillTint = [UIColor colorWithWhite:0.0 alpha:(isDark ? 0.50 : 0.10)];
+    } else if (reduce) {
+        pillTint = [UIColor colorWithWhite:(isDark ? 1.0 : 0.0) alpha:0.12];
+    }
     void (^changes)(void) = ^{
         outer.overrideUserInterfaceStyle = uiStyle;
         outer.effect = FQXMakeGlassEffect(glassStyle, NO, outerTint);
@@ -2657,9 +2714,11 @@ static const void *FQXDramaHeaderSelectionOwnerKey(void) {
         [cv addGestureRecognizer:self.dragGesture];
     }
 
-    BOOL isDark = (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
-                  (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
-                   outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
+    UIView *header = categories.superview;
+    BOOL isDark = header ? FQXDramaHeaderHostIsDark(header, tabs)
+                         : ((outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
+                            (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
+                             outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark));
     [self applyMaterialToOuter:outer isDark:isDark];
 
     if (self.mode == FQXTopCapsuleTouchIdle) {
@@ -2671,6 +2730,79 @@ static const void *FQXDramaHeaderSelectionOwnerKey(void) {
 }
 
 @end
+
+static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs) {
+    id feed = FQXObjGet(header, "delegate");
+    UIView *content = FQXObjGet(feed, "contentView");
+    UIColor *color = FQXObjGet(content, "backgroundColor");
+    id owner = FQXObjGet(feed, "rootTabBarController");
+    NSArray *models = FQXObjGet(feed, "tabModels");
+    NSArray *cells = FQXObjGet(tabs, "dataSource");
+    NSInteger selected = -1;
+    if ([cells isKindOfClass:NSArray.class]) {
+        for (NSUInteger i = 0; i < cells.count && i < 24; ++i) {
+            if (FQXBoolGet(cells[i], "isSelected", NO)) {
+                selected = (NSInteger)i;
+                break;
+            }
+        }
+    }
+    SEL bgSel = sel_registerName("bottomTabBackgroundColorWithTabModel:");
+    if (selected >= 0 && [models isKindOfClass:NSArray.class] && (NSUInteger)selected < models.count &&
+        owner && [owner respondsToSelector:bgSel]) {
+        Method m = class_getInstanceMethod(object_getClass(owner), bgSel);
+        if (m && strcmp(method_getTypeEncoding(m), "@24@0:8@16") == 0) {
+            color = ((id (*)(id, SEL, id))objc_msgSend)(owner, bgSel, models[(NSUInteger)selected]);
+        }
+    }
+    if ([color isKindOfClass:UIColor.class]) {
+        if (content) {
+            color = [color resolvedColorWithTraitCollection:content.traitCollection];
+        }
+        CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+        if ([color getRed:&r green:&g blue:&b alpha:&a]) {
+            if (a >= 0.5) return ((r + g * 2.0 + b) * 0.25) < 0.5;
+        } else if ([color getWhite:&w alpha:&a]) {
+            if (a >= 0.5) return w < 0.5;
+        }
+    }
+    return YES;
+}
+
+static const void *FQXSearchBtnGlassStampKey = &FQXSearchBtnGlassStampKey;
+
+static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn, BOOL isDark) {
+    if (!searchBtn) return;
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    BOOL darkTint = FQXGlassDarkTintEnabled();
+    UIUserInterfaceStyle uiStyle = (darkTint && isDark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    if (searchBtn.overrideUserInterfaceStyle != uiStyle) {
+        searchBtn.overrideUserInterfaceStyle = uiStyle;
+    }
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0);
+    NSNumber *applied = objc_getAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey);
+    if (applied && applied.integerValue == stamp) return;
+
+    UIButtonConfiguration *cur = searchBtn.configuration;
+    if (!cur) return;
+    SEL clearSel = NSSelectorFromString(@"clearGlassButtonConfiguration");
+    SEL regSel = NSSelectorFromString(@"glassButtonConfiguration");
+    UIButtonConfiguration *cfg = nil;
+    if (!reduce && [UIButtonConfiguration respondsToSelector:clearSel]) {
+        cfg = ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, clearSel);
+    } else if ([UIButtonConfiguration respondsToSelector:regSel]) {
+        cfg = ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, regSel);
+    }
+    if (!cfg) return;
+    cfg.image = cur.image;
+    cfg.contentInsets = cur.contentInsets;
+    if (!reduce && darkTint && isDark) {
+        UIVisualEffect *tinted = FQXMakeGlassEffect(1, YES, [UIColor colorWithWhite:0.0 alpha:0.30]);
+        if (tinted) cfg.background.visualEffect = tinted;
+    }
+    searchBtn.configuration = cfg;
+    objc_setAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 static NSHashTable<UIView *> *FQXTrackedDramaHeaders(void) {
     static NSHashTable<UIView *> *headers;
@@ -2712,12 +2844,20 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
         }
     }
 
+    id headerOwner = FQXObjGet(header, "delegate");
+    UIView *headerTabs = FQXObjGet(headerOwner, "simpleTabView");
+    BOOL isDark = FQXDramaHeaderHostIsDark(header, headerTabs);
+    BOOL blurDark = FQXGlassDarkTintEnabled() ? isDark : FQXAppIsInNightMode();
+    if (searchBtn && !searchBtn.hidden) {
+        FQXSyncDramaSearchButtonGlass(searchBtn, isDark);
+    }
+
     UIView *categories = FQXObjGet(header, "tabContainer");
     UIVisualEffectView *outer = categories ? objc_getAssociatedObject(categories, FQXDramaHeaderSurfaceKey()) : nil;
     if (![outer isKindOfClass:UIVisualEffectView.class] || outer.superview != categories ||
         outer.hidden || CGRectGetWidth(outer.bounds) < 60.0 || CGRectGetHeight(outer.bounds) > 48.0) {
         if (searchBtn && !searchBtn.hidden) {
-            FQXApplyBackdropBlur(searchBtn, searchBtn, nil, searchBtn.bounds, -1, YES, DramaHeaderBlurPrefKey);
+            FQXApplyBackdropBlur(searchBtn, searchBtn, nil, searchBtn.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
         }
         FQXDramaHeaderAlignInFlight = NO;
         return;
@@ -2785,7 +2925,7 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
             searchBtn.frame = targetSearch;
         }
         FQXApplyCornerConfiguration(searchBtn, 0.0, NO);
-        FQXApplyBackdropBlur(searchBtn, searchBtn, nil, searchBtn.bounds, -1, YES, DramaHeaderBlurPrefKey);
+        FQXApplyBackdropBlur(searchBtn, searchBtn, nil, searchBtn.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
     }
 
     [CATransaction commit];
@@ -3178,7 +3318,20 @@ static void FQXRefreshDynamicIslandState(void);
     for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
         if (inter.nativeDockActive) {
             UITabBar *tabBar = inter.nativeDockBar;
-            FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), [inter isDarkDock]);
+            if (!tabBar) continue;
+            UIUserInterfaceStyle desiredStyle = [inter desiredDockGlassStyle];
+            if (inter.dockAppliedStyle != desiredStyle || tabBar.overrideUserInterfaceStyle != desiredStyle) {
+                inter.dockAppliedStyle = desiredStyle;
+                tabBar.overrideUserInterfaceStyle = desiredStyle;
+                [tabBar layoutIfNeeded];
+                UIView *curPlatter = FQXFindDockPlatter(tabBar);
+                if (curPlatter) {
+                    objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+            }
+            BOOL glassDark = (desiredStyle == UIUserInterfaceStyleDark);
+            FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), glassDark);
+            [inter applyDockItemImages];
         } else {
             FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.restingLens);
         }
