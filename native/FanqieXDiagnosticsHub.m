@@ -10,7 +10,7 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.5beta2";
+static NSString *const kFQXHubPluginVersion = @"1.9.5beta3";
 static const NSUInteger kFQXHubMaxDiskBytesPerFile = 512 * 1024; // 512 KB x 2 rotating files max
 static const NSUInteger kFQXHubRingNormalLimit = 1500;
 static const NSUInteger kFQXHubRingEnhancedLimit = 3600;
@@ -38,6 +38,7 @@ static NSUInteger gFQXSnssdkIssuedCount = 0;
 static NSUInteger gFQXSnssdkSuccessCount = 0;
 static NSUInteger gFQXSnssdkFailureCount = 0;
 static NSUInteger gFQXSnssdkCancelledCount = 0;
+static NSUInteger gFQXSnssdkUnobservedCount = 0;
 
 static dispatch_queue_t FQXHubQueue(void) {
     static dispatch_queue_t q = nil;
@@ -539,6 +540,7 @@ static void FQXRecordRecentFailureSummary(NSString *domain,
     os_unfair_lock_lock(&gFQXRecentFailLock);
     if (isSnssdk) {
         if ([stage isEqualToString:@"issued"]) ++gFQXSnssdkIssuedCount;
+        else if ([stage isEqualToString:@"released_unobserved"]) ++gFQXSnssdkUnobservedCount;
         else if ([stage isEqualToString:@"returned"] && !error && (statusCode == 0 || (statusCode >= 200 && statusCode < 400))) ++gFQXSnssdkSuccessCount;
         else if ([stage isEqualToString:@"cancelled"]) ++gFQXSnssdkCancelledCount;
         else if ([stage isEqualToString:@"failed"] || error || statusCode >= 400) ++gFQXSnssdkFailureCount;
@@ -818,11 +820,13 @@ static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id stron
     BOOL isTimeout = NO, isConnFail = NO;
     NSString *note = nil;
     FQXClassifyNetworkError(statusCode, err, cancelled, &source, &isTimeout, &isConnFail, &note);
-    if (!strongTask && !err && statusCode == 0) {
-        source = @"task_deallocated_without_response";
+    BOOL releasedBeforePoll = (!strongTask && !err && statusCode == 0);
+    if (releasedBeforePoll) {
+        source = @"task_released_before_poll";
     }
     NSString *stage = cancelled ? @"cancelled"
-        : ((err || statusCode >= 400 || (statusCode == 0 && !strongTask)) ? @"failed" : @"returned");
+        : (releasedBeforePoll ? @"released_unobserved"
+           : ((err || statusCode >= 400) ? @"failed" : @"returned"));
 
     FQXRecordRecentFailureSummary(entry.domain, entry.path, stage, statusCode, err, source);
     NSMutableDictionary<NSString *, id> *payload = [@{
@@ -844,13 +848,23 @@ static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id stron
         @"isMonitoredSnssdk": @([entry.domain isEqualToString:@"is.snssdk.com"]),
     } mutableCopy];
     if (note) payload[@"proxyAssessmentNote"] = note;
-    FQXDiagRecordEvent(FQXDiagCategoryNetwork, @"network_request", payload, YES);
+    BOOL important = !releasedBeforePoll || [entry.domain isEqualToString:@"is.snssdk.com"];
+    FQXDiagRecordEvent(FQXDiagCategoryNetwork, @"network_request", payload, important);
 }
 
 static void FQXScheduleWatchedTasksPollOnQueue(void) {
     if (gFQXWatcherScheduled || !gFQXWatchedTasks.count) return;
     gFQXWatcherScheduled = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(450 * NSEC_PER_MSEC)), FQXHubQueue(), ^{
+    CFTimeInterval now = CACurrentMediaTime();
+    BOOL hasYoungTask = NO;
+    for (FQXWatchedNetworkTask *item in gFQXWatchedTasks) {
+        if ((now - item.startMono) < 1.2) {
+            hasYoungTask = YES;
+            break;
+        }
+    }
+    int64_t delayMs = hasYoungTask ? 120 : 450;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delayMs * NSEC_PER_MSEC), FQXHubQueue(), ^{
         gFQXWatcherScheduled = NO;
         for (NSInteger i = (NSInteger)gFQXWatchedTasks.count - 1; i >= 0; --i) {
             FQXWatchedNetworkTask *item = gFQXWatchedTasks[(NSUInteger)i];
@@ -1272,7 +1286,7 @@ void FQXDiagRecordReaderTTSCheck(id ttsMgr,
                         ([chapterId isKindOfClass:NSNumber.class] && [(NSNumber *)chapterId longLongValue] > 0) ||
                         (chapterInfo != nil);
 
-    // Probe boolean feature flags on SSReaderTTSParaEntranceManager if present
+    // Probe boolean feature flags on SSReaderTTSParaEntranceManager (instance or class-level gates)
     NSMutableDictionary<NSString *, id> *paraFlags = [NSMutableDictionary dictionary];
     if (paraMgr) {
         const char *flagNames[] = {
@@ -1284,6 +1298,27 @@ void FQXDiagRecordReaderTTSCheck(id ttsMgr,
             BOOL v = FQXSafeBoolMsg0(paraMgr, flagNames[i], &found);
             if (found) paraFlags[[NSString stringWithUTF8String:flagNames[i]]] = @(v);
         }
+    }
+    Class paraMgrCls = NSClassFromString(@"SSReaderTTSParaEntranceManager");
+    if (paraMgrCls) {
+        Class meta = object_getClass(paraMgrCls);
+        unsigned int mc = 0;
+        Method *mlist = class_copyMethodList(meta, &mc);
+        for (unsigned int i = 0; i < mc && paraFlags.count < 16; ++i) {
+            SEL s = method_getName(mlist[i]);
+            const char *sname = sel_getName(s);
+            const char *enc = method_getTypeEncoding(mlist[i]);
+            if (!sname || !enc || strcmp(enc, "B16@0:8") != 0) continue;
+            if (strstr(sname, "enable") || strstr(sname, "Enable") ||
+                strstr(sname, "show") || strstr(sname, "Show") ||
+                strstr(sname, "can") || strstr(sname, "Can") ||
+                strstr(sname, "open") || strstr(sname, "Open") ||
+                strstr(sname, "para") || strstr(sname, "Para")) {
+                BOOL v = ((BOOL (*)(id, SEL))objc_msgSend)(paraMgrCls, s);
+                paraFlags[[NSString stringWithFormat:@"+%s", sname]] = @(v);
+            }
+        }
+        free(mlist);
     }
 
     NSUInteger totalArrows = 0;
@@ -1925,6 +1960,7 @@ void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
             @"succeeded": @(gFQXSnssdkSuccessCount),
             @"failed": @(gFQXSnssdkFailureCount),
             @"cancelled": @(gFQXSnssdkCancelledCount),
+            @"releasedUnobserved": @(gFQXSnssdkUnobservedCount),
             @"note": @"客户端错误仅反映连接/传输失败，是否命中 Loon REJECT 规则需以 Loon 请求日志为准",
         };
         recentFails = gFQXRecentNetFailures ? [gFQXRecentNetFailures copy] : @[];
