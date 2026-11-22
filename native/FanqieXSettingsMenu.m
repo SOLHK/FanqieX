@@ -2,6 +2,8 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXBlurControl.h"
+#import "FanqieXDetachedDock.h"
+#import "FanqieXDiagnosticsHub.h"
 
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
@@ -309,6 +311,20 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
         idx = (found != NSNotFound) ? (NSInteger)found : 0;
+    } else if (row.popoverKind == 8) {
+        NSArray<NSString *> *mods = FQXDockDetachedAvailableModules();
+        options = mods;
+        values = nil;
+        NSString *saved = FQXDockDetachedStoredModule();
+        if (saved.length > 0) {
+            NSUInteger found = [mods indexOfObject:saved];
+            idx = (found != NSNotFound) ? (NSInteger)found : -1;
+        } else {
+            idx = mods.count > 0 ? ((NSInteger)mods.count - 1) : -1;
+        }
+        if (outOptions) *outOptions = options;
+        if (outValues) *outValues = nil;
+        return idx;
     } else if (values.count == options.count && options.count > 0) {
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
@@ -338,6 +354,31 @@ static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL 
     dockModeRow.popoverKind = 1;
     dockModeRow.height = 52;
     [menu.catalog addObject:dockModeRow];
+}
+
+static void AddDetachedDockModuleRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *modRow = [FQXSettingRow new];
+    modRow.title = @"选择独立模块";
+    modRow.path = route;
+    modRow.hiddenFromSearch = hiddenFromSearch;
+    modRow.keywords = @"选择独立模块 独立模块 独立圆形模块 圆形按钮 右侧按钮 底栏 dock 书城 短剧 书架 我的 商城";
+    modRow.popoverKey = FQXDockDetachedModulePrefKey;
+    modRow.popoverOptions = @[@"自动"];
+    modRow.popoverKind = 8;
+    modRow.height = 52;
+    [menu.catalog addObject:modRow];
+}
+
+static void AddDiagCategoryFilterRow(FQXSettingsMenu *menu) {
+    FQXSettingRow *filterRow = [FQXSettingRow new];
+    filterRow.title = @"导出日志类别过滤";
+    filterRow.path = @"诊断与其他";
+    filterRow.keywords = @"导出日志 类别 过滤 筛选 网络请求 Hook 拦截 视图生命周期 听书 段落定位 安全验证 底栏 诊断 JSON";
+    filterRow.popoverKey = FQXDiagCategoryFilterPrefKey;
+    filterRow.popoverOptions = @[@"全部类别", @"网络请求", @"Hook 拦截", @"视图生命周期", @"听书与段落定位", @"安全验证与启动", @"底栏与界面"];
+    filterRow.popoverKind = 9;
+    filterRow.height = 52;
+    [menu.catalog addObject:filterRow];
 }
 
 static void AddBlurRow(FQXSettingsMenu *menu, NSString *route, NSString *title, NSString *key) {
@@ -468,7 +509,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
-        @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果", @"comment":@"评论区净化"};
+        @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果", @"comment":@"评论区净化",
+        @"bottom":@"页面与导航/底栏入口"};
     NSDictionary *legacyTitles = @{@"FanqieX.ReaderEarnMore.1":@"阅读页显示去赚更多",
         @"FanqieX.MineRecommendations.1":@"我的显示推荐内容", @"FanqieX.MineBenefitsCard.1":@"我的显示金币与福利卡片"};
     for (NSDictionary *option in options) {
@@ -566,7 +608,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.SidebarPrivacyLinks.1":@"侧栏 底部清单 个人信息清单 三方信息共享清单 协议 抽屉 隐藏",
             @"FanqieX.MineRecommendations.1":@"我的页面 推荐卡片 无限流",
             @"FanqieX.MineBenefitsCard.1":@"我的页面 福利卡片 金币",
-            @"FanqieX.GlassDarkTint.1":@"液态玻璃 深色底色 底色 黑色 染色 压暗 通透 透明 无底色 顶部 顶栏 顶部分类 搜索按钮 底栏 Dock 新液态玻璃 短剧"
+            @"FanqieX.GlassDarkTint.1":@"液态玻璃 深色底色 底色 黑色 染色 压暗 通透 透明 无底色 顶部 顶栏 顶部分类 搜索按钮 底栏 Dock 新液态玻璃 短剧",
+            @"FanqieX.DockDetachedEnabled.1":@"底栏 dock 独立圆形模块 独立模块 圆形按钮 右侧按钮 相机样式 分离 胶囊"
         };
         if (aliases[option[@"key"]]) row.keywords = [row.keywords stringByAppendingFormat:@" %@", aliases[option[@"key"]]];
         row.option = option;
@@ -584,6 +627,17 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                 [menu.catalog addObject:mirror];
             }
         }
+        if ([option[@"key"] isEqualToString:@"FanqieX.DockDetachedEnabled.1"]) {
+            AddDetachedDockModuleRow(menu, @"页面与导航/底栏入口", NO);
+            FQXSettingRow *dockMirror = [FQXSettingRow new];
+            dockMirror.title = row.title;
+            dockMirror.path = @"外观/玻璃与尺寸";
+            dockMirror.hiddenFromSearch = YES;
+            dockMirror.option = option;
+            dockMirror.height = 52;
+            [menu.catalog addObject:dockMirror];
+            AddDetachedDockModuleRow(menu, @"外观/玻璃与尺寸", YES);
+        }
     }
     FQXSettingRow *video = [FQXSettingRow new];
     video.title = @"导出当前视频";
@@ -600,6 +654,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     author.authorInformation = YES;
     [menu.catalog addObject:author];
 
+    AddDiagCategoryFilterRow(menu);
     FQXSettingRow *diagnostics = [FQXSettingRow new];
     diagnostics.title = @"导出日志";
     diagnostics.path = @"诊断与其他";
@@ -908,6 +963,33 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
         cell.textLabel.text = row.title;
         cell.textLabel.numberOfLines = 2;
+        if (row.popoverKind == 8) {
+            NSArray<NSString *> *mods = FQXDockDetachedAvailableModules();
+            if (mods.count < 2) {
+                cell.textLabel.textColor = UIColor.secondaryLabelColor;
+                cell.detailTextLabel.text = searching
+                    ? [@"可用模块不足 · " stringByAppendingString:row.path]
+                    : @"可用模块不足";
+                cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+                cell.accessoryType = UITableViewCellAccessoryNone;
+                cell.selectionStyle = UITableViewCellSelectionStyleNone;
+                return cell;
+            }
+            NSString *saved = FQXDockDetachedStoredModule();
+            NSString *detail = nil;
+            if (saved.length > 0 && ![mods containsObject:saved]) {
+                detail = [NSString stringWithFormat:@"%@（已隐藏）", saved];
+            } else {
+                detail = saved.length > 0 ? saved : (mods.lastObject ?: @"");
+            }
+            cell.detailTextLabel.text = searching
+                ? [NSString stringWithFormat:@"%@ · %@", detail, row.path]
+                : detail;
+            cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            return cell;
+        }
         BOOL unavailable = row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
         if (unavailable) {
             cell.textLabel.textColor = UIColor.secondaryLabelColor;
@@ -993,6 +1075,11 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             } else if ([sw.accessibilityLabel isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
                 id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
                 sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
+            } else if ([row.path isEqualToString:@"页面与导航/底栏入口"]) {
+                for (id target in sw.allTargets.allObjects) {
+                    [sw removeTarget:target action:@selector(bottomTabToggleChanged:) forControlEvents:UIControlEventValueChanged];
+                }
+                [sw addTarget:self action:@selector(bottomTabToggleChanged:) forControlEvents:UIControlEventValueChanged];
             }
         }
     } else {
@@ -1068,6 +1155,18 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     dispatch_async(dispatch_get_main_queue(), ^{ [self rebuild]; });
 }
 
+- (void)bottomTabToggleChanged:(UISwitch *)toggle {
+    (void)toggle;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshSel = NSSelectorFromString(@"refreshDockAppearance");
+        if ([dockMotion respondsToSelector:refreshSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSel);
+        }
+        [self rebuild];
+    });
+}
+
 - (void)performStoredAction:(UIButton *)button {
     for (FQXSettingRow *row in self.catalog) {
         if (row.content != button) continue;
@@ -1128,11 +1227,27 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
 }
 
 - (void)fqab_156_presentDiagnostics:(NSDictionary *)result {
-    self.diagnosticExportPending = NO;
-    self.diagnosticFile = result[@"url"];
-    self.diagnosticError = self.diagnosticFile ? nil : (result[@"error"] ?: @"日志生成失败，请重试。");
-    [self.tableView reloadData];
-    if (self.diagnosticFile) [self shareDiagnosticFile];
+    NSURL *coreFile = result[@"url"];
+    if (!coreFile) {
+        self.diagnosticExportPending = NO;
+        self.diagnosticFile = nil;
+        self.diagnosticError = result[@"error"] ?: @"日志生成失败，请重试。";
+        [self.tableView reloadData];
+        return;
+    }
+    NSInteger filter = [NSUserDefaults.standardUserDefaults integerForKey:FQXDiagCategoryFilterPrefKey];
+    __weak FQXSettingsMenu *weakSelf = self;
+    FQXDiagnosticsHubFinalizeExport(coreFile, filter, ^(NSURL *finalURL, NSString *errorMessage) {
+        FQXSettingsMenu *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.diagnosticExportPending = NO;
+        strongSelf.diagnosticFile = finalURL;
+        strongSelf.diagnosticError = finalURL ? nil : (errorMessage ?: @"日志生成失败，请重试。");
+        [strongSelf.tableView reloadData];
+        if (strongSelf.diagnosticFile) {
+            [strongSelf shareDiagnosticFile];
+        }
+    });
 }
 
 - (void)shareDiagnosticFile {
@@ -1196,6 +1311,28 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             __weak FQXSettingsMenu *weakMenu = self;
             NSString *prefKey = row.popoverKey;
             NSInteger kind = row.popoverKind;
+            if (kind == 8) {
+                if (options.count < 2) return;
+                for (NSUInteger i = 0; i < options.count; ++i) {
+                    NSString *modTitle = options[i];
+                    NSString *optTitle = ((NSInteger)i == curIdx)
+                        ? [modTitle stringByAppendingString:@"  ✓"] : modTitle;
+                    [picker addAction:[UIAlertAction actionWithTitle:optTitle style:UIAlertActionStyleDefault
+                        handler:^(__unused UIAlertAction *action) {
+                            [NSUserDefaults.standardUserDefaults setObject:modTitle forKey:prefKey];
+                            Class cleanup = NSClassFromString(@"FQXCleanup");
+                            SEL selector = NSSelectorFromString(@"refreshForKey:");
+                            if ([cleanup respondsToSelector:selector]) {
+                                ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
+                            }
+                            [weakMenu.tableView reloadData];
+                        }]];
+                }
+                [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+                UIViewController *presenter = self.presentedViewController ?: self;
+                [presenter presentViewController:picker animated:YES completion:nil];
+                return;
+            }
             for (NSUInteger i = 0; i < options.count; ++i) {
                 NSString *optTitle = (NSInteger)i == curIdx
                     ? [options[i] stringByAppendingString:@"  ✓"] : options[i];
@@ -1208,6 +1345,13 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                         if (kind == 4) {
                             [ud removeObjectForKey:@"FanqieX.CommentGlassFrosted.1"];
                             [ud removeObjectForKey:@"FanqieX.CommentMaterialMode.1"];
+                        }
+                        if (kind == 9) {
+                            FQXSettingsMenu *strongMenu = weakMenu;
+                            if (strongMenu.diagnosticFile.isFileURL) {
+                                [NSFileManager.defaultManager removeItemAtURL:strongMenu.diagnosticFile error:NULL];
+                            }
+                            strongMenu.diagnosticFile = nil;
                         }
                         Class cleanup = NSClassFromString(@"FQXCleanup");
                         SEL selector = NSSelectorFromString(@"refreshForKey:");

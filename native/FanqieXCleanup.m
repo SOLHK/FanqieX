@@ -5,6 +5,8 @@
 #import <pthread.h>
 #include <stdatomic.h>
 #import "FQXHookInstaller.h"
+#import "FanqieXDetachedDock.h"
+#import "FanqieXDiagnosticsHub.h"
 extern void FQXInstallContentCleanupHooks(void);
 extern void FQXInstallMotionAndAudioHooks(void);
 
@@ -89,7 +91,8 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(HotLaunchAds, "HotLaunchAds", "热启动广告专项拦截", "ads", NO) \
     X(AudioAds, "AudioAds", "听书广告专项控制", "ads", NO) \
     X(ChapterTitle, "ChapterTitle", "返回标题固定为章节名称", "readerFeatures", NO) \
-    X(GlassDarkTint, "GlassDarkTint", "液态玻璃叠加深色底色", "appearance", NO)
+    X(GlassDarkTint, "GlassDarkTint", "液态玻璃叠加深色底色", "appearance", NO) \
+    X(DockDetachedEnabled, "DockDetachedEnabled", "启用 Dock 独立圆形模块", "bottom", NO)
 
 #define OPTION_KEY(name, suffix, title, category, defaultValue) \
     static NSString *const name##Key = @"FanqieX." suffix ".1";
@@ -165,9 +168,19 @@ static void HideWhen(NSString *className, SEL selector, NSString *key, BOOL defa
     Class cls = NSClassFromString(className);
     Method method = HostMethod(cls, selector, "B16@0:8");
     if (!method) return;
+    const char *clsCStr = className.UTF8String;
+    const char *selCStr = sel_getName(selector);
+    const char *ruleCStr = key.UTF8String;
     BOOL (*original)(id, SEL) = (void *)method_getImplementation(method);
     IMP replacement = imp_implementationWithBlock(^BOOL(id owner) {
-        return Option(key, defaultValue) == defaultValue && original(owner, selector);
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (Option(key, defaultValue) != defaultValue) {
+            FQXDiagRecordHook(clsCStr, selCStr, ruleCStr, "cleanup_toggle_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL res = original(owner, selector);
+        FQXDiagRecordHook(clsCStr, selCStr, ruleCStr, "cleanup_toggle_inactive", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return res;
     });
     Install(cls, selector, method, replacement);
 }
@@ -176,9 +189,19 @@ static void HideClassWhen(NSString *className, SEL selector, NSString *key, BOOL
     Class cls = NSClassFromString(className);
     Method method = class_getClassMethod(cls, selector);
     if (!method || strcmp(method_getTypeEncoding(method), "B16@0:8") != 0) return;
+    const char *clsCStr = className.UTF8String;
+    const char *selCStr = sel_getName(selector);
+    const char *ruleCStr = key.UTF8String;
     __block IMP original = NULL;
     IMP replacement = imp_implementationWithBlock(^BOOL(id owner) {
-        return Option(key, defaultValue) == defaultValue && ((BOOL (*)(id, SEL))original)(owner, selector);
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (Option(key, defaultValue) != defaultValue) {
+            FQXDiagRecordHook(clsCStr, selCStr, ruleCStr, "cleanup_toggle_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL res = ((BOOL (*)(id, SEL))original)(owner, selector);
+        FQXDiagRecordHook(clsCStr, selCStr, ruleCStr, "cleanup_toggle_inactive", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return res;
     });
     if (!FQXInstallOwnedHook(cls, selector, YES, "B16@0:8", replacement, &original)) {
         imp_removeBlock(replacement);
@@ -1185,6 +1208,9 @@ static void ResetNestedScrollViewsInMine(UIView *view, NSInteger depth) {
 }
 
 static void RestoreMinePosition(UIViewController *controller) {
+    if (!controller || controller.presentedViewController || FQXDiagHasActiveSecurityVerificationInWindows()) {
+        return;
+    }
     UIScrollView *list = HostObject(controller, NSSelectorFromString(@"collectionView"));
     if (![list isKindOfClass:UIScrollView.class] || list.dragging || list.decelerating) return;
     if ([list isKindOfClass:UICollectionView.class]) {
@@ -1650,9 +1676,15 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         unsigned long long maxBytes = aggressiveLogs ? (256ULL * 1024ULL) : (768ULL * 1024ULL);
         sweepFolder(diagDir, ^BOOL(NSURL *u, unsigned long long sz) {
             NSString *name = u.lastPathComponent ?: @"";
+            if (!aggressiveLogs && ([name isEqualToString:@"hub-active.jsonl"] || [name isEqualToString:@"hub-prev.jsonl"])) {
+                return NO;
+            }
             if ([name hasSuffix:@".tmp"] || [name hasSuffix:@".old"] || [name hasSuffix:@".bak"]) return YES;
             return sz > maxBytes;
         });
+        if (aggressiveLogs) {
+            FQXDiagnosticsHubPurgeFiles();
+        }
     }
 
     NSURL *cachesDir = [fm URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
@@ -1728,6 +1760,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         FQXCleanupLaunchTime = CACurrentMediaTime();
+        FQXDiagnosticsHubInstall();
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                         object:nil
                                                          queue:nil
@@ -1949,7 +1982,14 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshCommentSel);
         }
     } else if ([key isEqualToString:BottomDisplayModeKey] ||
-               [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"]) {
+               [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
+               [key isEqualToString:DockDetachedEnabledKey] ||
+               [key isEqualToString:FQXDockDetachedModulePrefKey] ||
+               [key isEqualToString:@"FanqieX.BottomBookstore.1"] ||
+               [key isEqualToString:@"FanqieX.BottomDrama.1"] ||
+               [key isEqualToString:@"FanqieX.BottomBookshelf.1"] ||
+               [key isEqualToString:@"FanqieX.BottomMine.1"] ||
+               [key isEqualToString:@"FanqieX.BottomMall.1"]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshDockSel = NSSelectorFromString(@"refreshDockAppearance");
         if ([dockMotion respondsToSelector:refreshDockSel]) {

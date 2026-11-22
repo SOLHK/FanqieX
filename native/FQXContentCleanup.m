@@ -4,6 +4,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXHookInstaller.h"
+#import "FanqieXDiagnosticsHub.h"
 
 #define KEY(name) @"FanqieX." name ".1"
 static BOOL On(NSString *key){id v=[NSUserDefaults.standardUserDefaults objectForKey:key];return [v respondsToSelector:@selector(boolValue)]&&[v boolValue];}
@@ -12,81 +13,162 @@ static id Get(id o,const char *s){SEL x=Sel(s);return o&&[o respondsToSelector:x
 
 static BOOL Bool0(const char*c,const char*s,BOOL cm,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^BOOL(id o){return On(k)?NO:((BOOL(*)(id,SEL))old)(o,x);});
- if(!FQXInstallOwnedHook(cls,x,cm,"B16@0:8",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^BOOL(id o){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return NO;}
+  BOOL r=((BOOL(*)(id,SEL))old)(o,x);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"B16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void0Hide(const char*c,const char*s,NSString*k,const char *g1,const char *g2){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o){
-  if(!On(k)){((void(*)(id,SEL))old)(o,x);return;}
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(!On(k)){((void(*)(id,SEL))old)(o,x);FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);return;}
+  FQXDiagPushPluginViewReason(rule,s);
   for(const char **g=(const char *[]){g1,g2,NULL};*g;++g){id v=Get(o,*g);if([v isKindOfClass:UIView.class])((void(*)(id,SEL,BOOL))objc_msgSend)(v,Sel("setHidden:"),YES);}
+  FQXDiagPopPluginViewReason();
+  FQXDiagRecordHook(c,s,rule,"hide_target_subview","blocked",(CACurrentMediaTime()-t0)*1000.0);
  });
- if(!FQXInstallOwnedHook(cls,x,NO,"v16@0:8",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void0(const char*c,const char*s,BOOL cm,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^(id o){if(!On(k))((void(*)(id,SEL))old)(o,x);});
- if(!FQXInstallOwnedHook(cls,x,cm,"v16@0:8",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^(id o){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
+  ((void(*)(id,SEL))old)(o,x);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"v16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Bool1(const char*c,const char*s,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^BOOL(id o,id a){return On(k)?NO:((BOOL(*)(id,SEL,id))old)(o,x,a);});
- if(!FQXInstallOwnedHook(cls,x,NO,"B24@0:8@16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^BOOL(id o,id a){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return NO;}
+  BOOL r=((BOOL(*)(id,SEL,id))old)(o,x,a);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"B24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Bool3(const char*c,const char*s,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^BOOL(id o,id a,id b,id d){return On(k)?NO:((BOOL(*)(id,SEL,id,id,id))old)(o,x,a,b,d);});
- if(!FQXInstallOwnedHook(cls,x,NO,"B40@0:8@16@24@32",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^BOOL(id o,id a,id b,id d){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return NO;}
+  BOOL r=((BOOL(*)(id,SEL,id,id,id))old)(o,x,a,b,d);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"B40@0:8@16@24@32",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Object1(const char*c,const char*s,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^id(id o,id a){return On(k)?nil:((id(*)(id,SEL,id))old)(o,x,a);});
- if(!FQXInstallOwnedHook(cls,x,NO,"@24@0:8@16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^id(id o,id a){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return nil;}
+  id r=((id(*)(id,SEL,id))old)(o,x,a);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"@24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL BoolClass(const char*c,const char*s,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^BOOL(id o,Class a){return On(k)?NO:((BOOL(*)(id,SEL,Class))old)(o,x,a);});
- if(!FQXInstallOwnedHook(cls,x,YES,"B24@0:8#16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^BOOL(id o,Class a){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return NO;}
+  BOOL r=((BOOL(*)(id,SEL,Class))old)(o,x,a);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"B24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL VoidClass(const char*c,const char*s,NSString*k){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^(id o,Class a){if(!On(k))((void(*)(id,SEL,Class))old)(o,x,a);});
- if(!FQXInstallOwnedHook(cls,x,YES,"v24@0:8#16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^(id o,Class a){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
+  ((void(*)(id,SEL,Class))old)(o,x,a);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"v24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void1(const char*c,const char*s,BOOL cm,NSString*k,const char*getter){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o,id a){
-   if(!On(k)){((void(*)(id,SEL,id))old)(o,x,a);return;}
-   if(getter){id v=Get(o,getter);if([v isKindOfClass:UIView.class])((UIView *)v).hidden=YES;}
+   CFTimeInterval t0=CACurrentMediaTime();
+   if(!On(k)){((void(*)(id,SEL,id))old)(o,x,a);FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);return;}
+   if(getter){FQXDiagPushPluginViewReason(rule,s);id v=Get(o,getter);if([v isKindOfClass:UIView.class])((UIView *)v).hidden=YES;FQXDiagPopPluginViewReason();}
+   FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);
  });
- if(!FQXInstallOwnedHook(cls,x,cm,"v24@0:8@16",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"v24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void2(const char*c,const char*s,NSString*k,BOOL firstIsWidget){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^(id o,id a,id b){id w=firstIsWidget?a:b;if(On(k)&&[w isEqual:@"widget_history"])return;((void(*)(id,SEL,id,id))old)(o,x,a,b);});
- if(!FQXInstallOwnedHook(cls,x,NO,"v32@0:8@16@24",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ IMP hook=imp_implementationWithBlock(^(id o,id a,id b){
+  CFTimeInterval t0=CACurrentMediaTime();
+  id w=firstIsWidget?a:b;
+  if(On(k)&&[w isEqual:@"widget_history"]){FQXDiagRecordHook(c,s,rule,"widget_history","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
+  ((void(*)(id,SEL,id,id))old)(o,x,a,b);
+  FQXDiagRecordHook(c,s,rule,"passthrough","allowed",(CACurrentMediaTime()-t0)*1000.0);
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v32@0:8@16@24",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void3(const char*c,const char*s,NSString*k,BOOL withBool){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- if(withBool){IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d,BOOL flag){if(!On(k))((void(*)(id,SEL,id,id,id,BOOL))old)(o,x,a,b,d,flag);});
-  if(!FQXInstallOwnedHook(cls,x,NO,"v44@0:8@16@24@32B40",hook,&old)){imp_removeBlock(hook);return NO;}return YES;}
- IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d){if(!On(k))((void(*)(id,SEL,id,id,id))old)(o,x,a,b,d);});
- if(!FQXInstallOwnedHook(cls,x,NO,"v40@0:8@16@24@32",hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ const char *rule=k.UTF8String;
+ if(withBool){IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d,BOOL flag){
+   CFTimeInterval t0=CACurrentMediaTime();
+   if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
+   ((void(*)(id,SEL,id,id,id,BOOL))old)(o,x,a,b,d,flag);
+   FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  });
+  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v44@0:8@16@24@32B40",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;}
+ IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
+  ((void(*)(id,SEL,id,id,id))old)(o,x,a,b,d);
+  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v40@0:8@16@24@32",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 
 static BOOL SuppressWidgetDialog(id dialog) {
  id view=Get(dialog,"contentView");
+ // Never suppress or interfere with any security verification / BDTuring / Passport dialog.
+ if(FQXDiagIsSecurityVerificationObject(dialog)||FQXDiagIsSecurityVerificationObject(view)||
+    ([view isKindOfClass:UIView.class]&&FQXDiagIsSecurityVerificationHierarchy((UIView *)view))){
+  FQXDiagRecordSecurityDialogCheck(dialog,view,"SSDialogView",NO);
+  return NO;
+ }
  Class history=NSClassFromString(@"SSWelfareWidgetGuideView");
  if(On(KEY("ContentWidgetGuide"))&&history&&[view isKindOfClass:history]&&
     [Get(view,"widgetName") isEqual:@"widget_history"]){
   SEL close=Sel("closeButtonClicked:");
   if([view respondsToSelector:close])((void(*)(id,SEL,id))objc_msgSend)(view,close,nil);
+  FQXDiagRecordHook("SSDialogView","showInView:enqueue:","FanqieX.ContentWidgetGuide.1","widget_history_guide","blocked",0.0);
   return YES;
  }
  Class excerpt=NSClassFromString(@"SSBookExcerptWidgetGuideView");
  if(On(KEY("ExcerptWidgetGuide"))&&excerpt&&[view isKindOfClass:excerpt]){
   SEL cancel=Sel("cancelButtonClicked");
   if([view respondsToSelector:cancel])((void(*)(id,SEL))objc_msgSend)(view,cancel);
+  FQXDiagRecordHook("SSDialogView","showInView:enqueue:","FanqieX.ExcerptWidgetGuide.1","book_excerpt_guide","blocked",0.0);
   return YES;
  }
  return NO;
@@ -150,8 +232,17 @@ static BOOL AdBlockActive(void){
 }
 static void AdConstBool0(const char *c,const char *s,BOOL cm,BOOL blockedValue){
  Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
- IMP hook=imp_implementationWithBlock(^BOOL(id o){return AdBlockActive()?blockedValue:((BOOL(*)(id,SEL))old)(o,x);});
- if(!FQXInstallOwnedHook(cls,x,cm,"B16@0:8",hook,&old))imp_removeBlock(hook);
+ IMP hook=imp_implementationWithBlock(^BOOL(id o){
+  CFTimeInterval t0=CACurrentMediaTime();
+  if(AdBlockActive()){
+   FQXDiagRecordHook(c,s,"FanqieAdBlock.ReaderInlineAd","adblock_active","blocked",(CACurrentMediaTime()-t0)*1000.0);
+   return blockedValue;
+  }
+  BOOL r=((BOOL(*)(id,SEL))old)(o,x);
+  FQXDiagRecordHook(c,s,"FanqieAdBlock.ReaderInlineAd","adblock_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
+  return r;
+ });
+ if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"B16@0:8","FanqieAdBlock.ReaderInlineAd",hook,&old))imp_removeBlock(hook);
 }
 static void InstallReaderInlineDramaAdHooks(void){
  AdConstBool0("SSReaderGenreContentManager","contentEnable",NO,NO);
@@ -318,39 +409,34 @@ static void FQXClearSystemNowPlayingIfIdle(void){
  id center=Get((id)mpCls,"defaultCenter");
  VoidMsgObj(center,"setNowPlayingInfo:",nil);
 }
-static void FQXHideParaEntranceSubviews(UIView *root,Class targetCls,NSInteger depth){
- if(!targetCls||![root isKindOfClass:UIView.class]||depth>8)return;
- if([root isKindOfClass:targetCls]){root.hidden=YES;return;}
- for(UIView *sub in root.subviews)FQXHideParaEntranceSubviews(sub,targetCls,depth+1);
+static id FQXFindParaManagerForReader(id readerMgr){
+ NSArray *all=SnapshotTracked(sTrackedParaManagers);
+ if(!all.count)return nil;
+ if(readerMgr){
+  for(id pm in all){
+   if(Get(pm,"readerManager")==readerMgr)return pm;
+  }
+ }
+ return all.lastObject;
 }
 static void FQXCleanStaleReaderAudioUIOnMain(void){
- id sdk=FQXAudioSDKManager();
- id activeBook=(!sdk||BoolMsg0(sdk,"audioStopped"))?nil:Get(sdk,"currentBookId");
- if(![activeBook isKindOfClass:NSString.class]||![(NSString *)activeBook length])activeBook=nil;
+ // IMPORTANT: Never hide SSReaderTTSParagraphEntranceView or reset SSReaderTTSParaEntranceManager here!
+ // SSReaderTTSParagraphEntranceView is the idle per-paragraph play-from-here arrow; hiding it on
+ // reader entry wiped out paragraph play arrows whenever late snssdk config refreshes did not re-run.
+ // Only clear FQReaderSaaSTTSManager's leftover "sync to active audio" button/line highlight when stopped.
  for(id ttsMgr in SnapshotTracked(sTrackedTTSManagers)){
-  if(!BoolMsg0(ttsMgr,"isSyncing")&&!BoolMsg0(ttsMgr,"isActiveForCurrentBook")){
+  if(!BoolMsg0(ttsMgr,"isSyncing")&&!BoolMsg0(ttsMgr,"isActiveForCurrentBook")&&BoolMsg0(ttsMgr,"hasShowSyncBtn")){
+   FQXDiagPushPluginViewReason("clean_stale_tts_sync_btn_only","FQXCleanStaleReaderAudioUIOnMain");
    VoidMsg0(ttsMgr,"stopAutoScroll");
    VoidMsg0(ttsMgr,"private_cleanCurrentLineInfo");
    VoidMsgBool(ttsMgr,"setHasShowSyncBtn:",NO);
    VoidMsg0(ttsMgr,"refreshSyncTTSBtn");
    VoidMsgBool(Get(ttsMgr,"readerMgr"),"setSyncTTSBtnHidden:",YES);
-  }
- }
- Class entranceViewCls=NSClassFromString(@"SSReaderTTSParagraphEntranceView");
- for(id paraMgr in SnapshotTracked(sTrackedParaManagers)){
-  id bookId=Get(paraMgr,"bookId");
-  BOOL sameActive=activeBook&&[bookId isKindOfClass:NSString.class]&&[bookId isEqual:activeBook];
-  if(!sameActive){
-   VoidMsg0(paraMgr,"cancelDelayHidePlayAnchor");
-   VoidMsg0(paraMgr,"applyToHidePlayAnchorViews");
-   VoidMsg0(paraMgr,"removeReaderInsertViewIfNeeded");
-   id rvc=Get(paraMgr,"readerVC");
-   id rview=BoolMsg0(rvc,"isViewLoaded")?Get(rvc,"view"):nil;
-   if([rview isKindOfClass:UIView.class])FQXHideParaEntranceSubviews((UIView *)rview,entranceViewCls,0);
-   if(BoolMsg0(rvc,"isVCAppear")){
-    id actionDelegate=Get(Get(Get(paraMgr,"readerManager"),"readerModel"),"actionDelegate");
-    VoidMsg0(actionDelegate,"readerActionRefreshCurrentPage");
-   }
+   FQXDiagPopPluginViewReason();
+   FQXDiagRecordEvent(FQXDiagCategoryView,@"reader_stale_sync_cleaned",@{
+    @"managerClass":@"FQReaderSaaSTTSManager",
+    @"touchedParagraphEntrance":@NO,
+   },NO);
   }
  }
 }
@@ -430,9 +516,17 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   IMP ha=imp_implementationWithBlock(^(id o,id rm){
    TrackTTSManager(o);
    ((void(*)(id,SEL,id))oa)(o,sa,rm);
-   if(!BoolMsg0(o,"isSyncing")&&!BoolMsg0(o,"isActiveForCurrentBook")){
+   if(!BoolMsg0(o,"isSyncing")&&!BoolMsg0(o,"isActiveForCurrentBook")&&BoolMsg0(o,"hasShowSyncBtn")){
     FQXScheduleStaleReaderAudioUIClean();
    }
+   __weak id weakTTS=o;
+   __weak id weakRM=rm;
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(350*NSEC_PER_MSEC)),dispatch_get_main_queue(),^{
+    id strongTTS=weakTTS;
+    id strongRM=weakRM;
+    if(!strongTTS&&!strongRM)return;
+    FQXDiagRecordReaderTTSCheck(strongTTS,FQXFindParaManagerForReader(strongRM),strongRM,"onReaderDidAppear_350ms");
+   });
   });
   if(!FQXInstallOwnedHook(cls,sa,NO,"v24@0:8@16",ha,&oa))imp_removeBlock(ha);
  }
@@ -442,6 +536,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   IMP hi=imp_implementationWithBlock(^id(id o,id rm){
    id res=((id(*)(id,SEL,id))oi)(o,si,rm);
    TrackParaManager(res);
+   FQXDiagRecordReaderTTSCheck(nil,res,rm,"paraEntranceManager_init");
    return res;
   });
   if(!FQXInstallOwnedHook(cls,si,NO,"@24@0:8@16",hi,&oi))imp_removeBlock(hi);
@@ -500,10 +595,13 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   SEL sTry=Sel("audioTryToPlayWithType:time:readerPoint:entry:");__block IMP oTry=NULL;
   IMP hTry=imp_implementationWithBlock(^(id o,NSUInteger tp,double tm,id rp,id entry){
    TrackAudioSDK(o);
+   NSString *entryStr=[entry isKindOfClass:NSString.class]?(NSString *)entry:@"";
+   FQXDiagRecordTTSPlaybackEvent(o,Get(o,"bdfqPlayManager"),rp,entryStr,"audioTryToPlay_begin",NO);
    FQXEnsurePlaybackSessionActive();
    ((void(*)(id,SEL,NSUInteger,double,id,id))oTry)(o,sTry,tp,tm,rp,entry);
    FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
    FQXNotifyAudioIslandStateChanged();
+   FQXDiagRecordTTSPlaybackEvent(o,Get(o,"bdfqPlayManager"),rp,entryStr,"audioTryToPlay_invoked",YES);
   });
   if(!FQXInstallOwnedHook(cls,sTry,NO,"v48@0:8Q16d24@32@40",hTry,&oTry))imp_removeBlock(hTry);
   SEL sPau=Sel("audioPauseWithType:entry:");__block IMP oPau=NULL;
@@ -515,6 +613,9 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
    }
    FQXNotifyAudioIslandStateChanged();
+   FQXDiagRecordTTSPlaybackEvent(o,Get(o,"bdfqPlayManager"),nil,
+                                 [entry isKindOfClass:NSString.class]?(NSString *)entry:@"",
+                                 "audioPause",NO);
   });
   if(!FQXInstallOwnedHook(cls,sPau,NO,"v32@0:8Q16@24",hPau,&oPau))imp_removeBlock(hPau);
   SEL sSt=Sel("player:playbackStateDidChange:");__block IMP oSt=NULL;
@@ -526,6 +627,9 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
    }
    FQXNotifyAudioIslandStateChanged();
+   FQXDiagRecordTTSPlaybackEvent(o,Get(o,"bdfqPlayManager"),nil,
+                                 [NSString stringWithFormat:@"state=%lu",(unsigned long)st],
+                                 "playbackStateDidChange",NO);
   });
   if(!FQXInstallOwnedHook(cls,sSt,NO,"v32@0:8@16Q24",hSt,&oSt))imp_removeBlock(hSt);
   SEL sRem=Sel("remoteRemoveCommandWithSource:");__block IMP oRem=NULL;
@@ -548,6 +652,9 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     FQXClearSystemNowPlayingIfIdle();
     FQXScheduleStaleReaderAudioUIClean();
     FQXNotifyAudioIslandStateChanged();
+    FQXDiagRecordTTSPlaybackEvent(o,Get(o,"bdfqPlayManager"),nil,
+                                  [entry isKindOfClass:NSString.class]?(NSString *)entry:sn,
+                                  "audioStoppedOrReset",NO);
    });
    if(!FQXInstallOwnedHook(cls,s,NO,"v24@0:8@16",h,&old))imp_removeBlock(h);
   }
@@ -666,16 +773,17 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   }
   SEL st=Sel("tryToPlayAtTime:position:disableIntercept:source:");__block IMP ot=NULL;
   IMP ht=imp_implementationWithBlock(^(id o,double t,id pos,BOOL disInt,id src){
-   if([src isKindOfClass:NSString.class]){
-    NSString *s=(NSString *)src;
-    if([s isEqualToString:@"play"]||[s isEqualToString:@"toggle"]||
-       [s rangeOfString:@"remote" options:NSCaseInsensitiveSearch].location!=NSNotFound||
-       [s rangeOfString:@"toggle" options:NSCaseInsensitiveSearch].location!=NSNotFound){
+   NSString *srcStr=[src isKindOfClass:NSString.class]?(NSString *)src:@"";
+   if(srcStr.length){
+    if([srcStr isEqualToString:@"play"]||[srcStr isEqualToString:@"toggle"]||
+       [srcStr rangeOfString:@"remote" options:NSCaseInsensitiveSearch].location!=NSNotFound||
+       [srcStr rangeOfString:@"toggle" options:NSCaseInsensitiveSearch].location!=NSNotFound){
      FQXEnsurePlaybackSessionActive();
      disInt=YES;
     }
    }
    ((void(*)(id,SEL,double,id,BOOL,id))ot)(o,st,t,pos,disInt,src);
+   FQXDiagRecordTTSPlaybackEvent(FQXAudioSDKManager(),o,pos,srcStr,"bdfqTryToPlayAtTime",YES);
   });
   if(!FQXInstallOwnedHook(cls,st,NO,"v44@0:8d16@24B32@36",ht,&ot))imp_removeBlock(ht);
  }

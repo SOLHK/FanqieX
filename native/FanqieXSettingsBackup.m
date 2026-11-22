@@ -24,6 +24,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomDisplayMode.1": @0,
         @"FanqieX.DockMaterial.1": @0,
         @"FanqieX.GlassDarkTint.1": @NO,
+        @"FanqieX.DockDetachedEnabled.1": @NO,
+        @"FanqieX.DockDetachedModule.1": @"",
+        @"FanqieX.DiagCategoryFilter.1": @0,
         @"FanqieX.DockBlur.1": @0,
         @"FanqieX.CommentBlur.1": @0,
         @"FanqieX.AudioButtonBlur.1": @0,
@@ -116,6 +119,9 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     if ([key isEqualToString:ReaderThemePreset]) {
         return [value isKindOfClass:NSString.class] && [value length] > 0 && [value length] <= 256 ? value : nil;
     }
+    if ([key isEqualToString:@"FanqieX.DockDetachedModule.1"]) {
+        return [value isKindOfClass:NSString.class] && [(NSString *)value length] <= 64 ? value : nil;
+    }
     if ([key isEqualToString:HiddenBookstoreCategories]) {
         if (![value isKindOfClass:NSArray.class]) return nil;
         for (id title in value) {
@@ -145,11 +151,13 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
         [key isEqualToString:@"FanqieX.CommentAppearanceMode.1"] ||
         [key isEqualToString:@"FanqieX.CommentComposerStyle.1"] ||
-        [key isEqualToString:@"FanqieX.CommentMaterialMode.1"]) {
+        [key isEqualToString:@"FanqieX.CommentMaterialMode.1"] ||
+        [key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
         if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 3;
         if ([key isEqualToString:@"FanqieX.CommentMaterialStyle.1"]) maximum = 4;
+        if ([key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) maximum = 6;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
             [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"]) maximum = 100;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;

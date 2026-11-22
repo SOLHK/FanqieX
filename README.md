@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.1beta26 测试版
+## FanqieX 1.9.5beta1 测试版
 
-修复底栏「新液态玻璃」与短剧顶部区域（分类胶囊、选中透镜、右上角搜索按钮）默认叠加深色底色及深灰选中块的问题：解耦底栏玻璃材质外观档与图标墨水极性，默认采用 `tintColor = nil` 的纯无底色 `UIGlassEffectStyleClear` 与 `clearGlassButtonConfiguration` 还原清透折射液态玻璃；并在 `外观 › 玻璃与尺寸` 与 `短剧 › 顶部分类` 新增「液态玻璃叠加深色底色」开关（默认关闭，支持实时切换与备份恢复）。
+新增「Dock 独立圆形模块」（左侧液态玻璃胶囊 + 右侧动态可选独立圆形液态玻璃按钮，支持实时切换与选中态互斥）；新增模块化增强 JSON 诊断中心（支持网络请求与 `is.snssdk.com` 专项监控、Hook 拦截耗时、视图生命周期、听书段落定位、异步限流轮转及按事件类别过滤导出）；修复阅读页在屏蔽 `is.snssdk.com` 时被插件清理逻辑误隐藏 `SSReaderTTSParagraphEntranceView` 导致段落播放箭头消失的问题；优化「我的」页启动安全验证弹窗期间的布局避让与 WebView 崩溃恢复。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.1beta26.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.5beta1.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.1beta26。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta1。
 
 ## FanqieX 1.76
 

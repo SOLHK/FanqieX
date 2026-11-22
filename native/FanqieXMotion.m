@@ -9,6 +9,8 @@
 #import "FQXHookInstaller.h"
 #import "FQXBlurControl.h"
 #import "FQXMineShortcutGeometry.h"
+#import "FanqieXDetachedDock.h"
+#import "FanqieXDiagnosticsHub.h"
 
 extern id FQXSharedAudioSDKManager(void);
 extern BOOL FQXIsAudioBookSessionAlive(void);
@@ -1858,6 +1860,10 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
 @property(nonatomic, copy) NSArray<UIButton *> *buttons;
 @property(nonatomic, strong) NSHashTable<UIControl *> *wiredControls;
 @property(nonatomic, strong) UITabBar *nativeDockBar;
+@property(nonatomic, strong) FQXDetachedDockButtonView *detachedButton;
+@property(nonatomic, copy) NSArray<NSNumber *> *capsuleHostIndices;
+@property(nonatomic) NSInteger detachedHostIndex;
+@property(nonatomic) BOOL dockLastDetachedActive;
 @property(nonatomic, copy) NSString *dockSignature;
 @property(nonatomic, copy) NSArray<NSString *> *dockTitles;
 @property(nonatomic) UIUserInterfaceStyle dockAppliedStyle;
@@ -1878,9 +1884,26 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
 - (void)updateLens:(UIVisualEffectView *)lens native:(UIView *)native;
 - (BOOL)syncDockItems;
 - (void)applyDockItemImages;
+- (void)syncDetachedDockMaterial:(BOOL)glassDark;
+- (void)syncSelectionExclusivityAnimated:(BOOL)animated;
 - (void)layoutNativeDockInBar:(UIView *)bar proxy:(UIVisualEffectView *)proxy forceMeasure:(BOOL)forceMeasure;
 - (void)teardown;
 @end
+
+static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSInteger depth) {
+    if (!root || depth > 5) return;
+    NSString *clsName = NSStringFromClass(root.class);
+    if ([clsName containsString:@"TabSelectionView"] || [clsName containsString:@"SelectionPlatter"]) {
+        CGFloat desired = visible ? 1.0 : 0.0;
+        if (fabs(root.alpha - desired) > 0.01) {
+            root.alpha = desired;
+        }
+        return;
+    }
+    for (UIView *sub in root.subviews) {
+        FQXSetNativeTabSelectionLensVisible(sub, visible, depth + 1);
+    }
+}
 
 @implementation FQXTabBarInteraction
 
@@ -1888,6 +1911,7 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     self = [super init];
     if (self) {
         _wiredControls = [NSHashTable weakObjectsHashTable];
+        _detachedHostIndex = NSNotFound;
         _dockAppliedStyle = UIUserInterfaceStyleUnspecified;
         _dockAppliedInkState = -1;
         _dockPlatterHeight = 62.0;
@@ -1992,12 +2016,79 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     NSArray<UITabBarItem *> *items = tabBar.items;
     NSArray<NSString *> *titles = self.dockTitles;
     NSArray<UIButton *> *buttons = self.buttons;
+    NSArray<NSNumber *> *hostIndices = self.capsuleHostIndices;
     for (NSUInteger i = 0; i < items.count; ++i) {
         UITabBarItem *item = items[i];
         NSString *title = (i < titles.count) ? titles[i] : (item.accessibilityLabel ?: @"");
-        UIButton *btn = (i < buttons.count && [buttons[i] isKindOfClass:UIButton.class]) ? buttons[i] : nil;
+        NSUInteger hostIdx = (i < hostIndices.count) ? hostIndices[i].unsignedIntegerValue : i;
+        UIButton *btn = (hostIdx < buttons.count && [buttons[hostIdx] isKindOfClass:UIButton.class]) ? buttons[hostIdx] : nil;
         item.image = FQXDockItemImage(title, btn, displayMode, ptSize, NO, normalInk);
         item.selectedImage = FQXDockItemImage(title, btn, displayMode, ptSize, YES, selectedInk);
+    }
+    if (self.detachedHostIndex != NSNotFound &&
+        (NSUInteger)self.detachedHostIndex < buttons.count &&
+        self.detachedButton) {
+        NSUInteger detIdx = (NSUInteger)self.detachedHostIndex;
+        UIButton *detBtn = [buttons[detIdx] isKindOfClass:UIButton.class] ? buttons[detIdx] : nil;
+        NSString *detTitle = self.detachedButton.moduleTitle ?: FQXDockButtonTitle(detBtn, self.bar, detIdx);
+        // Right circular button uses module icon (with automatic fallback if custom title-only module).
+        UIImage *normImg = FQXDockItemImage(detTitle, detBtn, 1, ptSize, NO, normalInk);
+        UIImage *selImg = FQXDockItemImage(detTitle, detBtn, 1, ptSize, YES, selectedInk);
+        [self.detachedButton updateImagesNormal:normImg selected:selImg];
+        [self.detachedButton syncUnreadBadgeFromHostButton:detBtn];
+    }
+}
+
+- (void)syncDetachedDockMaterial:(BOOL)glassDark {
+    if (!self.detachedButton || self.detachedHostIndex == NSNotFound) return;
+    FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    BOOL wantsClear = (mode == FQXDockMaterialIOS18Gaussian) && !reduce;
+    UIVisualEffect *effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, glassDark, YES, reduce);
+    NSInteger stamp = reduce ? 999 : ((FQXGlassDarkTintEnabled() ? 1000 : 0) + (glassDark ? 100 : 0) + (NSInteger)mode + 1);
+    UIColor *selColor = FQXDockSelectionColorForMode(mode, [self isDarkDock]);
+    [self.detachedButton applyGlassEffect:effect
+                           interfaceStyle:self.dockAppliedStyle
+                           selectionColor:selColor
+                       reduceTransparency:reduce
+                               styleStamp:stamp];
+    FQXApplyDockBackdropBlur(self.detachedButton.glassView,
+                             self.detachedButton.glassView.contentView,
+                             self.detachedButton.selectionLens,
+                             self.detachedButton.glassView.contentView.bounds,
+                             -1,
+                             glassDark,
+                             mode,
+                             DockBlurPrefKey);
+}
+
+- (void)syncSelectionExclusivityAnimated:(BOOL)animated {
+    UITabBar *tabBar = self.nativeDockBar;
+    if (!tabBar || !tabBar.items.count) return;
+    NSUInteger hostSel = [self currentSelectedIndex];
+    if (self.detachedHostIndex != NSNotFound &&
+        self.detachedButton &&
+        hostSel == (NSUInteger)self.detachedHostIndex) {
+        if (tabBar.selectedItem != nil) {
+            tabBar.selectedItem = nil;
+        }
+        FQXSetNativeTabSelectionLensVisible(tabBar, NO, 0);
+        [self.detachedButton setModuleSelected:YES animated:animated];
+        return;
+    }
+
+    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
+    if (self.detachedButton) {
+        [self.detachedButton setModuleSelected:NO animated:animated];
+    }
+    NSUInteger capPos = self.capsuleHostIndices.count
+        ? [self.capsuleHostIndices indexOfObject:@(hostSel)]
+        : hostSel;
+    if (capPos != NSNotFound && capPos < tabBar.items.count) {
+        UITabBarItem *desiredItem = tabBar.items[capPos];
+        if (tabBar.selectedItem != desiredItem) {
+            tabBar.selectedItem = desiredItem;
+        }
     }
 }
 
@@ -2006,34 +2097,82 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     if (!tabBar || !self.buttons.count) return NO;
     NSInteger displayMode = [self dockDisplayMode];
     CGFloat ptSize = [self dockIconPointSize];
-    NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:self.buttons.count];
-    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|", (long)displayMode, ptSize];
+    NSMutableArray<NSString *> *allTitles = [NSMutableArray arrayWithCapacity:self.buttons.count];
     for (NSUInteger i = 0; i < self.buttons.count; ++i) {
         UIButton *btn = self.buttons[i];
         NSString *title = [btn isKindOfClass:UIButton.class] ? FQXDockButtonTitle(btn, self.bar, i) : @"";
-        [titles addObject:title];
-        [sig appendFormat:@"%@|", title];
+        [allTitles addObject:title];
     }
+    FQXDockDetachedUpdateHostModules(allTitles);
+    NSInteger detIdx = FQXDockDetachedResolveIndex(allTitles);
+    self.detachedHostIndex = detIdx;
+
+    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|",
+                            (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx)];
+    NSMutableArray<NSString *> *capsuleTitles = [NSMutableArray arrayWithCapacity:allTitles.count];
+    NSMutableArray<NSNumber *> *capsuleIndices = [NSMutableArray arrayWithCapacity:allTitles.count];
+    for (NSUInteger i = 0; i < allTitles.count; ++i) {
+        [sig appendFormat:@"%@|", allTitles[i]];
+        if (detIdx != NSNotFound && i == (NSUInteger)detIdx) continue;
+        [capsuleTitles addObject:allTitles[i]];
+        [capsuleIndices addObject:@(i)];
+    }
+
     BOOL rebuilt = ![sig isEqualToString:self.dockSignature];
     if (rebuilt) {
-        NSMutableArray<UITabBarItem *> *items = [NSMutableArray arrayWithCapacity:titles.count];
-        for (NSUInteger i = 0; i < titles.count; ++i) {
+        NSMutableArray<UITabBarItem *> *items = [NSMutableArray arrayWithCapacity:capsuleTitles.count];
+        for (NSUInteger i = 0; i < capsuleTitles.count; ++i) {
             UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil image:nil tag:(NSInteger)i];
-            item.accessibilityLabel = titles[i];
+            item.accessibilityLabel = capsuleTitles[i];
             [items addObject:item];
         }
-        self.dockTitles = titles;
+        self.capsuleHostIndices = capsuleIndices;
+        self.dockTitles = capsuleTitles;
         self.dockSignature = sig;
         tabBar.items = items;
-        [self applyDockItemImages];
-    }
-    NSUInteger selIdx = [self currentSelectedIndex];
-    if (selIdx < tabBar.items.count) {
-        UITabBarItem *desiredItem = tabBar.items[selIdx];
-        if (tabBar.selectedItem != desiredItem) {
-            tabBar.selectedItem = desiredItem;
+
+        if (detIdx != NSNotFound && (NSUInteger)detIdx < self.buttons.count) {
+            if (!self.detachedButton) {
+                FQXDetachedDockButtonView *circle = [[FQXDetachedDockButtonView alloc] initWithFrame:CGRectMake(0.0, 0.0, 56.0, 56.0)];
+                objc_setAssociatedObject(circle, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(circle.glassView, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                __weak FQXTabBarInteraction *weakSelf = self;
+                circle.onTapModule = ^(UIButton *hostButton) {
+                    [hostButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+                    FQXTabBarInteraction *strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf syncSelectionExclusivityAnimated:YES];
+                    FQXScheduleCYLGlassResample(strongSelf.bar, strongSelf.proxy);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        FQXTabBarInteraction *laterSelf = weakSelf;
+                        if (laterSelf && laterSelf.nativeDockActive) {
+                            [laterSelf syncSelectionExclusivityAnimated:YES];
+                        }
+                    });
+                };
+                self.detachedButton = circle;
+            }
+            self.detachedButton.moduleTitle = allTitles[(NSUInteger)detIdx];
+            self.detachedButton.targetHostButton = self.buttons[(NSUInteger)detIdx];
+        } else if (self.detachedButton) {
+            self.detachedButton.hidden = YES;
+            [self.detachedButton removeFromSuperview];
+            self.detachedButton = nil;
         }
+        [self applyDockItemImages];
+        FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_state", @{
+            @"detachedEnabled": @(detIdx != NSNotFound),
+            @"detachedModule": (detIdx != NSNotFound && (NSUInteger)detIdx < allTitles.count) ? allTitles[(NSUInteger)detIdx] : @"",
+            @"capsuleCount": @(capsuleTitles.count),
+            @"totalVisibleModules": @(allTitles.count),
+        }, NO);
+    } else if (detIdx != NSNotFound && (NSUInteger)detIdx < self.buttons.count && self.detachedButton) {
+        UIButton *detBtn = self.buttons[(NSUInteger)detIdx];
+        self.detachedButton.targetHostButton = detBtn;
+        [self.detachedButton syncUnreadBadgeFromHostButton:detBtn];
     }
+
+    [self syncSelectionExclusivityAnimated:(tabBar.window != nil && !rebuilt)];
     return rebuilt;
 }
 
@@ -2043,8 +2182,10 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     CGRect proxyFrame = proxy.frame;
     if (CGRectGetWidth(proxyFrame) < 60.0 || CGRectGetHeight(proxyFrame) < 30.0) return;
 
+    BOOL hasDetached = (self.detachedHostIndex != NSNotFound && self.detachedButton != nil);
     NSUInteger itemCount = tabBar.items.count;
     BOOL geometryChanged = forceMeasure || !self.dockPlatterMeasured ||
+                           hasDetached != self.dockLastDetachedActive ||
                            itemCount != self.dockLastItemCount ||
                            fabs(CGRectGetMinX(proxyFrame) - CGRectGetMinX(self.dockLastProxyFrame)) > 0.5 ||
                            fabs(CGRectGetMinY(proxyFrame) - CGRectGetMinY(self.dockLastProxyFrame)) > 0.5 ||
@@ -2055,18 +2196,25 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     if (!geometryChanged) {
         UIView *platter = FQXFindDockPlatter(tabBar);
         FQXApplyNativeDockMaterial(tabBar, platter, isDark);
+        if (hasDetached) {
+            [self syncDetachedDockMaterial:isDark];
+        }
+        [self syncSelectionExclusivityAnimated:NO];
         return;
     }
 
     CGFloat barH = MAX(CGRectGetHeight(bar.bounds), CGRectGetHeight(proxyFrame) + 12.0);
     CGFloat targetW = CGRectGetWidth(proxyFrame);
     CGFloat targetH = CGRectGetHeight(proxyFrame);
+    CGFloat gap = 12.0;
+    CGFloat circleD = targetH;
+    CGFloat availCapsuleW = hasDetached ? MAX(96.0, targetW - gap - circleD) : targetW;
     UIView *platter = nil;
 
     for (NSUInteger pass = 0; pass < 2; ++pass) {
         CGFloat platterH = self.dockPlatterHeight > 20.0 ? self.dockPlatterHeight : 62.0;
         CGFloat scale = MAX(0.70, MIN(1.30, targetH / platterH));
-        CGFloat desiredBarW = (targetW / scale) + 2.0 * self.dockPlatterInset;
+        CGFloat desiredBarW = (availCapsuleW / scale) + 2.0 * self.dockPlatterInset;
         CGRect curBounds = tabBar.bounds;
         if (fabs(CGRectGetWidth(curBounds) - desiredBarW) > 0.5 || fabs(CGRectGetHeight(curBounds) - barH) > 0.5) {
             tabBar.bounds = CGRectMake(0.0, 0.0, desiredBarW, barH);
@@ -2096,22 +2244,76 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     FQXApplyNativeDockMaterial(tabBar, platter, isDark);
 
     CGFloat finalScale = MAX(0.70, MIN(1.30, targetH / MAX(20.0, self.dockPlatterHeight)));
-    CGPoint center = CGPointMake(CGRectGetMidX(proxyFrame) - self.dockPlatterMidOffsetX * finalScale,
-                                 CGRectGetMidY(proxyFrame) - self.dockPlatterMidOffsetY * finalScale);
-    if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
-        tabBar.center = center;
+    if (hasDetached) {
+        CGRect pf = (platter && CGRectGetHeight(platter.bounds) > 10.0)
+            ? [platter convertRect:platter.bounds toView:tabBar]
+            : CGRectZero;
+        CGFloat actualCapsuleW = (CGRectGetWidth(pf) > 20.0)
+            ? MIN(availCapsuleW, CGRectGetWidth(pf) * finalScale)
+            : availCapsuleW;
+        CGFloat groupW = actualCapsuleW + gap + circleD;
+        CGFloat barWidth = CGRectGetWidth(bar.bounds);
+        CGFloat groupMinX = CGRectGetMidX(proxyFrame) - groupW * 0.5;
+        if (barWidth > groupW + 16.0) {
+            groupMinX = MAX(8.0, MIN(barWidth - groupW - 8.0, groupMinX));
+        }
+        CGFloat capsuleMidX = groupMinX + actualCapsuleW * 0.5;
+        CGPoint center = CGPointMake(capsuleMidX - self.dockPlatterMidOffsetX * finalScale,
+                                     CGRectGetMidY(proxyFrame) - self.dockPlatterMidOffsetY * finalScale);
+        if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
+            tabBar.center = center;
+        }
+        CGAffineTransform xform = CGAffineTransformMakeScale(finalScale, finalScale);
+        if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
+            tabBar.transform = xform;
+        }
+
+        if (self.detachedButton.superview != bar) {
+            [bar insertSubview:self.detachedButton aboveSubview:tabBar];
+        } else {
+            NSUInteger tabPos = [bar.subviews indexOfObjectIdenticalTo:tabBar];
+            NSUInteger detPos = [bar.subviews indexOfObjectIdenticalTo:self.detachedButton];
+            if (tabPos != NSNotFound && detPos != NSNotFound && detPos < tabPos) {
+                [bar insertSubview:self.detachedButton aboveSubview:tabBar];
+            }
+        }
+        CGRect circleFrame = CGRectMake(groupMinX + actualCapsuleW + gap,
+                                        CGRectGetMaxY(proxyFrame) - circleD,
+                                        circleD,
+                                        circleD);
+        if (!CGRectEqualToRect(self.detachedButton.frame, circleFrame)) {
+            self.detachedButton.frame = circleFrame;
+            [self.detachedButton layoutIfNeeded];
+        }
+        [self syncDetachedDockMaterial:isDark];
+    } else {
+        if (self.detachedButton && !self.detachedButton.hidden) {
+            self.detachedButton.hidden = YES;
+        }
+        CGPoint center = CGPointMake(CGRectGetMidX(proxyFrame) - self.dockPlatterMidOffsetX * finalScale,
+                                     CGRectGetMidY(proxyFrame) - self.dockPlatterMidOffsetY * finalScale);
+        if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
+            tabBar.center = center;
+        }
+        CGAffineTransform xform = CGAffineTransformMakeScale(finalScale, finalScale);
+        if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
+            tabBar.transform = xform;
+        }
     }
-    CGAffineTransform xform = CGAffineTransformMakeScale(finalScale, finalScale);
-    if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
-        tabBar.transform = xform;
-    }
+
+    [self syncSelectionExclusivityAnimated:NO];
     self.dockLastProxyFrame = proxyFrame;
     self.dockLastItemCount = itemCount;
+    self.dockLastDetachedActive = hasDetached;
 }
 
 - (void)setNativeDockVisible:(BOOL)visible restoreProxy:(BOOL)restoreProxy {
     if (self.nativeDockBar && self.nativeDockBar.hidden == visible) {
         self.nativeDockBar.hidden = !visible;
+    }
+    BOOL showDetached = visible && (self.detachedHostIndex != NSNotFound);
+    if (self.detachedButton && self.detachedButton.hidden == showDetached) {
+        self.detachedButton.hidden = !showDetached;
     }
     if (visible) {
         FQXSetZeroMaskHidden(self.proxy, YES);
@@ -2136,10 +2338,18 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
 
 - (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
     NSUInteger idx = [tabBar.items indexOfObjectIdenticalTo:item];
-    if (idx == NSNotFound || idx >= self.buttons.count) return;
-    UIButton *btn = self.buttons[idx];
+    if (idx == NSNotFound) return;
+    NSUInteger hostIdx = (idx < self.capsuleHostIndices.count)
+        ? self.capsuleHostIndices[idx].unsignedIntegerValue : idx;
+    if (hostIdx >= self.buttons.count) return;
+    UIButton *btn = self.buttons[hostIdx];
     if (![btn isKindOfClass:UIButton.class]) return;
+    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
+    if (self.detachedButton) {
+        [self.detachedButton setModuleSelected:NO animated:YES];
+    }
     [btn sendActionsForControlEvents:UIControlEventTouchUpInside];
+    FQXScheduleCYLGlassResample(self.bar, self.proxy);
 }
 
 - (void)onNativeValueChanged:(UIControl *)sender {
@@ -2171,6 +2381,11 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
         [self.nativeDockBar removeFromSuperview];
         self.nativeDockBar.delegate = nil;
         self.nativeDockBar = nil;
+        [self.detachedButton removeFromSuperview];
+        self.detachedButton = nil;
+        self.capsuleHostIndices = nil;
+        self.detachedHostIndex = NSNotFound;
+        self.dockLastDetachedActive = NO;
         self.dockSignature = nil;
         self.dockPlatterMeasured = NO;
         self.dockAppliedStyle = UIUserInterfaceStyleUnspecified;
@@ -2260,6 +2475,11 @@ static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
     self.nativeDockBar.delegate = nil;
     [self.nativeDockBar removeFromSuperview];
     self.nativeDockBar = nil;
+    [self.detachedButton removeFromSuperview];
+    self.detachedButton = nil;
+    self.capsuleHostIndices = nil;
+    self.detachedHostIndex = NSNotFound;
+    self.dockLastDetachedActive = NO;
     self.dockSignature = nil;
     self.dockTitles = nil;
     self.dockPlatterMeasured = NO;
@@ -3331,6 +3551,7 @@ static void FQXRefreshDynamicIslandState(void);
             }
             BOOL glassDark = (desiredStyle == UIUserInterfaceStyleDark);
             FQXApplyNativeDockMaterial(tabBar, FQXFindDockPlatter(tabBar), glassDark);
+            [inter syncDetachedDockMaterial:glassDark];
             [inter applyDockItemImages];
         } else {
             FQXApplyDockProxyMaterial(inter.bar, inter.proxy, inter.restingLens);
