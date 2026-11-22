@@ -513,6 +513,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
             @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
             @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原书 玻璃 外观",
+            @"FanqieX.AudioDynamicIsland.1":@"听书 灵动岛 听书灵动岛 朗读灵动岛 退出听书 上一章 下一章 暂停 播放 后台 胶囊",
+            @"FanqieX.DramaDynamicIsland.1":@"短剧 灵动岛 短剧灵动岛 漫剧灵动岛 后台听剧 退出短剧 主页 桌面 上一集 下一集 暂停 播放 胶囊",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 纯图标 语速 下载 章评 目录 定时",
             @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮 悬浮球 按钮",

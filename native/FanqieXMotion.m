@@ -1,10 +1,19 @@
 #import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
+#include <dlfcn.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXHookInstaller.h"
 #import "FQXBlurControl.h"
 #import "FQXMineShortcutGeometry.h"
+
+extern id FQXSharedAudioSDKManager(void);
+extern BOOL FQXIsAudioBookSessionAlive(void);
+extern void FQXActivateAudioPlaybackSessionAndRemote(void);
+BOOL FQXIsDramaDynamicIslandSessionActive(void);
+void FQXNotifyAudioIslandStateChanged(void);
+void FQXNotifyDramaPlayerStateChanged(UIView *player, id engine, NSInteger state);
 
 static const void *DockSnapshotKey = &DockSnapshotKey;
 static const void *DockAnimatorKey = &DockAnimatorKey;
@@ -71,6 +80,8 @@ static NSString *const CommentSearchEntrancePrefKey = @"FanqieX.CommentSearchEnt
 static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
 static NSString *const AudioIconsOnlyPrefKey = @"FanqieX.AudioControlIconsOnly.1";
 static NSString *const AudioLiquidGlassPrefKey = @"FanqieX.AudioLiquidGlass.1";
+static NSString *const AudioDynamicIslandPrefKey = @"FanqieX.AudioDynamicIsland.1";
+static NSString *const DramaDynamicIslandPrefKey = @"FanqieX.DramaDynamicIsland.1";
 static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
 static NSString *const FQXCTForegroundColorAttr = @"CTForegroundColor";
 static const CGFloat AudioNavigationButtonDiameter = 42.0;
@@ -392,8 +403,22 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
 - (void)scheduleBlurUpdate;
 @end
 
+typedef NS_ENUM(NSInteger, FQXCommentCornerKind) {
+    FQXCommentCornerFlushFlat = 0,
+    FQXCommentCornerTopSheet = 1,
+    FQXCommentCornerFloatingCard = 2,
+    FQXCommentCornerCapsule = 3,
+};
+
+static void FQXApplyCommentCornerConfig(UIVisualEffectView *surface,
+                                        FQXCommentCornerKind kind,
+                                        CGFloat radius);
+
 @interface FQXCommentGlassSurfaceView : UIVisualEffectView
 @property(nonatomic, weak) UIView *flexSourceView;
+@property(nonatomic, strong) FQXBackdropBlurView *supplementalBlur;
+@property(nonatomic) FQXCommentCornerKind cornerKind;
+@property(nonatomic) CGFloat cornerRadius;
 @end
 
 @implementation FQXCommentGlassSurfaceView
@@ -407,14 +432,19 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     }
     return nil;
 }
-@end
 
-typedef NS_ENUM(NSInteger, FQXCommentCornerKind) {
-    FQXCommentCornerFlushFlat = 0,
-    FQXCommentCornerTopSheet = 1,
-    FQXCommentCornerFloatingCard = 2,
-    FQXCommentCornerCapsule = 3,
-};
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    FQXBackdropBlurView *sub = self.supplementalBlur;
+    if (sub && sub.superview == self.contentView) {
+        CGRect b = self.contentView.bounds;
+        if (!CGRectEqualToRect(sub.frame, b)) {
+            sub.frame = b;
+            FQXApplyCommentCornerConfig(sub, self.cornerKind, self.cornerRadius);
+        }
+    }
+}
+@end
 
 static const void *FQXSceneTraitObservedKey = &FQXSceneTraitObservedKey;
 
@@ -592,6 +622,61 @@ static void FQXConfigureGaussianCommentBlur(FQXBackdropBlurView *surface) {
     [surface configurePercent:strength dark:dark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
 }
 
+static void FQXReleaseCommentSurface(UIVisualEffectView *surface) {
+    if (!surface) return;
+    if ([surface isKindOfClass:FQXBackdropBlurView.class]) {
+        [(FQXBackdropBlurView *)surface invalidateBlurAnimator];
+    } else if ([surface isKindOfClass:FQXCommentGlassSurfaceView.class]) {
+        FQXCommentGlassSurfaceView *gs = (FQXCommentGlassSurfaceView *)surface;
+        if (gs.supplementalBlur) {
+            [gs.supplementalBlur invalidateBlurAnimator];
+            [gs.supplementalBlur removeFromSuperview];
+            gs.supplementalBlur = nil;
+        }
+    }
+    [surface removeFromSuperview];
+}
+
+static void FQXSyncCommentSupplementalBlur(FQXCommentGlassSurfaceView *glass,
+                                           FQXCommentCornerKind cornerKind,
+                                           CGFloat cornerRadius,
+                                           BOOL dark) {
+    if (![glass isKindOfClass:FQXCommentGlassSurfaceView.class]) return;
+    glass.cornerKind = cornerKind;
+    glass.cornerRadius = cornerRadius;
+    BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
+    NSInteger strength = reduceTrans ? 0
+        : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:CommentBlurPrefKey]);
+    if (strength <= 0) {
+        if (glass.supplementalBlur) {
+            [glass.supplementalBlur invalidateBlurAnimator];
+            [glass.supplementalBlur removeFromSuperview];
+            glass.supplementalBlur = nil;
+        }
+        return;
+    }
+    FQXBackdropBlurView *sub = glass.supplementalBlur;
+    if (!sub) {
+        sub = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+        sub.commentPureMode = YES;
+        sub.userInteractionEnabled = NO;
+        sub.accessibilityElementsHidden = YES;
+        sub.isAccessibilityElement = NO;
+        sub.opaque = NO;
+        sub.backgroundColor = UIColor.clearColor;
+        sub.contentView.backgroundColor = UIColor.clearColor;
+        sub.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glass.supplementalBlur = sub;
+        [FQXTrackedCommentBlurViews() addObject:sub];
+    }
+    if (sub.superview != glass.contentView) {
+        [glass.contentView insertSubview:sub atIndex:0];
+    }
+    sub.frame = glass.contentView.bounds;
+    FQXApplyCommentCornerConfig(sub, cornerKind, cornerRadius);
+    [sub configurePercent:strength dark:dark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
+}
+
 static UIVisualEffectView *FQXEnsureCommentSurface(UIView *host,
                                                    const void *assocKey,
                                                    FQXCommentMaterialStyle matStyle) {
@@ -601,8 +686,7 @@ static UIVisualEffectView *FQXEnsureCommentSurface(UIView *host,
     BOOL isBlur = [surface isKindOfClass:FQXBackdropBlurView.class];
     BOOL isGlassSurface = [surface isKindOfClass:FQXCommentGlassSurfaceView.class];
     if (surface && ((wantsBlur && !isBlur) || (!wantsBlur && !isGlassSurface))) {
-        if (isBlur) [(FQXBackdropBlurView *)surface invalidateBlurAnimator];
-        [surface removeFromSuperview];
+        FQXReleaseCommentSurface(surface);
         objc_setAssociatedObject(host, assocKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         surface = nil;
     }
@@ -660,6 +744,9 @@ static void FQXSyncCommentSurface(UIVisualEffectView *surface,
         FQXConfigureGaussianCommentBlur((FQXBackdropBlurView *)surface);
         return;
     }
+    if ([surface isKindOfClass:FQXCommentGlassSurfaceView.class]) {
+        FQXSyncCommentSupplementalBlur((FQXCommentGlassSurfaceView *)surface, cornerKind, cornerRadius, dark);
+    }
 
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     NSInteger desiredStamp = FQXCommentGlassEffectStamp(matStyle, dark, reduceTrans);
@@ -708,10 +795,17 @@ static void FQXRefreshCommentBlurStrengthOnly(void) {
         return;
     }
     FQXCommentMaterialStyle matStyle = FQXCurrentCommentMaterialStyle();
+    BOOL dark = FQXCommentsUseDarkTheme();
+    if (FQXIsNativeGlassCommentStyle(matStyle) && FQXGlassEnabled()) {
+        for (FQXCommentGlassSurfaceView *glass in FQXTrackedCommentGlassSurfaces().allObjects) {
+            if (!glass.superview) continue;
+            FQXSyncCommentSupplementalBlur(glass, glass.cornerKind, glass.cornerRadius, dark);
+        }
+        return;
+    }
     BOOL active = (matStyle == FQXCommentMaterialGaussianBlur) ||
                   (FQXCurrentCommentComposerStyle() != FQXCommentComposerNative && !FQXGlassEnabled());
     if (!active) return;
-    BOOL dark = FQXCommentsUseDarkTheme();
     NSInteger strength = UIAccessibilityIsReduceTransparencyEnabled() ? 100
         : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:CommentBlurPrefKey]);
     for (FQXBackdropBlurView *blur in FQXTrackedCommentBlurViews().allObjects) {
@@ -2505,6 +2599,7 @@ static void FQXRefreshAllShelfEditButtons(void);
 static void FQXRefreshAllShelfHeaderControls(void);
 static void FQXRefreshAllMineSidebars(void);
 static void FQXRefreshReaderHotCommentBadges(void);
+static void FQXRefreshDynamicIslandState(void);
 
 #pragma mark - FQXDockMotion
 
@@ -2528,6 +2623,7 @@ static void FQXRefreshReaderHotCommentBadges(void);
 + (void)refreshShelfEditButton;
 + (void)refreshShelfHeaderControls;
 + (void)refreshMineSidebar;
++ (void)refreshDynamicIsland;
 + (void)compactMemory;
 + (UIImage *)roundedDramaIconNamed:(NSString *)name size:(CGFloat)size;
 @end
@@ -2769,6 +2865,10 @@ static void FQXRefreshReaderHotCommentBadges(void);
     FQXRefreshAllMineSidebars();
 }
 
++ (void)refreshDynamicIsland {
+    FQXRefreshDynamicIslandState();
+}
+
 + (void)compactMemory {
     FQXCompactRuntimeMemory();
 }
@@ -2860,28 +2960,37 @@ static UIView *FQXEnclosingDramaControl(UIView *view) {
     return nil;
 }
 
+static void FQXNoteDramaControllerAppeared(UIViewController *vc);
+static void FQXNoteDramaControllerWillDisappear(UIViewController *vc);
+static void FQXNoteDramaPlayerReady(UIView *player, id engine);
+static void FQXNoteDramaControlDisplayed(UIView *control);
+
 static void (*OrigShortVideoListWillAppear)(id, SEL, BOOL);
 static void HookShortVideoListWillAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (OrigShortVideoListWillAppear) OrigShortVideoListWillAppear(self, _cmd, animated);
     FQXRefreshDramaControllerControls(self, YES);
+    FQXNoteDramaControllerAppeared(self);
 }
 
 static void (*OrigShortVideoListDidAppear)(id, SEL, BOOL);
 static void HookShortVideoListDidAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (OrigShortVideoListDidAppear) OrigShortVideoListDidAppear(self, _cmd, animated);
     FQXRefreshDramaControllerControls(self, NO);
+    FQXNoteDramaControllerAppeared(self);
 }
 
 static void (*OrigSeriesFeedWillAppear)(id, SEL, BOOL);
 static void HookSeriesFeedWillAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (OrigSeriesFeedWillAppear) OrigSeriesFeedWillAppear(self, _cmd, animated);
     FQXRefreshDramaControllerControls(self, YES);
+    FQXNoteDramaControllerAppeared(self);
 }
 
 static void (*OrigSeriesFeedDidAppear)(id, SEL, BOOL);
 static void HookSeriesFeedDidAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (OrigSeriesFeedDidAppear) OrigSeriesFeedDidAppear(self, _cmd, animated);
     FQXRefreshDramaControllerControls(self, NO);
+    FQXNoteDramaControllerAppeared(self);
 }
 
 static void (*OrigFeedContainerWillAppear)(id, SEL, BOOL);
@@ -3024,6 +3133,9 @@ static void HookPreparePlayerAsync(id self, SEL cmd, id player, id model, BOOL a
 static void (*OrigPlayerReadyToPlay)(id, SEL, id);
 static void HookPlayerReadyToPlay(id player, SEL cmd, id engine) {
     OrigPlayerReadyToPlay(player, cmd, engine);
+    if ([player isKindOfClass:UIView.class]) {
+        FQXNoteDramaPlayerReady((UIView *)player, engine);
+    }
     dispatch_block_t upgrade = ^{
         id model = [objc_getAssociatedObject(player, FQXQualityModelKey) anyObject];
         if (!FQXUsesAutomaticHighest(model) || engine != FQXObjGet(player, "videoEngine") ||
@@ -3667,6 +3779,7 @@ static void HookVPlayerWillDisplay(UIView *self, SEL _cmd) {
     if (OrigVPlayerWillDisplay) OrigVPlayerWillDisplay(self, _cmd);
     FQXAttachDramaPinchIfNeeded(self);
     FQXFeatherDramaBottomGradientView(self);
+    FQXNoteDramaControlDisplayed(self);
 }
 
 static void (*OrigVPlayerWillEndDisplay)(id, SEL);
@@ -3836,6 +3949,9 @@ static BOOL HookOuterPinchSeekShouldBegin(id self, SEL cmd, UIGestureRecognizer 
 
 static BOOL (*OrigDramaShouldPauseInBackground)(id, SEL);
 static BOOL HookDramaShouldPauseInBackground(id component, SEL cmd) {
+    if ([NSUserDefaults.standardUserDefaults boolForKey:DramaDynamicIslandPrefKey]) {
+        return NO;
+    }
     if (OrigDramaShouldPauseInBackground(component, cmd)) return YES;
     if (!FQXPinchPureCleanEnabled() || FQXBoolGet(component, "userInitiatedBackgroundPlayback", NO)) return NO;
     id context = FQXObjGet(component, "listVCContext");
@@ -3864,12 +3980,14 @@ static void FQXExitPinchCleanInViewController(UIViewController *vc) {
 
 static void (*OrigShortVideoListWillDisappear)(id, SEL, BOOL);
 static void HookShortVideoListWillDisappear(UIViewController *self, SEL _cmd, BOOL animated) {
+    FQXNoteDramaControllerWillDisappear(self);
     FQXExitPinchCleanInViewController(self);
     if (OrigShortVideoListWillDisappear) OrigShortVideoListWillDisappear(self, _cmd, animated);
 }
 
 static void (*OrigSeriesFeedWillDisappear)(id, SEL, BOOL);
 static void HookSeriesFeedWillDisappear(UIViewController *self, SEL _cmd, BOOL animated) {
+    FQXNoteDramaControllerWillDisappear(self);
     FQXExitPinchCleanInViewController(self);
     if (OrigSeriesFeedWillDisappear) OrigSeriesFeedWillDisappear(self, _cmd, animated);
 }
@@ -3971,6 +4089,19 @@ static const void *FQXMineViewportSavedMaskKey = &FQXMineViewportSavedMaskKey;
 static const void *FQXMineViewportSavedClipsKey = &FQXMineViewportSavedClipsKey;
 static const void *FQXMineFlowStateKey = &FQXMineFlowStateKey;
 static const void *FQXMineScrollTrackedKey = &FQXMineScrollTrackedKey;
+static const void *FQXMinePlainScrollTrackedKey = &FQXMinePlainScrollTrackedKey;
+static const void *FQXMineDeferredSyncKey = &FQXMineDeferredSyncKey;
+static BOOL FQXMineCellRelayoutInFlight = NO;
+
+static Class FQXRealHookClass(id obj) {
+    if (!obj) return Nil;
+    Class cls = [obj class];
+    if (!cls) cls = object_getClass(obj);
+    while (cls && strncmp(class_getName(cls), "NSKVONotifying_", 15) == 0) {
+        cls = class_getSuperclass(cls);
+    }
+    return cls;
+}
 
 static BOOL FQXIsInsideMineSidebar(UIView *view) {
     Class sidebarVCCls = NSClassFromString(@"SSMyUser621SideBarViewController");
@@ -4010,7 +4141,7 @@ static UIView *FQXMineShortcutCardForView(UIView *view) {
     }
     if ([view isKindOfClass:UICollectionView.class]) {
         CGFloat h = CGRectGetHeight(view.bounds);
-        if (h >= 44.0 && h <= 220.0) {
+        if (h >= 32.0 && h <= 220.0) {
             for (UIView *cell in [(UICollectionView *)view visibleCells]) {
                 if (FQXIsMineShortcutItemCell(cell)) {
                     return view.superview ?: view;
@@ -4047,7 +4178,8 @@ static UIView *FQXMineShortcutFold(UIView *view) {
     NSNumber *saved = objc_getAssociatedObject(view, FQXMineViewportSavedClipsKey);
     UIView *fold = FQXMineShortcutFold(view);
     UIView *host = fold ?: FQXMineShortcutCardForView(view);
-    BOOL viewport = (fold && view == fold) || ([view isKindOfClass:UICollectionView.class] && host != nil);
+    BOOL viewport = (fold && view == fold) ||
+                    ([view isKindOfClass:UIScrollView.class] && ![view isKindOfClass:UITableView.class] && host != nil);
     if (!viewport && !saved) return NO;
     CALayer *mask = objc_getAssociatedObject(view, FQXMineViewportMaskKey);
     if (!enabled || !viewport || !view.superview) {
@@ -4098,6 +4230,7 @@ static UIView *FQXMineShortcutFold(UIView *view) {
 @property(nonatomic, weak) UICollectionViewLayout *layout;
 @property(nonatomic, weak) UIView *pageControl;
 @property(nonatomic) CGSize savedItemSize;
+@property(nonatomic) CGSize savedEstimatedItemSize;
 @property(nonatomic) UIEdgeInsets savedSectionInset;
 @property(nonatomic) CGFloat savedLineSpacing;
 @property(nonatomic) CGFloat savedInteritemSpacing;
@@ -4127,7 +4260,7 @@ static BOOL FQXViewIsPageControlLike(UIView *view) {
     SEL setPages = @selector(setNumberOfPages:);
     SEL setCur = @selector(setCurrentPage:);
     SEL getPages = @selector(numberOfPages);
-    Class cls = object_getClass(view);
+    Class cls = FQXRealHookClass(view);
     Method m1 = class_getInstanceMethod(cls, setPages);
     Method m2 = class_getInstanceMethod(cls, setCur);
     Method m3 = class_getInstanceMethod(cls, getPages);
@@ -4192,7 +4325,7 @@ static UIScrollView *FQXFindMinePlainScrollView(UIView *root, NSInteger depth) {
         ![root isKindOfClass:UITableView.class]) {
         CGFloat w = CGRectGetWidth(root.bounds);
         CGFloat h = CGRectGetHeight(root.bounds);
-        if (w >= 176.0 && h >= 44.0 && h <= 220.0) return (UIScrollView *)root;
+        if (w >= 160.0 && h >= 32.0 && h <= 240.0) return (UIScrollView *)root;
     }
     if (depth <= 0) return nil;
     for (UIView *child in root.subviews) {
@@ -4202,26 +4335,141 @@ static UIScrollView *FQXFindMinePlainScrollView(UIView *root, NSInteger depth) {
     return nil;
 }
 
-static BOOL FQXSyncMinePlainScrollView(UIView *card, UIScrollView *sv) {
-    if (![sv isKindOfClass:UIScrollView.class]) return NO;
-    CGFloat width = CGRectGetWidth(sv.bounds);
-    CGFloat height = CGRectGetHeight(sv.bounds);
-    if (width < 176.0 || height < 44.0 || height > 220.0) return NO;
-    UIView *host = sv;
-    NSArray<UIView *> *candidates = sv.subviews;
-    if (candidates.count == 1 && ![candidates.firstObject isKindOfClass:UIControl.class] &&
-        candidates.firstObject.subviews.count >= 5) {
-        host = candidates.firstObject;
-        candidates = host.subviews;
+static const void *FQXMineTileAsyncLayoutKey = &FQXMineTileAsyncLayoutKey;
+
+static void FQXRelayoutMineTileAfterFrameChange(UIView *tile) {
+    if (!tile || FQXMineCellRelayoutInFlight) return;
+    FQXMineCellRelayoutInFlight = YES;
+    if ([tile isKindOfClass:UICollectionViewCell.class]) {
+        UICollectionViewCell *cell = (UICollectionViewCell *)tile;
+        if (!CGRectEqualToRect(cell.contentView.frame, cell.bounds)) {
+            cell.contentView.frame = cell.bounds;
+        }
     }
+    [tile setNeedsLayout];
+    [tile layoutIfNeeded];
+    FQXMineCellRelayoutInFlight = NO;
+    if (![objc_getAssociatedObject(tile, FQXMineTileAsyncLayoutKey) boolValue]) {
+        objc_setAssociatedObject(tile, FQXMineTileAsyncLayoutKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        __weak UIView *weakTile = tile;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *strongTile = weakTile;
+            if (!strongTile) return;
+            objc_setAssociatedObject(strongTile, FQXMineTileAsyncLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (!strongTile.window) return;
+            if ([strongTile isKindOfClass:UICollectionViewCell.class]) {
+                UICollectionViewCell *cell = (UICollectionViewCell *)strongTile;
+                if (!CGRectEqualToRect(cell.contentView.frame, cell.bounds)) {
+                    cell.contentView.frame = cell.bounds;
+                }
+            }
+            [strongTile setNeedsLayout];
+            [strongTile layoutIfNeeded];
+        });
+    }
+}
+
+static NSArray<UIView *> *FQXCollectMineShortcutTilesInHost(UIView *root, NSInteger depth, UIView **outHost) {
+    if (!root || depth < 0) return nil;
     NSMutableArray<UIView *> *tiles = [NSMutableArray array];
-    for (UIView *sub in candidates) {
+    NSUInteger knownCells = 0;
+    for (UIView *sub in root.subviews) {
         if (sub.hidden || sub.alpha <= 0.01) continue;
-        if (CGRectGetWidth(sub.bounds) >= 36.0 && CGRectGetHeight(sub.bounds) >= 40.0) {
+        if ([sub isKindOfClass:UIVisualEffectView.class] || FQXViewIsPageControlLike(sub)) continue;
+        NSString *clsName = NSStringFromClass(sub.class);
+        if ([clsName containsString:@"ScrollIndicator"] || [clsName containsString:@"BookStoreSelectView"]) continue;
+        if (FQXIsMineShortcutItemCell(sub)) {
+            [tiles addObject:sub];
+            knownCells++;
+        } else if (CGRectGetWidth(sub.bounds) >= 32.0 && CGRectGetWidth(sub.bounds) <= 130.0 &&
+                   CGRectGetHeight(sub.bounds) >= 32.0) {
             [tiles addObject:sub];
         }
     }
-    if (tiles.count < 5) return NO;
+    if ((knownCells >= 1 && tiles.count >= 4) || tiles.count >= 5) {
+        if (outHost) *outHost = root;
+        return tiles;
+    }
+    if (depth == 0) return nil;
+    for (UIView *sub in root.subviews) {
+        if (sub.hidden || sub.alpha <= 0.01) continue;
+        if ([sub isKindOfClass:UIControl.class] || [sub isKindOfClass:UIVisualEffectView.class] ||
+            [sub isKindOfClass:UICollectionView.class] || FQXViewIsPageControlLike(sub)) continue;
+        NSString *clsName = NSStringFromClass(sub.class);
+        if ([clsName containsString:@"ScrollIndicator"] || [clsName containsString:@"BookStoreSelectView"]) continue;
+        NSArray<UIView *> *nested = FQXCollectMineShortcutTilesInHost(sub, depth - 1, outHost);
+        if (nested.count) return nested;
+    }
+    return nil;
+}
+
+static BOOL FQXSyncMinePlainScrollView(UIView *card, UIScrollView *sv);
+
+static void FQXInstallMinePlainScrollHook(UIScrollView *sv) {
+    if (![sv isKindOfClass:UIScrollView.class] || [sv isKindOfClass:UICollectionView.class] ||
+        [sv isKindOfClass:UITableView.class]) return;
+    objc_setAssociatedObject(sv, FQXMinePlainScrollTrackedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    static NSMutableSet<NSString *> *installed;
+    static NSMutableSet<NSString *> *installedDel;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        installed = [NSMutableSet set];
+        installedDel = [NSMutableSet set];
+    });
+    id delegate = sv.delegate;
+    Class delCls = FQXRealHookClass(delegate);
+    if (delCls && delCls != UIView.class && delCls != UIScrollView.class && delCls != NSObject.class) {
+        NSString *delName = NSStringFromClass(delCls);
+        if (delName.length && ![delName hasPrefix:@"UI"] && ![installedDel containsObject:delName] &&
+            ![delName isEqualToString:@"SSMyUser621ViewController"]) {
+            SEL scrollSel = @selector(scrollViewDidScroll:);
+            if ([delegate respondsToSelector:scrollSel]) {
+                __block IMP origScroll = NULL;
+                IMP scrollHook = imp_implementationWithBlock(^(id owner, UIScrollView *scrollView) {
+                    ((void (*)(id, SEL, id))origScroll)(owner, scrollSel, scrollView);
+                    if (![objc_getAssociatedObject(scrollView, FQXMinePlainScrollTrackedKey) boolValue]) return;
+                    UIView *ownerCard = FQXMineShortcutCardForView(scrollView);
+                    if (ownerCard) FQXSyncMinePlainScrollView(ownerCard, scrollView);
+                });
+                if (FQXInstallOwnedHook(delCls, scrollSel, NO, "v24@0:8@16", scrollHook, &origScroll)) {
+                    [installedDel addObject:delName];
+                } else {
+                    imp_removeBlock(scrollHook);
+                }
+            }
+        }
+    }
+    Class cls = FQXRealHookClass(sv);
+    if (!cls || cls == UIView.class || cls == UIScrollView.class || cls == NSObject.class) return;
+    NSString *name = NSStringFromClass(cls);
+    if (!name.length || [name hasPrefix:@"UI"] || [installed containsObject:name]) return;
+    __block IMP original = NULL;
+    IMP hook = imp_implementationWithBlock(^(UIScrollView *view) {
+        ((void (*)(id, SEL))original)(view, @selector(layoutSubviews));
+        if (![objc_getAssociatedObject(view, FQXMinePlainScrollTrackedKey) boolValue]) return;
+        UIView *ownerCard = FQXMineShortcutCardForView(view);
+        if (ownerCard) {
+            FQXSyncMinePlainScrollView(ownerCard, view);
+            [FQXMineShortcutViewport applyToView:view enabled:FQXGlassEnabled()];
+        }
+    });
+    if (FQXInstallOwnedHook(cls, @selector(layoutSubviews), NO, "v16@0:8", hook, &original)) {
+        [installed addObject:name];
+    } else {
+        imp_removeBlock(hook);
+    }
+}
+
+static BOOL FQXSyncMinePlainScrollView(UIView *card, UIScrollView *sv) {
+    if (![sv isKindOfClass:UIScrollView.class]) return NO;
+    FQXInstallMinePlainScrollHook(sv);
+    CGFloat width = CGRectGetWidth(sv.bounds);
+    CGFloat height = CGRectGetHeight(sv.bounds);
+    if (width < 160.0 || height < 32.0 || height > 240.0) return NO;
+    UIView *host = sv;
+    NSArray<UIView *> *rawTiles = FQXCollectMineShortcutTilesInHost(sv, 3, &host);
+    if (rawTiles.count < 4) return NO;
+    NSMutableArray<UIView *> *tiles = [rawTiles mutableCopy];
     [tiles sortUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
         CGFloat ax = CGRectGetMinX(a.frame), bx = CGRectGetMinX(b.frame);
         return fabs(ax - bx) > 0.5 ? (ax < bx ? NSOrderedAscending : NSOrderedDescending) : NSOrderedSame;
@@ -4229,23 +4477,62 @@ static BOOL FQXSyncMinePlainScrollView(UIView *card, UIScrollView *sv) {
     CGFloat slotW = width / 4.0;
     NSUInteger pages = (tiles.count + 3) / 4;
     if (!sv.pagingEnabled) sv.pagingEnabled = YES;
+    CGSize targetCS = CGSizeMake(width * (CGFloat)pages, height);
+    if (host != sv) {
+        CGRect hf = CGRectMake(0.0, 0.0, targetCS.width, height);
+        if (!CGRectEqualToRect(host.frame, hf)) host.frame = hf;
+    }
     for (NSUInteger i = 0; i < tiles.count; ++i) {
         UIView *tile = tiles[i];
         NSUInteger page = i / 4;
         NSUInteger col = i % 4;
-        CGRect f = CGRectMake((CGFloat)page * width + (CGFloat)col * slotW, tile.frame.origin.y, slotW, CGRectGetHeight(tile.frame));
-        if (fabs(CGRectGetMinX(tile.frame) - f.origin.x) > 0.5 || fabs(CGRectGetWidth(tile.frame) - f.size.width) > 0.5) {
+        CGRect f = CGRectMake((CGFloat)page * width + (CGFloat)col * slotW,
+                              tile.frame.origin.y,
+                              slotW,
+                              CGRectGetHeight(tile.frame));
+        if (fabs(CGRectGetMinX(tile.frame) - f.origin.x) > 0.5 ||
+            fabs(CGRectGetWidth(tile.frame) - f.size.width) > 0.5) {
             tile.frame = f;
+            FQXRelayoutMineTileAfterFrameChange(tile);
         }
     }
-    CGSize targetCS = CGSizeMake(width * (CGFloat)pages, height);
-    if (host != sv) host.frame = CGRectMake(0.0, 0.0, targetCS.width, height);
     if (!CGSizeEqualToSize(sv.contentSize, targetCS)) sv.contentSize = targetCS;
     UIView *pc = FQXMinePageControl(FQXMineShortcutFold(card), card);
     if (pc) {
         NSInteger cur = MAX(0, MIN((NSInteger)pages - 1, (NSInteger)llround(sv.contentOffset.x / MAX(1.0, width))));
         FQXUpdateMinePageControl(pc, (NSInteger)pages, cur);
     }
+    return YES;
+}
+
+static BOOL FQXSyncMineDirectTileHost(UIView *card) {
+    if (![card isKindOfClass:UIView.class]) return NO;
+    UIView *host = nil;
+    NSArray<UIView *> *rawTiles = FQXCollectMineShortcutTilesInHost(card, 4, &host);
+    if (!host || rawTiles.count < 5) return NO;
+    CGFloat width = CGRectGetWidth(host.bounds);
+    if (width < 160.0) return NO;
+    NSMutableArray<UIView *> *tiles = [rawTiles mutableCopy];
+    [tiles sortUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+        CGFloat ax = CGRectGetMinX(a.frame), bx = CGRectGetMinX(b.frame);
+        return fabs(ax - bx) > 0.5 ? (ax < bx ? NSOrderedAscending : NSOrderedDescending) : NSOrderedSame;
+    }];
+    CGFloat slotW = width / 4.0;
+    for (NSUInteger i = 0; i < tiles.count; ++i) {
+        UIView *tile = tiles[i];
+        NSUInteger page = i / 4;
+        NSUInteger col = i % 4;
+        CGRect f = CGRectMake((CGFloat)page * width + (CGFloat)col * slotW,
+                              tile.frame.origin.y,
+                              slotW,
+                              CGRectGetHeight(tile.frame));
+        if (fabs(CGRectGetMinX(tile.frame) - f.origin.x) > 0.5 ||
+            fabs(CGRectGetWidth(tile.frame) - f.size.width) > 0.5) {
+            tile.frame = f;
+            FQXRelayoutMineTileAfterFrameChange(tile);
+        }
+    }
+    host.clipsToBounds = YES;
     return YES;
 }
 
@@ -4307,7 +4594,8 @@ static BOOL FQXInstallMineItemSizeHook(id delegate) {
         installedLine = [NSMutableSet set];
         installedInter = [NSMutableSet set];
     });
-    Class cls = object_getClass(delegate);
+    Class cls = FQXRealHookClass(delegate);
+    if (!cls || cls == UIView.class || cls == NSObject.class) return YES;
     NSString *name = NSStringFromClass(cls);
     if (!name.length) return YES;
 
@@ -4371,9 +4659,10 @@ static BOOL FQXInstallMineSectionInsetHook(id delegate) {
     static NSMutableSet<NSString *> *installed;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ installed = [NSMutableSet set]; });
-    Class cls = object_getClass(delegate);
+    Class cls = FQXRealHookClass(delegate);
+    if (!cls || cls == UIView.class || cls == NSObject.class) return YES;
     NSString *name = NSStringFromClass(cls);
-    if ([installed containsObject:name]) return YES;
+    if (!name.length || [installed containsObject:name]) return YES;
     __block IMP original = NULL;
     IMP hook = imp_implementationWithBlock(^UIEdgeInsets(id owner, UICollectionView *collection,
                                                         UICollectionViewLayout *layout, NSInteger section) {
@@ -4406,7 +4695,8 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
         installedRect = [NSMutableSet set];
         installedBounds = [NSMutableSet set];
     });
-    Class cls = object_getClass(layout);
+    Class cls = FQXRealHookClass(layout);
+    if (!cls || cls == UIView.class || cls == NSObject.class) return;
     NSString *name = NSStringFromClass(cls);
     if (!name.length) return;
 
@@ -4522,9 +4812,11 @@ static void FQXEnforceMineVisibleCellFrames(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     if (!state.active || state.layout != collection.collectionViewLayout ||
         state.columns != 4 || state.slotWidth < 44.0) return;
+    NSMutableSet<UICollectionViewCell *> *visited = [NSMutableSet set];
     for (NSIndexPath *ip in [collection indexPathsForVisibleItems]) {
         UICollectionViewCell *cell = [collection cellForItemAtIndexPath:ip];
         if (!cell) continue;
+        [visited addObject:cell];
         NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(collection, ip);
         if (flatIdx == NSNotFound) continue;
         CGRect expected = FQXMineFrameForFlatIndex(state, flatIdx);
@@ -4534,6 +4826,22 @@ static void FQXEnforceMineVisibleCellFrames(UICollectionView *collection) {
             fabs(CGRectGetWidth(cur) - CGRectGetWidth(expected)) > 0.5 ||
             fabs(CGRectGetHeight(cur) - CGRectGetHeight(expected)) > 0.5) {
             cell.frame = expected;
+            FQXRelayoutMineTileAfterFrameChange(cell);
+        }
+    }
+    for (UICollectionViewCell *cell in [collection visibleCells]) {
+        if ([visited containsObject:cell]) continue;
+        NSIndexPath *ip = [collection indexPathForCell:cell];
+        NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(collection, ip);
+        if (flatIdx == NSNotFound) continue;
+        CGRect expected = FQXMineFrameForFlatIndex(state, flatIdx);
+        CGRect cur = cell.frame;
+        if (fabs(cur.origin.x - expected.origin.x) > 0.5 ||
+            fabs(cur.origin.y - expected.origin.y) > 0.5 ||
+            fabs(CGRectGetWidth(cur) - CGRectGetWidth(expected)) > 0.5 ||
+            fabs(CGRectGetHeight(cur) - CGRectGetHeight(expected)) > 0.5) {
+            cell.frame = expected;
+            FQXRelayoutMineTileAfterFrameChange(cell);
         }
     }
 }
@@ -4542,12 +4850,14 @@ static void FQXRestoreMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     if (!state) return;
     state.active = NO;
+    objc_setAssociatedObject(collection, FQXMineDeferredSyncKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (state.layout == collection.collectionViewLayout) {
         if (state.hasSavedFlowProps && [state.layout isKindOfClass:UICollectionViewFlowLayout.class]) {
             UICollectionViewFlowLayout *flow = (UICollectionViewFlowLayout *)state.layout;
             if (CGSizeEqualToSize(flow.itemSize, state.appliedItemSize)) {
                 flow.itemSize = state.savedItemSize;
             }
+            flow.estimatedItemSize = state.savedEstimatedItemSize;
             flow.sectionInset = state.savedSectionInset;
             flow.minimumLineSpacing = state.savedLineSpacing;
             flow.minimumInteritemSpacing = state.savedInteritemSpacing;
@@ -4584,6 +4894,25 @@ static void FQXCompleteMineFlowPage(UICollectionView *collection) {
     }
 }
 
+static void FQXScheduleDeferredMineCollectionPass(UICollectionView *collection) {
+    if (!collection || [objc_getAssociatedObject(collection, FQXMineDeferredSyncKey) boolValue]) return;
+    objc_setAssociatedObject(collection, FQXMineDeferredSyncKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak UICollectionView *weakCV = collection;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UICollectionView *strongCV = weakCV;
+        if (!strongCV) return;
+        objc_setAssociatedObject(strongCV, FQXMineDeferredSyncKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!strongCV.window || !FQXMineShortcutCardForView(strongCV)) return;
+        FQXMineShortcutFlowState *st = objc_getAssociatedObject(strongCV, FQXMineFlowStateKey);
+        if (!st || !st.active || st.layout != strongCV.collectionViewLayout) return;
+        [st.layout invalidateLayout];
+        [strongCV setNeedsLayout];
+        [strongCV layoutIfNeeded];
+        FQXEnforceMineVisibleCellFrames(strongCV);
+        FQXCompleteMineFlowPage(strongCV);
+    });
+}
+
 static void FQXSyncMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     UICollectionViewLayout *layout = collection.collectionViewLayout;
@@ -4593,7 +4922,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     CGFloat width = CGRectGetWidth(collection.bounds);
     CGFloat boundsHeight = CGRectGetHeight(collection.bounds);
     BOOL supported = card != nil && layout != nil &&
-        count > 0 && count <= 40 && width >= 176.0 && boundsHeight >= 44.0 && boundsHeight <= 220.0;
+        count > 0 && count <= 40 && width >= 176.0 && boundsHeight >= 32.0 && boundsHeight <= 220.0;
     if (!supported || (state && state.layout != layout)) {
         FQXRestoreMineFlow(collection);
         if (!supported) return;
@@ -4610,17 +4939,21 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     CGFloat topInset = MAX(0.0, inset.top);
     CGFloat bottomInset = MAX(0.0, inset.bottom);
     CGFloat contentHeight = boundsHeight - collection.adjustedContentInset.top - collection.adjustedContentInset.bottom;
-    if (contentHeight < 44.0) contentHeight = boundsHeight;
-    if (contentHeight - topInset - bottomInset < 44.0) {
+    if (contentHeight < 32.0) contentHeight = boundsHeight;
+    if (contentHeight - topInset - bottomInset < 32.0) {
         topInset = 0.0;
         bottomInset = 0.0;
     }
-    FQXMineShortcutPlan plan = FQXPlanMineShortcuts(width, contentHeight, width / 5.0,
-                                                    0.0, topInset, bottomInset, count);
+    CGFloat planHeight = MAX(44.0, contentHeight);
+    CGFloat planTop = (planHeight - topInset - bottomInset >= 44.0) ? topInset : 0.0;
+    CGFloat planBottom = (planHeight - planTop - bottomInset >= 44.0) ? bottomInset : 0.0;
+    FQXMineShortcutPlan plan = FQXPlanMineShortcuts(width, planHeight, width / 5.0,
+                                                    0.0, planTop, planBottom, count);
     if (!plan.valid || plan.columns != 4) {
         FQXRestoreMineFlow(collection);
         return;
     }
+    CGFloat actualItemHeight = MAX(32.0, contentHeight - topInset - bottomInset);
 
     FQXInstallMineLayoutHooks(layout);
     if (flow) {
@@ -4633,6 +4966,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
         state.layout = layout;
         if (flow) {
             state.savedItemSize = flow.itemSize;
+            state.savedEstimatedItemSize = flow.estimatedItemSize;
             state.savedSectionInset = flow.sectionInset;
             state.savedLineSpacing = flow.minimumLineSpacing;
             state.savedInteritemSpacing = flow.minimumInteritemSpacing;
@@ -4650,11 +4984,12 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
         if (state.pageControl) state.savedPageCount = FQXReadMinePageControlCount(state.pageControl);
     }
 
-    CGSize itemSize = CGSizeMake(plan.itemWidth, plan.itemHeight);
+    CGSize itemSize = CGSizeMake(plan.itemWidth, actualItemHeight);
     UIEdgeInsets activeInset = UIEdgeInsetsMake(topInset, 0.0, bottomInset, 0.0);
     BOOL flowChanged = flow && (
         !UIEdgeInsetsEqualToEdgeInsets(flow.sectionInset, activeInset) ||
         !CGSizeEqualToSize(flow.itemSize, itemSize) ||
+        !CGSizeEqualToSize(flow.estimatedItemSize, CGSizeZero) ||
         fabs(flow.minimumLineSpacing) > 0.25 ||
         fabs(flow.minimumInteritemSpacing) > 0.25);
     BOOL changed = !state.active || flowChanged ||
@@ -4662,7 +4997,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
                    state.pages != plan.pages ||
                    state.totalCount != count ||
                    fabs(state.slotWidth - plan.itemWidth) > 0.25 ||
-                   fabs(state.itemHeight - plan.itemHeight) > 0.25 ||
+                   fabs(state.itemHeight - actualItemHeight) > 0.25 ||
                    fabs(state.topInset - topInset) > 0.25 ||
                    !CGSizeEqualToSize(state.viewportSize, collection.bounds.size);
     CGFloat oldWidth = state.viewportSize.width;
@@ -4670,7 +5005,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     state.pages = plan.pages;
     state.totalCount = count;
     state.slotWidth = plan.itemWidth;
-    state.itemHeight = plan.itemHeight;
+    state.itemHeight = actualItemHeight;
     state.topInset = topInset;
     state.appliedItemSize = itemSize;
     state.viewportSize = collection.bounds.size;
@@ -4684,6 +5019,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
         collection.contentInset = cInset;
     }
     if (flow) {
+        if (!CGSizeEqualToSize(flow.estimatedItemSize, CGSizeZero)) flow.estimatedItemSize = CGSizeZero;
         if (!CGSizeEqualToSize(flow.itemSize, itemSize)) flow.itemSize = itemSize;
         if (!UIEdgeInsetsEqualToEdgeInsets(flow.sectionInset, activeInset)) flow.sectionInset = activeInset;
         if (fabs(flow.minimumLineSpacing) > 0.25) flow.minimumLineSpacing = 0.0;
@@ -4699,6 +5035,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
         }
         [layout invalidateLayout];
         [collection setNeedsLayout];
+        FQXScheduleDeferredMineCollectionPass(collection);
     }
     FQXCompleteMineFlowPage(collection);
 }
@@ -4708,9 +5045,10 @@ static void FQXInstallMineScrollHook(UICollectionView *collection) {
     static NSMutableSet<NSString *> *installed;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ installed = [NSMutableSet set]; });
-    Class cls = object_getClass(collection);
+    Class cls = FQXRealHookClass(collection);
+    if (!cls || cls == UIView.class || cls == NSObject.class) return;
     NSString *name = NSStringFromClass(cls);
-    if ([installed containsObject:name]) return;
+    if (!name.length || [installed containsObject:name]) return;
     __block IMP original = NULL;
     IMP hook = imp_implementationWithBlock(^(UICollectionView *view) {
         BOOL tracked = [objc_getAssociatedObject(view, FQXMineScrollTrackedKey) boolValue];
@@ -4746,7 +5084,8 @@ static void HookScrollFoldLayout(UIView *self, SEL _cmd) {
     }
     if (![collection isKindOfClass:UICollectionView.class]) {
         UIScrollView *plainSV = FQXFindMinePlainScrollView(self, 8);
-        if (plainSV) FQXSyncMinePlainScrollView(self, plainSV);
+        if (plainSV && FQXSyncMinePlainScrollView(self, plainSV)) return;
+        FQXSyncMineDirectTileHost(self);
         return;
     }
     FQXInstallMineScrollHook(collection);
@@ -4765,7 +5104,8 @@ static void HookMineShortcutCardLayout(UIView *self, SEL _cmd) {
     }
     if (![collection isKindOfClass:UICollectionView.class]) {
         UIScrollView *plainSV = FQXFindMinePlainScrollView(self, 8);
-        if (plainSV) FQXSyncMinePlainScrollView(self, plainSV);
+        if (plainSV && FQXSyncMinePlainScrollView(self, plainSV)) return;
+        FQXSyncMineDirectTileHost(self);
         return;
     }
     FQXInstallMineScrollHook(collection);
@@ -4784,7 +5124,8 @@ static void HookMineCard1Layout(UIView *self, SEL _cmd) {
     }
     if (![collection isKindOfClass:UICollectionView.class]) {
         UIScrollView *plainSV = FQXFindMinePlainScrollView(self, 8);
-        if (plainSV) FQXSyncMinePlainScrollView(self, plainSV);
+        if (plainSV && FQXSyncMinePlainScrollView(self, plainSV)) return;
+        FQXSyncMineDirectTileHost(self);
         return;
     }
     if (CGRectGetWidth(collection.bounds) < 176.0 || CGRectGetHeight(collection.bounds) > 220.0) return;
@@ -4795,24 +5136,73 @@ static void HookMineCard1Layout(UIView *self, SEL _cmd) {
 }
 
 static void FQXSyncOwnerCollectionFromShortcutCell(UICollectionViewCell *self) {
+    if (FQXMineCellRelayoutInFlight || FQXIsInsideMineSidebar(self)) return;
+    UIView *card = FQXMineShortcutCardForView(self);
+    if (!card) return;
     UICollectionView *ownerCV = nil;
-    for (UIView *cur = self.superview; cur && !ownerCV; cur = cur.superview) {
-        if ([cur isKindOfClass:UICollectionView.class]) ownerCV = (UICollectionView *)cur;
+    UIScrollView *ownerSV = nil;
+    for (UIView *cur = self.superview; cur && cur != card; cur = cur.superview) {
+        if ([cur isKindOfClass:UICollectionView.class]) {
+            ownerCV = (UICollectionView *)cur;
+            break;
+        }
+        if (!ownerSV && [cur isKindOfClass:UIScrollView.class] && ![cur isKindOfClass:UITableView.class]) {
+            ownerSV = (UIScrollView *)cur;
+        }
     }
-    if (ownerCV && !FQXIsInsideMineSidebar(ownerCV) && FQXMineShortcutCardForView(ownerCV)) {
+    if (ownerCV) {
+        FQXInstallMineScrollHook(ownerCV);
         FQXMineShortcutFlowState *state = objc_getAssociatedObject(ownerCV, FQXMineFlowStateKey);
         if (!state || !state.active ||
             !CGSizeEqualToSize(state.viewportSize, ownerCV.bounds.size) ||
             state.totalCount != FQXMineTotalItemCount(ownerCV)) {
-            FQXInstallMineScrollHook(ownerCV);
             FQXSyncMineFlow(ownerCV);
             [FQXMineShortcutViewport applyToView:ownerCV enabled:FQXGlassEnabled()];
         }
+        FQXEnforceMineVisibleCellFrames(ownerCV);
+    } else if (ownerSV) {
+        FQXSyncMinePlainScrollView(card, ownerSV);
+        [FQXMineShortcutViewport applyToView:ownerSV enabled:FQXGlassEnabled()];
+    } else {
+        FQXSyncMineDirectTileHost(card);
     }
+}
+
+static void (*OrigMineFunCellApplyAttrs)(id, SEL, id);
+static void HookMineFunCellApplyAttrs(UICollectionViewCell *self, SEL _cmd, UICollectionViewLayoutAttributes *attrs) {
+    UICollectionViewLayoutAttributes *effective = attrs;
+    if (attrs && attrs.indexPath && !FQXIsInsideMineSidebar(self)) {
+        UICollectionView *ownerCV = nil;
+        UIView *card = FQXMineShortcutCardForView(self);
+        for (UIView *cur = self.superview; cur && (!card || cur != card); cur = cur.superview) {
+            if ([cur isKindOfClass:UICollectionView.class]) {
+                ownerCV = (UICollectionView *)cur;
+                break;
+            }
+        }
+        if (ownerCV && (card || FQXMineShortcutCardForView(ownerCV))) {
+            FQXMineShortcutFlowState *state = objc_getAssociatedObject(ownerCV, FQXMineFlowStateKey);
+            if (state.active && state.columns == 4 && state.slotWidth >= 44.0) {
+                NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(ownerCV, attrs.indexPath);
+                if (flatIdx != NSNotFound) {
+                    CGRect target = FQXMineFrameForFlatIndex(state, flatIdx);
+                    if (!CGRectEqualToRect(attrs.frame, target)) {
+                        effective = [attrs copy];
+                        effective.frame = target;
+                    }
+                }
+            }
+        }
+    }
+    if (OrigMineFunCellApplyAttrs) OrigMineFunCellApplyAttrs(self, _cmd, effective);
 }
 
 static void (*OrigMineFunCellLayoutForBadge)(id, SEL);
 static void HookMineFunCellLayoutForBadge(UICollectionViewCell *self, SEL _cmd) {
+    FQXSyncOwnerCollectionFromShortcutCell(self);
+    if (!CGRectEqualToRect(self.contentView.frame, self.bounds)) {
+        self.contentView.frame = self.bounds;
+    }
     if (OrigMineFunCellLayoutForBadge) OrigMineFunCellLayoutForBadge(self, _cmd);
     FQXSyncOwnerCollectionFromShortcutCell(self);
     if (!FQXGlassEnabled()) return;
@@ -4839,12 +5229,20 @@ static void HookMineFunCellLayoutForBadge(UICollectionViewCell *self, SEL _cmd) 
 
 static void (*OrigMineOrderCellLayout)(id, SEL);
 static void HookMineOrderCellLayout(UICollectionViewCell *self, SEL _cmd) {
+    FQXSyncOwnerCollectionFromShortcutCell(self);
+    if (!CGRectEqualToRect(self.contentView.frame, self.bounds)) {
+        self.contentView.frame = self.bounds;
+    }
     if (OrigMineOrderCellLayout) OrigMineOrderCellLayout(self, _cmd);
     FQXSyncOwnerCollectionFromShortcutCell(self);
 }
 
 static void (*OrigMineEntryItemLayout)(id, SEL);
 static void HookMineEntryItemLayout(UICollectionViewCell *self, SEL _cmd) {
+    FQXSyncOwnerCollectionFromShortcutCell(self);
+    if (!CGRectEqualToRect(self.contentView.frame, self.bounds)) {
+        self.contentView.frame = self.bounds;
+    }
     if (OrigMineEntryItemLayout) OrigMineEntryItemLayout(self, _cmd);
     FQXSyncOwnerCollectionFromShortcutCell(self);
 }
@@ -6649,10 +7047,7 @@ static BOOL FQXPlaceCommentComposerGlass(UIView *host, CGRect frame, CGFloat rad
                   CGRectGetWidth(frame) >= 44.0 && CGRectGetHeight(frame) >= 30.0;
     if (!active) {
         if (glass) {
-            if ([glass isKindOfClass:FQXBackdropBlurView.class]) {
-                [(FQXBackdropBlurView *)glass invalidateBlurAnimator];
-            }
-            [glass removeFromSuperview];
+            FQXReleaseCommentSurface(glass);
             objc_setAssociatedObject(host, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         objc_setAssociatedObject(host, FQXComposerFloatingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -6738,10 +7133,7 @@ static void FQXStyleCommentBar(UIView *toolbar) {
     UIVisualEffectView *barGlass = objc_getAssociatedObject(toolbar, DramaComposerGlassKey);
     if (!styled) {
         if (barGlass) {
-            if ([barGlass isKindOfClass:FQXBackdropBlurView.class]) {
-                [(FQXBackdropBlurView *)barGlass invalidateBlurAnimator];
-            }
-            [barGlass removeFromSuperview];
+            FQXReleaseCommentSurface(barGlass);
             objc_setAssociatedObject(toolbar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     } else {
@@ -6885,10 +7277,7 @@ static void HookReaderCommentBarTheme(UIView *toolbar, SEL cmd, BOOL darkMode) {
 static void FQXRemoveGlassSheet(UIView *sheet) {
     UIVisualEffectView *glass = objc_getAssociatedObject(sheet, SheetGlassKey);
     if (glass) {
-        if ([glass isKindOfClass:FQXBackdropBlurView.class]) {
-            [(FQXBackdropBlurView *)glass invalidateBlurAnimator];
-        }
-        [glass removeFromSuperview];
+        FQXReleaseCommentSurface(glass);
         objc_setAssociatedObject(sheet, SheetGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     FQXRestoreSheetTopCornerMask(sheet);
@@ -8049,7 +8438,7 @@ static void FQXStyleWriteReviewButton(UIView *btn, BOOL active) {
     UIImageView *icon = FQXObjGet(btn, "iconView");
     if (!canStyle) {
         if (glass) {
-            [glass removeFromSuperview];
+            FQXReleaseCommentSurface(glass);
             objc_setAssociatedObject(btn, WriteReviewGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         UIColor *savedInk = objc_getAssociatedObject(label, WriteReviewInkKey);
@@ -8605,10 +8994,7 @@ static void FQXPurgeOffscreenCommentGlassForController(UIViewController *control
     if (bar && !bar.window) {
         UIVisualEffectView *barGlass = objc_getAssociatedObject(bar, DramaComposerGlassKey);
         if (barGlass) {
-            if ([barGlass isKindOfClass:FQXBackdropBlurView.class]) {
-                [(FQXBackdropBlurView *)barGlass invalidateBlurAnimator];
-            }
-            [barGlass removeFromSuperview];
+            FQXReleaseCommentSurface(barGlass);
             objc_setAssociatedObject(bar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
@@ -8616,10 +9002,7 @@ static void FQXPurgeOffscreenCommentGlassForController(UIViewController *control
     if (writeBtn && !writeBtn.window) {
         UIVisualEffectView *wGlass = objc_getAssociatedObject(writeBtn, WriteReviewGlassKey);
         if (wGlass) {
-            if ([wGlass isKindOfClass:FQXBackdropBlurView.class]) {
-                [(FQXBackdropBlurView *)wGlass invalidateBlurAnimator];
-            }
-            [wGlass removeFromSuperview];
+            FQXReleaseCommentSurface(wGlass);
             objc_setAssociatedObject(writeBtn, WriteReviewGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
@@ -8661,10 +9044,7 @@ static void FQXCompactRuntimeMemory(void) {
         if (!bar.window) {
             UIVisualEffectView *g = objc_getAssociatedObject(bar, DramaComposerGlassKey);
             if (g) {
-                if ([g isKindOfClass:FQXBackdropBlurView.class]) {
-                    [(FQXBackdropBlurView *)g invalidateBlurAnimator];
-                }
-                [g removeFromSuperview];
+                FQXReleaseCommentSurface(g);
                 objc_setAssociatedObject(bar, DramaComposerGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
@@ -8896,6 +9276,8 @@ static void FQXSetIndicatorHiddenQuietly(UIView *indicator, BOOL hidden) {
     FQXAudioDedupInFlight = prev;
 }
 
+static void FQXApplyIndicatorIslandMuteIfNeeded(UIView *indicator);
+
 static void FQXDeduplicateAudioIndicators(UIView *preferred) {
     if (FQXAudioDedupInFlight) return;
     FQXAudioDedupInFlight = YES;
@@ -8965,7 +9347,11 @@ static void FQXDeduplicateAudioIndicators(UIView *preferred) {
             other.hidden = YES;
         }
     }
+    for (UIView *cand in found) {
+        FQXApplyIndicatorIslandMuteIfNeeded(cand);
+    }
     FQXAudioDedupInFlight = NO;
+    FQXRefreshDynamicIslandState();
 }
 
 static void FQXRestoreSuppressedAudioIndicatorIfNeeded(UIView *departing) {
@@ -8990,13 +9376,55 @@ static void FQXRestoreSuppressedAudioIndicatorIfNeeded(UIView *departing) {
             }
         }
     }
+    for (UIView *cand in [FQXTrackedAudioIndicators() allObjects]) {
+        FQXApplyIndicatorIslandMuteIfNeeded(cand);
+    }
     FQXAudioDedupInFlight = NO;
+    FQXRefreshDynamicIslandState();
 }
 
+static const void *FQXIslandMutedIndicatorKey = &FQXIslandMutedIndicatorKey;
+static void (*OrigAudioIndicatorSetAlpha)(id, SEL, CGFloat);
+
+static BOOL FQXIndicatorMutedByDynamicIsland(UIView *indicator) {
+    if (!indicator) return NO;
+    Class audioCls = NSClassFromString(@"SSAudioPlayIndicatorView");
+    Class videoCls = NSClassFromString(@"SSShortVideoPlayIndicatorView");
+    if (audioCls && [indicator isKindOfClass:audioCls]) {
+        return [NSUserDefaults.standardUserDefaults boolForKey:AudioDynamicIslandPrefKey];
+    }
+    if (videoCls && [indicator isKindOfClass:videoCls]) {
+        return [NSUserDefaults.standardUserDefaults boolForKey:DramaDynamicIslandPrefKey];
+    }
+    return NO;
+}
+
+static void FQXApplyIndicatorIslandMuteIfNeeded(UIView *indicator) {
+    if (!indicator) return;
+    BOOL mute = FQXIndicatorMutedByDynamicIsland(indicator);
+    if (mute) {
+        objc_setAssociatedObject(indicator, FQXIslandMutedIndicatorKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        indicator.userInteractionEnabled = NO;
+        if (OrigAudioIndicatorSetAlpha && [indicator isKindOfClass:NSClassFromString(@"SSAudioPlayIndicatorView")]) {
+            OrigAudioIndicatorSetAlpha(indicator, @selector(setAlpha:), 0.001);
+        } else {
+            indicator.alpha = 0.001;
+        }
+    } else if ([objc_getAssociatedObject(indicator, FQXIslandMutedIndicatorKey) boolValue]) {
+        objc_setAssociatedObject(indicator, FQXIslandMutedIndicatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        indicator.userInteractionEnabled = YES;
+        if (OrigAudioIndicatorSetAlpha && [indicator isKindOfClass:NSClassFromString(@"SSAudioPlayIndicatorView")]) {
+            OrigAudioIndicatorSetAlpha(indicator, @selector(setAlpha:), 1.0);
+        } else {
+            indicator.alpha = 1.0;
+        }
+    }
+}
 static void (*OrigAudioIndicatorShowInView)(id, SEL, id, CGRect);
 static void HookAudioIndicatorShowInView(UIView *self, SEL cmd, UIView *parent, CGRect pos) {
     CGRect clamped = FQXClampAudioIndicatorFrame(self, parent, pos);
     OrigAudioIndicatorShowInView(self, cmd, parent, clamped);
+    FQXApplyIndicatorIslandMuteIfNeeded(self);
     FQXDeduplicateAudioIndicators(self);
 }
 
@@ -9005,28 +9433,37 @@ static void HookAudioIndicatorShowInViewPoint(UIView *self, SEL cmd, UIView *par
     CGRect probe = CGRectMake(pos.x, pos.y, MAX(48.0, CGRectGetWidth(self.bounds)), MAX(40.0, CGRectGetHeight(self.bounds)));
     CGRect clamped = FQXClampAudioIndicatorFrame(self, parent, probe);
     OrigAudioIndicatorShowInViewPoint(self, cmd, parent, clamped.origin);
+    FQXApplyIndicatorIslandMuteIfNeeded(self);
     FQXDeduplicateAudioIndicators(self);
 }
 
 static void (*OrigAudioIndicatorSetHidden)(id, SEL, BOOL);
 static void HookAudioIndicatorSetHidden(UIView *self, SEL cmd, BOOL hidden) {
     OrigAudioIndicatorSetHidden(self, cmd, hidden);
+    FQXApplyIndicatorIslandMuteIfNeeded(self);
     if (FQXAudioDedupInFlight) return;
-    if (!hidden && self.window && self.alpha > 0.01) {
+    if (!hidden && self.window) {
         FQXDeduplicateAudioIndicators(self);
     } else if (hidden) {
         FQXRestoreSuppressedAudioIndicatorIfNeeded(self);
+        FQXRefreshDynamicIslandState();
     }
 }
 
-static void (*OrigAudioIndicatorSetAlpha)(id, SEL, CGFloat);
 static void HookAudioIndicatorSetAlpha(UIView *self, SEL cmd, CGFloat alpha) {
-    OrigAudioIndicatorSetAlpha(self, cmd, alpha);
+    BOOL muted = FQXIndicatorMutedByDynamicIsland(self);
+    CGFloat effective = (muted && alpha > 0.01) ? 0.001 : alpha;
+    OrigAudioIndicatorSetAlpha(self, cmd, effective);
+    if (muted) {
+        objc_setAssociatedObject(self, FQXIslandMutedIndicatorKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        self.userInteractionEnabled = NO;
+    }
     if (FQXAudioDedupInFlight) return;
     if (alpha > 0.01 && self.window && !self.hidden) {
         FQXDeduplicateAudioIndicators(self);
     } else if (alpha <= 0.01) {
         FQXRestoreSuppressedAudioIndicatorIfNeeded(self);
+        FQXRefreshDynamicIslandState();
     }
 }
 
@@ -10769,6 +11206,1605 @@ static void HookTTSReaderUpdateMask(id self, SEL _cmd) {
     FQXUpdateTTSReaderCaptionMask(self);
 }
 
+#pragma mark - Short Drama & Audiobook Dynamic Island ("像音频一样")
+
+typedef NS_ENUM(NSInteger, FQXIslandActiveKind) {
+    FQXIslandActiveNone = 0,
+    FQXIslandActiveAudiobook = 1,
+    FQXIslandActiveDrama = 2,
+};
+
+static __weak UIView *sLastDramaPlayer = nil;
+static __weak id sLastDramaEngine = nil;
+static __weak UIView *sLastDramaControlView = nil;
+static __weak UIViewController *sLastDramaListVC = nil;
+static __weak UIViewController *sLastDramaFeedVC = nil;
+static BOOL sDramaIslandActive = NO;
+static BOOL sDramaIslandUserPaused = NO;
+static BOOL sDramaManuallyPausedInFeed = NO;
+static BOOL sDramaRemoteRegistered = NO;
+static BOOL sInstallingDramaRemoteCommands = NO;
+static BOOL sDynamicIslandRefreshPending = NO;
+static CFTimeInterval sLastDramaPlayingTimestamp = 0.0;
+static CFTimeInterval sLastDramaLeavingTimestamp = 0.0;
+
+static const void *FQXMPRemoteHostTargetKey = &FQXMPRemoteHostTargetKey;
+static const void *FQXMPRemoteHostActionKey = &FQXMPRemoteHostActionKey;
+static const void *FQXMPRemoteHostHandlerKey = &FQXMPRemoteHostHandlerKey;
+
+static void FQXEnsureMediaPlayerLoaded(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dlopen("/System/Library/Frameworks/MediaPlayer.framework/MediaPlayer", RTLD_LAZY);
+    });
+}
+
+static NSString *FQXMPKey(const char *symbolName, NSString *fallback) {
+    FQXEnsureMediaPlayerLoaded();
+    void *ptr = dlsym(RTLD_DEFAULT, symbolName);
+    if (ptr) {
+        NSString *val = (__bridge NSString *)(*(void *const *)ptr);
+        if ([val isKindOfClass:NSString.class] && val.length > 0) return val;
+    }
+    return fallback;
+}
+
+static double FQXDoubleMsg0(id obj, const char *selName, double fallback) {
+    if (!obj || !selName) return fallback;
+    SEL sel = sel_registerName(selName);
+    Method m = class_getInstanceMethod(object_getClass(obj), sel);
+    if (!m || method_getNumberOfArguments(m) != 2) return fallback;
+    char ret[8] = {0};
+    method_getReturnType(m, ret, sizeof(ret));
+    if (ret[0] == 'd') return ((double (*)(id, SEL))objc_msgSend)(obj, sel);
+    if (ret[0] == 'f') return (double)((float (*)(id, SEL))objc_msgSend)(obj, sel);
+    if (ret[0] == 'q' || ret[0] == 'Q') return (double)((NSInteger (*)(id, SEL))objc_msgSend)(obj, sel);
+    return fallback;
+}
+
+static NSInteger FQXIntMsg0(id obj, const char *selName, NSInteger fallback) {
+    if (!obj || !selName) return fallback;
+    SEL sel = sel_registerName(selName);
+    Method m = class_getInstanceMethod(object_getClass(obj), sel);
+    if (!m || method_getNumberOfArguments(m) != 2) return fallback;
+    char ret[8] = {0};
+    method_getReturnType(m, ret, sizeof(ret));
+    if (ret[0] == 'q' || ret[0] == 'Q') return ((NSInteger (*)(id, SEL))objc_msgSend)(obj, sel);
+    if (ret[0] == 'i' || ret[0] == 'I') return (NSInteger)((int (*)(id, SEL))objc_msgSend)(obj, sel);
+    return fallback;
+}
+
+static void FQXVoidMsg0Safe(id obj, const char *selName) {
+    if (!obj || !selName) return;
+    SEL sel = sel_registerName(selName);
+    Method m = class_getInstanceMethod(object_getClass(obj), sel);
+    if (!m || method_getNumberOfArguments(m) != 2) return;
+    char ret[8] = {0};
+    method_getReturnType(m, ret, sizeof(ret));
+    if (ret[0] == 'v') ((void (*)(id, SEL))objc_msgSend)(obj, sel);
+}
+
+static NSString *FQXFirstNonEmptyString(id obj, NSArray<NSString *> *keys) {
+    if (!obj) return nil;
+    for (NSString *k in keys) {
+        id val = FQXObjGet(obj, k.UTF8String);
+        if ([val isKindOfClass:NSString.class]) {
+            NSString *trimmed = [(NSString *)val stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if (trimmed.length > 0) return trimmed;
+        }
+    }
+    return nil;
+}
+
+@interface FQXRemoteCommandEventStub : NSObject
+@property(nonatomic, strong) id command;
+@property(nonatomic) NSTimeInterval timestamp;
+- (instancetype)initWithCommand:(id)cmd;
+@end
+
+@implementation FQXRemoteCommandEventStub
+- (instancetype)initWithCommand:(id)cmd {
+    self = [super init];
+    if (self) {
+        _command = cmd;
+        _timestamp = NSProcessInfo.processInfo.systemUptime;
+    }
+    return self;
+}
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)aSelector {
+    NSMethodSignature *sig = [super methodSignatureForSelector:aSelector];
+    return sig ?: [NSMethodSignature signatureWithObjCTypes:"@16@0:8"];
+}
+- (void)forwardInvocation:(NSInvocation *)anInvocation {
+    NSUInteger len = anInvocation.methodSignature.methodReturnLength;
+    if (len > 0) {
+        void *zeroBuf = calloc(1, len);
+        if (zeroBuf) {
+            [anInvocation setReturnValue:zeroBuf];
+            free(zeroBuf);
+        }
+    }
+}
+@end
+
+@interface FQXWeakBox : NSObject
+@property(nonatomic, weak) id target;
+@end
+@implementation FQXWeakBox
+@end
+
+static void FQXDramaTogglePlayPauseAction(void);
+static void FQXDramaPlayAction(BOOL play);
+static void FQXDramaStepEpisode(NSInteger delta);
+static void FQXScheduleDynamicIslandRefresh(void);
+
+@interface FQXDramaRemoteTarget : NSObject
++ (instancetype)shared;
+- (NSInteger)onPlay:(id)event;
+- (NSInteger)onPause:(id)event;
+- (NSInteger)onToggle:(id)event;
+- (NSInteger)onPrev:(id)event;
+- (NSInteger)onNext:(id)event;
+@end
+
+@implementation FQXDramaRemoteTarget
++ (instancetype)shared {
+    static FQXDramaRemoteTarget *inst = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ inst = [FQXDramaRemoteTarget new]; });
+    return inst;
+}
+- (NSInteger)onPlay:(id)event {
+    (void)event;
+    FQXDramaPlayAction(YES);
+    return 0;
+}
+- (NSInteger)onPause:(id)event {
+    (void)event;
+    FQXDramaPlayAction(NO);
+    return 0;
+}
+- (NSInteger)onToggle:(id)event {
+    (void)event;
+    FQXDramaTogglePlayPauseAction();
+    return 0;
+}
+- (NSInteger)onPrev:(id)event {
+    (void)event;
+    FQXDramaStepEpisode(-1);
+    return 0;
+}
+- (NSInteger)onNext:(id)event {
+    (void)event;
+    FQXDramaStepEpisode(1);
+    return 0;
+}
+@end
+
+static void (*OrigMPRemoteAddTargetAction)(id, SEL, id, SEL);
+static void HookMPRemoteAddTargetAction(id self, SEL _cmd, id target, SEL action) {
+    if (OrigMPRemoteAddTargetAction) OrigMPRemoteAddTargetAction(self, _cmd, target, action);
+    if (!sInstallingDramaRemoteCommands && target && action && target != [FQXDramaRemoteTarget shared]) {
+        FQXWeakBox *box = [FQXWeakBox new];
+        box.target = target;
+        objc_setAssociatedObject(self, FQXMPRemoteHostTargetKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, FQXMPRemoteHostActionKey, NSStringFromSelector(action), OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+}
+
+static id (*OrigMPRemoteAddTargetHandler)(id, SEL, id);
+static id HookMPRemoteAddTargetHandler(id self, SEL _cmd, id handlerBlock) {
+    id token = OrigMPRemoteAddTargetHandler ? OrigMPRemoteAddTargetHandler(self, _cmd, handlerBlock) : nil;
+    if (!sInstallingDramaRemoteCommands && handlerBlock) {
+        objc_setAssociatedObject(self, FQXMPRemoteHostHandlerKey, [handlerBlock copy], OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+    return token;
+}
+
+static BOOL FQXInvokeHostAudioRemoteCommand(NSString *commandGetter) {
+    FQXEnsureMediaPlayerLoaded();
+    Class ccCls = NSClassFromString(@"MPRemoteCommandCenter");
+    SEL sharedSel = NSSelectorFromString(@"sharedCommandCenter");
+    if (!ccCls || ![ccCls respondsToSelector:sharedSel]) return NO;
+    id center = ((id (*)(id, SEL))objc_msgSend)(ccCls, sharedSel);
+    id cmdObj = FQXObjGet(center, commandGetter.UTF8String);
+    if (!cmdObj) return NO;
+
+    FQXRemoteCommandEventStub *stub = [[FQXRemoteCommandEventStub alloc] initWithCommand:cmdObj];
+    NSInteger (^handler)(id) = objc_getAssociatedObject(cmdObj, FQXMPRemoteHostHandlerKey);
+    if (handler) {
+        handler(stub);
+        return YES;
+    }
+    FQXWeakBox *box = objc_getAssociatedObject(cmdObj, FQXMPRemoteHostTargetKey);
+    NSString *selStr = objc_getAssociatedObject(cmdObj, FQXMPRemoteHostActionKey);
+    id target = box.target;
+    if (target && selStr.length) {
+        SEL act = NSSelectorFromString(selStr);
+        Method m = class_getInstanceMethod(object_getClass(target), act);
+        if (m) {
+            unsigned int argc = method_getNumberOfArguments(m);
+            char ret[8] = {0};
+            method_getReturnType(m, ret, sizeof(ret));
+            if (argc >= 3) {
+                if (ret[0] == 'q' || ret[0] == 'Q' || ret[0] == 'i') {
+                    (void)((NSInteger (*)(id, SEL, id))objc_msgSend)(target, act, stub);
+                } else {
+                    ((void (*)(id, SEL, id))objc_msgSend)(target, act, stub);
+                }
+                return YES;
+            } else if (argc == 2) {
+                if (ret[0] == 'q' || ret[0] == 'Q' || ret[0] == 'i') {
+                    (void)((NSInteger (*)(id, SEL))objc_msgSend)(target, act);
+                } else {
+                    ((void (*)(id, SEL))objc_msgSend)(target, act);
+                }
+                return YES;
+            }
+        }
+    }
+    return NO;
+}
+
+static UIWindow *FQXActiveForegroundWindow(void) {
+    UIWindow *fallback = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        for (UIWindow *win in ws.windows) {
+            if (win.hidden || win.alpha < 0.01 || win.windowLevel > UIWindowLevelNormal + 1.0) continue;
+            if (![NSStringFromClass(win.class) isEqualToString:@"UIWindow"] &&
+                [NSStringFromClass(win.class) containsString:@"Keyboard"]) continue;
+            if (win.isKeyWindow) return win;
+            if (!fallback) fallback = win;
+        }
+    }
+    return fallback;
+}
+
+static UIViewController *FQXTopVisibleControllerFrom(UIViewController *vc) {
+    if (!vc) return nil;
+    if (vc.presentedViewController && !vc.presentedViewController.isBeingDismissed) {
+        return FQXTopVisibleControllerFrom(vc.presentedViewController);
+    }
+    if ([vc isKindOfClass:UITabBarController.class]) {
+        UITabBarController *tc = (UITabBarController *)vc;
+        if (tc.selectedViewController) return FQXTopVisibleControllerFrom(tc.selectedViewController);
+    }
+    if ([vc isKindOfClass:UINavigationController.class]) {
+        UINavigationController *nc = (UINavigationController *)vc;
+        if (nc.visibleViewController) return FQXTopVisibleControllerFrom(nc.visibleViewController);
+    }
+    for (UIViewController *child in vc.childViewControllers.reverseObjectEnumerator) {
+        if (!child.isViewLoaded) continue;
+        UIView *v = child.view;
+        if (v.window && !v.hidden && v.alpha > 0.05 &&
+            CGRectGetWidth(v.bounds) > 200.0 && CGRectGetHeight(v.bounds) > 300.0) {
+            return FQXTopVisibleControllerFrom(child);
+        }
+    }
+    return vc;
+}
+
+static BOOL FQXSubtreeContainsVisibleControllerOfClasses(UIViewController *root, NSArray<Class> *classes) {
+    if (!root || !classes.count) return NO;
+    for (Class c in classes) {
+        if ([root isKindOfClass:c]) {
+            if (!root.isViewLoaded) return NO;
+            UIView *v = root.view;
+            return v.window != nil && !v.hidden && v.alpha > 0.05;
+        }
+    }
+    for (UIViewController *child in root.childViewControllers) {
+        if (FQXSubtreeContainsVisibleControllerOfClasses(child, classes)) return YES;
+    }
+    return NO;
+}
+
+static BOOL FQXIsControllerClassCurrentlyVisible(NSArray<NSString *> *classNames) {
+    if (UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) return NO;
+    NSMutableArray<Class> *classes = [NSMutableArray array];
+    for (NSString *n in classNames) {
+        Class c = NSClassFromString(n);
+        if (c) [classes addObject:c];
+    }
+    if (!classes.count) return NO;
+    UIWindow *win = FQXActiveForegroundWindow();
+    if (!win.rootViewController) return NO;
+    UIViewController *top = FQXTopVisibleControllerFrom(win.rootViewController);
+    if (!top) return NO;
+    for (Class c in classes) {
+        if ([top isKindOfClass:c]) return YES;
+    }
+    UIViewController *branch = win.rootViewController;
+    while (branch.presentedViewController && !branch.presentedViewController.isBeingDismissed) {
+        branch = branch.presentedViewController;
+    }
+    if ([branch isKindOfClass:UITabBarController.class]) {
+        branch = ((UITabBarController *)branch).selectedViewController ?: branch;
+    }
+    if ([branch isKindOfClass:UINavigationController.class]) {
+        branch = ((UINavigationController *)branch).topViewController ?: branch;
+    }
+    return FQXSubtreeContainsVisibleControllerOfClasses(branch, classes);
+}
+
+static BOOL FQXIsAudioFullPlayerCurrentlyVisible(void) {
+    return FQXIsControllerClassCurrentlyVisible(@[
+        @"SSNewAudioPlayViewController",
+        @"SSAudioPlayTTSReaderPageViewController",
+    ]);
+}
+
+static BOOL FQXIsDramaScreenCurrentlyVisible(void) {
+    return FQXIsControllerClassCurrentlyVisible(@[
+        @"FQVShortVideoListViewController",
+        @"SSVideoSeriesFeedViewController",
+        @"SSVideoFeedContainerViewController",
+    ]);
+}
+
+static void FQXCacheDramaAncestorsFromView(UIView *view) {
+    Class listCls = NSClassFromString(@"FQVShortVideoListViewController");
+    Class feedCls = NSClassFromString(@"SSVideoSeriesFeedViewController");
+    Class ctrlCls = NSClassFromString(@"FQVShortVideoVPlayerControlView");
+    for (UIResponder *r = view; r; r = r.nextResponder) {
+        if (ctrlCls && [r isKindOfClass:ctrlCls]) {
+            sLastDramaControlView = (UIView *)r;
+        } else if (listCls && [r isKindOfClass:listCls]) {
+            sLastDramaListVC = (UIViewController *)r;
+        } else if (feedCls && [r isKindOfClass:feedCls]) {
+            sLastDramaFeedVC = (UIViewController *)r;
+        }
+    }
+}
+
+static UIView *FQXFindViewOfClassInSubtree(UIView *root, Class targetCls, NSInteger maxDepth) {
+    if (!root || !targetCls || maxDepth < 0) return nil;
+    if ([root isKindOfClass:targetCls]) return root;
+    if (maxDepth == 0) return nil;
+    for (UIView *sub in root.subviews) {
+        UIView *hit = FQXFindViewOfClassInSubtree(sub, targetCls, maxDepth - 1);
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+static BOOL FQXDramaIsCurrentlyPlaying(void) {
+    UIView *player = sLastDramaPlayer;
+    if (!player) return NO;
+    NSInteger st = FQXIntMsg0(player, "playbackState", -1);
+    if (st == 1) return YES;
+    if (st == 0 || st == 2 || st == 3) return NO;
+    if (FQXBoolGet(player, "isPlaying", NO)) return YES;
+    id eng = FQXObjGet(player, "videoEngine") ?: sLastDramaEngine;
+    if (eng) {
+        NSInteger est = FQXIntMsg0(eng, "playbackState", -1);
+        if (est == 1) return YES;
+    }
+    return NO;
+}
+
+static void FQXActivateDramaAudioSession(void) {
+    AVAudioSession *session = AVAudioSession.sharedInstance;
+    NSError *err = nil;
+    [session setCategory:AVAudioSessionCategoryPlayback
+                    mode:AVAudioSessionModeDefault
+                 options:0
+                   error:&err];
+    [session setActive:YES error:&err];
+}
+
+static void FQXSetDramaRemoteCommandsRegistered(BOOL registered) {
+    if (sDramaRemoteRegistered == registered) return;
+    FQXEnsureMediaPlayerLoaded();
+    Class ccCls = NSClassFromString(@"MPRemoteCommandCenter");
+    SEL sharedSel = NSSelectorFromString(@"sharedCommandCenter");
+    if (!ccCls || ![ccCls respondsToSelector:sharedSel]) return;
+    id center = ((id (*)(id, SEL))objc_msgSend)(ccCls, sharedSel);
+    if (!center) return;
+
+    FQXDramaRemoteTarget *target = [FQXDramaRemoteTarget shared];
+    NSArray<NSArray<NSString *> *> *pairs = @[
+        @[@"playCommand", @"onPlay:"],
+        @[@"pauseCommand", @"onPause:"],
+        @[@"togglePlayPauseCommand", @"onToggle:"],
+        @[@"previousTrackCommand", @"onPrev:"],
+        @[@"nextTrackCommand", @"onNext:"],
+    ];
+    sInstallingDramaRemoteCommands = YES;
+    SEL addSel = NSSelectorFromString(@"addTarget:action:");
+    SEL remSel = NSSelectorFromString(@"removeTarget:");
+    SEL enSel = NSSelectorFromString(@"setEnabled:");
+    for (NSArray<NSString *> *pair in pairs) {
+        id cmdObj = FQXObjGet(center, pair[0].UTF8String);
+        if (!cmdObj) continue;
+        if ([cmdObj respondsToSelector:remSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(cmdObj, remSel, target);
+        }
+        if (registered) {
+            if ([cmdObj respondsToSelector:enSel]) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(cmdObj, enSel, YES);
+            }
+            if ([cmdObj respondsToSelector:addSel]) {
+                ((void (*)(id, SEL, id, SEL))objc_msgSend)(cmdObj, addSel, target, NSSelectorFromString(pair[1]));
+            }
+        }
+    }
+    sInstallingDramaRemoteCommands = NO;
+    sDramaRemoteRegistered = registered;
+}
+
+static void FQXExtractDramaMetadata(NSString **outTitle,
+                                    NSString **outSubtitle,
+                                    UIImage **outCover,
+                                    double *outDuration,
+                                    double *outElapsed) {
+    NSString *title = nil;
+    NSString *episode = nil;
+    UIImage *cover = nil;
+
+    UIView *ctrl = sLastDramaControlView;
+    if (!ctrl && sLastDramaListVC.isViewLoaded) {
+        ctrl = FQXFindViewOfClassInSubtree(sLastDramaListVC.view,
+                                           NSClassFromString(@"FQVShortVideoVPlayerControlView"), 8);
+        if (ctrl) sLastDramaControlView = ctrl;
+    }
+
+    id model = FQXObjGet(ctrl, "videoDataModel") ?: FQXObjGet(ctrl, "contentModel");
+    if (!model && sLastDramaPlayer) {
+        model = [objc_getAssociatedObject(sLastDramaPlayer, FQXQualityModelKey) anyObject];
+    }
+    if (model) {
+        title = FQXFirstNonEmptyString(model, @[@"seriesTitle", @"seriesName", @"albumTitle", @"bookName", @"dramaTitle", @"title"]);
+        episode = FQXFirstNonEmptyString(model, @[@"episodeTitle", @"subTitle", @"seqTitle", @"currentEpisodeTitle"]);
+        if (!episode.length) {
+            NSInteger epIdx = FQXIntMsg0(model, "episodeIndex", -1);
+            if (epIdx < 0) epIdx = FQXIntMsg0(model, "seq", -1);
+            if (epIdx > 0) episode = [NSString stringWithFormat:@"第%ld集", (long)epIdx];
+        }
+    }
+
+    if (ctrl) {
+        NSMutableArray<UILabel *> *labels = [NSMutableArray array];
+        NSMutableArray<UIView *> *stack = [NSMutableArray arrayWithObject:ctrl];
+        while (stack.count > 0 && labels.count < 24) {
+            UIView *cur = stack.lastObject;
+            [stack removeLastObject];
+            if (cur.hidden || cur.alpha < 0.05) continue;
+            if ([cur isKindOfClass:UILabel.class]) {
+                NSString *t = ((UILabel *)cur).text;
+                if (t.length > 0) [labels addObject:(UILabel *)cur];
+            } else if ([cur isKindOfClass:UIImageView.class] && !cover) {
+                UIImage *img = ((UIImageView *)cur).image;
+                if (img && img.size.width >= 36.0 && img.size.height >= 36.0) cover = img;
+            }
+            for (UIView *sub in cur.subviews) [stack addObject:sub];
+        }
+        for (UILabel *lbl in labels) {
+            NSString *txt = [lbl.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if (!txt.length) continue;
+            if (!episode.length && ([txt hasPrefix:@"第"] && [txt containsString:@"集"])) {
+                NSRange barRange = [txt rangeOfString:@"|"];
+                episode = (barRange.location != NSNotFound)
+                    ? [[txt substringToIndex:barRange.location] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet]
+                    : txt;
+            } else if (!title.length && lbl.font.pointSize >= 15.0 &&
+                       ![txt containsString:@"全屏观看"] && ![txt containsString:@"完整"] &&
+                       ![txt hasPrefix:@"原著"]) {
+                title = [txt stringByReplacingOccurrencesOfString:@" >" withString:@""];
+            }
+        }
+    }
+
+    UIView *player = sLastDramaPlayer;
+    id engine = FQXObjGet(player, "videoEngine") ?: sLastDramaEngine;
+    if (!cover && player) {
+        UIView *iv = FQXFindViewOfClassInSubtree(player, UIImageView.class, 4);
+        if ([iv isKindOfClass:UIImageView.class] && ((UIImageView *)iv).image) {
+            cover = ((UIImageView *)iv).image;
+        }
+    }
+
+    double dur = FQXDoubleMsg0(player, "duration", 0.0);
+    if (dur <= 0.1 && engine) dur = FQXDoubleMsg0(engine, "duration", 0.0);
+    double cur = FQXDoubleMsg0(player, "currentPlaybackTime", 0.0);
+    if (cur <= 0.0 && engine) cur = FQXDoubleMsg0(engine, "currentPlaybackTime", 0.0);
+
+    if (outTitle) *outTitle = title.length ? title : @"短剧播放中";
+    if (outSubtitle) *outSubtitle = episode.length ? episode : @"后台音频播放";
+    if (outCover) *outCover = cover;
+    if (outDuration) *outDuration = MAX(0.0, dur);
+    if (outElapsed) *outElapsed = MAX(0.0, cur);
+}
+
+static void FQXUpdateDramaSystemNowPlaying(void) {
+    if (!sDramaIslandActive || FQXIsAudioBookSessionAlive()) return;
+    FQXEnsureMediaPlayerLoaded();
+    Class infoCls = NSClassFromString(@"MPNowPlayingInfoCenter");
+    SEL defSel = NSSelectorFromString(@"defaultCenter");
+    SEL setSel = NSSelectorFromString(@"setNowPlayingInfo:");
+    if (!infoCls || ![infoCls respondsToSelector:defSel]) return;
+    id center = ((id (*)(id, SEL))objc_msgSend)(infoCls, defSel);
+    if (!center || ![center respondsToSelector:setSel]) return;
+
+    NSString *title = nil;
+    NSString *subtitle = nil;
+    UIImage *cover = nil;
+    double dur = 0.0;
+    double elapsed = 0.0;
+    FQXExtractDramaMetadata(&title, &subtitle, &cover, &dur, &elapsed);
+    BOOL playing = FQXDramaIsCurrentlyPlaying();
+
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    info[FQXMPKey("MPMediaItemPropertyTitle", @"title")] = title ?: @"短剧播放中";
+    info[FQXMPKey("MPMediaItemPropertyArtist", @"artist")] = subtitle ?: @"番茄短剧";
+    info[FQXMPKey("MPMediaItemPropertyAlbumTitle", @"albumTitle")] = @"番茄短剧";
+    if (dur > 0.5) {
+        info[FQXMPKey("MPMediaItemPropertyPlaybackDuration", @"playbackDuration")] = @(dur);
+        info[FQXMPKey("MPNowPlayingInfoPropertyElapsedPlaybackTime", @"MPNowPlayingInfoPropertyElapsedPlaybackTime")] = @(MIN(dur, elapsed));
+    }
+    info[FQXMPKey("MPNowPlayingInfoPropertyPlaybackRate", @"MPNowPlayingInfoPropertyPlaybackRate")] = @(playing ? 1.0 : 0.0);
+    info[FQXMPKey("MPNowPlayingInfoPropertyDefaultPlaybackRate", @"MPNowPlayingInfoPropertyDefaultPlaybackRate")] = @1.0;
+
+    if (cover) {
+        Class artCls = NSClassFromString(@"MPMediaItemArtwork");
+        SEL initArtSel = NSSelectorFromString(@"initWithBoundsSize:requestHandler:");
+        if (artCls && [artCls instancesRespondToSelector:initArtSel]) {
+            CGSize sz = cover.size.width > 1.0 ? cover.size : CGSizeMake(240.0, 240.0);
+            UIImage *captured = cover;
+            id art = ((id (*)(id, SEL, CGSize, UIImage *(^)(CGSize)))objc_msgSend)(
+                [artCls alloc], initArtSel, sz, ^UIImage *(__unused CGSize reqSize) {
+                    return captured;
+                });
+            if (art) {
+                info[FQXMPKey("MPMediaItemPropertyArtwork", @"artwork")] = art;
+            }
+        }
+    }
+    ((void (*)(id, SEL, id))objc_msgSend)(center, setSel, info);
+}
+
+static void FQXClearDramaSystemNowPlayingIfOwned(void) {
+    FQXSetDramaRemoteCommandsRegistered(NO);
+    if (FQXIsAudioBookSessionAlive()) {
+        FQXActivateAudioPlaybackSessionAndRemote();
+        return;
+    }
+    FQXEnsureMediaPlayerLoaded();
+    Class infoCls = NSClassFromString(@"MPNowPlayingInfoCenter");
+    SEL defSel = NSSelectorFromString(@"defaultCenter");
+    SEL setSel = NSSelectorFromString(@"setNowPlayingInfo:");
+    if (infoCls && [infoCls respondsToSelector:defSel]) {
+        id center = ((id (*)(id, SEL))objc_msgSend)(infoCls, defSel);
+        if (center && [center respondsToSelector:setSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(center, setSel, nil);
+        }
+    }
+}
+
+static void FQXStopDramaIslandSession(BOOL pausePlayer) {
+    if (pausePlayer && sLastDramaPlayer) {
+        FQXVoidMsg0Safe(sLastDramaPlayer, "pause");
+        id eng = FQXObjGet(sLastDramaPlayer, "videoEngine") ?: sLastDramaEngine;
+        if (eng) FQXVoidMsg0Safe(eng, "pause");
+    }
+    sDramaIslandActive = NO;
+    sDramaIslandUserPaused = NO;
+    FQXClearDramaSystemNowPlayingIfOwned();
+}
+
+static void FQXDramaPlayAction(BOOL play) {
+    UIView *player = sLastDramaPlayer;
+    if (!player) return;
+    id eng = FQXObjGet(player, "videoEngine") ?: sLastDramaEngine;
+    if (play) {
+        if (FQXIsAudioBookSessionAlive()) {
+            id sdk = FQXSharedAudioSDKManager();
+            SEL stopSel = NSSelectorFromString(@"audioStopWithEntry:");
+            if (sdk && [sdk respondsToSelector:stopSel]) {
+                ((void (*)(id, SEL, id))objc_msgSend)(sdk, stopSel, @"drama_island");
+            }
+        }
+        sDramaIslandUserPaused = NO;
+        sDramaManuallyPausedInFeed = NO;
+        FQXActivateDramaAudioSession();
+        FQXVoidMsg0Safe(player, "play");
+        if (!FQXDramaIsCurrentlyPlaying() && eng) {
+            FQXVoidMsg0Safe(eng, "play");
+        }
+    } else {
+        sDramaIslandUserPaused = YES;
+        FQXVoidMsg0Safe(player, "pause");
+        if (eng) FQXVoidMsg0Safe(eng, "pause");
+    }
+    FQXUpdateDramaSystemNowPlaying();
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void FQXDramaTogglePlayPauseAction(void) {
+    FQXDramaPlayAction(!FQXDramaIsCurrentlyPlaying());
+}
+
+static UICollectionView *FQXFindDramaFeedCollectionView(UIView *root, NSInteger depth) {
+    if (!root || depth < 0) return nil;
+    Class fqvCVCls = NSClassFromString(@"FQVCollectionView");
+    if ([root isKindOfClass:UICollectionView.class]) {
+        UICollectionView *cv = (UICollectionView *)root;
+        if ((fqvCVCls && [cv isKindOfClass:fqvCVCls]) ||
+            (CGRectGetHeight(cv.bounds) > 320.0 && cv.pagingEnabled)) {
+            return cv;
+        }
+    }
+    if (depth == 0) return nil;
+    for (UIView *sub in root.subviews) {
+        UICollectionView *hit = FQXFindDramaFeedCollectionView(sub, depth - 1);
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+static void FQXDramaStepEpisode(NSInteger delta) {
+    if (delta == 0) return;
+    UIViewController *listVC = sLastDramaListVC;
+    UIView *searchRoot = listVC.isViewLoaded ? listVC.view : (sLastDramaFeedVC.isViewLoaded ? sLastDramaFeedVC.view : nil);
+    if (!searchRoot) return;
+    UICollectionView *cv = FQXObjGet(listVC, "collectionView");
+    if (![cv isKindOfClass:UICollectionView.class]) {
+        cv = FQXFindDramaFeedCollectionView(searchRoot, 6);
+    }
+    if (![cv isKindOfClass:UICollectionView.class] || [cv numberOfSections] <= 0) return;
+    NSInteger count = [cv numberOfItemsInSection:0];
+    if (count <= 1) return;
+    CGFloat pageH = CGRectGetHeight(cv.bounds);
+    if (pageH < 100.0) return;
+
+    NSInteger curIdx = (NSInteger)llround(cv.contentOffset.y / pageH);
+    curIdx = MAX(0, MIN(count - 1, curIdx));
+    NSInteger nextIdx = curIdx + delta;
+    if (nextIdx < 0 || nextIdx >= count) return;
+
+    sDramaIslandUserPaused = NO;
+    FQXActivateDramaAudioSession();
+    NSIndexPath *targetIP = [NSIndexPath indexPathForItem:nextIdx inSection:0];
+    [cv scrollToItemAtIndexPath:targetIP atScrollPosition:UICollectionViewScrollPositionTop animated:NO];
+    [cv setContentOffset:CGPointMake(0.0, (CGFloat)nextIdx * pageH) animated:NO];
+    [cv setNeedsLayout];
+    [cv layoutIfNeeded];
+
+    id del = cv.delegate;
+    if ([del respondsToSelector:@selector(scrollViewDidScroll:)]) {
+        [del scrollViewDidScroll:cv];
+    }
+    if ([del respondsToSelector:@selector(scrollViewDidEndDecelerating:)]) {
+        [del scrollViewDidEndDecelerating:cv];
+    }
+    if ([del respondsToSelector:@selector(scrollViewDidEndScrollingAnimation:)]) {
+        [del scrollViewDidEndScrollingAnimation:cv];
+    }
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIView *ctrl = FQXFindViewOfClassInSubtree(cv, NSClassFromString(@"FQVShortVideoVPlayerControlView"), 7);
+        if (ctrl) {
+            sLastDramaControlView = ctrl;
+            UIView *pl = FQXObjGet(ctrl, "vPlayer");
+            if ([pl isKindOfClass:UIView.class]) sLastDramaPlayer = pl;
+        }
+        if (sDramaIslandActive && !sDramaIslandUserPaused && sLastDramaPlayer) {
+            FQXActivateDramaAudioSession();
+            FQXVoidMsg0Safe(sLastDramaPlayer, "play");
+        }
+        FQXUpdateDramaSystemNowPlaying();
+        FQXScheduleDynamicIslandRefresh();
+    });
+}
+
+static BOOL FQXAudioIsCurrentlyPlaying(void) {
+    id sdk = FQXSharedAudioSDKManager();
+    if (!sdk || !FQXIsAudioBookSessionAlive()) return NO;
+    if (FQXBoolGet(sdk, "playing", NO)) return YES;
+    if (FQXBoolGet(sdk, "loading", NO) && !FQXBoolGet(sdk, "paused", NO)) return YES;
+    return NO;
+}
+
+static void FQXExtractAudioMetadata(NSString **outTitle, NSString **outSubtitle, UIImage **outCover) {
+    NSString *title = nil;
+    NSString *subtitle = nil;
+    UIImage *cover = nil;
+
+    id sdk = FQXSharedAudioSDKManager();
+    id playMgr = FQXObjGet(sdk, "bdfqPlayManager");
+    id playInfo = FQXObjGet(playMgr, "playInfo");
+    if (playInfo) {
+        title = FQXFirstNonEmptyString(playInfo, @[@"bookName", @"albumTitle", @"novelName", @"seriesName", @"title"]);
+        subtitle = FQXFirstNonEmptyString(playInfo, @[@"chapterTitle", @"chapterName", @"itemTitle", @"subTitle", @"title"]);
+        id imgObj = FQXObjGet(playInfo, "coverImage") ?: FQXObjGet(playInfo, "bookCoverImage");
+        if ([imgObj isKindOfClass:UIImage.class]) cover = (UIImage *)imgObj;
+    }
+
+    FQXEnsureMediaPlayerLoaded();
+    Class infoCls = NSClassFromString(@"MPNowPlayingInfoCenter");
+    SEL defSel = NSSelectorFromString(@"defaultCenter");
+    if (infoCls && [infoCls respondsToSelector:defSel]) {
+        id center = ((id (*)(id, SEL))objc_msgSend)(infoCls, defSel);
+        NSDictionary *np = FQXObjGet(center, "nowPlayingInfo");
+        if ([np isKindOfClass:NSDictionary.class]) {
+            NSString *npTitle = np[FQXMPKey("MPMediaItemPropertyTitle", @"title")];
+            NSString *npAlbum = np[FQXMPKey("MPMediaItemPropertyAlbumTitle", @"albumTitle")];
+            NSString *npArtist = np[FQXMPKey("MPMediaItemPropertyArtist", @"artist")];
+            if (!title.length && [npAlbum isKindOfClass:NSString.class] && npAlbum.length) title = npAlbum;
+            if (!title.length && [npTitle isKindOfClass:NSString.class] && npTitle.length) title = npTitle;
+            if (!subtitle.length && [npTitle isKindOfClass:NSString.class] && npTitle.length && ![npTitle isEqualToString:title]) {
+                subtitle = npTitle;
+            }
+            if (!subtitle.length && [npArtist isKindOfClass:NSString.class] && npArtist.length) subtitle = npArtist;
+            if (!cover) {
+                id art = np[FQXMPKey("MPMediaItemPropertyArtwork", @"artwork")];
+                SEL imgSel = NSSelectorFromString(@"imageWithSize:");
+                if (art && [art respondsToSelector:imgSel]) {
+                    UIImage *artImg = ((UIImage *(*)(id, SEL, CGSize))objc_msgSend)(art, imgSel, CGSizeMake(120.0, 120.0));
+                    if ([artImg isKindOfClass:UIImage.class]) cover = artImg;
+                }
+            }
+        }
+    }
+
+    if (!cover) {
+        Class audioIndCls = NSClassFromString(@"SSAudioPlayIndicatorView");
+        for (UIView *ind in [FQXTrackedAudioIndicators() allObjects]) {
+            if (audioIndCls && ![ind isKindOfClass:audioIndCls]) continue;
+            UIView *iv = FQXFindViewOfClassInSubtree(ind, UIImageView.class, 4);
+            if ([iv isKindOfClass:UIImageView.class] && ((UIImageView *)iv).image) {
+                cover = ((UIImageView *)iv).image;
+                break;
+            }
+        }
+    }
+
+    if ([title isEqualToString:subtitle]) subtitle = @"正在朗读";
+    if (outTitle) *outTitle = title.length ? title : @"听书朗读";
+    if (outSubtitle) *outSubtitle = subtitle.length ? subtitle : @"后台朗读中";
+    if (outCover) *outCover = cover;
+}
+
+static void FQXAudioTogglePlayPauseAction(void) {
+    id sdk = FQXSharedAudioSDKManager();
+    if (!sdk) return;
+    FQXActivateAudioPlaybackSessionAndRemote();
+    if (FQXAudioIsCurrentlyPlaying()) {
+        if (!FQXInvokeHostAudioRemoteCommand(@"pauseCommand")) {
+            SEL pauseSel = NSSelectorFromString(@"audioPauseWithType:entry:");
+            if ([sdk respondsToSelector:pauseSel]) {
+                ((void (*)(id, SEL, NSUInteger, id))objc_msgSend)(sdk, pauseSel, 0, @"dynamic_island");
+            }
+        }
+    } else {
+        if (!FQXInvokeHostAudioRemoteCommand(@"playCommand") &&
+            !FQXInvokeHostAudioRemoteCommand(@"togglePlayPauseCommand")) {
+            FQXVoidMsg0Safe(sdk, "audioResume");
+            id playMgr = FQXObjGet(sdk, "bdfqPlayManager");
+            if (playMgr) FQXVoidMsg0Safe(playMgr, "play");
+        }
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        FQXScheduleDynamicIslandRefresh();
+    });
+}
+
+static void FQXAudioStepChapter(NSInteger delta) {
+    if (delta == 0) return;
+    FQXActivateAudioPlaybackSessionAndRemote();
+    NSString *cmdKey = (delta < 0) ? @"previousTrackCommand" : @"nextTrackCommand";
+    if (!FQXInvokeHostAudioRemoteCommand(cmdKey)) {
+        id sdk = FQXSharedAudioSDKManager();
+        if (delta < 0) {
+            FQXVoidMsg0Safe(sdk, "audioPlayPrev");
+            FQXVoidMsg0Safe(sdk, "playPrev");
+        } else {
+            FQXVoidMsg0Safe(sdk, "audioPlayNext");
+            FQXVoidMsg0Safe(sdk, "playNext");
+        }
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.16 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        FQXScheduleDynamicIslandRefresh();
+    });
+}
+
+static void FQXAudioStopSessionAction(void) {
+    id sdk = FQXSharedAudioSDKManager();
+    SEL stopSel = NSSelectorFromString(@"audioStopWithEntry:");
+    if (sdk && [sdk respondsToSelector:stopSel]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(sdk, stopSel, @"dynamic_island");
+    }
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void FQXOpenAudiobookPlayerPage(void) {
+    Class audioIndCls = NSClassFromString(@"SSAudioPlayIndicatorView");
+    for (UIView *ind in [FQXTrackedAudioIndicators() allObjects]) {
+        if (!ind.window || (audioIndCls && ![ind isKindOfClass:audioIndCls])) continue;
+        for (UIGestureRecognizer *gr in ind.gestureRecognizers) {
+            if ([gr isKindOfClass:UITapGestureRecognizer.class]) {
+                NSArray *targets = nil;
+                @try { targets = [gr valueForKey:@"_targets"]; } @catch (__unused NSException *e) {}
+                for (id pair in targets) {
+                    id tgt = nil;
+                    @try { tgt = [pair valueForKey:@"_target"]; } @catch (__unused NSException *e) {}
+                    if (!tgt) continue;
+                    for (NSString *cand in @[@"onClickIndicator:", @"onClickIndicator", @"didTapIndicator:", @"didTapIndicator", @"tapAction:", @"onTap:"]) {
+                        SEL s = NSSelectorFromString(cand);
+                        if ([tgt respondsToSelector:s]) {
+                            Method m = class_getInstanceMethod(object_getClass(tgt), s);
+                            if (m && method_getNumberOfArguments(m) == 3) {
+                                ((void (*)(id, SEL, id))objc_msgSend)(tgt, s, gr);
+                                return;
+                            } else if (m && method_getNumberOfArguments(m) == 2) {
+                                ((void (*)(id, SEL))objc_msgSend)(tgt, s);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        UIView *btn = FQXFindViewOfClassInSubtree(ind, UIButton.class, 4);
+        if ([btn isKindOfClass:UIButton.class]) {
+            [(UIButton *)btn sendActionsForControlEvents:UIControlEventTouchUpInside];
+            return;
+        }
+    }
+}
+
+static void FQXOpenDramaPlayerPage(void) {
+    UIWindow *win = FQXActiveForegroundWindow();
+    UIViewController *root = win.rootViewController;
+    if ([root isKindOfClass:UITabBarController.class]) {
+        UITabBarController *tc = (UITabBarController *)root;
+        Class feedCls = NSClassFromString(@"SSVideoSeriesFeedViewController");
+        Class listCls = NSClassFromString(@"FQVShortVideoListViewController");
+        Class contCls = NSClassFromString(@"SSVideoFeedContainerViewController");
+        NSArray<UIViewController *> *vcs = tc.viewControllers;
+        for (NSUInteger i = 0; i < vcs.count; ++i) {
+            UIViewController *cand = vcs[i];
+            UIViewController *inner = [cand isKindOfClass:UINavigationController.class]
+                ? ((UINavigationController *)cand).viewControllers.firstObject : cand;
+            NSString *clsStr = NSStringFromClass(inner.class);
+            if ((feedCls && [inner isKindOfClass:feedCls]) ||
+                (listCls && [inner isKindOfClass:listCls]) ||
+                (contCls && [inner isKindOfClass:contCls]) ||
+                [clsStr containsString:@"ShortVideo"] || [clsStr containsString:@"VideoSeries"]) {
+                if ([tc.selectedViewController isKindOfClass:UINavigationController.class]) {
+                    UINavigationController *curNav = (UINavigationController *)tc.selectedViewController;
+                    if (curNav.presentedViewController) [curNav dismissViewControllerAnimated:YES completion:nil];
+                }
+                tc.selectedIndex = i;
+                if ([cand isKindOfClass:UINavigationController.class]) {
+                    UINavigationController *dramaNav = (UINavigationController *)cand;
+                    if (sLastDramaListVC && [dramaNav.viewControllers containsObject:sLastDramaListVC]) {
+                        [dramaNav popToViewController:sLastDramaListVC animated:YES];
+                    }
+                }
+                return;
+            }
+        }
+    }
+}
+
+@interface FQXIslandWaveformView : UIView
+@property(nonatomic, copy) NSArray<CALayer *> *barLayers;
+@property(nonatomic) BOOL animatingWave;
+- (void)setPlaying:(BOOL)playing accentColor:(UIColor *)color;
+@end
+
+@implementation FQXIslandWaveformView
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.userInteractionEnabled = NO;
+        NSMutableArray<CALayer *> *bars = [NSMutableArray arrayWithCapacity:4];
+        for (NSUInteger i = 0; i < 4; ++i) {
+            CALayer *bar = [CALayer layer];
+            bar.cornerRadius = 1.3;
+            bar.backgroundColor = UIColor.whiteColor.CGColor;
+            [self.layer addSublayer:bar];
+            [bars addObject:bar];
+        }
+        _barLayers = bars;
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat w = CGRectGetWidth(self.bounds);
+    CGFloat h = CGRectGetHeight(self.bounds);
+    CGFloat barW = 2.6;
+    CGFloat gap = 2.4;
+    CGFloat totalW = 4.0 * barW + 3.0 * gap;
+    CGFloat startX = (w - totalW) * 0.5;
+    static const CGFloat restHeights[4] = { 5.0, 9.0, 7.0, 4.5 };
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (NSUInteger i = 0; i < self.barLayers.count; ++i) {
+        CALayer *bar = self.barLayers[i];
+        CGFloat bh = restHeights[i];
+        bar.position = CGPointMake(startX + (CGFloat)i * (barW + gap) + barW * 0.5, h * 0.5);
+        if (!self.animatingWave) {
+            bar.bounds = CGRectMake(0.0, 0.0, barW, bh);
+        }
+    }
+    [CATransaction commit];
+}
+
+- (void)setPlaying:(BOOL)playing accentColor:(UIColor *)color {
+    UIColor *effective = color ?: UIColor.whiteColor;
+    for (CALayer *bar in self.barLayers) {
+        bar.backgroundColor = effective.CGColor;
+    }
+    if (self.animatingWave == playing) return;
+    self.animatingWave = playing;
+    static const CGFloat minH[4] = { 4.0, 5.0, 4.5, 4.0 };
+    static const CGFloat maxH[4] = { 13.5, 17.5, 15.0, 11.5 };
+    static const CFTimeInterval durs[4] = { 0.39, 0.52, 0.44, 0.58 };
+    for (NSUInteger i = 0; i < self.barLayers.count; ++i) {
+        CALayer *bar = self.barLayers[i];
+        [bar removeAnimationForKey:@"fqx.wave"];
+        if (playing) {
+            bar.bounds = CGRectMake(0.0, 0.0, 2.6, minH[i]);
+            CABasicAnimation *anim = [CABasicAnimation animationWithKeyPath:@"bounds.size.height"];
+            anim.fromValue = @(minH[i]);
+            anim.toValue = @(maxH[i]);
+            anim.duration = durs[i];
+            anim.autoreverses = YES;
+            anim.repeatCount = HUGE_VALF;
+            anim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [bar addAnimation:anim forKey:@"fqx.wave"];
+        } else {
+            bar.bounds = CGRectMake(0.0, 0.0, 2.6, minH[i] + (i == 1 ? 3.5 : 1.5));
+        }
+    }
+}
+@end
+
+@interface FQXDynamicIslandOverlayView : UIView
+@property(nonatomic, strong) UIView *islandCard;
+@property(nonatomic, strong) UIImageView *miniCoverView;
+@property(nonatomic, strong) UILabel *miniCenterLabel;
+@property(nonatomic, strong) FQXIslandWaveformView *miniWaveView;
+@property(nonatomic, strong) UIView *expandedContent;
+@property(nonatomic, strong) UIImageView *largeCoverView;
+@property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UILabel *subtitleLabel;
+@property(nonatomic, strong) UIButton *infoTapButton;
+@property(nonatomic, strong) UIButton *openButton;
+@property(nonatomic, strong) UIButton *closeButton;
+@property(nonatomic, strong) UIButton *prevButton;
+@property(nonatomic, strong) UIButton *playPauseButton;
+@property(nonatomic, strong) UIButton *nextButton;
+@property(nonatomic, strong) FQXIslandWaveformView *expandedWaveView;
+@property(nonatomic, strong) UILabel *badgeLabel;
+@property(nonatomic) BOOL expanded;
+@property(nonatomic) FQXIslandActiveKind activeKind;
+@property(nonatomic) BOOL currentlyPlaying;
+- (void)updateWithKind:(FQXIslandActiveKind)kind
+                 title:(NSString *)title
+              subtitle:(NSString *)subtitle
+                 cover:(UIImage *)cover
+               playing:(BOOL)playing;
+- (void)setExpanded:(BOOL)expanded animated:(BOOL)animated;
+@end
+
+@implementation FQXDynamicIslandOverlayView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = UIColor.clearColor;
+        self.opaque = NO;
+        self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        self.layer.zPosition = 9999.0;
+
+        UITapGestureRecognizer *bgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onOutsideTap)];
+        [self addGestureRecognizer:bgTap];
+
+        _islandCard = [[UIView alloc] initWithFrame:CGRectZero];
+        _islandCard.backgroundColor = UIColor.blackColor;
+        _islandCard.clipsToBounds = YES;
+        _islandCard.layer.cornerCurve = kCACornerCurveContinuous;
+        _islandCard.layer.borderWidth = 0.65;
+        _islandCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.15].CGColor;
+        _islandCard.layer.shadowColor = UIColor.blackColor.CGColor;
+        _islandCard.layer.shadowOpacity = 0.28;
+        _islandCard.layer.shadowRadius = 12.0;
+        _islandCard.layer.shadowOffset = CGSizeMake(0.0, 5.0);
+        [self addSubview:_islandCard];
+
+        UITapGestureRecognizer *cardTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onCardTap)];
+        [_islandCard addGestureRecognizer:cardTap];
+
+        UISwipeGestureRecognizer *swipeUp = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(onSwipeUp)];
+        swipeUp.direction = UISwipeGestureRecognizerDirectionUp;
+        [_islandCard addGestureRecognizer:swipeUp];
+
+        _miniCoverView = [[UIImageView alloc] initWithFrame:CGRectZero];
+        _miniCoverView.contentMode = UIViewContentModeScaleAspectFill;
+        _miniCoverView.clipsToBounds = YES;
+        _miniCoverView.layer.cornerRadius = 6.5;
+        _miniCoverView.layer.cornerCurve = kCACornerCurveContinuous;
+        _miniCoverView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+        [_islandCard addSubview:_miniCoverView];
+
+        _miniCenterLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _miniCenterLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+        _miniCenterLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.92];
+        _miniCenterLabel.textAlignment = NSTextAlignmentCenter;
+        _miniCenterLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_islandCard addSubview:_miniCenterLabel];
+
+        _miniWaveView = [[FQXIslandWaveformView alloc] initWithFrame:CGRectZero];
+        [_islandCard addSubview:_miniWaveView];
+
+        _expandedContent = [[UIView alloc] initWithFrame:CGRectZero];
+        _expandedContent.alpha = 0.0;
+        _expandedContent.hidden = YES;
+        [_islandCard addSubview:_expandedContent];
+
+        _largeCoverView = [[UIImageView alloc] initWithFrame:CGRectZero];
+        _largeCoverView.contentMode = UIViewContentModeScaleAspectFill;
+        _largeCoverView.clipsToBounds = YES;
+        _largeCoverView.layer.cornerRadius = 10.0;
+        _largeCoverView.layer.cornerCurve = kCACornerCurveContinuous;
+        _largeCoverView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+        [_expandedContent addSubview:_largeCoverView];
+
+        _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _titleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+        _titleLabel.textColor = UIColor.whiteColor;
+        _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_expandedContent addSubview:_titleLabel];
+
+        _subtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _subtitleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightRegular];
+        _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.68];
+        _subtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_expandedContent addSubview:_subtitleLabel];
+
+        _infoTapButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        [_infoTapButton addTarget:self action:@selector(onOpenTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_infoTapButton];
+
+        UIImageSymbolConfiguration *hdrSym = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightMedium];
+        _openButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [_openButton setImage:[UIImage systemImageNamed:@"arrow.up.forward.circle.fill" withConfiguration:hdrSym] forState:UIControlStateNormal];
+        _openButton.tintColor = [UIColor colorWithWhite:1.0 alpha:0.78];
+        [_openButton addTarget:self action:@selector(onOpenTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_openButton];
+
+        _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [_closeButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill" withConfiguration:hdrSym] forState:UIControlStateNormal];
+        _closeButton.tintColor = [UIColor colorWithWhite:1.0 alpha:0.56];
+        [_closeButton addTarget:self action:@selector(onCloseTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_closeButton];
+
+        UIImageSymbolConfiguration *stepSym = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightSemibold];
+        _prevButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [_prevButton setImage:[UIImage systemImageNamed:@"backward.end.fill" withConfiguration:stepSym] forState:UIControlStateNormal];
+        _prevButton.tintColor = UIColor.whiteColor;
+        [_prevButton addTarget:self action:@selector(onPrevTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_prevButton];
+
+        _playPauseButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        _playPauseButton.tintColor = UIColor.whiteColor;
+        [_playPauseButton addTarget:self action:@selector(onPlayPauseTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_playPauseButton];
+
+        _nextButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [_nextButton setImage:[UIImage systemImageNamed:@"forward.end.fill" withConfiguration:stepSym] forState:UIControlStateNormal];
+        _nextButton.tintColor = UIColor.whiteColor;
+        [_nextButton addTarget:self action:@selector(onNextTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_expandedContent addSubview:_nextButton];
+
+        _expandedWaveView = [[FQXIslandWaveformView alloc] initWithFrame:CGRectZero];
+        [_expandedContent addSubview:_expandedWaveView];
+
+        _badgeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _badgeLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+        _badgeLabel.textAlignment = NSTextAlignmentCenter;
+        _badgeLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
+        _badgeLabel.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+        _badgeLabel.layer.cornerRadius = 9.0;
+        _badgeLabel.layer.masksToBounds = YES;
+        [_expandedContent addSubview:_badgeLabel];
+    }
+    return self;
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (self.hidden || self.alpha < 0.02 || self.activeKind == FQXIslandActiveNone) return nil;
+    CGPoint pInCard = [self convertPoint:point toView:self.islandCard];
+    if ([self.islandCard pointInside:pInCard withEvent:event]) {
+        return [super hitTest:point withEvent:event];
+    }
+    if (self.expanded) {
+        return self;
+    }
+    return nil;
+}
+
+- (BOOL)hasHardwareCutout {
+    CGFloat safeTop = self.window ? self.window.safeAreaInsets.top : self.safeAreaInsets.top;
+    return safeTop >= 51.0;
+}
+
+- (void)layoutIslandGeometry {
+    CGFloat winW = CGRectGetWidth(self.bounds);
+    if (winW < 100.0) return;
+    CGFloat safeTop = self.window ? self.window.safeAreaInsets.top : self.safeAreaInsets.top;
+    BOOL cutout = [self hasHardwareCutout];
+
+    if (!self.expanded) {
+        CGFloat pillW = cutout ? 216.0 : 212.0;
+        CGFloat pillH = cutout ? 37.0 : 36.0;
+        CGFloat pillY = cutout ? 11.0 : MAX(8.0, safeTop + 2.0);
+        self.islandCard.frame = CGRectMake((winW - pillW) * 0.5, pillY, pillW, pillH);
+        self.islandCard.layer.cornerRadius = pillH * 0.5;
+
+        self.miniCoverView.frame = CGRectMake(7.5, (pillH - 25.0) * 0.5, 25.0, 25.0);
+        self.miniWaveView.frame = CGRectMake(pillW - 7.5 - 22.0, (pillH - 20.0) * 0.5, 22.0, 20.0);
+        self.miniCenterLabel.hidden = cutout;
+        if (!cutout) {
+            self.miniCenterLabel.frame = CGRectMake(38.0, 0.0, pillW - 74.0, pillH);
+        }
+        self.expandedContent.frame = self.islandCard.bounds;
+    } else {
+        CGFloat cardW = MIN(winW - 24.0, 392.0);
+        CGFloat cardY = cutout ? 11.0 : MAX(8.0, safeTop + 4.0);
+        CGFloat topPad = cutout ? 48.0 : 14.0;
+        CGFloat cardH = topPad + 98.0;
+        self.islandCard.frame = CGRectMake((winW - cardW) * 0.5, cardY, cardW, cardH);
+        self.islandCard.layer.cornerRadius = 38.0;
+
+        self.expandedContent.frame = self.islandCard.bounds;
+        self.largeCoverView.frame = CGRectMake(18.0, topPad, 44.0, 44.0);
+        CGFloat textX = 72.0;
+        CGFloat rightBtnsX = cardW - 86.0;
+        CGFloat textW = MAX(60.0, rightBtnsX - textX - 6.0);
+        self.titleLabel.frame = CGRectMake(textX, topPad + 2.0, textW, 21.0);
+        self.subtitleLabel.frame = CGRectMake(textX, topPad + 24.0, textW, 18.0);
+        self.infoTapButton.frame = CGRectMake(14.0, topPad - 2.0, rightBtnsX - 16.0, 48.0);
+
+        self.openButton.frame = CGRectMake(cardW - 84.0, topPad + 5.0, 34.0, 34.0);
+        self.closeButton.frame = CGRectMake(cardW - 46.0, topPad + 5.0, 34.0, 34.0);
+
+        CGFloat ctrlY = topPad + 52.0;
+        self.expandedWaveView.frame = CGRectMake(22.0, ctrlY + 9.0, 24.0, 20.0);
+        self.prevButton.frame = CGRectMake(cardW * 0.5 - 104.0, ctrlY - 1.0, 56.0, 40.0);
+        self.playPauseButton.frame = CGRectMake(cardW * 0.5 - 32.0, ctrlY - 3.0, 64.0, 44.0);
+        self.nextButton.frame = CGRectMake(cardW * 0.5 + 48.0, ctrlY - 1.0, 56.0, 40.0);
+        self.badgeLabel.frame = CGRectMake(cardW - 60.0, ctrlY + 10.0, 42.0, 18.0);
+    }
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [self layoutIslandGeometry];
+}
+
+- (void)setExpanded:(BOOL)expanded animated:(BOOL)animated {
+    if (_expanded == expanded) return;
+    _expanded = expanded;
+    if (expanded) {
+        self.expandedContent.hidden = NO;
+    }
+    void (^apply)(void) = ^{
+        [self layoutIslandGeometry];
+        self.miniCoverView.alpha = expanded ? 0.0 : 1.0;
+        self.miniWaveView.alpha = expanded ? 0.0 : 1.0;
+        self.miniCenterLabel.alpha = expanded ? 0.0 : 1.0;
+        self.expandedContent.alpha = expanded ? 1.0 : 0.0;
+    };
+    void (^done)(BOOL) = ^(__unused BOOL finished) {
+        if (!self.expanded) {
+            self.expandedContent.hidden = YES;
+        }
+    };
+    if (animated) {
+        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [gen impactOccurred];
+        [UIView animateWithDuration:0.42
+                              delay:0.0
+             usingSpringWithDamping:0.80
+              initialSpringVelocity:0.25
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                         animations:apply
+                         completion:done];
+    } else {
+        apply();
+        done(YES);
+    }
+}
+
+- (void)updateWithKind:(FQXIslandActiveKind)kind
+                 title:(NSString *)title
+              subtitle:(NSString *)subtitle
+                 cover:(UIImage *)cover
+               playing:(BOOL)playing {
+    self.activeKind = kind;
+    self.currentlyPlaying = playing;
+    BOOL isAudio = (kind == FQXIslandActiveAudiobook);
+
+    UIColor *accent = isAudio
+        ? [UIColor colorWithRed:1.00 green:0.56 blue:0.32 alpha:1.0]
+        : [UIColor colorWithRed:0.38 green:0.78 blue:1.00 alpha:1.0];
+
+    UIImage *fallbackImg = nil;
+    if (!cover) {
+        UIImageSymbolConfiguration *fbCfg = [UIImageSymbolConfiguration configurationWithPointSize:14.0 weight:UIImageSymbolWeightSemibold];
+        fallbackImg = [[UIImage systemImageNamed:(isAudio ? @"headphones" : @"play.tv.fill") withConfiguration:fbCfg]
+            imageWithTintColor:accent renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+    self.miniCoverView.contentMode = cover ? UIViewContentModeScaleAspectFill : UIViewContentModeCenter;
+    self.largeCoverView.contentMode = cover ? UIViewContentModeScaleAspectFill : UIViewContentModeCenter;
+    self.miniCoverView.image = cover ?: fallbackImg;
+    self.largeCoverView.image = cover ?: fallbackImg;
+
+    self.miniCenterLabel.text = title;
+    self.titleLabel.text = title;
+    self.subtitleLabel.text = subtitle;
+    self.badgeLabel.text = isAudio ? @"听书" : @"短剧";
+
+    UIImageSymbolConfiguration *ppCfg = [UIImageSymbolConfiguration configurationWithPointSize:25.0 weight:UIImageSymbolWeightBold];
+    NSString *ppSym = playing ? @"pause.fill" : @"play.fill";
+    [self.playPauseButton setImage:[UIImage systemImageNamed:ppSym withConfiguration:ppCfg] forState:UIControlStateNormal];
+    self.playPauseButton.accessibilityLabel = playing ? @"暂停" : @"播放";
+    self.prevButton.accessibilityLabel = isAudio ? @"上一章" : @"上一集";
+    self.nextButton.accessibilityLabel = isAudio ? @"下一章" : @"下一集";
+
+    [self.miniWaveView setPlaying:playing accentColor:accent];
+    [self.expandedWaveView setPlaying:playing accentColor:accent];
+    [self layoutIslandGeometry];
+}
+
+- (void)onCardTap {
+    if (!self.expanded) {
+        [self setExpanded:YES animated:YES];
+    }
+}
+
+- (void)onOutsideTap {
+    if (self.expanded) {
+        [self setExpanded:NO animated:YES];
+    }
+}
+
+- (void)onSwipeUp {
+    if (self.expanded) {
+        [self setExpanded:NO animated:YES];
+    }
+}
+
+- (void)onPrevTapped {
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.activeKind == FQXIslandActiveAudiobook) {
+        FQXAudioStepChapter(-1);
+    } else if (self.activeKind == FQXIslandActiveDrama) {
+        FQXDramaStepEpisode(-1);
+    }
+}
+
+- (void)onPlayPauseTapped {
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.activeKind == FQXIslandActiveAudiobook) {
+        FQXAudioTogglePlayPauseAction();
+    } else if (self.activeKind == FQXIslandActiveDrama) {
+        FQXDramaTogglePlayPauseAction();
+    }
+}
+
+- (void)onNextTapped {
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.activeKind == FQXIslandActiveAudiobook) {
+        FQXAudioStepChapter(1);
+    } else if (self.activeKind == FQXIslandActiveDrama) {
+        FQXDramaStepEpisode(1);
+    }
+}
+
+- (void)onOpenTapped {
+    FQXIslandActiveKind kind = self.activeKind;
+    [self setExpanded:NO animated:NO];
+    if (kind == FQXIslandActiveAudiobook) {
+        FQXOpenAudiobookPlayerPage();
+    } else if (kind == FQXIslandActiveDrama) {
+        FQXOpenDramaPlayerPage();
+    }
+}
+
+- (void)onCloseTapped {
+    FQXIslandActiveKind kind = self.activeKind;
+    [self setExpanded:NO animated:NO];
+    if (kind == FQXIslandActiveAudiobook) {
+        FQXAudioStopSessionAction();
+    } else if (kind == FQXIslandActiveDrama) {
+        FQXStopDramaIslandSession(YES);
+    }
+    FQXRefreshDynamicIslandState();
+}
+
+@end
+
+static FQXDynamicIslandOverlayView *sIslandOverlay = nil;
+
+static void FQXRefreshDynamicIslandState(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    BOOL audioIslandOn = [ud boolForKey:AudioDynamicIslandPrefKey];
+    BOOL dramaIslandOn = [ud boolForKey:DramaDynamicIslandPrefKey];
+
+    for (UIView *ind in [FQXTrackedAudioIndicators() allObjects]) {
+        FQXApplyIndicatorIslandMuteIfNeeded(ind);
+    }
+
+    BOOL audioAlive = FQXIsAudioBookSessionAlive();
+    if (audioAlive && sDramaIslandActive) {
+        FQXStopDramaIslandSession(YES);
+    }
+    if (!dramaIslandOn && sDramaIslandActive) {
+        FQXStopDramaIslandSession(YES);
+    }
+
+    BOOL inBackground = (UIApplication.sharedApplication.applicationState != UIApplicationStateActive);
+    BOOL dramaVisible = !inBackground && FQXIsDramaScreenCurrentlyVisible();
+    if (dramaVisible && sDramaIslandActive) {
+        sDramaIslandActive = NO;
+        sDramaIslandUserPaused = NO;
+        FQXSetDramaRemoteCommandsRegistered(NO);
+    }
+
+    if (sDramaIslandActive) {
+        if (!sLastDramaPlayer) {
+            FQXStopDramaIslandSession(NO);
+        } else {
+            FQXSetDramaRemoteCommandsRegistered(YES);
+            FQXUpdateDramaSystemNowPlaying();
+        }
+    }
+
+    FQXIslandActiveKind targetKind = FQXIslandActiveNone;
+    if (!inBackground) {
+        if (audioIslandOn && audioAlive && !FQXIsAudioFullPlayerCurrentlyVisible()) {
+            targetKind = FQXIslandActiveAudiobook;
+        } else if (dramaIslandOn && sDramaIslandActive && !dramaVisible) {
+            targetKind = FQXIslandActiveDrama;
+        }
+    }
+
+    if (targetKind == FQXIslandActiveNone) {
+        if (sIslandOverlay && !sIslandOverlay.hidden) {
+            [sIslandOverlay setExpanded:NO animated:NO];
+            sIslandOverlay.activeKind = FQXIslandActiveNone;
+            sIslandOverlay.hidden = YES;
+        }
+        return;
+    }
+
+    UIWindow *win = FQXActiveForegroundWindow();
+    if (!win) return;
+    if (!sIslandOverlay) {
+        sIslandOverlay = [[FQXDynamicIslandOverlayView alloc] initWithFrame:win.bounds];
+        sIslandOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    }
+    if (sIslandOverlay.superview != win) {
+        sIslandOverlay.frame = win.bounds;
+        [win addSubview:sIslandOverlay];
+    } else {
+        [win bringSubviewToFront:sIslandOverlay];
+    }
+
+    NSString *title = nil;
+    NSString *subtitle = nil;
+    UIImage *cover = nil;
+    BOOL playing = NO;
+    if (targetKind == FQXIslandActiveAudiobook) {
+        FQXExtractAudioMetadata(&title, &subtitle, &cover);
+        playing = FQXAudioIsCurrentlyPlaying();
+    } else {
+        double dur = 0.0, cur = 0.0;
+        FQXExtractDramaMetadata(&title, &subtitle, &cover, &dur, &cur);
+        playing = FQXDramaIsCurrentlyPlaying();
+    }
+
+    [sIslandOverlay updateWithKind:targetKind title:title subtitle:subtitle cover:cover playing:playing];
+    if (sIslandOverlay.hidden) {
+        sIslandOverlay.alpha = 0.0;
+        sIslandOverlay.hidden = NO;
+        [UIView animateWithDuration:0.22 animations:^{
+            sIslandOverlay.alpha = 1.0;
+        }];
+    }
+}
+
+static void FQXScheduleDynamicIslandRefresh(void) {
+    if (sDynamicIslandRefreshPending) return;
+    sDynamicIslandRefreshPending = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        sDynamicIslandRefreshPending = NO;
+        FQXRefreshDynamicIslandState();
+    });
+}
+
+static void FQXEnterDramaIslandOnLeaveIfEligible(void) {
+    if (![NSUserDefaults.standardUserDefaults boolForKey:DramaDynamicIslandPrefKey]) return;
+    if (FQXIsAudioBookSessionAlive() || !sLastDramaPlayer) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    BOOL recentlyPlaying = FQXDramaIsCurrentlyPlaying() ||
+                           (!sDramaManuallyPausedInFeed && (now - sLastDramaPlayingTimestamp) < 1.35);
+    if (!recentlyPlaying && !sDramaIslandActive) return;
+
+    sLastDramaLeavingTimestamp = now;
+    sDramaIslandActive = YES;
+    sDramaIslandUserPaused = NO;
+    FQXActivateDramaAudioSession();
+    FQXSetDramaRemoteCommandsRegistered(YES);
+    if (!FQXDramaIsCurrentlyPlaying()) {
+        FQXVoidMsg0Safe(sLastDramaPlayer, "play");
+        id eng = FQXObjGet(sLastDramaPlayer, "videoEngine") ?: sLastDramaEngine;
+        if (!FQXDramaIsCurrentlyPlaying() && eng) FQXVoidMsg0Safe(eng, "play");
+    }
+    FQXUpdateDramaSystemNowPlaying();
+    FQXScheduleDynamicIslandRefresh();
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!sDramaIslandActive || sDramaIslandUserPaused || FQXIsAudioBookSessionAlive()) return;
+        if (!FQXIsDramaScreenCurrentlyVisible() ||
+            UIApplication.sharedApplication.applicationState != UIApplicationStateActive) {
+            if (!FQXDramaIsCurrentlyPlaying() && sLastDramaPlayer) {
+                FQXActivateDramaAudioSession();
+                FQXVoidMsg0Safe(sLastDramaPlayer, "play");
+            }
+            FQXUpdateDramaSystemNowPlaying();
+            FQXRefreshDynamicIslandState();
+        }
+    });
+}
+
+BOOL FQXIsDramaDynamicIslandSessionActive(void) {
+    return sDramaIslandActive && [NSUserDefaults.standardUserDefaults boolForKey:DramaDynamicIslandPrefKey];
+}
+
+void FQXNotifyAudioIslandStateChanged(void) {
+    if (NSThread.isMainThread) {
+        FQXScheduleDynamicIslandRefresh();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            FQXScheduleDynamicIslandRefresh();
+        });
+    }
+}
+
+void FQXNotifyDramaPlayerStateChanged(UIView *player, id engine, NSInteger state) {
+    void (^work)(void) = ^{
+        if (player) {
+            sLastDramaPlayer = player;
+            FQXCacheDramaAncestorsFromView(player);
+        }
+        if (engine) sLastDramaEngine = engine;
+        CFTimeInterval now = CACurrentMediaTime();
+        if (state == 1) {
+            sLastDramaPlayingTimestamp = now;
+            sDramaManuallyPausedInFeed = NO;
+            sDramaIslandUserPaused = NO;
+        } else if (state == 2) {
+            if (sDramaIslandActive) {
+                if (!sDramaIslandUserPaused && (now - sLastDramaLeavingTimestamp) < 0.85 &&
+                    !FQXIsAudioBookSessionAlive()) {
+                    FQXActivateDramaAudioSession();
+                    FQXVoidMsg0Safe(player, "play");
+                }
+            } else if (FQXIsDramaScreenCurrentlyVisible() &&
+                       UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+                CFTimeInterval pausedAt = now;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    if (!sDramaIslandActive && FQXIsDramaScreenCurrentlyVisible() &&
+                        UIApplication.sharedApplication.applicationState == UIApplicationStateActive &&
+                        !FQXDramaIsCurrentlyPlaying() && sLastDramaPlayingTimestamp < pausedAt) {
+                        sDramaManuallyPausedInFeed = YES;
+                    }
+                });
+            }
+        }
+        if (sDramaIslandActive) {
+            FQXUpdateDramaSystemNowPlaying();
+            FQXScheduleDynamicIslandRefresh();
+        }
+    };
+    if (NSThread.isMainThread) {
+        work();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), work);
+    }
+}
+
+static void FQXNoteDramaControllerAppeared(UIViewController *vc) {
+    Class listCls = NSClassFromString(@"FQVShortVideoListViewController");
+    Class feedCls = NSClassFromString(@"SSVideoSeriesFeedViewController");
+    if (listCls && [vc isKindOfClass:listCls]) sLastDramaListVC = vc;
+    if (feedCls && [vc isKindOfClass:feedCls]) sLastDramaFeedVC = vc;
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void FQXNoteDramaControllerWillDisappear(UIViewController *vc) {
+    Class listCls = NSClassFromString(@"FQVShortVideoListViewController");
+    Class feedCls = NSClassFromString(@"SSVideoSeriesFeedViewController");
+    if (listCls && [vc isKindOfClass:listCls]) sLastDramaListVC = vc;
+    if (feedCls && [vc isKindOfClass:feedCls]) sLastDramaFeedVC = vc;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!FQXIsDramaScreenCurrentlyVisible()) {
+            FQXEnterDramaIslandOnLeaveIfEligible();
+        }
+    });
+}
+
+static void FQXNoteDramaPlayerReady(UIView *player, id engine) {
+    if (player) {
+        sLastDramaPlayer = player;
+        FQXCacheDramaAncestorsFromView(player);
+    }
+    if (engine) sLastDramaEngine = engine;
+    if (FQXDramaIsCurrentlyPlaying()) {
+        sLastDramaPlayingTimestamp = CACurrentMediaTime();
+        sDramaManuallyPausedInFeed = NO;
+    }
+    if (sDramaIslandActive) {
+        FQXUpdateDramaSystemNowPlaying();
+        FQXScheduleDynamicIslandRefresh();
+    }
+}
+
+static void FQXNoteDramaControlDisplayed(UIView *control) {
+    if (!control) return;
+    sLastDramaControlView = control;
+    UIView *pl = FQXObjGet(control, "vPlayer");
+    if ([pl isKindOfClass:UIView.class]) sLastDramaPlayer = pl;
+    FQXCacheDramaAncestorsFromView(control);
+    if (sDramaIslandActive) {
+        FQXUpdateDramaSystemNowPlaying();
+        FQXScheduleDynamicIslandRefresh();
+    }
+}
+
+static void (*OrigAudioVCDidAppearIsland)(id, SEL, BOOL);
+static void HookAudioVCDidAppearIsland(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigAudioVCDidAppearIsland) OrigAudioVCDidAppearIsland(self, _cmd, animated);
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void (*OrigAudioVCWillDisappearIsland)(id, SEL, BOOL);
+static void HookAudioVCWillDisappearIsland(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigAudioVCWillDisappearIsland) OrigAudioVCWillDisappearIsland(self, _cmd, animated);
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void (*OrigAudioVCDidDisappearIsland)(id, SEL, BOOL);
+static void HookAudioVCDidDisappearIsland(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigAudioVCDidDisappearIsland) OrigAudioVCDidDisappearIsland(self, _cmd, animated);
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void (*OrigTTSReaderDidAppearIsland)(id, SEL, BOOL);
+static void HookTTSReaderDidAppearIsland(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigTTSReaderDidAppearIsland) OrigTTSReaderDidAppearIsland(self, _cmd, animated);
+    FQXScheduleDynamicIslandRefresh();
+}
+
+static void (*OrigTTSReaderDidDisappearIsland)(id, SEL, BOOL);
+static void HookTTSReaderDidDisappearIsland(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigTTSReaderDidDisappearIsland) OrigTTSReaderDidDisappearIsland(self, _cmd, animated);
+    FQXScheduleDynamicIslandRefresh();
+}
+
 static BOOL FQXIsCommentComposerTextView(UIView *view) {
     if (![view isKindOfClass:UITextView.class] || !view.window) return NO;
     Class c1 = NSClassFromString(@"FQCShortVideoNewEditorView");
@@ -11095,6 +13131,23 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
 
+        // 7. Short Drama & Audiobook Dynamic Island ("像音频一样")
+        FQXEnsureMediaPlayerLoaded();
+        HOOK_INST("MPRemoteCommand", "addTarget:action:", "v32@0:8@16:24", OrigMPRemoteAddTargetAction, HookMPRemoteAddTargetAction);
+        HOOK_INST("MPRemoteCommand", "addTargetWithHandler:", "@24@0:8@?16", OrigMPRemoteAddTargetHandler, HookMPRemoteAddTargetHandler);
+        HOOK_INST("SSNewAudioPlayViewController", "viewDidAppear:", "v20@0:8B16", OrigAudioVCDidAppearIsland, HookAudioVCDidAppearIsland);
+        HOOK_INST("SSNewAudioPlayViewController", "viewWillDisappear:", "v20@0:8B16", OrigAudioVCWillDisappearIsland, HookAudioVCWillDisappearIsland);
+        HOOK_INST("SSNewAudioPlayViewController", "viewDidDisappear:", "v20@0:8B16", OrigAudioVCDidDisappearIsland, HookAudioVCDidDisappearIsland);
+        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidAppear:", "v20@0:8B16", OrigTTSReaderDidAppearIsland, HookTTSReaderDidAppearIsland);
+        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidDisappear:", "v20@0:8B16", OrigTTSReaderDidDisappearIsland, HookTTSReaderDidDisappearIsland);
+
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
+                                                        object:nil
+                                                         queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(__unused NSNotification *note) {
+            FQXEnterDramaIslandOnLeaveIfEligible();
+        }];
+
         [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardWillChangeFrameNotification
                                                         object:nil
                                                          queue:NSOperationQueue.mainQueue
@@ -11110,12 +13163,14 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXScheduleCommentForegroundRefresh();
+            FQXScheduleDynamicIslandRefresh();
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
                                                         object:nil
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXScheduleCommentForegroundRefresh();
+            FQXScheduleDynamicIslandRefresh();
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                                                         object:nil
@@ -11129,6 +13184,7 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXComposerKeyboardFrame = CGRectZero;
             FQXResetPinchCleanStates();
+            FQXEnterDramaIslandOnLeaveIfEligible();
             FQXCompactRuntimeMemory();
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIAccessibilityReduceTransparencyStatusDidChangeNotification
@@ -11159,6 +13215,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSMyUserShortcutCell", "layoutSubviews", "v16@0:8", OrigMineShortcutCardLayout, HookMineShortcutCardLayout);
         POST_HOOK("SSMyUserCollectionView1Cell", "layoutSubviews", "v16@0:8", OrigMineCard1Layout, HookMineCard1Layout);
         POST_HOOK("SSMyUserCollectionViewFunCell", "layoutSubviews", "v16@0:8", OrigMineFunCellLayoutForBadge, HookMineFunCellLayoutForBadge);
+        POST_HOOK("SSMyUserCollectionViewFunCell", "applyLayoutAttributes:", "v24@0:8@16", OrigMineFunCellApplyAttrs, HookMineFunCellApplyAttrs);
         POST_HOOK("SSMyUserCollectionViewOrderFunCell", "layoutSubviews", "v16@0:8", OrigMineOrderCellLayout, HookMineOrderCellLayout);
         POST_HOOK("SSMyUser621FunctionEntryItemCell", "layoutSubviews", "v16@0:8", OrigMineEntryItemLayout, HookMineEntryItemLayout);
 

@@ -300,7 +300,14 @@ static BOOL FQXAudioBookAlive(void){
  id playMgr=Get(sdk,"bdfqPlayManager");
  return playMgr&&!BoolMsg0(playMgr,"playIsStopped")&&Get(playMgr,"playInfo")!=nil;
 }
+extern BOOL FQXIsDramaDynamicIslandSessionActive(void);
+extern void FQXNotifyAudioIslandStateChanged(void);
+id FQXSharedAudioSDKManager(void);
+BOOL FQXIsAudioBookSessionAlive(void);
+void FQXActivateAudioPlaybackSessionAndRemote(void);
+
 static BOOL FQXVideoNowPlayingActive(void){
+ if(FQXIsDramaDynamicIslandSessionActive())return YES;
  Class fqvCls=NSClassFromString(@"FQVNowPlayingInfoCenter");
  id fqv=Get((id)fqvCls,"defaultCenter");
  return fqv&&Get(fqv,"playingPlayer")!=nil;
@@ -398,6 +405,17 @@ static void FQXEnsureRemoteCommandsReadyEx(id playMgr,BOOL allowUpdateInfo){
 static void FQXEnsureRemoteCommandsReady(id playMgr){
  FQXEnsureRemoteCommandsReadyEx(playMgr,YES);
 }
+id FQXSharedAudioSDKManager(void){
+ return FQXAudioSDKManager();
+}
+BOOL FQXIsAudioBookSessionAlive(void){
+ return FQXAudioBookAlive();
+}
+void FQXActivateAudioPlaybackSessionAndRemote(void){
+ FQXEnsurePlaybackSessionActive();
+ id sdk=FQXAudioSDKManager();
+ if(sdk)FQXEnsureRemoteCommandsReady(Get(sdk,"bdfqPlayManager"));
+}
 static void InstallAudioBookSyncAndRemoteHooks(void){
  {
   Class cls=NSClassFromString(@"FQReaderSaaSTTSManager");
@@ -485,6 +503,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
    FQXEnsurePlaybackSessionActive();
    ((void(*)(id,SEL,NSUInteger,double,id,id))oTry)(o,sTry,tp,tm,rp,entry);
    FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
+   FQXNotifyAudioIslandStateChanged();
   });
   if(!FQXInstallOwnedHook(cls,sTry,NO,"v48@0:8Q16d24@32@40",hTry,&oTry))imp_removeBlock(hTry);
   SEL sPau=Sel("audioPauseWithType:entry:");__block IMP oPau=NULL;
@@ -495,6 +514,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     FQXEnsurePlaybackSessionActive();
     FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
    }
+   FQXNotifyAudioIslandStateChanged();
   });
   if(!FQXInstallOwnedHook(cls,sPau,NO,"v32@0:8Q16@24",hPau,&oPau))imp_removeBlock(hPau);
   SEL sSt=Sel("player:playbackStateDidChange:");__block IMP oSt=NULL;
@@ -505,6 +525,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     FQXEnsurePlaybackSessionActive();
     FQXEnsureRemoteCommandsReady(Get(o,"bdfqPlayManager"));
    }
+   FQXNotifyAudioIslandStateChanged();
   });
   if(!FQXInstallOwnedHook(cls,sSt,NO,"v32@0:8@16Q24",hSt,&oSt))imp_removeBlock(hSt);
   SEL sRem=Sel("remoteRemoveCommandWithSource:");__block IMP oRem=NULL;
@@ -526,6 +547,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     VoidMsg0(o,"remoteClearPlayInfo");
     FQXClearSystemNowPlayingIfIdle();
     FQXScheduleStaleReaderAudioUIClean();
+    FQXNotifyAudioIslandStateChanged();
    });
    if(!FQXInstallOwnedHook(cls,s,NO,"v24@0:8@16",h,&old))imp_removeBlock(h);
   }
@@ -624,6 +646,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     VoidMsg0(o,"remoteRemoveCommandAndClearInfo");
     FQXClearSystemNowPlayingIfIdle();
    }
+   FQXNotifyAudioIslandStateChanged();
   });
   if(!FQXInstallOwnedHook(cls,ss,NO,"v24@0:8B16B20",hs,&os))imp_removeBlock(hs);
   for(NSString *sn in @[@"remoteUpdatePlayInfo",@"remoteUpdateProgressInfo"]){
@@ -632,10 +655,12 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
     if(BoolMsg0(o,"playIsStopped")||!Get(o,"playInfo")){
      VoidMsg0(o,"remoteClearPlayInfo");
      FQXClearSystemNowPlayingIfIdle();
+     FQXNotifyAudioIslandStateChanged();
      return;
     }
     ((void(*)(id,SEL))ou)(o,su);
     FQXEnsureRemoteCommandsReadyEx(o,NO);
+    if([sn isEqualToString:@"remoteUpdatePlayInfo"])FQXNotifyAudioIslandStateChanged();
    });
    if(!FQXInstallOwnedHook(cls,su,NO,"v16@0:8",hu,&ou))imp_removeBlock(hu);
   }
