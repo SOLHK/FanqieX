@@ -91,8 +91,6 @@ NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles) {
     if (!FQXDockDetachedIsEnabled() || visibleTitles.count < 2) {
         return NSNotFound;
     }
-    NSMutableArray<NSUInteger> *validPositions = nil;
-    (void)validPositions;
     NSString *saved = FQXDockDetachedStoredModule();
     if (!saved.length) {
         for (NSInteger i = (NSInteger)visibleTitles.count - 1; i >= 0; --i) {
