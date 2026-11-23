@@ -66,6 +66,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ShelfFilterListen, "ShelfFilterListen", "显示书架「听书」标签", "shelf", YES) \
     X(ShelfFilterComic, "ShelfFilterComic", "显示书架「漫剧」标签", "shelf", YES) \
     X(ShelfFilterStar, "ShelfFilterStar", "显示书架「星标」标签", "shelf", YES) \
+    X(ShelfHistoryFilterBar, "ShelfHistoryFilterBar", "显示历史页筛选与编辑栏", "shelf", YES) \
     X(Foreground, "NotificationsForeground", "显示前台通知提醒", "notifications", YES) \
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
@@ -76,6 +77,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaCommentNoVideoShift, "DramaCommentNoVideoShift", "打开评论区短剧画面不上移", "drama", NO) \
     X(DramaDynamicIsland, "DramaDynamicIsland", "短剧灵动岛", "drama", NO) \
     X(DramaExitCollectAlert, "DramaExitCollectAlert", "隐藏短剧退出收藏弹窗", "drama", NO) \
+    X(DramaHideSeriesTag, "DramaHideSeriesTag", "隐藏短剧系列剧追剧标签", "drama", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
     X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
     X(DramaShowComment, "DramaShowComment", "显示评论按钮", "dramaActions", YES) \
@@ -1995,7 +1997,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
-    } else if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) {
+    } else if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
+               [key isEqualToString:DramaHideSeriesTagKey]) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshDramaControls");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
@@ -2066,6 +2069,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:ShelfFilterListenKey] ||
                [key isEqualToString:ShelfFilterComicKey] ||
                [key isEqualToString:ShelfFilterStarKey] ||
+               [key isEqualToString:ShelfHistoryFilterBarKey] ||
                [key isEqualToString:@"FanqieX.ShelfReadingDuration.1"] ||
                [key isEqualToString:@"FanqieX.ShelfFilterButton.1"]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");

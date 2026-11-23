@@ -3891,7 +3891,8 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
         }
     }
 
-    CGFloat cursorX = MAX(8.0, MIN(16.0, CGRectGetMinX(raw[firstVisible])));
+    CGFloat leadPad = round(MAX(8.0, MIN(14.0, 10.0 * scale)) * 2.0) / 2.0;
+    CGFloat cursorX = leadPad;
     BOOL placedAny = NO;
     for (NSInteger i = 0; i < count; ++i) {
         if (!outHidden[i]) {
@@ -3918,15 +3919,14 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
     }
 
     CGFloat removedGap = MAX(0.0, CGRectGetMaxX(raw[lastVisible]) - CGRectGetMaxX(outCompacted[lastVisible]));
-    CGFloat trailing = MAX(0.0, MIN(24.0, origSize.width - CGRectGetMaxX(raw[lastVisible])));
-    if (trailing < 1.0) trailing = MAX(0.0, MIN(24.0, CGRectGetMinX(raw[firstVisible])));
+    CGFloat trailing = leadPad;
     if (outContentSize) {
         *outContentSize = CGSizeMake(MAX(1.0, cursorX + trailing), MAX(1.0, origSize.height));
     }
     if (outCount) *outCount = count;
     objc_setAssociatedObject(layout, FQXDramaCompactHiddenCountKey, @(hiddenCount), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(layout, FQXDramaCompactRemovedGapKey, @(round(removedGap * 10.0) / 10.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return scaled || (removedGap > 1.0);
+    return scaled || (hiddenCount > 0) || (removedGap > 1.0);
 }
 
 static NSArray<UICollectionViewLayoutAttributes *> *HookDramaCompactAttrsInRect(UICollectionViewLayout *layout,
@@ -4061,13 +4061,28 @@ static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, U
         }
     }
 
+    static const void *FQXDramaCompactVisMaskKey = &FQXDramaCompactVisMaskKey;
+    NSUInteger visMask = 0;
+    if ([cv numberOfSections] > 0) {
+        NSInteger cnt = MIN([cv numberOfItemsInSection:0], 24);
+        visMask = ((NSUInteger)cnt << 24);
+        id feedOwner = FQXObjGet(header, "delegate");
+        NSArray<NSNumber *> *vis = FQXDramaVisibleTabIndicesForFeed(feedOwner);
+        for (NSNumber *n in vis) {
+            NSInteger idx = n.integerValue;
+            if (idx >= 0 && idx < 24) visMask |= (1UL << (NSUInteger)idx);
+        }
+    }
     BOOL wasTagged = [objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) boolValue];
     NSInteger curScale = FQXDramaHeaderButtonScalePercent();
     NSNumber *prevScale = objc_getAssociatedObject(layout, FQXDramaCompactAppliedScaleKey);
+    NSNumber *prevMask = objc_getAssociatedObject(layout, FQXDramaCompactVisMaskKey);
     BOOL scaleChanged = (!prevScale || prevScale.integerValue != curScale);
-    if (!wasTagged || scaleChanged) {
+    BOOL maskChanged = (!prevMask || prevMask.unsignedIntegerValue != visMask);
+    if (!wasTagged || scaleChanged || maskChanged) {
         objc_setAssociatedObject(layout, FQXDramaCompactLayoutActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(layout, FQXDramaCompactAppliedScaleKey, @(curScale), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(layout, FQXDramaCompactVisMaskKey, @(visMask), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (![objc_getAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey) boolValue]) {
             objc_setAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             __weak UICollectionViewLayout *weakLayout = layout;
@@ -4105,6 +4120,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 @property(nonatomic) CGFloat anchorX;
 @property(nonatomic, copy) NSString *lastDarkSource;
 - (void)placePillAtRestingAnimated:(BOOL)animated;
+- (void)placePillAtIndex:(NSInteger)sel animated:(BOOL)animated;
 @end
 
 @implementation FQXDramaTopCapsuleInteraction
@@ -4273,18 +4289,43 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 
 - (NSInteger)currentHostSelectedIndex {
     UIView *tabs = self.tabsView;
-    if (!tabs) return NSNotFound;
+    UICollectionView *cv = self.collectionView;
+    if (!tabs || !cv) return NSNotFound;
+    NSInteger count = ([cv numberOfSections] > 0) ? [cv numberOfItemsInSection:0] : 0;
+    if (count <= 0) return NSNotFound;
+
+    // 1. Authoritative rendered cell-model state (matches the bright selected title label immediately,
+    // unlike owner.curTabIndex which lags behind during tab taps and programmatic switches).
+    NSArray *ds = FQXObjGet(tabs, "dataSource");
+    if ([ds isKindOfClass:NSArray.class]) {
+        for (NSUInteger i = 0; i < ds.count && i < (NSUInteger)count && i < 24; ++i) {
+            if (FQXBoolGet(ds[i], "isSelected", NO)) {
+                UICollectionViewLayoutAttributes *a =
+                    [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:(NSInteger)i inSection:0]];
+                if (!a || CGRectGetWidth(a.frame) >= 6.0) return (NSInteger)i;
+            }
+        }
+    }
+
+    // 2. Synchronous JXCategoryBaseView.selectedIndex
+    NSInteger tabSel = FQXIntGet(tabs, "selectedIndex", -1);
+    if (tabSel >= 0 && tabSel < count) {
+        UICollectionViewLayoutAttributes *a =
+            [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:tabSel inSection:0]];
+        if (!a || CGRectGetWidth(a.frame) >= 6.0) return tabSel;
+    }
+
+    // 3. Fallback to owner.curTabIndex
     id owner = FQXObjGet(tabs, "delegate");
     SEL indexSelector = sel_registerName("curTabIndex");
     Method indexMethod = class_getInstanceMethod(object_getClass(owner), indexSelector);
     if (indexMethod && strcmp(method_getTypeEncoding(indexMethod), "q16@0:8") == 0) {
         NSInteger index = ((NSInteger (*)(id, SEL))objc_msgSend)(owner, indexSelector);
-        if (index >= 0 && index < [self.collectionView numberOfItemsInSection:0]) return index;
-    }
-    NSArray *ds = FQXObjGet(tabs, "dataSource");
-    if (![ds isKindOfClass:NSArray.class]) return NSNotFound;
-    for (NSUInteger i = 0; i < ds.count && i < 24; ++i) {
-        if (FQXBoolGet(ds[i], "isSelected", NO)) return (NSInteger)i;
+        if (index >= 0 && index < count) {
+            UICollectionViewLayoutAttributes *a =
+                [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:index inSection:0]];
+            if (!a || CGRectGetWidth(a.frame) >= 6.0) return index;
+        }
     }
     return NSNotFound;
 }
@@ -4378,22 +4419,29 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
 }
 
-- (void)placePillAtRestingAnimated:(BOOL)animated {
+- (void)placePillAtIndex:(NSInteger)sel animated:(BOOL)animated {
     if (self.paging) {
         [self placePill:CGRectZero animated:NO];
         return;
     }
-    NSInteger sel = [self currentHostSelectedIndex];
     UICollectionView *cv = self.collectionView;
-    if (sel != NSNotFound && cv) {
-        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:sel inSection:0]];
-        if (attr && CGRectGetWidth(attr.frame) >= 6.0) {
-            self.anchorX = CGRectGetMidX(attr.frame);
+    if (sel != NSNotFound && sel >= 0 && cv && [cv numberOfSections] > 0 && sel < [cv numberOfItemsInSection:0]) {
+        NSIndexPath *ip = [NSIndexPath indexPathForItem:sel inSection:0];
+        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
+        CGRect itemRect = (cell && !cell.hidden && CGRectGetWidth(cell.frame) >= 6.0)
+            ? cell.frame
+            : ([cv layoutAttributesForItemAtIndexPath:ip].frame);
+        if (CGRectGetWidth(itemRect) >= 6.0) {
+            self.anchorX = CGRectGetMidX(itemRect);
             [self placePill:[self pillRectForAnchorX:self.anchorX] animated:animated];
             return;
         }
     }
     [self placePill:CGRectZero animated:NO];
+}
+
+- (void)placePillAtRestingAnimated:(BOOL)animated {
+    [self placePillAtIndex:[self currentHostSelectedIndex] animated:animated];
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
@@ -4920,10 +4968,13 @@ static NSInteger FQXCurrentDramaTabIndexForFeed(id feedVC, UIView *listContainer
     return NSNotFound;
 }
 
+static void FQXSyncDramaTopCapsuleForHeader(UIView *header);
+
 static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex) {
     if (!feedVC || targetIndex < 0) return;
     UIView *tabs = FQXObjGet(feedVC, "simpleTabView");
     UICollectionView *cv = FQXObjGet(tabs, "collectionView");
+    BOOL dispatched = NO;
     if ([tabs isKindOfClass:UIView.class] && [cv isKindOfClass:UICollectionView.class]) {
         NSInteger count = [cv numberOfItemsInSection:0];
         if (targetIndex < count) {
@@ -4931,24 +4982,42 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex) {
             if ([tabs respondsToSelector:didSel]) {
                 NSIndexPath *ip = [NSIndexPath indexPathForItem:targetIndex inSection:0];
                 ((void (*)(id, SEL, id, id))objc_msgSend)(tabs, didSel, cv, ip);
-                return;
+                dispatched = YES;
             }
         }
     }
-    SEL selectSel = sel_registerName("selectItemAtIndex:");
-    if (tabs && [tabs respondsToSelector:selectSel]) {
-        Method m = class_getInstanceMethod(object_getClass(tabs), selectSel);
-        if (m && strcmp(method_getTypeEncoding(m), "v24@0:8q16") == 0) {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(tabs, selectSel, targetIndex);
+    if (!dispatched) {
+        SEL selectSel = sel_registerName("selectItemAtIndex:");
+        if (tabs && [tabs respondsToSelector:selectSel]) {
+            Method m = class_getInstanceMethod(object_getClass(tabs), selectSel);
+            if (m && strcmp(method_getTypeEncoding(m), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(tabs, selectSel, targetIndex);
+            }
+        }
+        UIView *listContainer = FQXFindDramaListContainerForFeed(feedVC);
+        SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
+        if (listContainer && [listContainer respondsToSelector:clickSel]) {
+            Method m = class_getInstanceMethod(object_getClass(listContainer), clickSel);
+            if (m && strcmp(method_getTypeEncoding(m), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(listContainer, clickSel, targetIndex);
+            }
         }
     }
-    UIView *listContainer = FQXFindDramaListContainerForFeed(feedVC);
-    SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
-    if (listContainer && [listContainer respondsToSelector:clickSel]) {
-        Method m = class_getInstanceMethod(object_getClass(listContainer), clickSel);
-        if (m && strcmp(method_getTypeEncoding(m), "v24@0:8q16") == 0) {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(listContainer, clickSel, targetIndex);
-        }
+    FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+    if (interaction && interaction.mode == FQXTopCapsuleTouchIdle) {
+        interaction.paging = NO;
+        interaction.lastSelectedIndex = targetIndex;
+        [interaction placePillAtIndex:targetIndex animated:YES];
+    }
+    UIView *header = FQXObjGet(feedVC, "headerView");
+    if ([header isKindOfClass:UIView.class]) {
+        __weak UIView *weakHeader = header;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *strongHeader = weakHeader;
+            if (strongHeader && strongHeader.window) {
+                FQXSyncDramaTopCapsuleForHeader(strongHeader);
+            }
+        });
     }
 }
 
@@ -5262,24 +5331,36 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     if (header.clipsToBounds) header.clipsToBounds = NO;
     if (categories.clipsToBounds) categories.clipsToBounds = NO;
     if (outer.clipsToBounds) outer.clipsToBounds = NO;
+    CGFloat maxCapsuleW = CGRectGetWidth(headerBounds) - ((searchBtn && !searchBtn.hidden) ? (targetH + 32.0) : 24.0);
+    if (maxCapsuleW < 100.0) maxCapsuleW = CGRectGetWidth(headerBounds) - 16.0;
     if ([headerCV isKindOfClass:UICollectionView.class]) {
-        BOOL fitsHoriz = (headerCV.contentSize.width <= CGRectGetWidth(headerCV.bounds) + 1.0);
-        BOOL wantNoClip = (scalePct > 100 && fitsHoriz);
-        if (headerCV.clipsToBounds == wantNoClip) {
-            headerCV.clipsToBounds = !wantNoClip;
+        CGFloat contentW = headerCV.contentSize.width;
+        BOOL fitsInHeader = (contentW > 1.0 && contentW <= maxCapsuleW + 1.0);
+        if (fitsInHeader) {
+            if (headerCV.scrollEnabled) headerCV.scrollEnabled = NO;
+            if (headerCV.clipsToBounds) headerCV.clipsToBounds = NO;
+            if ([headerTabs isKindOfClass:UIView.class] && headerTabs.clipsToBounds) {
+                headerTabs.clipsToBounds = NO;
+            }
+            if ([headerTabs isKindOfClass:UIView.class] && CGRectGetWidth(headerTabs.bounds) + 1.0 < contentW) {
+                CGRect tf = headerTabs.frame;
+                tf.size.width = ceil(contentW);
+                headerTabs.frame = tf;
+            }
+            if (CGRectGetWidth(headerCV.bounds) + 1.0 < contentW) {
+                CGRect cvf = headerCV.frame;
+                cvf.size.width = ceil(contentW);
+                headerCV.frame = cvf;
+            }
+            if (fabs(headerCV.contentOffset.x) > 0.25) {
+                [headerCV setContentOffset:CGPointMake(0.0, headerCV.contentOffset.y) animated:NO];
+            }
+        } else {
+            if (!headerCV.scrollEnabled) headerCV.scrollEnabled = YES;
+            if (!headerCV.clipsToBounds) headerCV.clipsToBounds = YES;
         }
     }
     FQXApplyCornerConfiguration(outer, 0.0, NO);
-
-    // Keep collectionView contentOffset anchored at x=0 when all visible titles fit inside its bounds,
-    // so JXCategoryView never drifts the title strip sideways during tab switches.
-    if ([headerCV isKindOfClass:UICollectionView.class] &&
-        !headerCV.isDragging && !headerCV.isDecelerating &&
-        headerCV.contentSize.width > 1.0 &&
-        headerCV.contentSize.width <= CGRectGetWidth(headerCV.bounds) + 1.0 &&
-        fabs(headerCV.contentOffset.x) > 0.5) {
-        headerCV.contentOffset = CGPointMake(0.0, headerCV.contentOffset.y);
-    }
 
     // Recompute tight symmetric capsule horizontal span directly from the compacted/scaled visible cells.
     CGRect of = outer.frame;
@@ -5308,8 +5389,6 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
             CGFloat desiredLeft = round((CGRectGetMinX(firstInCat) - padX) * 2.0) / 2.0;
             CGFloat desiredRight = round((CGRectGetMaxX(lastInCat) + padX) * 2.0) / 2.0;
             CGFloat desiredW = desiredRight - desiredLeft;
-            CGFloat maxCapsuleW = CGRectGetWidth(headerBounds) - ((searchBtn && !searchBtn.hidden) ? (targetH + 32.0) : 24.0);
-            if (maxCapsuleW < 100.0) maxCapsuleW = CGRectGetWidth(headerBounds) - 16.0;
             if (desiredW > maxCapsuleW) {
                 CGFloat mid = (desiredLeft + desiredRight) * 0.5;
                 desiredW = maxCapsuleW;
@@ -5492,11 +5571,17 @@ static void HookDramaCommitTabIndex(id owner, SEL cmd, NSInteger index, int type
         FQXStabilizeDramaCategoryTabs(tabs);
     }
     FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
-    if (interaction.mode == FQXTopCapsuleTouchIdle) {
+    if (interaction && interaction.mode == FQXTopCapsuleTouchIdle) {
         [interaction.pillGlass.layer removeAllAnimations];
         interaction.paging = NO;
-        interaction.lastSelectedIndex = index;
-        [interaction placePillAtRestingAnimated:NO];
+        NSInteger resolved = [interaction currentHostSelectedIndex];
+        NSInteger finalIdx = (resolved != NSNotFound) ? resolved : index;
+        interaction.lastSelectedIndex = finalIdx;
+        [interaction placePillAtIndex:finalIdx animated:NO];
+    }
+    UIView *header = FQXObjGet(owner, "headerView");
+    if ([header isKindOfClass:UIView.class]) {
+        FQXSyncDramaTopCapsuleForHeader(header);
     }
 }
 
@@ -5508,8 +5593,13 @@ static void HookDramaScrollBetweenTabs(id owner, SEL cmd, id tabs, id leftItem, 
         FQXStabilizeDramaCategoryTabs((UIView *)tabs);
     }
     FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
-    if (interaction.mode != FQXTopCapsuleTouchIdle) return;
-    BOOL paging = ratio > 0.0 && ratio < 1.0;
+    if (!interaction || interaction.mode != FQXTopCapsuleTouchIdle) return;
+    UIView *listContainer = FQXFindDramaListContainerForFeed(owner);
+    UIScrollView *pagerScroll = FQXObjGet(listContainer, "scrollView");
+    BOOL userInteractiveScroll = [pagerScroll isKindOfClass:UIScrollView.class] &&
+        pagerScroll.scrollEnabled &&
+        (pagerScroll.isTracking || pagerScroll.isDragging || pagerScroll.isDecelerating);
+    BOOL paging = userInteractiveScroll && ratio > 0.0 && ratio < 1.0;
     if (interaction.paging == paging) return;
     interaction.paging = paging;
     [interaction.pillGlass.layer removeAllAnimations];
@@ -5548,8 +5638,21 @@ static void HookDramaTabsRefreshSelectedModels(UIView *tabs, SEL cmd, id selecte
     if (OrigDramaTabsRefreshSelectedModels) OrigDramaTabsRefreshSelectedModels(tabs, cmd, selectedModel, unselectedModel);
     if (isDrama) {
         FQXStabilizeDramaCategoryTabs(tabs);
+        FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+        if (interaction && interaction.mode == FQXTopCapsuleTouchIdle) {
+            interaction.paging = NO;
+        }
         UIView *header = FQXDramaHeaderForTabs(tabs);
-        if (header) FQXSyncDramaTopCapsuleForHeader(header);
+        if (header) {
+            FQXSyncDramaTopCapsuleForHeader(header);
+            __weak UIView *weakHeader = header;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIView *strongHeader = weakHeader;
+                if (strongHeader && strongHeader.window) {
+                    FQXSyncDramaTopCapsuleForHeader(strongHeader);
+                }
+            });
+        }
     }
 }
 
@@ -5634,6 +5737,7 @@ static void FQXRefreshAllDockAppearances(void) {
 
 static void FQXRefreshAllAudioGlass(void);
 static void FQXRefreshAllDramaControlsInWindows(void);
+static void FQXRefreshAllDramaSeriesPills(void);
 static void FQXRefreshAllPinchCleanStates(void);
 static void FQXReapplyAllTrackedCommentGlass(void);
 static void FQXRefreshCommentBlurStrengthOnly(void);
@@ -5874,6 +5978,7 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshDramaControls {
     FQXInvalidateHotPrefsCache();
     FQXRefreshAllDramaControlsInWindows();
+    FQXRefreshAllDramaSeriesPills();
 }
 
 + (void)refreshDramaHeaderBlur {
@@ -6906,12 +7011,153 @@ static void HookVPlayerSetupGestures(UIView *self, SEL _cmd) {
     FQXAttachDramaPinchIfNeeded(self);
 }
 
+static const void *FQXDramaSeriesPillHiddenByUsKey = &FQXDramaSeriesPillHiddenByUsKey;
+static const void *FQXDramaSeriesPillDiagKey = &FQXDramaSeriesPillDiagKey;
+
+static BOOL FQXDramaHideSeriesTagEnabled(void) {
+    return [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaHideSeriesTag.1"];
+}
+
+static NSHashTable<UIView *> *FQXTrackedDramaSeriesControls(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXTrackedDramaSeriesPills(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static BOOL FQXDramaViewSubtreeContainsForbiddenSeriesText(UIView *view, NSInteger depth) {
+    if (!view || depth > 5) return NO;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)view;
+        NSString *t = lbl.text.length ? lbl.text : lbl.attributedText.string;
+        if (t.length && ([t containsString:@"选集"] || [t containsString:@"观看完整"] ||
+                         [t containsString:@"展开"] || [t containsString:@"作者声明"])) {
+            return YES;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        if (FQXDramaViewSubtreeContainsForbiddenSeriesText(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static UILabel *FQXFindDramaSeriesPillLabel(UIView *root, NSInteger depth) {
+    if (!root || depth > 8) return nil;
+    NSString *clsName = NSStringFromClass(root.class) ?: @"";
+    if ([clsName containsString:@"RightInteraction"] ||
+        [clsName containsString:@"ProgressView"] ||
+        [clsName containsString:@"PlayerBottomView"] ||
+        [clsName containsString:@"BottomDistribution"] ||
+        [clsName containsString:@"BottomInsertView"] ||
+        [clsName containsString:@"Danmaku"]) {
+        return nil;
+    }
+    if ([root isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)root;
+        NSString *t = lbl.text.length ? lbl.text : lbl.attributedText.string;
+        if (t.length && ([t containsString:@"系列剧"] || [t containsString:@"人在追"]) &&
+            ![t containsString:@"选集"] && ![t containsString:@"观看完整"] && ![t containsString:@"作者声明"]) {
+            return lbl;
+        }
+    }
+    for (UIView *sub in root.subviews) {
+        UILabel *found = FQXFindDramaSeriesPillLabel(sub, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static void FQXSyncDramaSeriesPillForControl(UIView *control) {
+    if (![control isKindOfClass:UIView.class]) return;
+    [FQXTrackedDramaSeriesControls() addObject:control];
+    BOOL hide = FQXDramaHideSeriesTagEnabled();
+    BOOL inPinchClean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
+    if (!hide) {
+        for (UIView *pill in FQXTrackedDramaSeriesPills().allObjects) {
+            if (!pill.superview || ![pill isDescendantOfView:control]) continue;
+            if ([objc_getAssociatedObject(pill, FQXDramaSeriesPillHiddenByUsKey) boolValue]) {
+                objc_setAssociatedObject(pill, FQXDramaSeriesPillHiddenByUsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                if (!inPinchClean) {
+                    pill.hidden = NO;
+                    pill.alpha = 1.0;
+                    pill.userInteractionEnabled = YES;
+                }
+            }
+        }
+        return;
+    }
+    if (!control.window) return;
+    CGFloat ctrlW = CGRectGetWidth(control.bounds);
+    if (ctrlW < 180.0) return;
+
+    UIView *baseInfo = FQXObjGet(control, "baseInfoView");
+    UILabel *label = ([baseInfo isKindOfClass:UIView.class] ? FQXFindDramaSeriesPillLabel(baseInfo, 0) : nil)
+        ?: FQXFindDramaSeriesPillLabel(control, 0);
+    if (!label) return;
+
+    UIView *bestPill = label;
+    for (UIView *cur = label.superview; cur && cur != control && cur != baseInfo; cur = cur.superview) {
+        CGRect cb = cur.bounds;
+        CGFloat h = CGRectGetHeight(cb);
+        CGFloat w = CGRectGetWidth(cb);
+        if (h < 14.0 || h > 54.0 || w < 44.0 || w > ctrlW - 36.0) break;
+        if (FQXDramaViewSubtreeContainsForbiddenSeriesText(cur, 0)) break;
+        bestPill = cur;
+    }
+    if (!bestPill || bestPill == control || bestPill == baseInfo) return;
+
+    [FQXTrackedDramaSeriesPills() addObject:bestPill];
+    objc_setAssociatedObject(bestPill, FQXDramaSeriesPillHiddenByUsKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!bestPill.hidden || bestPill.alpha > 0.001 || bestPill.userInteractionEnabled) {
+        bestPill.hidden = YES;
+        bestPill.alpha = 0.0;
+        bestPill.userInteractionEnabled = NO;
+    }
+    if (!objc_getAssociatedObject(bestPill, FQXDramaSeriesPillDiagKey)) {
+        objc_setAssociatedObject(bestPill, FQXDramaSeriesPillDiagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        NSString *txt = label.text.length ? label.text : (label.attributedText.string ?: @"");
+        FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_series_pill_visibility", @{
+            @"pillClass": NSStringFromClass(bestPill.class) ?: @"",
+            @"superviewClass": bestPill.superview ? (NSStringFromClass(bestPill.superview.class) ?: @"") : @"",
+            @"controlClass": NSStringFromClass(control.class) ?: @"",
+            @"text": (txt.length > 48 ? [txt substringToIndex:48] : txt),
+            @"frame": FQXDockRectArray(bestPill.frame),
+            @"hidden": @YES,
+        }, NO);
+    }
+}
+
+static void FQXRefreshAllDramaSeriesPills(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllDramaSeriesPills(); });
+        return;
+    }
+    for (UIView *ctrl in FQXTrackedDramaSeriesControls().allObjects) {
+        FQXSyncDramaSeriesPillForControl(ctrl);
+        if (ctrl.window) [ctrl setNeedsLayout];
+    }
+}
+
+static void (*OrigVPlayerLayoutForSeriesPill)(id, SEL);
+static void HookVPlayerLayoutForSeriesPill(UIView *self, SEL _cmd) {
+    if (OrigVPlayerLayoutForSeriesPill) OrigVPlayerLayoutForSeriesPill(self, _cmd);
+    FQXSyncDramaSeriesPillForControl(self);
+}
+
 static void (*OrigVPlayerWillDisplay)(id, SEL);
 static void HookVPlayerWillDisplay(UIView *self, SEL _cmd) {
     if (OrigVPlayerWillDisplay) OrigVPlayerWillDisplay(self, _cmd);
     FQXAttachDramaPinchIfNeeded(self);
     FQXFeatherDramaBottomGradientView(self);
     FQXNoteDramaControlDisplayed(self);
+    FQXSyncDramaSeriesPillForControl(self);
 }
 
 static void (*OrigVPlayerWillEndDisplay)(id, SEL);
@@ -6928,6 +7174,7 @@ static void HookVPlayerUpdateControlState(UIView *self, SEL _cmd) {
     if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
         FQXApplyPinchPureCleanState(self, YES);
     }
+    FQXSyncDramaSeriesPillForControl(self);
 }
 
 static BOOL FQXDoubleTapCommentEnabled(void) {
@@ -7025,6 +7272,7 @@ static void HookOuterControlLayout(UIView *self, SEL _cmd) {
     if (OrigOuterControlLayout) OrigOuterControlLayout(self, _cmd);
     FQXAttachDramaPinchIfNeeded(self);
     FQXSyncOuterDoubleTapComment(self);
+    FQXSyncDramaSeriesPillForControl(self);
 }
 
 static void (*OrigOuterDidMoveToWindow)(id, SEL);
@@ -7042,6 +7290,7 @@ static void HookOuterBindContent(UIView *self, SEL cmd, id model) {
         FQXApplyPinchPureCleanState(self, NO);
     }
     OrigOuterBindContent(self, cmd, model);
+    FQXSyncDramaSeriesPillForControl(self);
 }
 
 static BOOL FQXPinchOverOuterDramaControl(id component, UIGestureRecognizer *gesture) {
@@ -9100,18 +9349,32 @@ static void FQXReflowShelfCollectionCells(UICollectionView *cv,
 
     NSMutableArray<UIView *> *visibleCells = [NSMutableArray arrayWithCapacity:ips.count];
     BOOL anyHidden = NO;
+    BOOL hiddenPrecedesVisible = NO;
     CGFloat minStockX = CGFLOAT_MAX;
+    CGFloat nativeGap = -1.0;
     BOOL hasFlowStock = ![objc_getAssociatedObject(cv, FQXShelfReflowAppliedKey) boolValue];
+    CGRect prevRawFrame = CGRectZero;
+    BOOL hasPrevRaw = NO;
     for (NSIndexPath *ip in ips) {
         UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
         if (!cell) continue;
-        if (hasFlowStock && CGRectGetMinX(cell.frame) < minStockX) {
-            minStockX = CGRectGetMinX(cell.frame);
+        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:ip];
+        CGRect rawFrame = (attr && CGRectGetWidth(attr.frame) > 4.0) ? attr.frame : cell.frame;
+        if (hasFlowStock && CGRectGetMinX(rawFrame) < minStockX) {
+            minStockX = CGRectGetMinX(rawFrame);
         }
+        if (hasPrevRaw && nativeGap < 0.0) {
+            CGFloat g = CGRectGetMinX(rawFrame) - CGRectGetMaxX(prevRawFrame);
+            if (g >= 4.0 && g <= 36.0) nativeGap = g;
+        }
+        prevRawFrame = rawFrame;
+        hasPrevRaw = YES;
+
         NSString *prefKey = keyForCell(cell);
         BOOL show = prefKey ? FQXShelfOptionEnabled(prefKey) : YES;
         FQXShelfApplyControlHidden(cell, FQXShelfHiddenByUsKey, !show);
         if (show) {
+            if (anyHidden) hiddenPrecedesVisible = YES;
             [visibleCells addObject:cell];
         } else {
             anyHidden = YES;
@@ -9123,7 +9386,10 @@ static void FQXReflowShelfCollectionCells(UICollectionView *cv,
     }
 
     BOOL wasReflowed = [objc_getAssociatedObject(cv, FQXShelfReflowAppliedKey) boolValue];
-    if (!anyHidden) {
+    // Preserve native UICollectionViewLayout frames whenever no hidden cell sits BEFORE a visible
+    // cell (e.g., 书架/历史 visible while trailing 收藏/圈子 are hidden), so UIKit's
+    // indexPathForItemAtPoint: hit-testing matches the rendered pills with zero dead zone.
+    if (!hiddenPrecedesVisible) {
         if (wasReflowed) {
             objc_setAssociatedObject(cv, FQXShelfReflowAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [cv.collectionViewLayout invalidateLayout];
@@ -9132,6 +9398,7 @@ static void FQXReflowShelfCollectionCells(UICollectionView *cv,
         return;
     }
 
+    CGFloat effectiveGap = (nativeGap >= 4.0) ? nativeGap : gap;
     NSNumber *savedStart = objc_getAssociatedObject(cv, FQXShelfBaseMinXKey);
     CGFloat x = savedStart ? MAX(0.0, savedStart.doubleValue) : fallbackStartX;
     objc_setAssociatedObject(cv, FQXShelfReflowAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -9141,15 +9408,166 @@ static void FQXReflowShelfCollectionCells(UICollectionView *cv,
             f.origin.x = x;
             cell.frame = f;
         }
-        x += CGRectGetWidth(f) + gap;
+        x += CGRectGetWidth(f) + effectiveGap;
     }
 }
+
+static const void *FQXShelfTabTapBridgeKey = &FQXShelfTabTapBridgeKey;
+
+@interface FQXShelfTabTapBridge : NSObject <UIGestureRecognizerDelegate>
+@property(nonatomic, weak) UIView *tabSelectView;
+@property(nonatomic, strong) UITapGestureRecognizer *tapGesture;
+@end
+
+@implementation FQXShelfTabTapBridge
+
+- (instancetype)initWithTabSelectView:(UIView *)tabView {
+    self = [super init];
+    if (self) {
+        _tabSelectView = tabView;
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTabTap:)];
+        tap.cancelsTouchesInView = NO;
+        tap.delaysTouchesBegan = NO;
+        tap.delaysTouchesEnded = NO;
+        tap.delegate = self;
+        _tapGesture = tap;
+        [tabView addGestureRecognizer:tap];
+    }
+    return self;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    (void)gr; (void)other;
+    return YES;
+}
+
+- (void)handleTabTap:(UITapGestureRecognizer *)gr {
+    if (gr.state != UIGestureRecognizerStateEnded) return;
+    UIView *tabView = self.tabSelectView;
+    if (!tabView || !tabView.window || tabView.hidden) return;
+    UICollectionView *cv = FQXObjGet(tabView, "collectionView") ?: FQXFindMineCollectionView(tabView, 3);
+    if (![cv isKindOfClass:UICollectionView.class] || !cv.window) return;
+
+    CGPoint ptInCV = [gr locationInView:cv];
+    NSArray<NSIndexPath *> *ips = [cv indexPathsForVisibleItems];
+    NSIndexPath *hitIP = nil;
+    UIView *hitCell = nil;
+    CGFloat bestDist = CGFLOAT_MAX;
+    for (NSIndexPath *ip in ips) {
+        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
+        if (!cell || cell.hidden || cell.alpha <= 0.05 || CGRectGetWidth(cell.frame) < 8.0) continue;
+        CGRect hitRect = CGRectInset(cell.frame, -6.0, -8.0);
+        if (CGRectContainsPoint(hitRect, ptInCV)) {
+            CGFloat dist = fabs(ptInCV.x - CGRectGetMidX(cell.frame));
+            if (dist < bestDist) {
+                bestDist = dist;
+                hitIP = ip;
+                hitCell = cell;
+            }
+        }
+    }
+    if (!hitIP || !hitCell) return;
+
+    NSInteger tappedIdx = hitIP.item;
+    NSString *tappedTitle = FQXShelfFirstLabelText(hitCell, 0) ?: @"";
+    id owner = FQXObjGet(tabView, "delegate");
+    NSInteger prevTabIdx = FQXIntGet(tabView, "selectedIndex", -1);
+    NSInteger prevOwnerIdx = owner ? FQXIntGet(owner, "currentTabIndex", -1) : -1;
+    CGRect cellFrame = hitCell.frame;
+    UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:hitIP];
+    CGRect layoutFrame = attr ? attr.frame : CGRectZero;
+
+    __weak UIView *weakTabView = tabView;
+    __weak UICollectionView *weakCV = cv;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *sTab = weakTabView;
+        UICollectionView *sCV = weakCV;
+        if (!sTab || !sCV || !sTab.window) return;
+        id sOwner = FQXObjGet(sTab, "delegate");
+        NSInteger nowTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
+        NSInteger nowOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
+        BOOL alreadySelected = (nowTabIdx == tappedIdx && (nowOwnerIdx < 0 || nowOwnerIdx == tappedIdx));
+        if (alreadySelected) return;
+
+        BOOL recovered = NO;
+        SEL didSel = @selector(collectionView:didSelectItemAtIndexPath:);
+        if (nowTabIdx != tappedIdx && [sTab respondsToSelector:didSel]) {
+            ((void (*)(id, SEL, id, id))objc_msgSend)(sTab, didSel, sCV, hitIP);
+            recovered = YES;
+        }
+        NSInteger afterTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
+        NSInteger afterOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
+        if (afterTabIdx != tappedIdx) {
+            SEL selectSel = sel_registerName("selectItemAtIndex:");
+            Method sm = class_getInstanceMethod(object_getClass(sTab), selectSel);
+            if (sm && strcmp(method_getTypeEncoding(sm), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(sTab, selectSel, tappedIdx);
+                recovered = YES;
+            }
+            afterOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
+        }
+        if (sOwner && afterOwnerIdx >= 0 && afterOwnerIdx != tappedIdx) {
+            SEL ownerSel = sel_registerName("categoryView:didSelectedItemAtIndex:");
+            Method om = class_getInstanceMethod(object_getClass(sOwner), ownerSel);
+            if (om && strcmp(method_getTypeEncoding(om), "v32@0:8@16q24") == 0) {
+                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(sOwner, ownerSel, sTab, tappedIdx);
+                recovered = YES;
+            }
+            UIView *container = FQXObjGet(sOwner, "containerView");
+            SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
+            Method cm = container ? class_getInstanceMethod(object_getClass(container), clickSel) : NULL;
+            if (cm && strcmp(method_getTypeEncoding(cm), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(container, clickSel, tappedIdx);
+                recovered = YES;
+            }
+        }
+        if (recovered) {
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"shelf_tab_tap_recovery", @{
+                @"tappedTitle": tappedTitle,
+                @"tappedIndex": @(tappedIdx),
+                @"prevTabIdx": @(prevTabIdx),
+                @"prevOwnerIdx": @(prevOwnerIdx),
+                @"nowTabIdx": @(nowTabIdx),
+                @"nowOwnerIdx": @(nowOwnerIdx),
+                @"cellFrame": FQXDockRectArray(cellFrame),
+                @"layoutFrame": FQXDockRectArray(layoutFrame),
+            }, NO);
+        }
+    });
+}
+
+@end
 
 static void FQXReflowShelfTabSelectView(UIView *tabSelectView) {
     if (![tabSelectView isKindOfClass:UIView.class]) return;
     [FQXTrackedShelfTabViews() addObject:tabSelectView];
     UICollectionView *cv = FQXObjGet(tabSelectView, "collectionView") ?: FQXFindMineCollectionView(tabSelectView, 3);
-    FQXReflowShelfCollectionCells(cv, FQXShelfTabKeyForCell, 10.0, 0.0);
+    FQXReflowShelfCollectionCells(cv, FQXShelfTabKeyForCell, 16.0, 0.0);
+    if ([cv isKindOfClass:UICollectionView.class] && CGRectGetWidth(cv.bounds) > 40.0) {
+        CGFloat maxVisX = 0.0;
+        for (UICollectionViewCell *cell in cv.visibleCells) {
+            if (!cell.hidden && cell.alpha > 0.05) {
+                maxVisX = MAX(maxVisX, CGRectGetMaxX(cell.frame));
+            }
+        }
+        BOOL fits = (maxVisX > 0.0 && maxVisX <= CGRectGetWidth(cv.bounds) + 2.0);
+        if (fits) {
+            if (cv.scrollEnabled) cv.scrollEnabled = NO;
+            if (fabs(cv.contentOffset.x) > 0.5) {
+                [cv setContentOffset:CGPointMake(0.0, cv.contentOffset.y) animated:NO];
+            }
+        } else if (!cv.scrollEnabled) {
+            cv.scrollEnabled = YES;
+        }
+    }
+    FQXShelfTabTapBridge *bridge = objc_getAssociatedObject(tabSelectView, FQXShelfTabTapBridgeKey);
+    if (!bridge) {
+        bridge = [[FQXShelfTabTapBridge alloc] initWithTabSelectView:tabSelectView];
+        objc_setAssociatedObject(tabSelectView, FQXShelfTabTapBridgeKey, bridge, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (bridge.tapGesture.view != tabSelectView) {
+        [bridge.tapGesture.view removeGestureRecognizer:bridge.tapGesture];
+        [tabSelectView addGestureRecognizer:bridge.tapGesture];
+    }
 }
 
 static void FQXSyncShelfHeaderRightButtons(UIViewController *controller) {
@@ -9340,6 +9758,281 @@ static void FQXRefreshAllShelfEditButtons(void) {
     }
 }
 
+static const void *FQXHistoryBarHiddenByUsKey = &FQXHistoryBarHiddenByUsKey;
+static const void *FQXHistoryScrollSavedFrameKey = &FQXHistoryScrollSavedFrameKey;
+static const void *FQXHistoryScrollAppliedFrameKey = &FQXHistoryScrollAppliedFrameKey;
+static const void *FQXHistoryScrollSavedInsetTopKey = &FQXHistoryScrollSavedInsetTopKey;
+static const void *FQXHistoryScrollAppliedInsetKey = &FQXHistoryScrollAppliedInsetKey;
+static const void *FQXHistoryBarDiagKey = &FQXHistoryBarDiagKey;
+
+static BOOL FQXShelfHistoryFilterBarEnabled(void) {
+    return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterBar.1");
+}
+
+static NSHashTable<UIViewController *> *FQXTrackedShelfHistoryVCs(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXTrackedHistoryBarViews(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static void FQXCollectHistoryBarMarkers(UIView *view, NSMutableSet<NSString *> *hits, NSInteger depth) {
+    if (!view || depth > 5 || hits.count >= 4) return;
+    NSString *t = nil;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)view;
+        t = lbl.text.length ? lbl.text : lbl.attributedText.string;
+    } else if ([view isKindOfClass:UIButton.class]) {
+        UIButton *btn = (UIButton *)view;
+        t = btn.currentTitle.length ? btn.currentTitle : btn.currentAttributedTitle.string;
+    }
+    if (t.length > 0 && t.length <= 8) {
+        static NSArray<NSString *> *tokens = nil;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{ tokens = @[@"全部", @"阅读", @"听书", @"短剧", @"筛选", @"编辑"]; });
+        for (NSString *tok in tokens) {
+            if ([t containsString:tok]) {
+                [hits addObject:tok];
+                break;
+            }
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        FQXCollectHistoryBarMarkers(sub, hits, depth + 1);
+    }
+}
+
+static UIScrollView *FQXFindMainHistoryContentScroll(UIView *root, NSArray<UIView *> *excludedBars, NSInteger depth) {
+    if (!root || depth > 5) return nil;
+    for (UIView *bar in excludedBars) {
+        if (root == bar || [root isDescendantOfView:bar]) return nil;
+    }
+    UIScrollView *best = nil;
+    CGFloat bestArea = 0.0;
+    if ([root isKindOfClass:UICollectionView.class] || [root isKindOfClass:UITableView.class] ||
+        [root isKindOfClass:UIScrollView.class]) {
+        CGFloat h = CGRectGetHeight(root.bounds);
+        CGFloat w = CGRectGetWidth(root.bounds);
+        if (h >= 150.0 && w >= 200.0) {
+            best = (UIScrollView *)root;
+            bestArea = w * h;
+        }
+    }
+    for (UIView *sub in root.subviews) {
+        UIScrollView *cand = FQXFindMainHistoryContentScroll(sub, excludedBars, depth + 1);
+        if (cand) {
+            CGFloat area = CGRectGetWidth(cand.bounds) * CGRectGetHeight(cand.bounds);
+            if (area > bestArea) {
+                best = cand;
+                bestArea = area;
+            }
+        }
+    }
+    return best;
+}
+
+static void FQXFindHistoryFilterBarCandidates(UIView *container,
+                                              UIView *vcView,
+                                              NSMutableArray<UIView *> *outBars,
+                                              NSInteger depth) {
+    if (!container || !vcView || depth > 3) return;
+    CGFloat vcW = CGRectGetWidth(vcView.bounds);
+    for (UIView *sub in container.subviews) {
+        if (CGRectGetWidth(sub.bounds) < 28.0 || CGRectGetHeight(sub.bounds) < 20.0) continue;
+        CGRect inVC = [sub convertRect:sub.bounds toView:vcView];
+        if (CGRectGetMinY(inVC) > 190.0) continue;
+        CGFloat h = CGRectGetHeight(inVC);
+        CGFloat w = CGRectGetWidth(inVC);
+        if (h <= 76.0 && w >= vcW * 0.55) {
+            NSMutableSet<NSString *> *hits = [NSMutableSet set];
+            FQXCollectHistoryBarMarkers(sub, hits, 0);
+            if (hits.count >= 2) {
+                [outBars addObject:sub];
+                return;
+            }
+        }
+    }
+    // Check split sibling layout (e.g. left category strip + right filter/edit buttons at same Y row)
+    NSMutableArray<UIView *> *rowPieces = [NSMutableArray array];
+    NSMutableSet<NSString *> *combinedHits = [NSMutableSet set];
+    CGFloat anchorMidY = -1.0;
+    for (UIView *sub in container.subviews) {
+        CGRect inVC = [sub convertRect:sub.bounds toView:vcView];
+        if (CGRectGetMinY(inVC) > 190.0 || CGRectGetHeight(inVC) < 18.0 || CGRectGetHeight(inVC) > 76.0) continue;
+        NSMutableSet<NSString *> *hits = [NSMutableSet set];
+        FQXCollectHistoryBarMarkers(sub, hits, 0);
+        if (hits.count > 0) {
+            if (anchorMidY < 0.0 || fabs(CGRectGetMidY(inVC) - anchorMidY) <= 18.0) {
+                if (anchorMidY < 0.0) anchorMidY = CGRectGetMidY(inVC);
+                [rowPieces addObject:sub];
+                [combinedHits unionSet:hits];
+            }
+        }
+    }
+    if (combinedHits.count >= 2 && rowPieces.count > 0) {
+        // Also capture any thin vertical divider between 筛选 and 编辑 on the same row.
+        for (UIView *sub in container.subviews) {
+            if ([rowPieces containsObject:sub]) continue;
+            CGRect inVC = [sub convertRect:sub.bounds toView:vcView];
+            if (CGRectGetWidth(inVC) <= 6.0 && CGRectGetHeight(inVC) <= 36.0 &&
+                fabs(CGRectGetMidY(inVC) - anchorMidY) <= 14.0) {
+                [rowPieces addObject:sub];
+            }
+        }
+        [outBars addObjectsFromArray:rowPieces];
+        return;
+    }
+    for (UIView *sub in container.subviews) {
+        if (CGRectGetHeight(sub.bounds) > 120.0 && CGRectGetWidth(sub.bounds) >= vcW * 0.7) {
+            FQXFindHistoryFilterBarCandidates(sub, vcView, outBars, depth + 1);
+            if (outBars.count > 0) return;
+        }
+    }
+}
+
+static void FQXRestoreHistoryScrollGeometry(UIScrollView *scroll) {
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    NSValue *savedFrameVal = objc_getAssociatedObject(scroll, FQXHistoryScrollSavedFrameKey);
+    NSValue *appliedFrameVal = objc_getAssociatedObject(scroll, FQXHistoryScrollAppliedFrameKey);
+    if (savedFrameVal) {
+        if (!appliedFrameVal || CGRectEqualToRect(scroll.frame, appliedFrameVal.CGRectValue)) {
+            scroll.frame = savedFrameVal.CGRectValue;
+        }
+        objc_setAssociatedObject(scroll, FQXHistoryScrollSavedFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(scroll, FQXHistoryScrollAppliedFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSNumber *savedInset = objc_getAssociatedObject(scroll, FQXHistoryScrollSavedInsetTopKey);
+    if (savedInset) {
+        UIEdgeInsets ins = scroll.contentInset;
+        ins.top = savedInset.doubleValue;
+        scroll.contentInset = ins;
+        objc_setAssociatedObject(scroll, FQXHistoryScrollSavedInsetTopKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(scroll, FQXHistoryScrollAppliedInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
+    if (![historyVC isKindOfClass:UIViewController.class] || !historyVC.isViewLoaded) return;
+    UIView *vcView = historyVC.view;
+    if (!vcView || CGRectGetWidth(vcView.bounds) < 180.0 || CGRectGetHeight(vcView.bounds) < 180.0) return;
+    [FQXTrackedShelfHistoryVCs() addObject:historyVC];
+
+    BOOL showBar = FQXShelfHistoryFilterBarEnabled();
+    if (showBar) {
+        for (UIView *bar in FQXTrackedHistoryBarViews().allObjects) {
+            if (!bar.superview || ![bar isDescendantOfView:vcView]) continue;
+            FQXShelfApplyControlHidden(bar, FQXHistoryBarHiddenByUsKey, NO);
+        }
+        UIScrollView *scroll = FQXFindMainHistoryContentScroll(vcView, @[], 0);
+        FQXRestoreHistoryScrollGeometry(scroll);
+        objc_setAssociatedObject(historyVC, FQXHistoryBarDiagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+
+    NSMutableArray<UIView *> *bars = [NSMutableArray array];
+    FQXFindHistoryFilterBarCandidates(vcView, vcView, bars, 0);
+    if (!bars.count) {
+        for (UIView *prev in FQXTrackedHistoryBarViews().allObjects) {
+            if (prev.superview && [prev isDescendantOfView:vcView]) [bars addObject:prev];
+        }
+    }
+    if (!bars.count) return;
+
+    CGFloat minY = CGFLOAT_MAX, maxY = -CGFLOAT_MAX;
+    for (UIView *bar in bars) {
+        [FQXTrackedHistoryBarViews() addObject:bar];
+        CGRect inVC = [bar convertRect:bar.bounds toView:vcView];
+        if (CGRectGetMinY(inVC) < minY) minY = CGRectGetMinY(inVC);
+        if (CGRectGetMaxY(inVC) > maxY) maxY = CGRectGetMaxY(inVC);
+        FQXShelfApplyControlHidden(bar, FQXHistoryBarHiddenByUsKey, YES);
+    }
+    CGFloat barH = (maxY > minY) ? (maxY - minY) : 0.0;
+
+    UIScrollView *scroll = FQXFindMainHistoryContentScroll(vcView, bars, 0);
+    NSString *layoutMode = @"hide_only";
+    if (scroll && barH >= 18.0 && barH <= 84.0) {
+        CGRect curFrame = scroll.frame;
+        NSValue *appliedVal = objc_getAssociatedObject(scroll, FQXHistoryScrollAppliedFrameKey);
+        BOOL alreadyShiftedFrame = (appliedVal && fabs(curFrame.origin.y - appliedVal.CGRectValue.origin.y) < 1.0 &&
+                                    fabs(curFrame.size.height - appliedVal.CGRectValue.size.height) < 1.0);
+        CGRect scrollInVC = [scroll.superview convertRect:curFrame toView:vcView];
+        if (alreadyShiftedFrame) {
+            layoutMode = @"above_scroll";
+        } else if (CGRectGetMinY(scrollInVC) >= maxY - 12.0 && CGRectGetMinY(scrollInVC) <= maxY + 24.0) {
+            CGFloat shift = CGRectGetMinY(scrollInVC) - minY;
+            if (shift >= 16.0 && shift <= 88.0) {
+                objc_setAssociatedObject(scroll, FQXHistoryScrollSavedFrameKey, [NSValue valueWithCGRect:curFrame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                CGRect shifted = curFrame;
+                shifted.origin.y -= shift;
+                shifted.size.height += shift;
+                scroll.frame = shifted;
+                objc_setAssociatedObject(scroll, FQXHistoryScrollAppliedFrameKey, [NSValue valueWithCGRect:shifted], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                layoutMode = @"above_scroll";
+            }
+        } else if (scroll.contentInset.top >= barH - 4.0) {
+            NSNumber *appliedIns = objc_getAssociatedObject(scroll, FQXHistoryScrollAppliedInsetKey);
+            if (!appliedIns || fabs(scroll.contentInset.top - appliedIns.doubleValue) > 1.0) {
+                if (!objc_getAssociatedObject(scroll, FQXHistoryScrollSavedInsetTopKey)) {
+                    objc_setAssociatedObject(scroll, FQXHistoryScrollSavedInsetTopKey, @(scroll.contentInset.top), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+                UIEdgeInsets ins = scroll.contentInset;
+                ins.top = MAX(0.0, ins.top - barH);
+                scroll.contentInset = ins;
+                objc_setAssociatedObject(scroll, FQXHistoryScrollAppliedInsetKey, @(ins.top), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            layoutMode = @"inset_overlay";
+        }
+    }
+
+    if (!objc_getAssociatedObject(historyVC, FQXHistoryBarDiagKey)) {
+        objc_setAssociatedObject(historyVC, FQXHistoryBarDiagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        UIView *firstBar = bars.firstObject;
+        FQXDiagRecordEvent(FQXDiagCategoryUI, @"shelf_history_bar_visibility", @{
+            @"barClass": firstBar ? (NSStringFromClass(firstBar.class) ?: @"") : @"",
+            @"barCount": @(bars.count),
+            @"barHeight": @(round(barH * 10.0) / 10.0),
+            @"scrollClass": scroll ? (NSStringFromClass(scroll.class) ?: @"") : @"",
+            @"layoutMode": layoutMode,
+            @"hidden": @YES,
+        }, NO);
+    }
+}
+
+static void (*OrigShelfHistoryVCDidLayout)(id, SEL);
+static void HookShelfHistoryVCDidLayout(UIViewController *self, SEL _cmd) {
+    if (OrigShelfHistoryVCDidLayout) OrigShelfHistoryVCDidLayout(self, _cmd);
+    FQXSyncShelfHistoryFilterBar(self);
+}
+
+static void (*OrigShelfHistoryVCWillAppear)(id, SEL, BOOL);
+static void HookShelfHistoryVCWillAppear(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigShelfHistoryVCWillAppear) OrigShelfHistoryVCWillAppear(self, _cmd, animated);
+    FQXSyncShelfHistoryFilterBar(self);
+}
+
+static void (*OrigShelfHistoryVCDidAppear)(id, SEL, BOOL);
+static void HookShelfHistoryVCDidAppear(UIViewController *self, SEL _cmd, BOOL animated) {
+    if (OrigShelfHistoryVCDidAppear) OrigShelfHistoryVCDidAppear(self, _cmd, animated);
+    FQXSyncShelfHistoryFilterBar(self);
+    if (!FQXShelfHistoryFilterBarEnabled()) {
+        __weak UIViewController *weakVC = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            UIViewController *strongVC = weakVC;
+            if (strongVC && strongVC.isViewLoaded && strongVC.view.window) {
+                FQXSyncShelfHistoryFilterBar(strongVC);
+            }
+        });
+    }
+}
+
 static void FQXRefreshAllShelfHeaderControls(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllShelfHeaderControls(); });
@@ -9351,7 +10044,16 @@ static void FQXRefreshAllShelfHeaderControls(void) {
     }
     for (UIViewController *vc in FQXTrackedShelf525VCs().allObjects) {
         FQXSyncShelfHeaderRightButtons(vc);
+        UIViewController *curTab = FQXObjGet(vc, "currentTabVC");
+        Class histCls = objc_lookUpClass("SSBookHistorySubViewController");
+        if (histCls && [curTab isKindOfClass:histCls]) {
+            FQXSyncShelfHistoryFilterBar(curTab);
+        }
         if (vc.isViewLoaded) [vc.view setNeedsLayout];
+    }
+    for (UIViewController *histVC in FQXTrackedShelfHistoryVCs().allObjects) {
+        FQXSyncShelfHistoryFilterBar(histVC);
+        if (histVC.isViewLoaded) [histVC.view setNeedsLayout];
     }
     for (UIViewController *vc in FQXTrackedShelfSubVCs().allObjects) {
         FQXSyncShelfHeaderRightButtons(vc);
@@ -9430,12 +10132,18 @@ static void HookShelf525DidLayoutSubviews(UIViewController *self, SEL _cmd) {
     FQXSyncShelfHeaderRightButtons(self);
     UIView *tabSelect = FQXObjGet(self, "categoryTitleView") ?: FQXObjGet(self, "tabSelectView");
     if ([tabSelect isKindOfClass:UIView.class]) FQXReflowShelfTabSelectView(tabSelect);
+    UIViewController *curTab = FQXObjGet(self, "currentTabVC");
+    Class histCls = objc_lookUpClass("SSBookHistorySubViewController");
+    if (histCls && [curTab isKindOfClass:histCls]) FQXSyncShelfHistoryFilterBar(curTab);
 }
 
 static void (*OrigShelf525DidSelectTab)(id, SEL, id, NSInteger);
 static void HookShelf525DidSelectTab(UIViewController *self, SEL _cmd, id category, NSInteger idx) {
     if (OrigShelf525DidSelectTab) OrigShelf525DidSelectTab(self, _cmd, category, idx);
     FQXSyncShelfHeaderRightButtons(self);
+    UIViewController *curTab = FQXObjGet(self, "currentTabVC");
+    Class histCls = objc_lookUpClass("SSBookHistorySubViewController");
+    if (histCls && [curTab isKindOfClass:histCls]) FQXSyncShelfHistoryFilterBar(curTab);
 }
 
 static void (*OrigShelfSubVCDidLayout)(id, SEL);
@@ -19207,6 +19915,10 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelfFilterHeaderView", "layoutSubviews", "v16@0:8", OrigShelfFilterHeaderLayout, HookShelfFilterHeaderLayout);
         POST_HOOK("SSBookShelfFilterMixRowCollectionView", "layoutSubviews", "v16@0:8", OrigShelfFilterMixRowLayout, HookShelfFilterMixRowLayout);
         POST_HOOK("SSBookShelfFilter541Cell", "layoutSubviews", "v16@0:8", OrigShelfFilter541CellLayout, HookShelfFilter541CellLayout);
+        POST_HOOK("SSBookHistorySubViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelfHistoryVCDidLayout, HookShelfHistoryVCDidLayout);
+        POST_HOOK("SSBookHistorySubViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfHistoryVCWillAppear, HookShelfHistoryVCWillAppear);
+        POST_HOOK("SSBookHistorySubViewController", "viewDidAppear:", "v20@0:8B16", OrigShelfHistoryVCDidAppear, HookShelfHistoryVCDidAppear);
+        POST_HOOK("FQVShortVideoVPlayerControlView", "layoutSubviews", "v16@0:8", OrigVPlayerLayoutForSeriesPill, HookVPlayerLayoutForSeriesPill);
 
 #undef POST_HOOK
     });
