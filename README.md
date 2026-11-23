@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.5beta5 测试版
+## FanqieX 1.9.5beta6 测试版
 
-修复短剧顶部分类隐藏中间子标签（如看剧/漫剧）后因残留 `minimumInteritemSpacing` 导致胶囊内出现大幅空白间隔（如 `[推荐      最近 收藏]`）以及纯黑背景视频上选中胶囊几乎不可见的问题；修复「底栏显示：我的」关闭后开启独立圆形模块或选择「我的」时无反馈且无法恢复的问题（支持一键自动恢复对应底栏入口并即时刷新 `SSTabBarController`）；修复 iOS 27.2 兼容布局（`_UITabBarItemPlatterView`）下 `dock_glass_material` 误判 `hostReset` 反复刷屏并触发日志限流的问题。
+修复短剧隐藏顶部分类（关闭总开关或隐藏看剧/漫剧等子标签）后左右滑动仍可切到隐藏页面的问题（关闭总开关时锁止横向翻页，隐藏部分子标签时以步进手势直跳相邻可见分类、彻底杜绝滑出隐藏页）；锁定短剧顶部栏 `SSHGBookStoreCategoryTitleView` 字体缩放与宽度抖动并按窗口中轴实时水平居中；修复底部 Dock 在 iOS 26/27 上因 `UITabBar` 底部溢出覆盖小白条区、底部边缘手势延迟与点击被吞导致切换时概率弹出小白条并需点第二下才能切换的问题。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.5beta5.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.5beta6.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta5。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta6。
 
 ## FanqieX 1.76
 
