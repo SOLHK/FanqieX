@@ -1762,8 +1762,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
 + (void)install {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        FQXCleanupLaunchTime = CACurrentMediaTime();
+        CFTimeInterval tStart = CACurrentMediaTime();
+        FQXCleanupLaunchTime = tStart;
         FQXDiagnosticsHubInstall();
+        CFTimeInterval tAfterHub = CACurrentMediaTime();
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                         object:nil
                                                          queue:nil
@@ -1771,26 +1773,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             FQXInvalidateOptionCache();
         }];
 #define SHOW_RULE(cls, selector, option) HideWhen(@cls, NSSelectorFromString(@selector), option##Key, YES)
-        SHOW_RULE("SSReaderChapterEndAuthorSpeakInsertObject", "shouldInsert", AuthorWords);
-        SHOW_RULE("SSReaderChapterEndContentModel", "showAuthorTalk", AuthorWords);
-        SHOW_RULE("SSReaderChapterEndCombineViewModel", "showDiscussion", ChapterDiscussion);
-        SHOW_RULE("SSReaderChapterEndCombineViewModel", "layoutShowDiscussion", ChapterDiscussion);
-        SHOW_RULE("SSReaderChapterEndForumInsertObject", "shouldInsert", ChapterCircle);
-        SHOW_RULE("SSReaderBookEndHeaderForumInsertHelper", "shouldInsert", ChapterCircle);
-        SHOW_RULE("SSReaderBookEndDoubleRowSectionInsertHelper", "shouldInsert", ChapterCircle);
-        SHOW_RULE("SSReaderChapterEndCombineViewModel", "showForumEntrance", ChapterForum);
-        SHOW_RULE("SSReaderChapterEndCombineViewModel", "showReward", ChapterGift);
-        SHOW_RULE("SSReaderChapterEndContentModel", "showReward", ChapterGift);
-        SHOW_RULE("SSReaderChapterEndContentModel", "showGiftView", ChapterGift);
-        SHOW_RULE("SSReaderChapterEndGiftRankInsertObject", "shouldInsert", ChapterGift);
-        SHOW_RULE("SSReaderChapterEndCommunityCardViewModel", "standaloneGiftEligible", ChapterGift);
-        SHOW_RULE("SSReaderBookEndHeaderUserGiftInsertHelper", "shouldInsert", ChapterGift);
-        SHOW_RULE("SSReaderBookEndMixedEntrancesInsertHelper", "canShowReward", ChapterGift);
-        SHOW_RULE("SSReaderBookEndMixedEntrancesInsertHelper", "shouldInsert", ChapterEndActions);
-        SHOW_RULE("SSReaderChapterEndCombineViewModel", "showCommentSwitch", ReaderComments);
-        SHOW_RULE("FQReaderManager", "shouldShowSpeechBtn", SpeechFloat);
-        SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "showDivertEntranceInToolBar", ChapterEndDrama);
-        SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "hasMoreAdaptionBottomEntrance", ChapterEndDrama);
+#define REPLACE(fn, cls, selector, encoding, impl) \
+    fn = (void *)Replace(@cls, NSSelectorFromString(@selector), encoding, (IMP)impl)
+
+        // Phase 1 (sync in dyld init): Bookshelf + Notifications/Badges only, so cold launch stays minimal.
         SHOW_RULE("SSBookShelfViewModel", "isHotBannerSectionActive", ShelfBanner);
         SHOW_RULE("SSBookShelfViewModel", "shouldShowLocalBookEntryAddCell", ShelfImport);
         SHOW_RULE("SSBookShelfViewModel", "shouldShowHistoryCard", ShelfHistoryCard);
@@ -1807,16 +1793,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SHOW_RULE("SSBookShelfDoubleColumn", "isDoubleColumnAllInBookShelf", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "enable", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "recommend_feed_enabled", ShelfRecommendations);
-        SHOW_RULE("SSMyUser621BaseViewController", "showShortcut", MineShortcutCard);
-        SHOW_RULE("SSMyUser621ViewController", "shouldInsertUnlimited", MineRecommendations);
-        SHOW_RULE("SSNewAudioPlayViewController", "isUnlimitedRecommendNotEmpty", AudioRecommendations);
-        SHOW_RULE("SSNewAudioPlayViewController", "shouldShowSlideGuide", AudioRecommendations);
-        SHOW_RULE("SSNewAudioPlayViewController", "canReportRecommendItems", AudioRecommendations);
         HideClassWhen(@"SSBookShelfDoubleColumn", NSSelectorFromString(@"isFeatureEnabled"), ShelfRecommendationsKey, YES);
-#undef SHOW_RULE
 
-#define REPLACE(fn, cls, selector, encoding, impl) \
-    fn = (void *)Replace(@cls, NSSelectorFromString(@selector), encoding, (IMP)impl)
         REPLACE(NativeImportCell, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B24@0:8q16", ImportCell);
         REPLACE(NativeImportCellBool, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B20@0:8B16", ImportCellBool);
         if (!NativeImportCellBool) {
@@ -1839,45 +1817,102 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         REPLACE(NativeShelfHeaderSize, "SSBookShelfSubViewController", "collectionView:layout:referenceSizeForHeaderInSection:", "{CGSize=dd}40@0:8@16@24q32", ShelfRecHeaderSize);
         REPLACE(NativeShelfFooterSize, "SSBookShelfSubViewController", "collectionView:layout:referenceSizeForFooterInSection:", "{CGSize=dd}40@0:8@16@24q32", ShelfRecFooterSize);
         REPLACE(NativeShelfInsetForSection, "SSBookShelfSubViewController", "collectionView:layout:insetForSectionAtIndex:", "{UIEdgeInsets=dddd}40@0:8@16@24q32", ShelfRecInsetForSection);
-        MinePublishButton = class_getInstanceVariable(NSClassFromString(@"SSMyUser621ViewController"), "_publishButton");
-        if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
-            REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
-            REPLACE(NativeMineUpdateLayout, "SSMyUser621ViewController", "updateLayout", "v16@0:8", MineUpdateLayout);
-            REPLACE(NativePublishPinFrame, "SSCommunityPublishButton", "preferredPinFrame",
-                    "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", MinePublishPinFrame);
-        }
-        REPLACE(NativeMineWillAppear, "SSMyUser621ViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
-        REPLACE(NativeMineDidAppear, "SSMyUser621ViewController", "viewDidAppear:", "v20@0:8B16", MineDidAppear);
-        REPLACE(NativeAudioLoadUnlimited, "SSNewAudioPlayViewController", "loadUnlimitedRecommend", "v16@0:8", AudioLoadUnlimited);
-        REPLACE(NativeAudioPreloadUnlimited, "SSNewAudioPlayViewController", "preLoadAudioPlayUnlimitedRecData", "v16@0:8", AudioPreloadUnlimited);
-        REPLACE(NativeAudioLoadRecommendBook, "SSNewAudioPlayViewController", "loadRecommendBook", "v16@0:8", AudioLoadRecommendBook);
-        REPLACE(NativeAudioLoadComics, "SSNewAudioPlayViewController", "loadComicsBooks", "v16@0:8", AudioLoadComics);
-        REPLACE(NativeAudioReloadRecommendForce, "SSNewAudioPlayViewController", "reloadRecommendUIRequestForce:", "v20@0:8B16", AudioReloadRecommendForce);
-        REPLACE(NativeAudioReloadUnlimitedView, "SSNewAudioPlayViewController", "reloadUnlimitedView", "v16@0:8", AudioReloadUnlimitedView);
-        REPLACE(NativeAudioLayoutContent, "SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", AudioLayoutContent);
-        REPLACE(NativeAudioWillAppear, "SSNewAudioPlayViewController", "viewWillAppear:", "v20@0:8B16", AudioWillAppear);
-        REPLACE(NativeSpeechHidden, "FQReaderSaaSReaderSpeechButton", "setHidden:", "v20@0:8B16", SpeechHidden);
         REPLACE(NativePresentation, "BDUGUserNotificationCenter", "userNotificationCenter:willPresentNotification:withCompletionHandler:", "v40@0:8@16@24@?32", PresentNotification);
         REPLACE(NativeBadge, "UIApplication", "setApplicationIconBadgeNumber:", "v24@0:8q16", SetBadge);
         REPLACE(NativeNotificationBadge, "UNUserNotificationCenter", "setBadgeCount:withCompletionHandler:", "v32@0:8q16@?24", SetNotificationBadge);
-        REPLACE(NativeShouldRecognize, "FQReaderManager", "shouldBeginDoubleTapRecognize", "B16@0:8", ShouldRecognize);
-        REPLACE(NativeDoubleTap, "FQReaderManager", "didDoubleTapView:tapEvent:", "v32@0:8@16@24", ToggleAutoRead);
-        REPLACE(NativePreSave, "SSReaderAutoReadPreSaveManager", "canShowAutoReadPreSaveWithPanelData:", "B24@0:8@16", CanShowPreSave);
-        REPLACE(NativePauseForTime, "SSReaderAutoReadPreSaveManager", "pauseAutoReadIfNeededForNoLeftTime", "v16@0:8", PauseForTime);
-#undef REPLACE
-        // These switches control the reader's local ad-time interlock. The
-        // original reward requests and network accounting are independent.
-        HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
-        HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"autoReadInspireOpen"), DurationLimitKey, NO);
-        HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
-        HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
+
+        CFTimeInterval tAfterCleanupSync = CACurrentMediaTime();
         FQXInstallContentCleanupHooks();
-        InstallDramaActionVisibility(@"SSShortVideoRightInteractionCollectView", DramaShowCollectKey);
-        InstallDramaActionVisibility(@"SSShortVideoRightInteractionCommentView", DramaShowCommentKey);
-        InstallDramaActionVisibility(@"SSShortVideoHostRightInteractionCommentView", DramaShowCommentKey);
-        InstallDramaActionVisibility(@"SSShortVideoRightInteractionLikeView", DramaShowLikeKey);
-        InstallDramaActionVisibility(@"SSShortVideoRightInteractionShareView", DramaShowShareKey);
+        CFTimeInterval tAfterContentSync = CACurrentMediaTime();
         FQXInstallMotionAndAudioHooks();
+        CFTimeInterval tEnd = CACurrentMediaTime();
+
+        // Phase 2 (first main runloop tick): Drama right-rail visibility & Mine tab hooks.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SHOW_RULE("SSMyUser621BaseViewController", "showShortcut", MineShortcutCard);
+            SHOW_RULE("SSMyUser621ViewController", "shouldInsertUnlimited", MineRecommendations);
+            MinePublishButton = class_getInstanceVariable(NSClassFromString(@"SSMyUser621ViewController"), "_publishButton");
+            if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
+                REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
+                REPLACE(NativeMineUpdateLayout, "SSMyUser621ViewController", "updateLayout", "v16@0:8", MineUpdateLayout);
+                REPLACE(NativePublishPinFrame, "SSCommunityPublishButton", "preferredPinFrame",
+                        "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", MinePublishPinFrame);
+            }
+            REPLACE(NativeMineWillAppear, "SSMyUser621ViewController", "viewWillAppear:", "v20@0:8B16", MineWillAppear);
+            REPLACE(NativeMineDidAppear, "SSMyUser621ViewController", "viewDidAppear:", "v20@0:8B16", MineDidAppear);
+            InstallDramaActionVisibility(@"SSShortVideoRightInteractionCollectView", DramaShowCollectKey);
+            InstallDramaActionVisibility(@"SSShortVideoRightInteractionCommentView", DramaShowCommentKey);
+            InstallDramaActionVisibility(@"SSShortVideoHostRightInteractionCommentView", DramaShowCommentKey);
+            InstallDramaActionVisibility(@"SSShortVideoRightInteractionLikeView", DramaShowLikeKey);
+            InstallDramaActionVisibility(@"SSShortVideoRightInteractionShareView", DramaShowShareKey);
+        });
+
+        // Phase 3 (post-first-frame): Reader chapter-end, AutoRead & Audiobook hooks.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            SHOW_RULE("SSReaderChapterEndAuthorSpeakInsertObject", "shouldInsert", AuthorWords);
+            SHOW_RULE("SSReaderChapterEndContentModel", "showAuthorTalk", AuthorWords);
+            SHOW_RULE("SSReaderChapterEndCombineViewModel", "showDiscussion", ChapterDiscussion);
+            SHOW_RULE("SSReaderChapterEndCombineViewModel", "layoutShowDiscussion", ChapterDiscussion);
+            SHOW_RULE("SSReaderChapterEndForumInsertObject", "shouldInsert", ChapterCircle);
+            SHOW_RULE("SSReaderBookEndHeaderForumInsertHelper", "shouldInsert", ChapterCircle);
+            SHOW_RULE("SSReaderBookEndDoubleRowSectionInsertHelper", "shouldInsert", ChapterCircle);
+            SHOW_RULE("SSReaderChapterEndCombineViewModel", "showForumEntrance", ChapterForum);
+            SHOW_RULE("SSReaderChapterEndCombineViewModel", "showReward", ChapterGift);
+            SHOW_RULE("SSReaderChapterEndContentModel", "showReward", ChapterGift);
+            SHOW_RULE("SSReaderChapterEndContentModel", "showGiftView", ChapterGift);
+            SHOW_RULE("SSReaderChapterEndGiftRankInsertObject", "shouldInsert", ChapterGift);
+            SHOW_RULE("SSReaderChapterEndCommunityCardViewModel", "standaloneGiftEligible", ChapterGift);
+            SHOW_RULE("SSReaderBookEndHeaderUserGiftInsertHelper", "shouldInsert", ChapterGift);
+            SHOW_RULE("SSReaderBookEndMixedEntrancesInsertHelper", "canShowReward", ChapterGift);
+            SHOW_RULE("SSReaderBookEndMixedEntrancesInsertHelper", "shouldInsert", ChapterEndActions);
+            SHOW_RULE("SSReaderChapterEndCombineViewModel", "showCommentSwitch", ReaderComments);
+            SHOW_RULE("FQReaderManager", "shouldShowSpeechBtn", SpeechFloat);
+            SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "showDivertEntranceInToolBar", ChapterEndDrama);
+            SHOW_RULE("SSReaderBottomToolDivertBookDispatcher", "hasMoreAdaptionBottomEntrance", ChapterEndDrama);
+            SHOW_RULE("SSNewAudioPlayViewController", "isUnlimitedRecommendNotEmpty", AudioRecommendations);
+            SHOW_RULE("SSNewAudioPlayViewController", "shouldShowSlideGuide", AudioRecommendations);
+            SHOW_RULE("SSNewAudioPlayViewController", "canReportRecommendItems", AudioRecommendations);
+            REPLACE(NativeAudioLoadUnlimited, "SSNewAudioPlayViewController", "loadUnlimitedRecommend", "v16@0:8", AudioLoadUnlimited);
+            REPLACE(NativeAudioPreloadUnlimited, "SSNewAudioPlayViewController", "preLoadAudioPlayUnlimitedRecData", "v16@0:8", AudioPreloadUnlimited);
+            REPLACE(NativeAudioLoadRecommendBook, "SSNewAudioPlayViewController", "loadRecommendBook", "v16@0:8", AudioLoadRecommendBook);
+            REPLACE(NativeAudioLoadComics, "SSNewAudioPlayViewController", "loadComicsBooks", "v16@0:8", AudioLoadComics);
+            REPLACE(NativeAudioReloadRecommendForce, "SSNewAudioPlayViewController", "reloadRecommendUIRequestForce:", "v20@0:8B16", AudioReloadRecommendForce);
+            REPLACE(NativeAudioReloadUnlimitedView, "SSNewAudioPlayViewController", "reloadUnlimitedView", "v16@0:8", AudioReloadUnlimitedView);
+            REPLACE(NativeAudioLayoutContent, "SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", AudioLayoutContent);
+            REPLACE(NativeAudioWillAppear, "SSNewAudioPlayViewController", "viewWillAppear:", "v20@0:8B16", AudioWillAppear);
+            REPLACE(NativeSpeechHidden, "FQReaderSaaSReaderSpeechButton", "setHidden:", "v20@0:8B16", SpeechHidden);
+            REPLACE(NativeShouldRecognize, "FQReaderManager", "shouldBeginDoubleTapRecognize", "B16@0:8", ShouldRecognize);
+            REPLACE(NativeDoubleTap, "FQReaderManager", "didDoubleTapView:tapEvent:", "v32@0:8@16@24", ToggleAutoRead);
+            REPLACE(NativePreSave, "SSReaderAutoReadPreSaveManager", "canShowAutoReadPreSaveWithPanelData:", "B24@0:8@16", CanShowPreSave);
+            REPLACE(NativePauseForTime, "SSReaderAutoReadPreSaveManager", "pauseAutoReadIfNeededForNoLeftTime", "v16@0:8", PauseForTime);
+            // These switches control the reader's local ad-time interlock. The
+            // original reward requests and network accounting are independent.
+            HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"autoReadInspireOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
+        });
+
+#undef REPLACE
+#undef SHOW_RULE
+
+        double hubMs = (tAfterHub - tStart) * 1000.0;
+        double cleanupSyncMs = (tAfterCleanupSync - tAfterHub) * 1000.0;
+        double contentSyncMs = (tAfterContentSync - tAfterCleanupSync) * 1000.0;
+        double motionSyncMs = (tEnd - tAfterContentSync) * 1000.0;
+        double totalSyncMs = (tEnd - tStart) * 1000.0;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"startup_perf_summary", @{
+                @"hubSyncMs": @(round(hubMs * 100.0) / 100.0),
+                @"cleanupSyncMs": @(round(cleanupSyncMs * 100.0) / 100.0),
+                @"contentSyncMs": @(round(contentSyncMs * 100.0) / 100.0),
+                @"motionSyncMs": @(round(motionSyncMs * 100.0) / 100.0),
+                @"totalSyncMs": @(round(totalSyncMs * 100.0) / 100.0),
+            }, NO);
+        });
+
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                        dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             FQXPurgeHistoricalResidueImpl(NO);

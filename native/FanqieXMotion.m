@@ -14375,6 +14375,7 @@ static const void *FQXShareGlassSurfaceKey = &FQXShareGlassSurfaceKey;
 static const void *FQXSharePaperBackdropKey = &FQXSharePaperBackdropKey;
 static const void *FQXShareForceDarkKey = &FQXShareForceDarkKey;
 static const void *FQXShareSavedTextColorKey = &FQXShareSavedTextColorKey;
+static const void *FQXShareSavedAttrTextKey = &FQXShareSavedAttrTextKey;
 static const void *FQXShareSavedBtnTitleColorKey = &FQXShareSavedBtnTitleColorKey;
 static const void *FQXShareSavedOrigImageKey = &FQXShareSavedOrigImageKey;
 static const void *FQXShareAppliedMonoImageKey = &FQXShareAppliedMonoImageKey;
@@ -14427,6 +14428,13 @@ static NSHashTable<UIView *> *FQXTrackedShareSheets(void) {
     return table;
 }
 
+static NSHashTable<UIView *> *FQXTrackedShareDimmers(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
 static NSCache<NSString *, UIImage *> *FQXMonochromeShareIconCache(void) {
     static NSCache<NSString *, UIImage *> *cache;
     static dispatch_once_t once;
@@ -14468,30 +14476,21 @@ static UIViewController *FQXFindVisibleVCKindInHierarchy(UIViewController *vc, C
     return nil;
 }
 
-static UIViewController *FQXFindVisibleClassInWindows(UIWindow *window, Class targetCls) {
-    if (!targetCls) return nil;
+static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
+    Class readerCls = NSClassFromString(@"BDReaderViewController");
+    if (!readerCls) return nil;
     UIViewController *found = window.rootViewController
-        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, targetCls, 0) : nil;
+        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, readerCls, 0) : nil;
     if (found) return found;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *win in ((UIWindowScene *)scene).windows) {
             if (win == window || win.hidden || win.alpha <= 0.01) continue;
-            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, targetCls, 0);
+            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, readerCls, 0);
             if (found) return found;
         }
     }
     return nil;
-}
-
-static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
-    return FQXFindVisibleClassInWindows(window, NSClassFromString(@"BDReaderViewController"));
-}
-
-static UIViewController *FQXFindVisibleDramaVCInWindow(UIWindow *window) {
-    UIViewController *vc = FQXFindVisibleClassInWindows(window, NSClassFromString(@"FQVShortVideoListViewController"));
-    if (vc) return vc;
-    return FQXFindVisibleClassInWindows(window, NSClassFromString(@"SSVideoSeriesFeedViewController"));
 }
 
 static UIColor *FQXSampleCenterPixelColor(UIImage *image) {
@@ -15126,12 +15125,20 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
 
         if (adaptInk) {
             UIColor *targetInk = isDark
-                ? [UIColor colorWithWhite:1.0 alpha:0.94]
-                : [UIColor colorWithWhite:0.0 alpha:0.92];
+                ? [UIColor colorWithWhite:1.0 alpha:0.95]
+                : [UIColor colorWithWhite:0.0 alpha:0.94];
             if ([view isKindOfClass:UILabel.class]) {
                 UILabel *lbl = (UILabel *)view;
-                if ((lbl.text.length > 0 || lbl.attributedText.length > 0) && lbl.textColor &&
-                    FQXColorIsNeutralSurface(lbl.textColor, lbl.traitCollection)) {
+                if (lbl.attributedText.length > 0) {
+                    if (!objc_getAssociatedObject(lbl, FQXShareSavedAttrTextKey)) {
+                        objc_setAssociatedObject(lbl, FQXShareSavedAttrTextKey, lbl.attributedText, OBJC_ASSOCIATION_COPY_NONATOMIC);
+                    }
+                    NSMutableAttributedString *mut = [lbl.attributedText mutableCopy];
+                    [mut addAttribute:NSForegroundColorAttributeName value:targetInk range:NSMakeRange(0, mut.length)];
+                    lbl.attributedText = mut;
+                    lbl.textColor = targetInk;
+                } else if (lbl.text.length > 0 && lbl.textColor &&
+                           FQXColorIsNeutralSurface(lbl.textColor, lbl.traitCollection)) {
                     if (!objc_getAssociatedObject(lbl, FQXShareSavedTextColorKey)) {
                         objc_setAssociatedObject(lbl, FQXShareSavedTextColorKey, lbl.textColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     }
@@ -15183,6 +15190,11 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
                 objc_setAssociatedObject(view, FQXShareSavedBtnTitleColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         } else if ([view isKindOfClass:UILabel.class]) {
+            NSAttributedString *savedAttr = objc_getAssociatedObject(view, FQXShareSavedAttrTextKey);
+            if ([savedAttr isKindOfClass:NSAttributedString.class]) {
+                ((UILabel *)view).attributedText = savedAttr;
+                objc_setAssociatedObject(view, FQXShareSavedAttrTextKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
             UIColor *savedText = objc_getAssociatedObject(view, FQXShareSavedTextColorKey);
             if ([savedText isKindOfClass:UIColor.class]) {
                 ((UILabel *)view).textColor = savedText;
@@ -15194,6 +15206,120 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
     for (UIView *sub in view.subviews) {
         FQXApplyShareSubtreeCleanup(sub, rootSheet, clear, adaptInk, monochromeIcons, isDark, depth + 1, stats);
     }
+}
+
+static void FQXClearOneShareDimmerView(UIView *view, BOOL clear, NSInteger depth) {
+    if (!view || depth > 2) return;
+    if (clear) {
+        [FQXTrackedShareDimmers() addObject:view];
+        FQXAudioClearBackground(view, YES);
+        if (view.layer.backgroundColor && CGColorGetAlpha(view.layer.backgroundColor) > 0.001) {
+            UIColor *lbg = [UIColor colorWithCGColor:view.layer.backgroundColor];
+            if (FQXColorIsDarkDimmingScrim(lbg, view.traitCollection, view.alpha)) {
+                if (!objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey)) {
+                    objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, lbg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+                view.layer.backgroundColor = NULL;
+            }
+        }
+        CGFloat vw = CGRectGetWidth(view.bounds);
+        CGFloat vh = CGRectGetHeight(view.bounds);
+        for (CALayer *sub in view.layer.sublayers) {
+            if (sub.delegate != nil || sub.hidden) continue;
+            if (CGRectGetWidth(sub.bounds) >= vw * 0.70 && CGRectGetHeight(sub.bounds) >= vh * 0.40) {
+                objc_setAssociatedObject(sub, FQXShareHiddenSublayerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                sub.hidden = YES;
+            }
+        }
+        if (depth < 2) {
+            for (UIView *child in view.subviews) {
+                if (child.hidden || child.alpha < 0.01) continue;
+                if ([child isKindOfClass:FQXCommentGlassSurfaceView.class] ||
+                    [child isKindOfClass:FQXBackdropBlurView.class]) continue;
+                if (CGRectGetWidth(child.bounds) >= vw * 0.70 && CGRectGetHeight(child.bounds) >= vh * 0.40 &&
+                    !FQXSubtreeHasVisibleContent(child, 0) && FQXViewHasDarkDimmingFill(child)) {
+                    FQXClearOneShareDimmerView(child, YES, depth + 1);
+                }
+            }
+        }
+    } else {
+        FQXAudioClearBackground(view, NO);
+        UIColor *savedLayerBg = objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey);
+        if ([savedLayerBg isKindOfClass:UIColor.class]) {
+            view.layer.backgroundColor = savedLayerBg.CGColor;
+            objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        for (CALayer *sub in view.layer.sublayers) {
+            if ([objc_getAssociatedObject(sub, FQXShareHiddenSublayerKey) boolValue]) {
+                sub.hidden = NO;
+                objc_setAssociatedObject(sub, FQXShareHiddenSublayerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+    }
+}
+
+// Clear dark translucent dimming overlays behind the Share Sheet (e.g. SSReadingSharePanel's
+// full-screen dark scrim) while keeping userInteractionEnabled & hit-testing intact so tapping
+// outside still dismisses the sheet and Novel Share matches Short Drama Share's clean bright backdrop.
+static NSInteger FQXSyncShareBackdropDimmer(UIView *sheet, BOOL clearDimmer) {
+    if (!sheet) return 0;
+    if (!clearDimmer) {
+        for (UIView *d in FQXTrackedShareDimmers().allObjects) {
+            if (!d.window || d.window == sheet.window) {
+                FQXClearOneShareDimmerView(d, NO, 0);
+            }
+        }
+        return 0;
+    }
+    UIWindow *win = sheet.window;
+    if (!win) return 0;
+    CGFloat winW = CGRectGetWidth(win.bounds);
+    CGFloat winH = CGRectGetHeight(win.bounds);
+    if (winW < 200.0 || winH < 300.0) return 0;
+
+    NSInteger cleared = 0;
+    UIView *branch = sheet;
+    UIView *cur = sheet.superview;
+    NSInteger steps = 0;
+    while (cur && steps < 6) {
+        steps++;
+        BOOL isWin = (cur == win);
+        BOOL isProtectedHostVCView = isWin;
+        if (!isProtectedHostVCView && [cur.nextResponder isKindOfClass:UIViewController.class]) {
+            NSString *vcName = NSStringFromClass(cur.nextResponder.class) ?: @"";
+            if ([vcName hasPrefix:@"BDReader"] || [vcName hasPrefix:@"SSTabBar"] ||
+                [vcName hasPrefix:@"SSVideoSeriesFeed"] || [vcName hasPrefix:@"FQVShortVideoList"] ||
+                [vcName hasPrefix:@"SSBookShelf"] || [vcName hasPrefix:@"SSBookStore"]) {
+                isProtectedHostVCView = YES;
+            }
+        }
+
+        if (!isProtectedHostVCView && FQXViewHasDarkDimmingFill(cur)) {
+            FQXClearOneShareDimmerView(cur, YES, 0);
+            cleared++;
+        }
+
+        NSArray<UIView *> *siblings = cur.subviews;
+        NSUInteger branchIdx = [siblings indexOfObjectIdenticalTo:branch];
+        for (NSUInteger i = 0; i < siblings.count; ++i) {
+            UIView *sib = siblings[i];
+            if (sib == branch || sib == sheet || [sheet isDescendantOfView:sib] || sib.hidden || sib.alpha < 0.01) continue;
+            if (isProtectedHostVCView && branchIdx != NSNotFound && i > branchIdx) continue;
+            if ([sib isKindOfClass:FQXCommentGlassSurfaceView.class] ||
+                [sib isKindOfClass:FQXBackdropBlurView.class]) continue;
+            CGRect sibInWin = [sib convertRect:sib.bounds toView:win];
+            if (CGRectGetWidth(sibInWin) < winW * 0.72 || CGRectGetHeight(sibInWin) < winH * 0.40) continue;
+            if (FQXSubtreeHasVisibleContent(sib, 0)) continue;
+            if (FQXViewHasDarkDimmingFill(sib)) {
+                FQXClearOneShareDimmerView(sib, YES, 0);
+                cleared++;
+            }
+        }
+        if (isWin || isProtectedHostVCView) break;
+        branch = cur;
+        cur = cur.superview;
+    }
+    return cleared;
 }
 
 static void FQXRemoveShareSheetStyling(UIView *sheet) {
@@ -15215,6 +15341,7 @@ static void FQXRemoveShareSheetStyling(UIView *sheet) {
         sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
     }
     FQXSetShareSheetHostClipping(sheet, NO);
+    FQXSyncShareBackdropDimmer(sheet, NO);
     FQXApplyShareSubtreeCleanup(sheet, sheet, NO, NO, NO, NO, 0, NULL);
 }
 
@@ -15245,21 +15372,16 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         FQXRemoveGlassSheet(sheet);
     }
 
-    // Resolve context: Novel Reader paper color & optical dark/light polarity.
+    // Resolve unified Light/Dark polarity across both Short Drama and Novel Share sheets:
+    // Light mode => pure black logos + black text; Night/Dark mode => pure white logos + white text.
     BOOL fromReader = NO;
     UIColor *paperColor = FQXSampleActiveReaderPaperColor(sheet.window, root ?: sheet, &fromReader);
-    BOOL isDark = NO;
+    BOOL isDark = FQXAppIsInNightMode();
     if (fromReader && paperColor) {
         CGFloat luma = 0.5;
         if (FQXColorLuminance(paperColor, sheet.traitCollection, &luma)) {
             isDark = (luma < 0.45);
-        } else {
-            isDark = FQXAppIsInNightMode();
         }
-    } else if (forceDarkDrama || FQXFindVisibleDramaVCInWindow(sheet.window) != nil) {
-        isDark = YES;
-    } else {
-        isDark = FQXAppIsInNightMode();
     }
 
     CGFloat hostCornerR = FQXReadHostSheetCornerRadius(sheet, root);
@@ -15270,6 +15392,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     BOOL hadMask = (sheet.layer.mask != nil || objc_getAssociatedObject(sheet, FQXShareSavedMaskKey) != nil);
     BOOL hadClips = (sheet.clipsToBounds || [objc_getAssociatedObject(sheet, FQXShareSavedClipsKey) boolValue]);
     FQXShareCleanupStats stats = {0, 0};
+    NSInteger clearedDimmers = FQXSyncShareBackdropDimmer(sheet, YES);
 
     // Mode 3: 原书底色 (Novel original paper background / matching dark theme surface on Drama)
     if (style == FQXShareMaterialBookBackground) {
@@ -15305,8 +15428,9 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
         [CATransaction commit];
 
-        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f|%ld",
-                             isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb), (long)stats.monochromeIcons];
+        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f|%ld|%ld",
+                             isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb),
+                             (long)stats.monochromeIcons, (long)clearedDimmers];
         if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
             objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
             FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
@@ -15318,6 +15442,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
                 @"paperHex": FQXHexStringForColor(fillColor),
                 @"monochromeIcons": @(stats.monochromeIcons),
                 @"neutralizedEffects": @(stats.neutralizedEffects),
+                @"clearedDimmers": @(clearedDimmers),
                 @"sheetHadMask": @(hadMask),
                 @"sheetHadClips": @(hadClips),
                 @"sheetFrame": FQXDockRectArray(sb),
@@ -15441,9 +15566,9 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         }
     }
 
-    NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f|%ld|%ld",
+    NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f|%ld|%ld|%ld",
                          (long)effStyle, isDark ? 1 : 0, (long)blurPct, darkTint ? 1 : 0,
-                         CGRectGetHeight(sb), (long)stats.monochromeIcons, (long)stats.neutralizedEffects];
+                         CGRectGetHeight(sb), (long)stats.monochromeIcons, (long)stats.neutralizedEffects, (long)clearedDimmers];
     if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
         objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
         NSMutableArray<NSString *> *subClasses = [NSMutableArray array];
@@ -15465,6 +15590,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
             @"surfaceOverrideStyle": @((NSInteger)surface.overrideUserInterfaceStyle),
             @"monochromeIcons": @(stats.monochromeIcons),
             @"neutralizedEffects": @(stats.neutralizedEffects),
+            @"clearedDimmers": @(clearedDimmers),
             @"sheetHadMask": @(hadMask),
             @"sheetHadClips": @(hadClips),
             @"subviewSummary": subClasses,
@@ -15663,13 +15789,8 @@ static void FQXInspectCandidateShareContainer(UIView *root) {
     if (innerCustom && innerCustom != card && innerCustom != root) {
         FQXEnsureShareSheetClassHooked(innerCustom, card);
     }
-    BOOL forceDark = (FQXFindVisibleReaderVCInWindow(root.window) == nil) &&
-                     (FQXFindVisibleDramaVCInWindow(root.window) != nil ||
-                      [clsName containsString:@"Video"] || [clsName containsString:@"Drama"]);
-    FQXStyleShareSheet(card, root, forceDark);
+    FQXStyleShareSheet(card, root, NO);
 }
-
-static NSMutableDictionary<NSString *, NSValue *> *gFQXShareViewOrigDidMoveWindow = nil;
 
 static void FQXScheduleCandidateShareInspection(UIView *candidate) {
     if (!candidate) return;
@@ -15692,64 +15813,6 @@ static void FQXScheduleCandidateShareInspection(UIView *candidate) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d * NSEC_PER_SEC)), dispatch_get_main_queue(), task);
         }
     }
-}
-
-static void HookNamedShareViewDidMoveWindow(UIView *view, SEL cmd) {
-    IMP orig = NULL;
-    if (gFQXShareViewOrigDidMoveWindow) {
-        for (Class c = object_getClass(view); c && c != UIView.class; c = class_getSuperclass(c)) {
-            NSValue *v = gFQXShareViewOrigDidMoveWindow[NSStringFromClass(c) ?: @""];
-            if (v) { orig = (IMP)v.pointerValue; break; }
-        }
-    }
-    if (orig) ((void (*)(id, SEL))orig)(view, cmd);
-    if (view.window) FQXScheduleCandidateShareInspection(view);
-}
-
-static void FQXHookHostSharePanelSubclasses(void) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        gFQXShareViewOrigDidMoveWindow = [NSMutableDictionary dictionary];
-        unsigned int count = 0;
-        Class *classes = objc_copyClassList(&count);
-        if (!classes) return;
-        for (unsigned int i = 0; i < count; ++i) {
-            Class c = classes[i];
-            const char *cname = class_getName(c);
-            if (!cname || !strstr(cname, "Share")) continue;
-            if (strncmp(cname, "UI", 2) == 0 || strncmp(cname, "_UI", 3) == 0 ||
-                strncmp(cname, "FQX", 3) == 0 || strncmp(cname, "FanqieX", 7) == 0 ||
-                strcmp(cname, "SSVideoSharePanelView") == 0 ||
-                strcmp(cname, "SSReadingSharePanel") == 0) {
-                continue;
-            }
-            if (strstr(cname, "Button") || strstr(cname, "Btn") || strstr(cname, "Icon") ||
-                strstr(cname, "Cell") || strstr(cname, "Item") || strstr(cname, "Badge") ||
-                strstr(cname, "Label") || strstr(cname, "Image") || strstr(cname, "Tip") ||
-                strstr(cname, "Toast") || strstr(cname, "RightInteraction")) {
-                continue;
-            }
-            if (!(strstr(cname, "Panel") || strstr(cname, "Sheet") || strstr(cname, "Board") ||
-                  strstr(cname, "Pop") || strstr(cname, "Menu") || strstr(cname, "Dialog") ||
-                  strstr(cname, "Container") || strstr(cname, "Card") || strstr(cname, "Content") ||
-                  strstr(cname, "Alert") || strstr(cname, "View"))) {
-                continue;
-            }
-            BOOL isViewSubclass = NO;
-            for (Class s = class_getSuperclass(c); s; s = class_getSuperclass(s)) {
-                if (s == UIView.class) { isViewSubclass = YES; break; }
-            }
-            if (!isViewSubclass) continue;
-            NSString *key = [NSString stringWithUTF8String:cname];
-            if (!key.length || gFQXShareViewOrigDidMoveWindow[key]) continue;
-            IMP orig = NULL;
-            if (FQXInstallOwnedHook(c, @selector(didMoveToWindow), NO, "v16@0:8",
-                                    (IMP)HookNamedShareViewDidMoveWindow, &orig) && orig) {
-                gFQXShareViewOrigDidMoveWindow[key] = [NSValue valueWithPointer:(const void *)orig];
-            }
-        }
-        free(classes);
-    });
 }
 
 static UIView *FQXEnclosingModalSheetRootForView(UIView *view) {
@@ -17215,6 +17278,28 @@ static id HookMPRemoteAddTargetHandler(id self, SEL _cmd, id handlerBlock) {
     return token;
 }
 
+static void FQXInstallDynamicIslandMediaPlayerHooksIfNeeded(BOOL forceLoadFramework) {
+    Class mpCmd = objc_lookUpClass("MPRemoteCommand");
+    if (!mpCmd && !forceLoadFramework) {
+        NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+        BOOL islandEnabled = [ud boolForKey:AudioDynamicIslandPrefKey] || [ud boolForKey:DramaDynamicIslandPrefKey];
+        if (!islandEnabled) return;
+    }
+    static dispatch_once_t mpHookOnce;
+    dispatch_once(&mpHookOnce, ^{
+        if (!objc_lookUpClass("MPRemoteCommand")) {
+            FQXEnsureMediaPlayerLoaded();
+        }
+        Class cls = objc_lookUpClass("MPRemoteCommand");
+        if (cls) {
+            FQXInstallOwnedHook(cls, NSSelectorFromString(@"addTarget:action:"), NO, "v32@0:8@16:24",
+                                (IMP)HookMPRemoteAddTargetAction, (IMP *)&OrigMPRemoteAddTargetAction);
+            FQXInstallOwnedHook(cls, NSSelectorFromString(@"addTargetWithHandler:"), NO, "@24@0:8@?16",
+                                (IMP)HookMPRemoteAddTargetHandler, (IMP *)&OrigMPRemoteAddTargetHandler);
+        }
+    });
+}
+
 static BOOL FQXInvokeHostAudioRemoteCommand(NSString *commandGetter) {
     FQXEnsureMediaPlayerLoaded();
     Class ccCls = NSClassFromString(@"MPRemoteCommandCenter");
@@ -18356,6 +18441,9 @@ static void FQXRefreshDynamicIslandState(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     BOOL audioIslandOn = [ud boolForKey:AudioDynamicIslandPrefKey];
     BOOL dramaIslandOn = [ud boolForKey:DramaDynamicIslandPrefKey];
+    if (audioIslandOn || dramaIslandOn) {
+        FQXInstallDynamicIslandMediaPlayerHooksIfNeeded(YES);
+    }
 
     for (UIView *ind in [FQXTrackedAudioIndicators() allObjects]) {
         FQXApplyIndicatorIslandMuteIfNeeded(ind);
@@ -18671,237 +18759,12 @@ static void FQXInstallPostGlassHooks(void);
 void FQXInstallMotionAndAudioHooks(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        FQXInstallCommentTextViewObservers();
 #define HOOK_INST(clsName, selName, enc, origVar, hookFn) do { \
-    Class _c = NSClassFromString(@clsName); \
-    if (_c) FQXInstallOwnedHook(_c, NSSelectorFromString(@selName), NO, enc, (IMP)(hookFn), (IMP *)&(origVar)); \
+    Class _c = objc_lookUpClass(clsName); \
+    if (_c) FQXInstallOwnedHook(_c, sel_registerName(selName), NO, enc, (IMP)(hookFn), (IMP *)&(origVar)); \
 } while (0)
 
-        HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
-        HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v24@0:8q16", OrigMineTabBarCurrentTap64, HookMineTabBarCurrentTap64);
-        HOOK_INST("SSMyUser621ViewController", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineUnlimitedRefresh, HookMineUnlimitedRefresh);
-        HOOK_INST("SSVideoSeriesFeedViewController", "categoryView:scrollingFromLeftItem:atLeftIndex:toRightItem:atRightIndex:ratio:",
-                  "v64@0:8@16@24q32@40q48d56", OrigDramaScrollBetweenTabs, HookDramaScrollBetweenTabs);
-        HOOK_INST("SSVideoSeriesFeedViewController", "commitSelectedTabIndex:tabType:", "v28@0:8q16i24", OrigDramaCommitTabIndex, HookDramaCommitTabIndex);
-        HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
-        HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
-        HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
-        HOOK_INST("SSShortVideoRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigDramaCommentCount, HookDramaCommentCount);
-        HOOK_INST("SSShortVideoHostRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigHostDramaCommentCount, HookHostDramaCommentCount);
-        HOOK_INST("SSShortVideoRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigDramaCommentLayout, HookDramaCommentLayout);
-        HOOK_INST("SSShortVideoHostRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigHostDramaCommentLayout, HookHostDramaCommentLayout);
-        HOOK_INST("FQCCommentBottomToolBar", "layoutSubviews", "v16@0:8", OrigBaseCommentBarLayout, HookBaseCommentBarLayout);
-        HOOK_INST("FQCShortVideoBottomToolBar", "layoutSubviews", "v16@0:8", OrigDramaCommentBarLayout, HookDramaCommentBarLayout);
-        HOOK_INST("FQCShortVideoCommentListBottomBarPlugin", "contextDidLayoutEnd", "v16@0:8", OrigBottomBarPluginDidLayoutEnd, HookBottomBarPluginDidLayoutEnd);
-        HOOK_INST("FQCShortVideoCommentTopSectionPlugin", "contextDidLayoutEnd", "v16@0:8", OrigTopSectionPluginDidLayoutEnd, HookTopSectionPluginDidLayoutEnd);
-        HOOK_INST("FQCShortVideoBottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigDramaCommentBarTheme, HookDramaCommentBarTheme);
-        HOOK_INST("FQCCommentV1BottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigReaderCommentBarTheme, HookReaderCommentBarTheme);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaPanelLayout, HookDramaPanelLayout);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaPanelAppeared, HookDramaPanelAppeared);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "setupTheme", "v16@0:8", OrigDramaPanelSetupTheme, HookDramaPanelSetupTheme);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "adaptDarkModeIfNeed", "v16@0:8", OrigDramaPanelAdaptDark, HookDramaPanelAdaptDark);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigDramaPanelTraitChange, HookDramaPanelTraitChange);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "onDarkModeChange:", "v20@0:8B16", OrigDramaPanelDarkChange, HookDramaPanelDarkChange);
-        HOOK_INST("FQCShortVideoCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaCommentListLayout, HookDramaCommentListLayout);
-        HOOK_INST("FQCShortVideoCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaCommentListAppeared, HookDramaCommentListAppeared);
-        HOOK_INST("FQCShortVideoCommentListViewController", "setupTheme", "v16@0:8", OrigDramaCommentListSetupTheme, HookDramaCommentListSetupTheme);
-        HOOK_INST("FQCShortVideoCommentListViewController", "adaptDarkModeIfNeed", "v16@0:8", OrigDramaCommentListAdaptDark, HookDramaCommentListAdaptDark);
-        HOOK_INST("FQCShortVideoCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigDramaCommentListTraitChange, HookDramaCommentListTraitChange);
-        HOOK_INST("FQCShortVideoCommentListViewController", "onDarkModeChange:", "v20@0:8B16", OrigDramaCommentListDarkChange, HookDramaCommentListDarkChange);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "layoutSubviews", "v16@0:8", OrigCommentSearchLayout, HookCommentSearchLayout);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "configThemeWithDarkMode:", "v20@0:8B16", OrigCommentSearchTheme, HookCommentSearchTheme);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "didMoveToWindow", "v16@0:8", OrigCommentSearchDidMoveWindow, HookCommentSearchDidMoveWindow);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setHidden:", "v20@0:8B16", OrigCommentSearchSetHidden, HookCommentSearchSetHidden);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setAlpha:", "v24@0:8d16", OrigCommentSearchSetAlpha, HookCommentSearchSetAlpha);
-        HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCommentSearchSetFrame, HookCommentSearchSetFrame);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigSeriesCommentLayout, HookSeriesCommentLayout);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesCommentAppeared, HookSeriesCommentAppeared);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigSeriesCommentTraitChange, HookSeriesCommentTraitChange);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "updateWriteReviewButtonUIAnimated:", "v20@0:8B16", OrigSeriesWriteReviewUpdate, HookSeriesWriteReviewUpdate);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "setWriteReviewButtonHidden:animated:", "v24@0:8B16B20", OrigSeriesWriteReviewHidden, HookSeriesWriteReviewHidden);
-        HOOK_INST("FQCShortPlaySeriesCommentCell", "layoutSubviews", "v16@0:8", OrigSeriesCommentCellLayout, HookSeriesCommentCellLayout);
-        HOOK_INST("FQCShortPlayCommentPanelScoreView", "updateViews", "v16@0:8", OrigSeriesScoreUpdateViews, HookSeriesScoreUpdateViews);
-        HOOK_INST("FQCShortPlayCommentListHeaderView", "updateWithListViewModel:", "v24@0:8@16", OrigDramaCommentHeaderUpdate, HookDramaCommentHeaderUpdate);
-        HOOK_INST("FQCShortPlayCommentListHeaderView", "resumeBackgroundView", "v16@0:8", OrigDramaCommentHeaderResume, HookDramaCommentHeaderResume);
-        HOOK_INST("FQCShortVideoCommentPanelListAdapterViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaCommentAdapterLayout, HookDramaCommentAdapterLayout);
-        HOOK_INST("SSBizShortVideoKmpCommentViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPCommentLayout, HookKMPCommentLayout);
-        HOOK_INST("SSBizShortVideoCommentKMPNativeTabContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPCommentTabLayout, HookKMPCommentTabLayout);
-        HOOK_INST("FQCBaseCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigReaderCommentListLayout, HookReaderCommentListLayout);
-        HOOK_INST("FQCBaseCommentListViewController", "setupTheme", "v16@0:8", OrigBaseCommentTheme, HookBaseCommentTheme);
-        HOOK_INST("FQCParagraphCommentListViewController", "setupTheme", "v16@0:8", OrigReaderCommentTheme, HookReaderCommentTheme);
-        HOOK_INST("FQCParagraphCommentV1ListViewController", "setupTheme", "v16@0:8", OrigReaderCommentV1Theme, HookReaderCommentV1Theme);
-        HOOK_INST("FQCParagraphCommentV1ListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentV1Appeared, HookReaderCommentV1Appeared);
-        HOOK_INST("FQCParagraphCommentV1ListViewController", "setupLayout", "v16@0:8", OrigReaderCommentV1Layout, HookReaderCommentV1Layout);
-        HOOK_INST("FQVTransitionView", "layoutSubviews", "v16@0:8", OrigReaderCommentTransitionLayout, HookReaderCommentTransitionLayout);
-        HOOK_INST("FQCShortPlayReplySectionFooterView", "layoutSubviews", "v16@0:8", OrigReplyFooterLayout, HookReplyFooterLayout);
-        HOOK_INST("FQCShortPlayReplySectionFooterView", "setupTheme", "v16@0:8", OrigReplyFooterTheme, HookReplyFooterTheme);
-        HOOK_INST("FQCShortVideoCommentSectionFooterView", "layoutSubviews", "v16@0:8", OrigVideoReplyFooterLayout, HookVideoReplyFooterLayout);
-        HOOK_INST("FQCShortVideoCommentSectionFooterView", "setupTheme", "v16@0:8", OrigVideoReplyFooterTheme, HookVideoReplyFooterTheme);
-        HOOK_INST("FQCParagraphCommentV1SectionFooterView", "layoutSubviews", "v16@0:8", OrigParaFooterLayout, HookParaFooterLayout);
-        HOOK_INST("FQCParagraphCommentV1SectionFooterView", "setupTheme", "v16@0:8", OrigParaFooterTheme, HookParaFooterTheme);
-        HOOK_INST("FQCShortVideoCommentCommonCell", "configTheme:", "v20@0:8B16", OrigVideoReplyCellTheme, HookVideoReplyCellTheme);
-        HOOK_INST("FQCShortVideoCommentCommonCell", "layoutSubviews", "v16@0:8", OrigVideoReplyCellLayout, HookVideoReplyCellLayout);
-        HOOK_INST("FQCShortVideoCommentInvisibleTipCell", "layoutSubviews", "v16@0:8", OrigInvisibleTipCellLayout, HookInvisibleTipCellLayout);
-        HOOK_INST("FQCShortVideoCommentInvisibleTipCell", "bindViewModel:", "v24@0:8@16", OrigInvisibleTipCellBind, HookInvisibleTipCellBind);
-        HOOK_INST("FQCCommentFoldCell", "layoutSubviews", "v16@0:8", OrigCommentFoldCellLayout, HookCommentFoldCellLayout);
-        HOOK_INST("FQCCommentEmptyCell", "layoutSubviews", "v16@0:8", OrigCommentEmptyCellLayout, HookCommentEmptyCellLayout);
-        HOOK_INST("FQCShortVideoCommentSeriesIntroCell", "layoutSubviews", "v16@0:8", OrigSeriesIntroCellLayout, HookSeriesIntroCellLayout);
-        {
-            Class _titleCls = NSClassFromString(@"FQCShortVideoCommentTitleView");
-            if (_titleCls) FQXInstallOwnedHook(_titleCls, NSSelectorFromString(@"commentTitleViewHeight"), YES, "d16@0:8", (IMP)HookCommentTitleHeight, (IMP *)&OrigCommentTitleHeight);
-        }
-        HOOK_INST("FQCShortVideoCommentTitleView", "layoutSubviews", "v16@0:8", OrigCommentTitleLayout, HookCommentTitleLayout);
-        HOOK_INST("FQCShortVideoCommentTitleView", "updateWithModels:", "v24@0:8@16", OrigCommentTitleUpdateModels, HookCommentTitleUpdateModels);
-        HOOK_INST("FQCShortVideoCommentTitleView", "setHidden:", "v20@0:8B16", OrigCommentTitleSetHidden, HookCommentTitleSetHidden);
-        HOOK_INST("FQCShortVideoCommentTitleView", "setAlpha:", "v24@0:8d16", OrigCommentTitleSetAlpha, HookCommentTitleSetAlpha);
-        HOOK_INST("FQCParagraphV1ListCell", "bindViewModel:", "v24@0:8@16", OrigParaV1CellBind, HookParaV1CellBind);
-        HOOK_INST("FQCParagraphV1ListCell", "setupTheme", "v16@0:8", OrigParaV1CellTheme, HookParaV1CellTheme);
-        HOOK_INST("FQCParagraphV1ListCell", "calLayout", "v16@0:8", OrigParaV1CellLayout, HookParaV1CellLayout);
-        HOOK_INST("FQCParagraphReplyV1ListCell", "setupTheme", "v16@0:8", OrigParaReplyV1CellTheme, HookParaReplyV1CellTheme);
-        HOOK_INST("FQCParagraphReplyV1ListCell", "calLayout", "v16@0:8", OrigParaReplyV1CellLayout, HookParaReplyV1CellLayout);
-        HOOK_INST("FQVTransitionView", "setTopContentView:", "v24@0:8@16", OrigTransitionSetTopContent, HookTransitionSetTopContent);
-        HOOK_INST("FQVTransitionPlayerTopContentView", "bindPlayerView:originPlayerFrameOnWindow:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigTopContentBindPlayer, HookTopContentBindPlayer);
-        HOOK_INST("FQVTransitionPlayerTopContentView", "unbindPlayerView:", "v24@0:8@16", OrigTopContentUnbindPlayer, HookTopContentUnbindPlayer);
-        HOOK_INST("FQVTransitionPlayerLimitScaleTopContentView", "bindPlayerView:originPlayerFrameOnWindow:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigLimitScaleBindPlayer, HookLimitScaleBindPlayer);
-        HOOK_INST("FQVTransitionPlayerLimitScaleTopContentView", "unbindPlayerView:", "v24@0:8@16", OrigLimitScaleUnbindPlayer, HookLimitScaleUnbindPlayer);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCWillShow", "v16@0:8", OrigDramaPanelWillShow, HookDramaPanelWillShow);
-        HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCDismiss", "v16@0:8", OrigDramaPanelDismiss, HookDramaPanelDismiss);
-        HOOK_INST("FQCShortVideoCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigDramaCommentListDisappeared, HookDramaCommentListDisappeared);
-        HOOK_INST("FQCParagraphCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigReaderCommentListDisappeared, HookReaderCommentListDisappeared);
-        HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigSeriesCommentListDisappeared, HookSeriesCommentListDisappeared);
-        HOOK_INST("FQVTransitionView", "showInView:animated:completion:", "v36@0:8@16B24@?28", OrigTransitionShowInView, HookTransitionShowInView);
-        HOOK_INST("FQVTransitionView", "dismissAnimated:completion:", "v28@0:8B16@?20", OrigTransitionDismissAnimated, HookTransitionDismissAnimated);
-        HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldInterruptWhenExitPlayer:exitScene:", "B32@0:8@16Q24", OrigExitInterruptShouldInterrupt, HookExitInterruptShouldInterrupt);
-        HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldShowCollectExitRetentioDialogOptWithContext:seriesId:", "B32@0:8@16@24", OrigExitInterruptShouldShowCollectOpt, HookExitInterruptShouldShowCollectOpt);
-        HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "showAddBookShelfAlert:", "v24@0:8@16", OrigExitInterruptShowAddShelf, HookExitInterruptShowAddShelf);
-        HOOK_INST("SSShortVideoPlayerExitInterruptComponent", "shouldInterruptWhenExitPlayer:", "B24@0:8@16", OrigExitInterruptComponentShould, HookExitInterruptComponentShould);
-        HOOK_INST("SSAudioPlayIndicatorView", "showInView:position:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigAudioIndicatorShowInView, HookAudioIndicatorShowInView);
-        HOOK_INST("SSAudioPlayIndicatorView", "showInView:position:", "v40@0:8@16{CGPoint=dd}24", OrigAudioIndicatorShowInViewPoint, HookAudioIndicatorShowInViewPoint);
-        HOOK_INST("SSAudioPlayIndicatorView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigAudioIndicatorSetFrame, HookAudioIndicatorSetFrame);
-        HOOK_INST("SSAudioPlayIndicatorView", "layoutSubviews", "v16@0:8", OrigAudioIndicatorLayout, HookAudioIndicatorLayout);
-        HOOK_INST("SSAudioPlayIndicatorView", "willMoveToSuperview:", "v24@0:8@16", OrigAudioIndicatorWillMove, HookAudioIndicatorWillMove);
-        HOOK_INST("SSAudioPlayIndicatorView", "setHidden:", "v20@0:8B16", OrigAudioIndicatorSetHidden, HookAudioIndicatorSetHidden);
-        HOOK_INST("SSAudioPlayIndicatorView", "setAlpha:", "v24@0:8d16", OrigAudioIndicatorSetAlpha, HookAudioIndicatorSetAlpha);
-        HOOK_INST("SSAudioPlayIndicatorView", "didMoveToWindow", "v16@0:8", OrigAudioIndicatorDidMoveWindow, HookAudioIndicatorDidMoveWindow);
-        HOOK_INST("SSAudioPlayIndicatorView", "didMoveToSuperview", "v16@0:8", OrigAudioIndicatorDidMoveSuperview, HookAudioIndicatorDidMoveSuperview);
-        HOOK_INST("SSAudioPlayIndicatorView", "lockInPosition:", "v32@0:8{CGPoint=dd}16", OrigAudioIndicatorLockPos, HookAudioIndicatorLockPos);
-        HOOK_INST("SSAudioPlayIndicatorView", "hoverableArea", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigAudioIndicatorHoverableArea, HookAudioIndicatorHoverableArea);
-        HOOK_INST("SSAudioPlayIndicatorView", "setIsVisible:", "v20@0:8B16", OrigAudioIndicatorSetIsVisible, HookAudioIndicatorSetIsVisible);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "setIsVisible:", "v20@0:8B16", OrigVideoIndicatorSetIsVisible, HookVideoIndicatorSetIsVisible);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "setHidden:", "v20@0:8B16", OrigVideoIndicatorSetHidden, HookVideoIndicatorSetHidden);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "didMoveToWindow", "v16@0:8", OrigVideoIndicatorDidMoveWindow, HookVideoIndicatorDidMoveWindow);
-        HOOK_INST("BDReaderViewController", "viewWillDisappear:", "v20@0:8B16", OrigReaderViewWillDisappear, HookReaderViewWillDisappear);
-        HOOK_INST("BDReaderViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderViewDidAppearForDedup, HookReaderViewDidAppearForDedup);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "hoverMove", "v16@0:8", OrigVideoIndicatorHoverMove, HookVideoIndicatorHoverMove);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "moveToArea:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigVideoIndicatorMoveToArea, HookVideoIndicatorMoveToArea);
-        HOOK_INST("SSShortVideoPlayIndicatorView", "hoverableArea", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigVideoIndicatorHoverableArea, HookVideoIndicatorHoverableArea);
-        HOOK_INST("SSReaderAudioAdapter", "lockedIndicatorTopWithReaderManager:", "d24@0:8@16", OrigReaderLockedIndicatorTop, HookReaderLockedIndicatorTop);
-        HOOK_INST("SSReaderAudioAdapter", "lockIndicator:", "v32@0:8{CGPoint=dd}16", OrigReaderLockIndicator, HookReaderLockIndicator);
-        HOOK_INST("SSAudioSettingManager", "audioFloatingViewFrame", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigAudioSettingFloatingFrame, HookAudioSettingFloatingFrame);
-        HOOK_INST("SSAudioSettingManager", "saveAudioFloatingViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigAudioSettingSaveFloatingFrame, HookAudioSettingSaveFloatingFrame);
-        HOOK_INST("FQCCommunityInputView", "layoutSubviews", "v16@0:8", OrigCommunityInputLayout, HookCommunityInputLayout);
-        HOOK_INST("FQC503CommentInputView", "layoutSubviews", "v16@0:8", Orig503CommentInputLayout, Hook503CommentInputLayout);
-        HOOK_INST("FQC503CommentInputView", "configTheme:", "v20@0:8B16", Orig503CommentInputTheme, Hook503CommentInputTheme);
-        HOOK_INST("FQCShortVideoInputView", "layoutSubviews", "v16@0:8", OrigShortVideoInputLayout, HookShortVideoInputLayout);
-        HOOK_INST("FQCShortVideoNewEditorView", "layoutSubviews", "v16@0:8", OrigShortVideoNewEditorLayout, HookShortVideoNewEditorLayout);
-        HOOK_INST("FQCCommentV1BottomToolBar", "layoutSubviews", "v16@0:8", OrigReaderCommentBarLayout, HookReaderCommentBarLayout);
-        HOOK_INST("FQCParagraphCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentListAppeared, HookReaderCommentListAppeared);
-        HOOK_INST("SSVideoSharePanelView", "layoutSubviews", "v16@0:8", OrigSharePanelLayout, HookSharePanelLayout);
-        HOOK_INST("SSUGKmpSharePanelContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPShareLayout, HookKMPShareLayout);
-        HOOK_INST("SSReadingSharePanel", "layoutSubviews", "v16@0:8", OrigReadingSharePanelLayout, HookReadingSharePanelLayout);
-        HOOK_INST("SSReadingSharePanel", "didMoveToWindow", "v16@0:8", OrigReadingSharePanelDidMoveWindow, HookReadingSharePanelDidMoveWindow);
-        FQXInstallOwnedHook(UIWindow.class, @selector(addSubview:), NO, "v24@0:8@16",
-                            (IMP)HookWindowAddSubviewForShare, (IMP *)&OrigWindowAddSubviewForShare);
-        FQXInstallOwnedHook(UIWindow.class, @selector(makeKeyAndVisible), NO, "v16@0:8",
-                            (IMP)HookWindowMakeKeyForShare, (IMP *)&OrigWindowMakeKeyForShare);
-        if (!FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@?28",
-                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
-            !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@28",
-                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
-            !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@?32",
-                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare)) {
-            FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@32",
-                                (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare);
-        }
-        if (!FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v28@0:8@16B24",
-                                 (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare)) {
-            FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v32@0:8@16B24",
-                                (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare);
-        }
-        FQXHookHostSharePanelSubclasses();
-
-        // 1. Drama spacing immediate sync on navigation push/pop & foreground crossfade
-        HOOK_INST("FQVShortVideoListViewController", "viewWillAppear:", "v20@0:8B16", OrigShortVideoListWillAppear, HookShortVideoListWillAppear);
-        HOOK_INST("FQVShortVideoListViewController", "viewDidAppear:", "v20@0:8B16", OrigShortVideoListDidAppear, HookShortVideoListDidAppear);
-        HOOK_INST("FQVShortVideoListViewController", "viewWillDisappear:", "v20@0:8B16", OrigShortVideoListWillDisappear, HookShortVideoListWillDisappear);
-        HOOK_INST("SSVideoSeriesFeedViewController", "viewWillAppear:", "v20@0:8B16", OrigSeriesFeedWillAppear, HookSeriesFeedWillAppear);
-        HOOK_INST("SSVideoSeriesFeedViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesFeedDidAppear, HookSeriesFeedDidAppear);
-        HOOK_INST("SSVideoSeriesFeedViewController", "viewWillDisappear:", "v20@0:8B16", OrigSeriesFeedWillDisappear, HookSeriesFeedWillDisappear);
-        HOOK_INST("SSVideoFeedContainerViewController", "viewWillAppear:", "v20@0:8B16", OrigFeedContainerWillAppear, HookFeedContainerWillAppear);
-        HOOK_INST("SSVideoFeedContainerViewController", "viewDidAppear:", "v20@0:8B16", OrigFeedContainerDidAppear, HookFeedContainerDidAppear);
-        HOOK_INST("SSShortVideoBottomDistributionView", "performForegroundCrossfadeWithRenderBlock:", "v24@0:8@?16", OrigDistCrossfade, HookDistCrossfade);
-
-        // 2. Highest available drama resolution.
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionWithModel:", "@24@0:8@16", OrigResolutionWithModel, HookResolutionWithModel);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionItemWithModel:", "@24@0:8@16", OrigResolutionItemWithModel, HookResolutionItemWithModel);
-        HOOK_INST("FQVPlayerEngineDataResolutionItem", "finalResolutionTypeWithSupportResolutions:videoModel:", "Q32@0:8@16@24", OrigFinalResolutionType, HookFinalResolutionType);
-        HOOK_INST("FQVShortVideoListVCControlComponent", "updateCurrentPlayResolutionWithVideoDataModel:resolution:finishBlock:", "v40@0:8@16@24@?32", OrigControlUpdateResolution, HookControlUpdateResolution);
-        HOOK_INST("FQVShortVideoListVCLandscapeSettingComponent", "didSelectResolution:", "v24@0:8@16", OrigLandscapeSelectResolution, HookLandscapeSelectResolution);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "updatePlayer:resolution:model:finish:", "v48@0:8@16@24@32@?40", OrigUpdatePlayerResolution, HookUpdatePlayerResolution);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "preparePlayer:model:async:", "v36@0:8@16@24B32", OrigPreparePlayerAsync, HookPreparePlayerAsync);
-        HOOK_INST("FQVPlayer", "videoEngineReadyToPlay:", "v24@0:8@16", OrigPlayerReadyToPlay, HookPlayerReadyToPlay);
-
-        // 3. Inner drama Episode 1/2 full-episode bottom black mask removal & full-height portrait canvas
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "playerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigPlayerViewSizeWithModel, HookPlayerViewSizeWithModel);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitPlayerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigScaleAspectFitPlayerViewSizeWithModel, HookScaleAspectFitPlayerViewSizeWithModel);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "portraitPlayerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigPortraitPlayerViewFrameWithModel, HookPortraitPlayerViewFrameWithModel);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitContainerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigScaleAspectFitContainerViewFrameWithModel, HookScaleAspectFitContainerViewFrameWithModel);
-        HOOK_INST("FQVShortVideoListVCPlayerComponent", "maxPlayerViewHeightWithModel:", "d24@0:8@16", OrigMaxPlayerViewHeightWithModel, HookMaxPlayerViewHeightWithModel);
-        HOOK_INST("SSShortVideoBottomInsertView", "setupBottomSubviews", "v16@0:8", OrigBottomInsertSetup, HookBottomInsertSetup);
-        HOOK_INST("SSShortVideoBottomInsertView", "refreshLayoutForResizing", "v16@0:8", OrigBottomInsertResize, HookBottomInsertResize);
-        HOOK_INST("SSShortVideoSingleBottomInsertView", "setupViews", "v16@0:8", OrigSingleBottomInsertSetup, HookSingleBottomInsertSetup);
-        HOOK_INST("FQVShortVideoPlayerBottomView", "setup", "v16@0:8", OrigPlayerBottomViewSetup, HookPlayerBottomViewSetup);
-        HOOK_INST("FQVShortVideoVPlayerSeriesControlView", "setupSingleBottomViewIfNeed", "v16@0:8", OrigSeriesSetupSingleBottom, HookSeriesSetupSingleBottom);
-        HOOK_INST("FQVShortVideoVPlayerSeriesControlView", "updatePlayerBottomViewAlpha:", "v24@0:8d16", OrigSeriesBottomAlpha, HookSeriesBottomAlpha);
-        HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "setupSingleBottomViewIfNeed", "v16@0:8", OrigSingleSeriesSetupSingleBottom, HookSingleSeriesSetupSingleBottom);
-        HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "updatePlayerBottomViewAlpha:", "v24@0:8d16", OrigSingleSeriesBottomAlpha, HookSingleSeriesBottomAlpha);
-        HOOK_INST("FQVPlayer", "layoutSubviews", "v16@0:8", OrigPlayerCanvasLayout, HookPlayerCanvasLayout);
-        HOOK_INST("FQVPlayer", "refreshPlayerViewLayout", "v16@0:8", OrigPlayerCanvasRefresh, HookPlayerCanvasRefresh);
-        HOOK_INST("FQVShortVideoPlayerCellView", "layoutVideoView", "v16@0:8", OrigCellLayoutVideoView, HookCellLayoutVideoView);
-        HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCellRefreshPlayFrame, HookCellRefreshPlayFrame);
-        HOOK_INST("FQVShortVideoPlayerCellView", "updatePlayerSuperViewLayout", "v16@0:8", OrigCellUpdatePlayerSuperLayout, HookCellUpdatePlayerSuperLayout);
-        HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayerSuperViewSize:", "v32@0:8{CGSize=dd}16", OrigCellRefreshPlayerSuperSize, HookCellRefreshPlayerSuperSize);
-
-        // 4. TikTok-style two-finger spread/pinch pure clean screen & double-tap opens comments
-        HOOK_INST("FQVShortVideoVPlayerControlView", "setupGestures", "v16@0:8", OrigVPlayerSetupGestures, HookVPlayerSetupGestures);
-        HOOK_INST("FQVShortVideoVPlayerControlView", "doubleTapGesture:", "v24@0:8@16", OrigVPlayerDoubleTap, HookVPlayerDoubleTap);
-        HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillDisplay", "v16@0:8", OrigVPlayerWillDisplay, HookVPlayerWillDisplay);
-        HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillEndDisplay", "v16@0:8", OrigVPlayerWillEndDisplay, HookVPlayerWillEndDisplay);
-        HOOK_INST("FQVShortVideoVPlayerControlView", "updateControlState", "v16@0:8", OrigVPlayerUpdateControlState, HookVPlayerUpdateControlState);
-        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "layoutSubviews", "v16@0:8", OrigOuterControlLayout, HookOuterControlLayout);
-        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "didMoveToWindow", "v16@0:8", OrigOuterDidMoveToWindow, HookOuterDidMoveToWindow);
-        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "bindContentModel:", "v24@0:8@16", OrigOuterBindContent, HookOuterBindContent);
-        HOOK_INST("FQVShortVideoListVCBackgroundPlaybackComponent", "shouldPauseInBackground", "B16@0:8", OrigDramaShouldPauseInBackground, HookDramaShouldPauseInBackground);
-        HOOK_INST("FQVShortVideoListVCGestureComponent", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigGestureCompShouldBegin, HookGestureCompShouldBegin);
-
-        HOOK_INST("FQVShortVideoVPlayerControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigInnerPinchSeekShouldBegin, HookInnerPinchSeekShouldBegin);
-        HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigOuterPinchSeekShouldBegin, HookOuterPinchSeekShouldBegin);
-
-        // 5. Reader back button centering, inline paragraph comment glass & Mine fold clipping
-        HOOK_INST("FQReaderSaasNavigationView", "layoutSubviews", "v16@0:8", OrigReaderNavLayoutMotion, HookReaderNavLayoutMotion);
-        HOOK_INST("SSReaderNavigationBarCommunitySwitchBtnInsertObject", "updateHotCommentBubble:", "v20@0:8B16", OrigUpdateReaderHotCommentBubble, HookUpdateReaderHotCommentBubble);
-
-        // 5b. Short Drama progress bar right-overflow clamp & cold-start spacing sync
-        HOOK_INST("FQVShortVideoProgressView", "layoutSubviews", "v16@0:8", OrigDramaProgLayoutSubviews, HookDramaProgLayoutSubviews);
-        HOOK_INST("FQVShortVideoProgressView", "layoutProgressView", "v16@0:8", OrigDramaProgLayoutProgress, HookDramaProgLayoutProgress);
-        HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithPlaying:animate:", "v24@0:8B16B20", OrigDramaProgPlaying, HookDramaProgPlaying);
-        HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithActivatedState:", "v24@0:8Q16", OrigDramaProgActivated, HookDramaProgActivated);
-        HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithStateChange:showDot:", "v28@0:8Q16B24", OrigDramaProgState, HookDramaProgState);
-        HOOK_INST("FQVShortVideoProgressView", "updateProgressBarWithProgressBarType:configMaker:", "v32@0:8Q16@?24", OrigDramaProgConfigure, HookDramaProgConfigure);
-        HOOK_INST("FQVShortVideoProgressView", "didMoveToWindow", "v16@0:8", OrigDramaProgDidMoveWindow, HookDramaProgDidMoveWindow);
-        HOOK_INST("FQVShortVideoVPlayerControlView", "didMoveToWindow", "v16@0:8", OrigDramaControlDidMoveWindow, HookDramaControlDidMoveWindow);
-
-        // 5c. Bookshelf bookstore anchor, single-owner Dock material guard, detached hit-test routing & Mine sidebar filters
+        // Phase 1 (sync in dyld init): Only cold-launch / Dock / first-frame hooks (< 1 ms).
         FQXInstallBookstoreAntiAutoScrollHooks();
         FQXInstallOwnedHook(UIVisualEffectView.class, @selector(setEffect:), NO, "v24@0:8@16",
                             (IMP)HookVisualEffectSetEffectForOwner, (IMP *)&OrigVisualEffectSetEffectForOwner);
@@ -18911,92 +18774,28 @@ void FQXInstallMotionAndAudioHooks(void) {
                             (IMP)HookVisualEffectWindowForProxyGuard, (IMP *)&OrigVisualEffectWindowForProxyGuard);
         HOOK_INST("SSTabBar", "pointInside:withEvent:", "B40@0:8{CGPoint=dd}16@32", OrigSSTabBarPointInside, HookSSTabBarPointInside);
         HOOK_INST("SSTabBar", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigSSTabBarHitTest, HookSSTabBarHitTest);
-        HOOK_INST("SSVideoSeriesFeedViewController", "preferredScreenEdgesDeferringSystemGestures", "Q16@0:8", OrigSeriesFeedDeferEdges, HookSeriesFeedDeferEdges);
-        HOOK_INST("FQVShortVideoListViewController", "preferredScreenEdgesDeferringSystemGestures", "Q16@0:8", OrigShortVideoListDeferEdges, HookShortVideoListDeferEdges);
+        HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
         HOOK_INST("SSTabBarController", "preferredScreenEdgesDeferringSystemGestures", "Q16@0:8", OrigTabBarControllerDeferEdges, HookTabBarControllerDeferEdges);
-        HOOK_INST("SSMyUser621SideBarFunctionEntryListCell", "configureWithModels:titles:icons:darkIcons:", "v48@0:8@16@24@32@40", OrigSidebarConfigureFunctionList, HookSidebarConfigureFunctionList);
-        IMP sidebarHeight = NULL;
-        if (FQXInstallOwnedHook(objc_lookUpClass("SSMyUser621SideBarFunctionEntryListCell"),
-                                sel_registerName("heightForModels:"), YES, "d24@0:8@16",
-                                (IMP)HookSidebarFunctionListHeight, &sidebarHeight)) {
-            OrigSidebarFunctionListHeight = (__typeof__(OrigSidebarFunctionListHeight))sidebarHeight;
-        }
-        HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:sizeForItemAtIndexPath:",
-                  "{CGSize=dd}40@0:8@16@24@32", OrigSidebarItemSize, HookSidebarItemSize);
-        HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:referenceSizeForFooterInSection:",
-                  "{CGSize=dd}40@0:8@16@24q32", OrigSidebarFooterSize, HookSidebarFooterSize);
-        HOOK_INST("SSMyUser621SideBarViewController", "viewDidLoad", "v16@0:8", OrigSidebarViewDidLoad, HookSidebarViewDidLoad);
+        HOOK_INST("SSVideoSeriesFeedViewController", "categoryView:scrollingFromLeftItem:atLeftIndex:toRightItem:atRightIndex:ratio:",
+                  "v64@0:8@16@24q32@40q48d56", OrigDramaScrollBetweenTabs, HookDramaScrollBetweenTabs);
+        HOOK_INST("SSVideoSeriesFeedViewController", "commitSelectedTabIndex:tabType:", "v28@0:8q16i24", OrigDramaCommitTabIndex, HookDramaCommitTabIndex);
+        HOOK_INST("SSVideoSeriesFeedViewController", "viewWillAppear:", "v20@0:8B16", OrigSeriesFeedWillAppear, HookSeriesFeedWillAppear);
+        HOOK_INST("SSVideoSeriesFeedViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesFeedDidAppear, HookSeriesFeedDidAppear);
+        HOOK_INST("SSVideoSeriesFeedViewController", "viewWillDisappear:", "v20@0:8B16", OrigSeriesFeedWillDisappear, HookSeriesFeedWillDisappear);
+        HOOK_INST("SSVideoSeriesFeedViewController", "preferredScreenEdgesDeferringSystemGestures", "Q16@0:8", OrigSeriesFeedDeferEdges, HookSeriesFeedDeferEdges);
+        HOOK_INST("FQVShortVideoListViewController", "viewWillAppear:", "v20@0:8B16", OrigShortVideoListWillAppear, HookShortVideoListWillAppear);
+        HOOK_INST("FQVShortVideoListViewController", "viewDidAppear:", "v20@0:8B16", OrigShortVideoListDidAppear, HookShortVideoListDidAppear);
+        HOOK_INST("FQVShortVideoListViewController", "viewWillDisappear:", "v20@0:8B16", OrigShortVideoListWillDisappear, HookShortVideoListWillDisappear);
+        HOOK_INST("FQVShortVideoListViewController", "preferredScreenEdgesDeferringSystemGestures", "Q16@0:8", OrigShortVideoListDeferEdges, HookShortVideoListDeferEdges);
+        HOOK_INST("SSVideoFeedContainerViewController", "viewWillAppear:", "v20@0:8B16", OrigFeedContainerWillAppear, HookFeedContainerWillAppear);
+        HOOK_INST("SSVideoFeedContainerViewController", "viewDidAppear:", "v20@0:8B16", OrigFeedContainerDidAppear, HookFeedContainerDidAppear);
+        HOOK_INST("SSShortVideoBottomDistributionView", "performForegroundCrossfadeWithRenderBlock:", "v24@0:8@?16", OrigDistCrossfade, HookDistCrossfade);
+        HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
+        HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
+        HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
+        HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v24@0:8q16", OrigMineTabBarCurrentTap64, HookMineTabBarCurrentTap64);
+        HOOK_INST("SSMyUser621ViewController", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineUnlimitedRefresh, HookMineUnlimitedRefresh);
 
-        // 6. Audio Play Page Liquid Glass, Refraction & Seamless Background
-        HOOK_INST("SSNewAudioPlayNavigationView", "layoutSubviews", "v16@0:8", OrigAudioNavLayout, HookAudioNavLayout);
-        HOOK_INST("SSNewAudioPlayNavigationView", "setThemeTintColor:", "v24@0:8@16", OrigAudioNavSetTint, HookAudioNavSetTint);
-        HOOK_INST("SSAudioPageBackView", "layoutSubviews", "v16@0:8", OrigAudioBackLayout, HookAudioBackLayout);
-        HOOK_INST("SSAudioPageBackView", "_adjustAppearanceColor", "v16@0:8", OrigAudioBackAdjust, HookAudioBackAdjust);
-        HOOK_INST("SSNewAudioPlayBookView", "layout", "v16@0:8", OrigAudioBookLayout, HookAudioBookLayout);
-        HOOK_INST("SSNewAudioPlayBookView", "setShouldShowDetailEntrance:", "v20@0:8B16", OrigAudioBookDetailEntrance, HookAudioBookDetailEntrance);
-        HOOK_INST("SSNewAudioPlayBookView", "setEnableBookNameClick:", "v20@0:8B16", OrigAudioBookClick, HookAudioBookClick);
-        HOOK_INST("SSNewAudioPlayBookView", "updateThemeColor:", "v24@0:8@16", OrigAudioBookTheme, HookAudioBookTheme);
-        HOOK_INST("SSNewAudioPlayMenuView", "layoutSubviews", "v16@0:8", OrigAudioMenuLayout, HookAudioMenuLayout);
-        HOOK_INST("SSNewAudioPlayMenuViewCell", "layoutSubviews", "v16@0:8", OrigAudioMenuCellLayout, HookAudioMenuCellLayout);
-        HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesBegan:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellBegan, HookAudioMenuCellBegan);
-        HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesEnded:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellEnded, HookAudioMenuCellEnded);
-        HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesCancelled:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellCancelled, HookAudioMenuCellCancelled);
-        HOOK_INST("SSNewAudioPlayControlView", "layoutSubviews", "v16@0:8", OrigAudioControlLayout, HookAudioControlLayout);
-        HOOK_INST("SSNewAudioPlayControlView", "setIconTintColor:", "v24@0:8@16", OrigAudioControlSetTint, HookAudioControlSetTint);
-        HOOK_INST("SSAudioPlayToneView611", "layoutSubviews", "v16@0:8", OrigToneView611Layout, HookToneView611Layout);
-        HOOK_INST("SSAudioPlayToneView611", "adjustAudioAppearance", "v16@0:8", OrigToneView611Adjust, HookToneView611Adjust);
-        HOOK_INST("SSAudioPlayToneListView", "layoutSubviews", "v16@0:8", OrigToneListLayout, HookToneListLayout);
-        HOOK_INST("SSAudioPlayToneListView", "adjustAudioAppearance", "v16@0:8", OrigToneListAdjust, HookToneListAdjust);
-        HOOK_INST("SSAudioPlayToneListView", "setBackgroundColor:", "v24@0:8@16", OrigToneListSetBg, HookToneListSetBg);
-        HOOK_INST("SSAudioReadingGuideView", "layoutSubviews", "v16@0:8", OrigReadingGuideLayout, HookReadingGuideLayout);
-        HOOK_INST("SSAudioReadingGuideView", "adjustAppearance", "v16@0:8", OrigReadingGuideAdjust, HookReadingGuideAdjust);
-        HOOK_INST("SSAudioV4ReadingGuideView", "layoutSubviews", "v16@0:8", OrigReadingGuideV4Layout, HookReadingGuideV4Layout);
-        HOOK_INST("SSAudioV4ReadingGuideView", "setTextTintColor:", "v24@0:8@16", OrigReadingGuideV4Tint, HookReadingGuideV4Tint);
-        HOOK_INST("SSAudioPlayToneCell", "layoutSubviews", "v16@0:8", OrigToneCellLayout, HookToneCellLayout);
-        HOOK_INST("SSAudioPlayToneCell", "setupBackgroundView", "v16@0:8", OrigToneCellSetupBg, HookToneCellSetupBg);
-        HOOK_INST("SSAudioPlayToneCell", "adjustAudioAppearance", "v16@0:8", OrigToneCellAdjust, HookToneCellAdjust);
-        HOOK_INST("SSAudioPlayToneCell", "setSelected:", "v20@0:8B16", OrigToneCellSetSelected, HookToneCellSetSelected);
-        HOOK_INST("SSAudioPlayToneCell", "setBlurSelected:", "v20@0:8B16", OrigToneCellSetBlurSelected, HookToneCellSetBlurSelected);
-        HOOK_INST("SSNewAudioPlayBackgroundView", "setupLayout", "v16@0:8", OrigAudioBgSetupLayout, HookAudioBgSetupLayout);
-        HOOK_INST("SSNewAudioPlayBackgroundView", "updateThemeColor:", "v24@0:8@16", OrigAudioBgUpdateTheme, HookAudioBgUpdateTheme);
-        HOOK_INST("SSNewAudioPlayBackgroundView", "setPixelBlurBackgroundHidden:", "v20@0:8B16", OrigAudioBgBlurHidden, HookAudioBgBlurHidden);
-        HOOK_INST("SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", OrigAudioVCLayoutContent, HookAudioVCLayoutContent);
-        HOOK_INST("SSNewAudioPlayViewController", "rd_layoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCLayoutMasks, HookAudioVCLayoutMasks);
-        HOOK_INST("SSNewAudioPlayViewController", "sliderProgresslayoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCSliderMasks, HookAudioVCSliderMasks);
-        HOOK_INST("SSNewAudioPlayViewController", "updateBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCBottomMaskTheme, HookAudioVCBottomMaskTheme);
-        HOOK_INST("SSNewAudioPlayViewController", "updateSlideBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCSlideMaskTheme, HookAudioVCSlideMaskTheme);
-        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
-        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
-
-        // 7. Short Drama & Audiobook Dynamic Island ("像音频一样")
-        FQXEnsureMediaPlayerLoaded();
-        HOOK_INST("MPRemoteCommand", "addTarget:action:", "v32@0:8@16:24", OrigMPRemoteAddTargetAction, HookMPRemoteAddTargetAction);
-        HOOK_INST("MPRemoteCommand", "addTargetWithHandler:", "@24@0:8@?16", OrigMPRemoteAddTargetHandler, HookMPRemoteAddTargetHandler);
-        HOOK_INST("SSNewAudioPlayViewController", "viewDidAppear:", "v20@0:8B16", OrigAudioVCDidAppearIsland, HookAudioVCDidAppearIsland);
-        HOOK_INST("SSNewAudioPlayViewController", "viewWillDisappear:", "v20@0:8B16", OrigAudioVCWillDisappearIsland, HookAudioVCWillDisappearIsland);
-        HOOK_INST("SSNewAudioPlayViewController", "viewDidDisappear:", "v20@0:8B16", OrigAudioVCDidDisappearIsland, HookAudioVCDidDisappearIsland);
-        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidAppear:", "v20@0:8B16", OrigTTSReaderDidAppearIsland, HookTTSReaderDidAppearIsland);
-        HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidDisappear:", "v20@0:8B16", OrigTTSReaderDidDisappearIsland, HookTTSReaderDidDisappearIsland);
-        FQXInstallOwnedHook(UIViewController.class, @selector(viewDidAppear:), NO, "v20@0:8B16",
-                            (IMP)HookVCViewDidAppearForShare, (IMP *)&OrigVCViewDidAppearForShare);
-
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXEnterDramaIslandOnLeaveIfEligible();
-        }];
-
-        [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardWillChangeFrameNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(NSNotification *note) {
-            FQXComposerKeyboardFrame = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-            if (FQXCurrentCommentComposerStyle() != FQXCommentComposerFloatingDetached) return;
-            for (UIView *composer in FQXTrackedExpandedComposers().allObjects) {
-                if (composer.window) [composer setNeedsLayout];
-            }
-        }];
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                         object:nil
                                                          queue:nil
@@ -19004,45 +18803,338 @@ void FQXInstallMotionAndAudioHooks(void) {
             FQXInvalidateHotPrefsCache();
             FQXScheduleDramaHeadersAndPagersRefresh();
         }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillEnterForegroundNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXScheduleCommentForegroundRefresh();
-            FQXScheduleDynamicIslandRefresh();
-        }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXScheduleCommentForegroundRefresh();
-            FQXScheduleDynamicIslandRefresh();
-        }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXCompactRuntimeMemory();
-        }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXComposerKeyboardFrame = CGRectZero;
-            FQXResetPinchCleanStates();
-            FQXEnterDramaIslandOnLeaveIfEligible();
-            FQXCompactRuntimeMemory();
-        }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIAccessibilityReduceTransparencyStatusDidChangeNotification
-                                                        object:nil
-                                                         queue:NSOperationQueue.mainQueue
-                                                    usingBlock:^(__unused NSNotification *note) {
-            FQXReapplyAllTrackedCommentGlass();
-            FQXRefreshAllShareSheets();
-        }];
 
+        // Phase 2 (first main runloop tick): Post-glass header/shelf/mine hooks + Drama player/resolution/controls + app observers.
         dispatch_async(dispatch_get_main_queue(), ^{
             FQXInstallPostGlassHooks();
+
+            HOOK_INST("SSShortVideoRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigDramaCommentCount, HookDramaCommentCount);
+            HOOK_INST("SSShortVideoHostRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigHostDramaCommentCount, HookHostDramaCommentCount);
+            HOOK_INST("SSShortVideoRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigDramaCommentLayout, HookDramaCommentLayout);
+            HOOK_INST("SSShortVideoHostRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigHostDramaCommentLayout, HookHostDramaCommentLayout);
+
+            // Highest available drama resolution
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionWithModel:", "@24@0:8@16", OrigResolutionWithModel, HookResolutionWithModel);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionItemWithModel:", "@24@0:8@16", OrigResolutionItemWithModel, HookResolutionItemWithModel);
+            HOOK_INST("FQVPlayerEngineDataResolutionItem", "finalResolutionTypeWithSupportResolutions:videoModel:", "Q32@0:8@16@24", OrigFinalResolutionType, HookFinalResolutionType);
+            HOOK_INST("FQVShortVideoListVCControlComponent", "updateCurrentPlayResolutionWithVideoDataModel:resolution:finishBlock:", "v40@0:8@16@24@?32", OrigControlUpdateResolution, HookControlUpdateResolution);
+            HOOK_INST("FQVShortVideoListVCLandscapeSettingComponent", "didSelectResolution:", "v24@0:8@16", OrigLandscapeSelectResolution, HookLandscapeSelectResolution);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "updatePlayer:resolution:model:finish:", "v48@0:8@16@24@32@?40", OrigUpdatePlayerResolution, HookUpdatePlayerResolution);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "preparePlayer:model:async:", "v36@0:8@16@24B32", OrigPreparePlayerAsync, HookPreparePlayerAsync);
+            HOOK_INST("FQVPlayer", "videoEngineReadyToPlay:", "v24@0:8@16", OrigPlayerReadyToPlay, HookPlayerReadyToPlay);
+
+            // Inner drama Episode 1/2 full-episode bottom black mask removal & full-height portrait canvas
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "playerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigPlayerViewSizeWithModel, HookPlayerViewSizeWithModel);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitPlayerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigScaleAspectFitPlayerViewSizeWithModel, HookScaleAspectFitPlayerViewSizeWithModel);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "portraitPlayerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigPortraitPlayerViewFrameWithModel, HookPortraitPlayerViewFrameWithModel);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitContainerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigScaleAspectFitContainerViewFrameWithModel, HookScaleAspectFitContainerViewFrameWithModel);
+            HOOK_INST("FQVShortVideoListVCPlayerComponent", "maxPlayerViewHeightWithModel:", "d24@0:8@16", OrigMaxPlayerViewHeightWithModel, HookMaxPlayerViewHeightWithModel);
+            HOOK_INST("SSShortVideoBottomInsertView", "setupBottomSubviews", "v16@0:8", OrigBottomInsertSetup, HookBottomInsertSetup);
+            HOOK_INST("SSShortVideoBottomInsertView", "refreshLayoutForResizing", "v16@0:8", OrigBottomInsertResize, HookBottomInsertResize);
+            HOOK_INST("SSShortVideoSingleBottomInsertView", "setupViews", "v16@0:8", OrigSingleBottomInsertSetup, HookSingleBottomInsertSetup);
+            HOOK_INST("FQVShortVideoPlayerBottomView", "setup", "v16@0:8", OrigPlayerBottomViewSetup, HookPlayerBottomViewSetup);
+            HOOK_INST("FQVShortVideoVPlayerSeriesControlView", "setupSingleBottomViewIfNeed", "v16@0:8", OrigSeriesSetupSingleBottom, HookSeriesSetupSingleBottom);
+            HOOK_INST("FQVShortVideoVPlayerSeriesControlView", "updatePlayerBottomViewAlpha:", "v24@0:8d16", OrigSeriesBottomAlpha, HookSeriesBottomAlpha);
+            HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "setupSingleBottomViewIfNeed", "v16@0:8", OrigSingleSeriesSetupSingleBottom, HookSingleSeriesSetupSingleBottom);
+            HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "updatePlayerBottomViewAlpha:", "v24@0:8d16", OrigSingleSeriesBottomAlpha, HookSingleSeriesBottomAlpha);
+            HOOK_INST("FQVPlayer", "layoutSubviews", "v16@0:8", OrigPlayerCanvasLayout, HookPlayerCanvasLayout);
+            HOOK_INST("FQVPlayer", "refreshPlayerViewLayout", "v16@0:8", OrigPlayerCanvasRefresh, HookPlayerCanvasRefresh);
+            HOOK_INST("FQVShortVideoPlayerCellView", "layoutVideoView", "v16@0:8", OrigCellLayoutVideoView, HookCellLayoutVideoView);
+            HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCellRefreshPlayFrame, HookCellRefreshPlayFrame);
+            HOOK_INST("FQVShortVideoPlayerCellView", "updatePlayerSuperViewLayout", "v16@0:8", OrigCellUpdatePlayerSuperLayout, HookCellUpdatePlayerSuperLayout);
+            HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayerSuperViewSize:", "v32@0:8{CGSize=dd}16", OrigCellRefreshPlayerSuperSize, HookCellRefreshPlayerSuperSize);
+
+            // TikTok-style two-finger spread/pinch pure clean screen, double-tap, exit interrupt & progress bar
+            HOOK_INST("FQVShortVideoVPlayerControlView", "setupGestures", "v16@0:8", OrigVPlayerSetupGestures, HookVPlayerSetupGestures);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "doubleTapGesture:", "v24@0:8@16", OrigVPlayerDoubleTap, HookVPlayerDoubleTap);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillDisplay", "v16@0:8", OrigVPlayerWillDisplay, HookVPlayerWillDisplay);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillEndDisplay", "v16@0:8", OrigVPlayerWillEndDisplay, HookVPlayerWillEndDisplay);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "updateControlState", "v16@0:8", OrigVPlayerUpdateControlState, HookVPlayerUpdateControlState);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigInnerPinchSeekShouldBegin, HookInnerPinchSeekShouldBegin);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "didMoveToWindow", "v16@0:8", OrigDramaControlDidMoveWindow, HookDramaControlDidMoveWindow);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "layoutSubviews", "v16@0:8", OrigOuterControlLayout, HookOuterControlLayout);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "didMoveToWindow", "v16@0:8", OrigOuterDidMoveToWindow, HookOuterDidMoveToWindow);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "bindContentModel:", "v24@0:8@16", OrigOuterBindContent, HookOuterBindContent);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigOuterPinchSeekShouldBegin, HookOuterPinchSeekShouldBegin);
+            HOOK_INST("FQVShortVideoListVCBackgroundPlaybackComponent", "shouldPauseInBackground", "B16@0:8", OrigDramaShouldPauseInBackground, HookDramaShouldPauseInBackground);
+            HOOK_INST("FQVShortVideoListVCGestureComponent", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigGestureCompShouldBegin, HookGestureCompShouldBegin);
+            HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldInterruptWhenExitPlayer:exitScene:", "B32@0:8@16Q24", OrigExitInterruptShouldInterrupt, HookExitInterruptShouldInterrupt);
+            HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldShowCollectExitRetentioDialogOptWithContext:seriesId:", "B32@0:8@16@24", OrigExitInterruptShouldShowCollectOpt, HookExitInterruptShouldShowCollectOpt);
+            HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "showAddBookShelfAlert:", "v24@0:8@16", OrigExitInterruptShowAddShelf, HookExitInterruptShowAddShelf);
+            HOOK_INST("SSShortVideoPlayerExitInterruptComponent", "shouldInterruptWhenExitPlayer:", "B24@0:8@16", OrigExitInterruptComponentShould, HookExitInterruptComponentShould);
+            HOOK_INST("FQVShortVideoProgressView", "layoutSubviews", "v16@0:8", OrigDramaProgLayoutSubviews, HookDramaProgLayoutSubviews);
+            HOOK_INST("FQVShortVideoProgressView", "layoutProgressView", "v16@0:8", OrigDramaProgLayoutProgress, HookDramaProgLayoutProgress);
+            HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithPlaying:animate:", "v24@0:8B16B20", OrigDramaProgPlaying, HookDramaProgPlaying);
+            HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithActivatedState:", "v24@0:8Q16", OrigDramaProgActivated, HookDramaProgActivated);
+            HOOK_INST("FQVShortVideoProgressView", "updateProgressViewWithStateChange:showDot:", "v28@0:8Q16B24", OrigDramaProgState, HookDramaProgState);
+            HOOK_INST("FQVShortVideoProgressView", "updateProgressBarWithProgressBarType:configMaker:", "v32@0:8Q16@?24", OrigDramaProgConfigure, HookDramaProgConfigure);
+            HOOK_INST("FQVShortVideoProgressView", "didMoveToWindow", "v16@0:8", OrigDramaProgDidMoveWindow, HookDramaProgDidMoveWindow);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "setIsVisible:", "v20@0:8B16", OrigVideoIndicatorSetIsVisible, HookVideoIndicatorSetIsVisible);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "setHidden:", "v20@0:8B16", OrigVideoIndicatorSetHidden, HookVideoIndicatorSetHidden);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "didMoveToWindow", "v16@0:8", OrigVideoIndicatorDidMoveWindow, HookVideoIndicatorDidMoveWindow);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "hoverMove", "v16@0:8", OrigVideoIndicatorHoverMove, HookVideoIndicatorHoverMove);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "moveToArea:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigVideoIndicatorMoveToArea, HookVideoIndicatorMoveToArea);
+            HOOK_INST("SSShortVideoPlayIndicatorView", "hoverableArea", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigVideoIndicatorHoverableArea, HookVideoIndicatorHoverableArea);
+
+            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXEnterDramaIslandOnLeaveIfEligible();
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardWillChangeFrameNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(NSNotification *note) {
+                FQXComposerKeyboardFrame = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+                if (FQXCurrentCommentComposerStyle() != FQXCommentComposerFloatingDetached) return;
+                for (UIView *composer in FQXTrackedExpandedComposers().allObjects) {
+                    if (composer.window) [composer setNeedsLayout];
+                }
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillEnterForegroundNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXScheduleCommentForegroundRefresh();
+                FQXScheduleDynamicIslandRefresh();
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXScheduleCommentForegroundRefresh();
+                FQXScheduleDynamicIslandRefresh();
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXCompactRuntimeMemory();
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXComposerKeyboardFrame = CGRectZero;
+                FQXResetPinchCleanStates();
+                FQXEnterDramaIslandOnLeaveIfEligible();
+                FQXCompactRuntimeMemory();
+            }];
+            [NSNotificationCenter.defaultCenter addObserverForName:UIAccessibilityReduceTransparencyStatusDidChangeNotification
+                                                            object:nil
+                                                             queue:NSOperationQueue.mainQueue
+                                                        usingBlock:^(__unused NSNotification *note) {
+                FQXReapplyAllTrackedCommentGlass();
+                FQXRefreshAllShareSheets();
+            }];
+        });
+
+        // Phase 3 (post-first-frame): Comment sheets, Reader, Audiobook, Mine sidebar, Share sheets & lazy Dynamic Island.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            FQXInstallCommentTextViewObservers();
+
+            // Comment panels, lists, cells, footers, titles & composers
+            HOOK_INST("FQCCommentBottomToolBar", "layoutSubviews", "v16@0:8", OrigBaseCommentBarLayout, HookBaseCommentBarLayout);
+            HOOK_INST("FQCShortVideoBottomToolBar", "layoutSubviews", "v16@0:8", OrigDramaCommentBarLayout, HookDramaCommentBarLayout);
+            HOOK_INST("FQCShortVideoCommentListBottomBarPlugin", "contextDidLayoutEnd", "v16@0:8", OrigBottomBarPluginDidLayoutEnd, HookBottomBarPluginDidLayoutEnd);
+            HOOK_INST("FQCShortVideoCommentTopSectionPlugin", "contextDidLayoutEnd", "v16@0:8", OrigTopSectionPluginDidLayoutEnd, HookTopSectionPluginDidLayoutEnd);
+            HOOK_INST("FQCShortVideoBottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigDramaCommentBarTheme, HookDramaCommentBarTheme);
+            HOOK_INST("FQCCommentV1BottomToolBar", "configThemeWithDarkMode:", "v20@0:8B16", OrigReaderCommentBarTheme, HookReaderCommentBarTheme);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaPanelLayout, HookDramaPanelLayout);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaPanelAppeared, HookDramaPanelAppeared);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "setupTheme", "v16@0:8", OrigDramaPanelSetupTheme, HookDramaPanelSetupTheme);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "adaptDarkModeIfNeed", "v16@0:8", OrigDramaPanelAdaptDark, HookDramaPanelAdaptDark);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigDramaPanelTraitChange, HookDramaPanelTraitChange);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "onDarkModeChange:", "v20@0:8B16", OrigDramaPanelDarkChange, HookDramaPanelDarkChange);
+            HOOK_INST("FQCShortVideoCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaCommentListLayout, HookDramaCommentListLayout);
+            HOOK_INST("FQCShortVideoCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaCommentListAppeared, HookDramaCommentListAppeared);
+            HOOK_INST("FQCShortVideoCommentListViewController", "setupTheme", "v16@0:8", OrigDramaCommentListSetupTheme, HookDramaCommentListSetupTheme);
+            HOOK_INST("FQCShortVideoCommentListViewController", "adaptDarkModeIfNeed", "v16@0:8", OrigDramaCommentListAdaptDark, HookDramaCommentListAdaptDark);
+            HOOK_INST("FQCShortVideoCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigDramaCommentListTraitChange, HookDramaCommentListTraitChange);
+            HOOK_INST("FQCShortVideoCommentListViewController", "onDarkModeChange:", "v20@0:8B16", OrigDramaCommentListDarkChange, HookDramaCommentListDarkChange);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "layoutSubviews", "v16@0:8", OrigCommentSearchLayout, HookCommentSearchLayout);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "configThemeWithDarkMode:", "v20@0:8B16", OrigCommentSearchTheme, HookCommentSearchTheme);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "didMoveToWindow", "v16@0:8", OrigCommentSearchDidMoveWindow, HookCommentSearchDidMoveWindow);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setHidden:", "v20@0:8B16", OrigCommentSearchSetHidden, HookCommentSearchSetHidden);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setAlpha:", "v24@0:8d16", OrigCommentSearchSetAlpha, HookCommentSearchSetAlpha);
+            HOOK_INST("FQCShortVideoCommentSearchEntranceView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCommentSearchSetFrame, HookCommentSearchSetFrame);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigSeriesCommentLayout, HookSeriesCommentLayout);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigSeriesCommentAppeared, HookSeriesCommentAppeared);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "traitCollectionDidChange:", "v24@0:8@16", OrigSeriesCommentTraitChange, HookSeriesCommentTraitChange);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "updateWriteReviewButtonUIAnimated:", "v20@0:8B16", OrigSeriesWriteReviewUpdate, HookSeriesWriteReviewUpdate);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "setWriteReviewButtonHidden:animated:", "v24@0:8B16B20", OrigSeriesWriteReviewHidden, HookSeriesWriteReviewHidden);
+            HOOK_INST("FQCShortPlaySeriesCommentCell", "layoutSubviews", "v16@0:8", OrigSeriesCommentCellLayout, HookSeriesCommentCellLayout);
+            HOOK_INST("FQCShortPlayCommentPanelScoreView", "updateViews", "v16@0:8", OrigSeriesScoreUpdateViews, HookSeriesScoreUpdateViews);
+            HOOK_INST("FQCShortPlayCommentListHeaderView", "updateWithListViewModel:", "v24@0:8@16", OrigDramaCommentHeaderUpdate, HookDramaCommentHeaderUpdate);
+            HOOK_INST("FQCShortPlayCommentListHeaderView", "resumeBackgroundView", "v16@0:8", OrigDramaCommentHeaderResume, HookDramaCommentHeaderResume);
+            HOOK_INST("FQCShortVideoCommentPanelListAdapterViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaCommentAdapterLayout, HookDramaCommentAdapterLayout);
+            HOOK_INST("SSBizShortVideoKmpCommentViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPCommentLayout, HookKMPCommentLayout);
+            HOOK_INST("SSBizShortVideoCommentKMPNativeTabContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPCommentTabLayout, HookKMPCommentTabLayout);
+            HOOK_INST("FQCBaseCommentListViewController", "viewDidLayoutSubviews", "v16@0:8", OrigReaderCommentListLayout, HookReaderCommentListLayout);
+            HOOK_INST("FQCBaseCommentListViewController", "setupTheme", "v16@0:8", OrigBaseCommentTheme, HookBaseCommentTheme);
+            HOOK_INST("FQCParagraphCommentListViewController", "setupTheme", "v16@0:8", OrigReaderCommentTheme, HookReaderCommentTheme);
+            HOOK_INST("FQCParagraphCommentV1ListViewController", "setupTheme", "v16@0:8", OrigReaderCommentV1Theme, HookReaderCommentV1Theme);
+            HOOK_INST("FQCParagraphCommentV1ListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentV1Appeared, HookReaderCommentV1Appeared);
+            HOOK_INST("FQCParagraphCommentV1ListViewController", "setupLayout", "v16@0:8", OrigReaderCommentV1Layout, HookReaderCommentV1Layout);
+            HOOK_INST("FQVTransitionView", "layoutSubviews", "v16@0:8", OrigReaderCommentTransitionLayout, HookReaderCommentTransitionLayout);
+            HOOK_INST("FQCShortPlayReplySectionFooterView", "layoutSubviews", "v16@0:8", OrigReplyFooterLayout, HookReplyFooterLayout);
+            HOOK_INST("FQCShortPlayReplySectionFooterView", "setupTheme", "v16@0:8", OrigReplyFooterTheme, HookReplyFooterTheme);
+            HOOK_INST("FQCShortVideoCommentSectionFooterView", "layoutSubviews", "v16@0:8", OrigVideoReplyFooterLayout, HookVideoReplyFooterLayout);
+            HOOK_INST("FQCShortVideoCommentSectionFooterView", "setupTheme", "v16@0:8", OrigVideoReplyFooterTheme, HookVideoReplyFooterTheme);
+            HOOK_INST("FQCParagraphCommentV1SectionFooterView", "layoutSubviews", "v16@0:8", OrigParaFooterLayout, HookParaFooterLayout);
+            HOOK_INST("FQCParagraphCommentV1SectionFooterView", "setupTheme", "v16@0:8", OrigParaFooterTheme, HookParaFooterTheme);
+            HOOK_INST("FQCShortVideoCommentCommonCell", "configTheme:", "v20@0:8B16", OrigVideoReplyCellTheme, HookVideoReplyCellTheme);
+            HOOK_INST("FQCShortVideoCommentCommonCell", "layoutSubviews", "v16@0:8", OrigVideoReplyCellLayout, HookVideoReplyCellLayout);
+            HOOK_INST("FQCShortVideoCommentInvisibleTipCell", "layoutSubviews", "v16@0:8", OrigInvisibleTipCellLayout, HookInvisibleTipCellLayout);
+            HOOK_INST("FQCShortVideoCommentInvisibleTipCell", "bindViewModel:", "v24@0:8@16", OrigInvisibleTipCellBind, HookInvisibleTipCellBind);
+            HOOK_INST("FQCCommentFoldCell", "layoutSubviews", "v16@0:8", OrigCommentFoldCellLayout, HookCommentFoldCellLayout);
+            HOOK_INST("FQCCommentEmptyCell", "layoutSubviews", "v16@0:8", OrigCommentEmptyCellLayout, HookCommentEmptyCellLayout);
+            HOOK_INST("FQCShortVideoCommentSeriesIntroCell", "layoutSubviews", "v16@0:8", OrigSeriesIntroCellLayout, HookSeriesIntroCellLayout);
+            {
+                Class _titleCls = objc_lookUpClass("FQCShortVideoCommentTitleView");
+                if (_titleCls) FQXInstallOwnedHook(_titleCls, sel_registerName("commentTitleViewHeight"), YES, "d16@0:8", (IMP)HookCommentTitleHeight, (IMP *)&OrigCommentTitleHeight);
+            }
+            HOOK_INST("FQCShortVideoCommentTitleView", "layoutSubviews", "v16@0:8", OrigCommentTitleLayout, HookCommentTitleLayout);
+            HOOK_INST("FQCShortVideoCommentTitleView", "updateWithModels:", "v24@0:8@16", OrigCommentTitleUpdateModels, HookCommentTitleUpdateModels);
+            HOOK_INST("FQCShortVideoCommentTitleView", "setHidden:", "v20@0:8B16", OrigCommentTitleSetHidden, HookCommentTitleSetHidden);
+            HOOK_INST("FQCShortVideoCommentTitleView", "setAlpha:", "v24@0:8d16", OrigCommentTitleSetAlpha, HookCommentTitleSetAlpha);
+            HOOK_INST("FQCParagraphV1ListCell", "bindViewModel:", "v24@0:8@16", OrigParaV1CellBind, HookParaV1CellBind);
+            HOOK_INST("FQCParagraphV1ListCell", "setupTheme", "v16@0:8", OrigParaV1CellTheme, HookParaV1CellTheme);
+            HOOK_INST("FQCParagraphV1ListCell", "calLayout", "v16@0:8", OrigParaV1CellLayout, HookParaV1CellLayout);
+            HOOK_INST("FQCParagraphReplyV1ListCell", "setupTheme", "v16@0:8", OrigParaReplyV1CellTheme, HookParaReplyV1CellTheme);
+            HOOK_INST("FQCParagraphReplyV1ListCell", "calLayout", "v16@0:8", OrigParaReplyV1CellLayout, HookParaReplyV1CellLayout);
+            HOOK_INST("FQVTransitionView", "setTopContentView:", "v24@0:8@16", OrigTransitionSetTopContent, HookTransitionSetTopContent);
+            HOOK_INST("FQVTransitionPlayerTopContentView", "bindPlayerView:originPlayerFrameOnWindow:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigTopContentBindPlayer, HookTopContentBindPlayer);
+            HOOK_INST("FQVTransitionPlayerTopContentView", "unbindPlayerView:", "v24@0:8@16", OrigTopContentUnbindPlayer, HookTopContentUnbindPlayer);
+            HOOK_INST("FQVTransitionPlayerLimitScaleTopContentView", "bindPlayerView:originPlayerFrameOnWindow:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigLimitScaleBindPlayer, HookLimitScaleBindPlayer);
+            HOOK_INST("FQVTransitionPlayerLimitScaleTopContentView", "unbindPlayerView:", "v24@0:8@16", OrigLimitScaleUnbindPlayer, HookLimitScaleUnbindPlayer);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCWillShow", "v16@0:8", OrigDramaPanelWillShow, HookDramaPanelWillShow);
+            HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCDismiss", "v16@0:8", OrigDramaPanelDismiss, HookDramaPanelDismiss);
+            HOOK_INST("FQCShortVideoCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigDramaCommentListDisappeared, HookDramaCommentListDisappeared);
+            HOOK_INST("FQCParagraphCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigReaderCommentListDisappeared, HookReaderCommentListDisappeared);
+            HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigSeriesCommentListDisappeared, HookSeriesCommentListDisappeared);
+            HOOK_INST("FQVTransitionView", "showInView:animated:completion:", "v36@0:8@16B24@?28", OrigTransitionShowInView, HookTransitionShowInView);
+            HOOK_INST("FQVTransitionView", "dismissAnimated:completion:", "v28@0:8B16@?20", OrigTransitionDismissAnimated, HookTransitionDismissAnimated);
+            HOOK_INST("FQCCommunityInputView", "layoutSubviews", "v16@0:8", OrigCommunityInputLayout, HookCommunityInputLayout);
+            HOOK_INST("FQC503CommentInputView", "layoutSubviews", "v16@0:8", Orig503CommentInputLayout, Hook503CommentInputLayout);
+            HOOK_INST("FQC503CommentInputView", "configTheme:", "v20@0:8B16", Orig503CommentInputTheme, Hook503CommentInputTheme);
+            HOOK_INST("FQCShortVideoInputView", "layoutSubviews", "v16@0:8", OrigShortVideoInputLayout, HookShortVideoInputLayout);
+            HOOK_INST("FQCShortVideoNewEditorView", "layoutSubviews", "v16@0:8", OrigShortVideoNewEditorLayout, HookShortVideoNewEditorLayout);
+            HOOK_INST("FQCCommentV1BottomToolBar", "layoutSubviews", "v16@0:8", OrigReaderCommentBarLayout, HookReaderCommentBarLayout);
+            HOOK_INST("FQCParagraphCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentListAppeared, HookReaderCommentListAppeared);
+
+            // Reader, floating audio indicator & Mine sidebar filters
+            HOOK_INST("SSAudioPlayIndicatorView", "showInView:position:", "v56@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24", OrigAudioIndicatorShowInView, HookAudioIndicatorShowInView);
+            HOOK_INST("SSAudioPlayIndicatorView", "showInView:position:", "v40@0:8@16{CGPoint=dd}24", OrigAudioIndicatorShowInViewPoint, HookAudioIndicatorShowInViewPoint);
+            HOOK_INST("SSAudioPlayIndicatorView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigAudioIndicatorSetFrame, HookAudioIndicatorSetFrame);
+            HOOK_INST("SSAudioPlayIndicatorView", "layoutSubviews", "v16@0:8", OrigAudioIndicatorLayout, HookAudioIndicatorLayout);
+            HOOK_INST("SSAudioPlayIndicatorView", "willMoveToSuperview:", "v24@0:8@16", OrigAudioIndicatorWillMove, HookAudioIndicatorWillMove);
+            HOOK_INST("SSAudioPlayIndicatorView", "setHidden:", "v20@0:8B16", OrigAudioIndicatorSetHidden, HookAudioIndicatorSetHidden);
+            HOOK_INST("SSAudioPlayIndicatorView", "setAlpha:", "v24@0:8d16", OrigAudioIndicatorSetAlpha, HookAudioIndicatorSetAlpha);
+            HOOK_INST("SSAudioPlayIndicatorView", "didMoveToWindow", "v16@0:8", OrigAudioIndicatorDidMoveWindow, HookAudioIndicatorDidMoveWindow);
+            HOOK_INST("SSAudioPlayIndicatorView", "didMoveToSuperview", "v16@0:8", OrigAudioIndicatorDidMoveSuperview, HookAudioIndicatorDidMoveSuperview);
+            HOOK_INST("SSAudioPlayIndicatorView", "lockInPosition:", "v32@0:8{CGPoint=dd}16", OrigAudioIndicatorLockPos, HookAudioIndicatorLockPos);
+            HOOK_INST("SSAudioPlayIndicatorView", "hoverableArea", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigAudioIndicatorHoverableArea, HookAudioIndicatorHoverableArea);
+            HOOK_INST("SSAudioPlayIndicatorView", "setIsVisible:", "v20@0:8B16", OrigAudioIndicatorSetIsVisible, HookAudioIndicatorSetIsVisible);
+            HOOK_INST("BDReaderViewController", "viewWillDisappear:", "v20@0:8B16", OrigReaderViewWillDisappear, HookReaderViewWillDisappear);
+            HOOK_INST("BDReaderViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderViewDidAppearForDedup, HookReaderViewDidAppearForDedup);
+            HOOK_INST("SSReaderAudioAdapter", "lockedIndicatorTopWithReaderManager:", "d24@0:8@16", OrigReaderLockedIndicatorTop, HookReaderLockedIndicatorTop);
+            HOOK_INST("SSReaderAudioAdapter", "lockIndicator:", "v32@0:8{CGPoint=dd}16", OrigReaderLockIndicator, HookReaderLockIndicator);
+            HOOK_INST("SSAudioSettingManager", "audioFloatingViewFrame", "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8", OrigAudioSettingFloatingFrame, HookAudioSettingFloatingFrame);
+            HOOK_INST("SSAudioSettingManager", "saveAudioFloatingViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigAudioSettingSaveFloatingFrame, HookAudioSettingSaveFloatingFrame);
+            HOOK_INST("FQReaderSaasNavigationView", "layoutSubviews", "v16@0:8", OrigReaderNavLayoutMotion, HookReaderNavLayoutMotion);
+            HOOK_INST("SSReaderNavigationBarCommunitySwitchBtnInsertObject", "updateHotCommentBubble:", "v20@0:8B16", OrigUpdateReaderHotCommentBubble, HookUpdateReaderHotCommentBubble);
+
+            HOOK_INST("SSMyUser621SideBarFunctionEntryListCell", "configureWithModels:titles:icons:darkIcons:", "v48@0:8@16@24@32@40", OrigSidebarConfigureFunctionList, HookSidebarConfigureFunctionList);
+            IMP sidebarHeight = NULL;
+            if (FQXInstallOwnedHook(objc_lookUpClass("SSMyUser621SideBarFunctionEntryListCell"),
+                                    sel_registerName("heightForModels:"), YES, "d24@0:8@16",
+                                    (IMP)HookSidebarFunctionListHeight, &sidebarHeight)) {
+                OrigSidebarFunctionListHeight = (__typeof__(OrigSidebarFunctionListHeight))sidebarHeight;
+            }
+            HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:sizeForItemAtIndexPath:",
+                      "{CGSize=dd}40@0:8@16@24@32", OrigSidebarItemSize, HookSidebarItemSize);
+            HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:referenceSizeForFooterInSection:",
+                      "{CGSize=dd}40@0:8@16@24q32", OrigSidebarFooterSize, HookSidebarFooterSize);
+            HOOK_INST("SSMyUser621SideBarViewController", "viewDidLoad", "v16@0:8", OrigSidebarViewDidLoad, HookSidebarViewDidLoad);
+
+            // Audio Play Page Liquid Glass, Refraction & Seamless Background
+            HOOK_INST("SSNewAudioPlayNavigationView", "layoutSubviews", "v16@0:8", OrigAudioNavLayout, HookAudioNavLayout);
+            HOOK_INST("SSNewAudioPlayNavigationView", "setThemeTintColor:", "v24@0:8@16", OrigAudioNavSetTint, HookAudioNavSetTint);
+            HOOK_INST("SSAudioPageBackView", "layoutSubviews", "v16@0:8", OrigAudioBackLayout, HookAudioBackLayout);
+            HOOK_INST("SSAudioPageBackView", "_adjustAppearanceColor", "v16@0:8", OrigAudioBackAdjust, HookAudioBackAdjust);
+            HOOK_INST("SSNewAudioPlayBookView", "layout", "v16@0:8", OrigAudioBookLayout, HookAudioBookLayout);
+            HOOK_INST("SSNewAudioPlayBookView", "setShouldShowDetailEntrance:", "v20@0:8B16", OrigAudioBookDetailEntrance, HookAudioBookDetailEntrance);
+            HOOK_INST("SSNewAudioPlayBookView", "setEnableBookNameClick:", "v20@0:8B16", OrigAudioBookClick, HookAudioBookClick);
+            HOOK_INST("SSNewAudioPlayBookView", "updateThemeColor:", "v24@0:8@16", OrigAudioBookTheme, HookAudioBookTheme);
+            HOOK_INST("SSNewAudioPlayMenuView", "layoutSubviews", "v16@0:8", OrigAudioMenuLayout, HookAudioMenuLayout);
+            HOOK_INST("SSNewAudioPlayMenuViewCell", "layoutSubviews", "v16@0:8", OrigAudioMenuCellLayout, HookAudioMenuCellLayout);
+            HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesBegan:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellBegan, HookAudioMenuCellBegan);
+            HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesEnded:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellEnded, HookAudioMenuCellEnded);
+            HOOK_INST("SSNewAudioPlayMenuViewCell", "touchesCancelled:withEvent:", "v32@0:8@16@24", OrigAudioMenuCellCancelled, HookAudioMenuCellCancelled);
+            HOOK_INST("SSNewAudioPlayControlView", "layoutSubviews", "v16@0:8", OrigAudioControlLayout, HookAudioControlLayout);
+            HOOK_INST("SSNewAudioPlayControlView", "setIconTintColor:", "v24@0:8@16", OrigAudioControlSetTint, HookAudioControlSetTint);
+            HOOK_INST("SSAudioPlayToneView611", "layoutSubviews", "v16@0:8", OrigToneView611Layout, HookToneView611Layout);
+            HOOK_INST("SSAudioPlayToneView611", "adjustAudioAppearance", "v16@0:8", OrigToneView611Adjust, HookToneView611Adjust);
+            HOOK_INST("SSAudioPlayToneListView", "layoutSubviews", "v16@0:8", OrigToneListLayout, HookToneListLayout);
+            HOOK_INST("SSAudioPlayToneListView", "adjustAudioAppearance", "v16@0:8", OrigToneListAdjust, HookToneListAdjust);
+            HOOK_INST("SSAudioPlayToneListView", "setBackgroundColor:", "v24@0:8@16", OrigToneListSetBg, HookToneListSetBg);
+            HOOK_INST("SSAudioReadingGuideView", "layoutSubviews", "v16@0:8", OrigReadingGuideLayout, HookReadingGuideLayout);
+            HOOK_INST("SSAudioReadingGuideView", "adjustAppearance", "v16@0:8", OrigReadingGuideAdjust, HookReadingGuideAdjust);
+            HOOK_INST("SSAudioV4ReadingGuideView", "layoutSubviews", "v16@0:8", OrigReadingGuideV4Layout, HookReadingGuideV4Layout);
+            HOOK_INST("SSAudioV4ReadingGuideView", "setTextTintColor:", "v24@0:8@16", OrigReadingGuideV4Tint, HookReadingGuideV4Tint);
+            HOOK_INST("SSAudioPlayToneCell", "layoutSubviews", "v16@0:8", OrigToneCellLayout, HookToneCellLayout);
+            HOOK_INST("SSAudioPlayToneCell", "setupBackgroundView", "v16@0:8", OrigToneCellSetupBg, HookToneCellSetupBg);
+            HOOK_INST("SSAudioPlayToneCell", "adjustAudioAppearance", "v16@0:8", OrigToneCellAdjust, HookToneCellAdjust);
+            HOOK_INST("SSAudioPlayToneCell", "setSelected:", "v20@0:8B16", OrigToneCellSetSelected, HookToneCellSetSelected);
+            HOOK_INST("SSAudioPlayToneCell", "setBlurSelected:", "v20@0:8B16", OrigToneCellSetBlurSelected, HookToneCellSetBlurSelected);
+            HOOK_INST("SSNewAudioPlayBackgroundView", "setupLayout", "v16@0:8", OrigAudioBgSetupLayout, HookAudioBgSetupLayout);
+            HOOK_INST("SSNewAudioPlayBackgroundView", "updateThemeColor:", "v24@0:8@16", OrigAudioBgUpdateTheme, HookAudioBgUpdateTheme);
+            HOOK_INST("SSNewAudioPlayBackgroundView", "setPixelBlurBackgroundHidden:", "v20@0:8B16", OrigAudioBgBlurHidden, HookAudioBgBlurHidden);
+            HOOK_INST("SSNewAudioPlayViewController", "layoutContentView", "v16@0:8", OrigAudioVCLayoutContent, HookAudioVCLayoutContent);
+            HOOK_INST("SSNewAudioPlayViewController", "rd_layoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCLayoutMasks, HookAudioVCLayoutMasks);
+            HOOK_INST("SSNewAudioPlayViewController", "sliderProgresslayoutTopAndBottomMaskViews", "v16@0:8", OrigAudioVCSliderMasks, HookAudioVCSliderMasks);
+            HOOK_INST("SSNewAudioPlayViewController", "updateBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCBottomMaskTheme, HookAudioVCBottomMaskTheme);
+            HOOK_INST("SSNewAudioPlayViewController", "updateSlideBottomMaskGradientThemeColor:", "v24@0:8@16", OrigAudioVCSlideMaskTheme, HookAudioVCSlideMaskTheme);
+            HOOK_INST("SSAudioPlayTTSReaderPageViewController", "layoutSubviews", "v16@0:8", OrigTTSReaderLayout, HookTTSReaderLayout);
+            HOOK_INST("SSAudioPlayTTSReaderPageViewController", "updateCaptionMask", "v16@0:8", OrigTTSReaderUpdateMask, HookTTSReaderUpdateMask);
+
+            // Short Drama & Audiobook Dynamic Island (lazy MediaPlayer framework loading)
+            HOOK_INST("SSNewAudioPlayViewController", "viewDidAppear:", "v20@0:8B16", OrigAudioVCDidAppearIsland, HookAudioVCDidAppearIsland);
+            HOOK_INST("SSNewAudioPlayViewController", "viewWillDisappear:", "v20@0:8B16", OrigAudioVCWillDisappearIsland, HookAudioVCWillDisappearIsland);
+            HOOK_INST("SSNewAudioPlayViewController", "viewDidDisappear:", "v20@0:8B16", OrigAudioVCDidDisappearIsland, HookAudioVCDidDisappearIsland);
+            HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidAppear:", "v20@0:8B16", OrigTTSReaderDidAppearIsland, HookTTSReaderDidAppearIsland);
+            HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidDisappear:", "v20@0:8B16", OrigTTSReaderDidDisappearIsland, HookTTSReaderDidDisappearIsland);
+            FQXInstallDynamicIslandMediaPlayerHooksIfNeeded(NO);
+
+            // Share Sheets (installed after cold-launch UIWindow/UIViewController boot so launch incurs zero overhead;
+            // UIViewController.viewDidAppear: stays LAST after all subclass viewDidAppear: hooks).
+            HOOK_INST("SSVideoSharePanelView", "layoutSubviews", "v16@0:8", OrigSharePanelLayout, HookSharePanelLayout);
+            HOOK_INST("SSUGKmpSharePanelContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPShareLayout, HookKMPShareLayout);
+            HOOK_INST("SSReadingSharePanel", "layoutSubviews", "v16@0:8", OrigReadingSharePanelLayout, HookReadingSharePanelLayout);
+            HOOK_INST("SSReadingSharePanel", "didMoveToWindow", "v16@0:8", OrigReadingSharePanelDidMoveWindow, HookReadingSharePanelDidMoveWindow);
+            FQXInstallOwnedHook(UIWindow.class, @selector(addSubview:), NO, "v24@0:8@16",
+                                (IMP)HookWindowAddSubviewForShare, (IMP *)&OrigWindowAddSubviewForShare);
+            FQXInstallOwnedHook(UIWindow.class, @selector(makeKeyAndVisible), NO, "v16@0:8",
+                                (IMP)HookWindowMakeKeyForShare, (IMP *)&OrigWindowMakeKeyForShare);
+            if (!FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@?28",
+                                     (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
+                !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@28",
+                                     (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
+                !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@?32",
+                                     (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare)) {
+                FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@32",
+                                    (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare);
+            }
+            if (!FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v28@0:8@16B24",
+                                     (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare)) {
+                FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v32@0:8@16B24",
+                                    (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare);
+            }
+            FQXInstallOwnedHook(UIViewController.class, @selector(viewDidAppear:), NO, "v20@0:8B16",
+                                (IMP)HookVCViewDidAppearForShare, (IMP *)&OrigVCViewDidAppearForShare);
         });
 
 #undef HOOK_INST

@@ -10,7 +10,7 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.5beta8";
+static NSString *const kFQXHubPluginVersion = @"1.9.5beta9";
 static const NSUInteger kFQXHubMaxDiskBytesPerFile = 512 * 1024; // 512 KB x 2 rotating files max
 static const NSUInteger kFQXHubRingNormalLimit = 1500;
 static const NSUInteger kFQXHubRingEnhancedLimit = 3600;
@@ -1807,17 +1807,25 @@ void FQXDiagnosticsHubInstall(void) {
             FQXRefreshDiagPrefsFromDefaults();
         }];
 
+        // Keep only lightweight network diagnostic hooks synchronous in dyld init.
+        // Defer TTS method-list scans, WKWebView/BDTuring hooks, and host Account SDK
+        // singleton probing until after UIApplicationMain boots so cold launch never stalls.
         InstallNetworkDiagnosticsHooks();
-        InstallTTSAndViewLifecycleHooks();
-        InstallSecurityVerificationHooks();
 
-        FQXDiagRecordEvent(FQXDiagCategorySecurity, @"diagnostics_hub_ready", @{
-            @"enhanced": @(FQXDiagnosticsHubIsEnhanced()),
-            @"accountLoggedIn": @(FQXProbeAccountLoggedIn()),
-            @"hasBDTuringVerifyView": @(NSClassFromString(@"BDTuringVerifyView") != Nil),
-            @"hasTTSParaEntranceManager": @(NSClassFromString(@"SSReaderTTSParaEntranceManager") != Nil),
-            @"hasTTSParaEntranceView": @(NSClassFromString(@"SSReaderTTSParagraphEntranceView") != Nil),
-        }, YES);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.55 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            InstallTTSAndViewLifecycleHooks();
+            InstallSecurityVerificationHooks();
+
+            FQXDiagRecordEvent(FQXDiagCategorySecurity, @"diagnostics_hub_ready", @{
+                @"enhanced": @(FQXDiagnosticsHubIsEnhanced()),
+                @"accountLoggedIn": @(FQXProbeAccountLoggedIn()),
+                @"hasBDTuringVerifyView": @(NSClassFromString(@"BDTuringVerifyView") != Nil),
+                @"hasTTSParaEntranceManager": @(NSClassFromString(@"SSReaderTTSParaEntranceManager") != Nil),
+                @"hasTTSParaEntranceView": @(NSClassFromString(@"SSReaderTTSParagraphEntranceView") != Nil),
+                @"deferredInstall": @YES,
+            }, YES);
+        });
     });
 }
 

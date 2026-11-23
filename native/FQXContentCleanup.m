@@ -11,8 +11,20 @@ static BOOL On(NSString *key){id v=[NSUserDefaults.standardUserDefaults objectFo
 static SEL Sel(const char *s){return sel_registerName(s);}
 static id Get(id o,const char *s){SEL x=Sel(s);return o&&[o respondsToSelector:x]?((id(*)(id,SEL))objc_msgSend)(o,x):nil;}
 
+static Class FQXLookupMatchingClass(const char *c, SEL x, BOOL cm, const char *enc) {
+    Class cls = c ? objc_lookUpClass(c) : Nil;
+    if (!cls) return Nil;
+    Class owner = cm ? object_getClass(cls) : cls;
+    Method m = owner ? class_getInstanceMethod(owner, x) : NULL;
+    if (!m) return Nil;
+    const char *actual = method_getTypeEncoding(m);
+    if (!actual || strcmp(actual, enc) != 0) return Nil;
+    return cls;
+}
+
 static BOOL Bool0(const char*c,const char*s,BOOL cm,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,cm,"B16@0:8"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^BOOL(id o){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -24,7 +36,8 @@ static BOOL Bool0(const char*c,const char*s,BOOL cm,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"B16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void0Hide(const char*c,const char*s,NSString*k,const char *g1,const char *g2){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,NO,"v16@0:8"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -37,7 +50,8 @@ static BOOL Void0Hide(const char*c,const char*s,NSString*k,const char *g1,const 
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void0(const char*c,const char*s,BOOL cm,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,cm,"v16@0:8"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -48,7 +62,8 @@ static BOOL Void0(const char*c,const char*s,BOOL cm,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"v16@0:8",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Bool1(const char*c,const char*s,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,NO,"B24@0:8@16"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^BOOL(id o,id a){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -60,7 +75,8 @@ static BOOL Bool1(const char*c,const char*s,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"B24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Bool3(const char*c,const char*s,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,NO,"B40@0:8@16@24@32"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^BOOL(id o,id a,id b,id d){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -72,7 +88,8 @@ static BOOL Bool3(const char*c,const char*s,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"B40@0:8@16@24@32",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Object1(const char*c,const char*s,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,NO,"@24@0:8@16"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^id(id o,id a){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -84,7 +101,8 @@ static BOOL Object1(const char*c,const char*s,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"@24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL BoolClass(const char*c,const char*s,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,YES,"B24@0:8#16"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^BOOL(id o,Class a){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -96,7 +114,8 @@ static BOOL BoolClass(const char*c,const char*s,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"B24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL VoidClass(const char*c,const char*s,NSString*k){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,YES,"v24@0:8#16"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o,Class a){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -107,7 +126,8 @@ static BOOL VoidClass(const char*c,const char*s,NSString*k){
  if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"v24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void1(const char*c,const char*s,BOOL cm,NSString*k,const char*getter){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,cm,"v24@0:8@16"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o,id a){
    CFTimeInterval t0=CACurrentMediaTime();
@@ -118,7 +138,8 @@ static BOOL Void1(const char*c,const char*s,BOOL cm,NSString*k,const char*getter
  if(!FQXDiagInstallOwnedHook(cls,c,x,cm,"v24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void2(const char*c,const char*s,NSString*k,BOOL firstIsWidget){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,NO,"v32@0:8@16@24"); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  IMP hook=imp_implementationWithBlock(^(id o,id a,id b){
   CFTimeInterval t0=CACurrentMediaTime();
@@ -130,7 +151,9 @@ static BOOL Void2(const char*c,const char*s,NSString*k,BOOL firstIsWidget){
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v32@0:8@16@24",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 static BOOL Void3(const char*c,const char*s,NSString*k,BOOL withBool){
- Class cls=NSClassFromString([NSString stringWithUTF8String:c]);SEL x=Sel(s);__block IMP old=NULL;
+ SEL x=Sel(s); const char *enc=withBool?"v44@0:8@16@24@32B40":"v40@0:8@16@24@32";
+ Class cls=FQXLookupMatchingClass(c,x,NO,enc); if(!cls)return NO;
+ __block IMP old=NULL;
  const char *rule=k.UTF8String;
  if(withBool){IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d,BOOL flag){
    CFTimeInterval t0=CACurrentMediaTime();
@@ -138,14 +161,14 @@ static BOOL Void3(const char*c,const char*s,NSString*k,BOOL withBool){
    ((void(*)(id,SEL,id,id,id,BOOL))old)(o,x,a,b,d,flag);
    FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
   });
-  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v44@0:8@16@24@32B40",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;}
+  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,enc,rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;}
  IMP hook=imp_implementationWithBlock(^(id o,id a,id b,id d){
   CFTimeInterval t0=CACurrentMediaTime();
   if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
   ((void(*)(id,SEL,id,id,id))old)(o,x,a,b,d);
   FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
  });
- if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"v40@0:8@16@24@32",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+ if(!FQXDiagInstallOwnedHook(cls,c,x,NO,enc,rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
 
 static BOOL SuppressWidgetDialog(id dialog) {
@@ -834,11 +857,13 @@ static NSString *FQXBookstoreRankRoute(NSString *route) {
 
 static void FQXInstallRankRouteHook(const char *className, const char *getter) {
     SEL selector = Sel(getter);
+    Class cls = FQXLookupMatchingClass(className, selector, NO, "@16@0:8");
+    if (!cls) return;
     __block IMP original = NULL;
     IMP hook = imp_implementationWithBlock(^id(id model) {
         return FQXBookstoreRankRoute(((id (*)(id, SEL))original)(model, selector));
     });
-    if (!FQXInstallOwnedHook(objc_lookUpClass(className), selector, NO, "@16@0:8", hook, &original))
+    if (!FQXInstallOwnedHook(cls, selector, NO, "@16@0:8", hook, &original))
         imp_removeBlock(hook);
 }
 
@@ -923,14 +948,6 @@ void FQXInstallContentCleanupHooks(void){
   Void0("SSVideoSeriesFeedViewController","resumeVideoPlayIfNeeded",NO,drama);
   Void1("SSShortVideoFeedColdPlayManager","showVideoFeedColdPlayVCWithContainerVC:",NO,drama,NULL);
 
-  Bool3("SSReaderBookCommentDialogTask","shouldShowBookCommentGuideWithReaderManager:userId:fromCtx:",rating);
-  Bool0("SSReaderBookCommentDialogTask","readerPublishCommentGuideReadTime",NO,rating);
-  Bool0("SSReaderExitInterruptManager","checkBookCommentGuideByExit",NO,rating);
-  Bool0("SSReaderExitInterruptManager","showBookCommentGuideByExit",NO,rating);
-  Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowBookEndCommentGuide",NO,rating);
-  Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowV723BookEndCommentGuide",NO,rating);
-  Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowAppendCommentGuide",NO,rating);
-
   Bool1("SSWelfareWidgetManager","canShowBookExcerptWidgetGuideWithBookId:",excerpt);
   Void3("SSWelfareWidgetManager","tryShowBookExcerptWidgetGuideWithBookId:bookName:excerptText:",excerpt,NO);
   Void3("SSWelfareWidgetManager","enqueueBookExcerptWidgetGuideWithBookId:bookName:excerptText:webNovel:",excerpt,YES);
@@ -944,7 +961,6 @@ void FQXInstallContentCleanupHooks(void){
   Void0Hide("SSBookStoreNestedTabView","showUgcProduceEntranceView",publish,"produceEntranceView",NULL);
   Void0Hide("SSBookStoreCommunityPublishEntranceComponent","injectViewsIntoContainer",publish,"publishButton",NULL);
   Void0Hide("SSBookStoreCommunityPublishEntranceComponent","refreshPublishButtonPositionIfNeed",publish,"publishButton",NULL);
-
 
   BoolClass("SSWelfareListenPendantManager","canShowPendantInVC:",pendant);
   VoidClass("SSWelfareListenPendantManager","tryShowPendant:",pendant);
@@ -970,24 +986,36 @@ void FQXInstallContentCleanupHooks(void){
   Bool0("SSShortStoryAdConfig","enable_short_story_ad",NO,story);
   Object1("SSBizStoryAdInsertManager","getAdModelWithPageInfo:",story);
   Bool0("SSStoryPostFeedViewController","isInterceptAdShowAndStopScroll",NO,story);
-  Bool0("SSAdFeedAudioClient","hasAd",NO,audio);
-  Void1("SSAdFeedAudioATModel","setMaterielData:",NO,audio,NULL);
-  Void1("SSAdFeedAudioATModel","updateWithMaterielData:",NO,audio,NULL);
   Bool0("SSStoryPostNavigationBarConfig","showGoldCoinProgress",NO,pendant);
 
   InstallHotLaunchHooks();
   InstallWidgetDialogHooks();
 
-  Bool0("SSAdCommonConfigAdapter","audioPatchAdSwitch",NO,audio);
-  Bool0("SSAdCommonConfigAdapter","audioInfoFlowAdSwitch",NO,audio);
-  Void0("SSAdFeedAudioClient","initLoader",NO,audio);
-  Void0("SSAdFeedAudioClient","initMetaverseLoader",NO,audio);
-  Void0("SSAdFeedAudioClient","metaverReload",NO,audio);
-  Void0("SSAdFeedAudioClient","addFeedAudioAd",NO,audio);
-  Void1("SSAdFeedAudioClient","showMetaverseDataIfNeed:",NO,audio,NULL);
-  Void1("SSAdFeedAudioClient","showMannorDataIfNeed:",NO,audio,NULL);
-  InstallChapterTitle();
-  InstallReaderInlineDramaAdHooks();
-  InstallAudioBookSyncAndRemoteHooks();
+  // Defer Reader-only & Audiobook-only hooks off the dyld cold-start path.
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                 dispatch_get_main_queue(), ^{
+   Bool3("SSReaderBookCommentDialogTask","shouldShowBookCommentGuideWithReaderManager:userId:fromCtx:",rating);
+   Bool0("SSReaderBookCommentDialogTask","readerPublishCommentGuideReadTime",NO,rating);
+   Bool0("SSReaderExitInterruptManager","checkBookCommentGuideByExit",NO,rating);
+   Bool0("SSReaderExitInterruptManager","showBookCommentGuideByExit",NO,rating);
+   Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowBookEndCommentGuide",NO,rating);
+   Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowV723BookEndCommentGuide",NO,rating);
+   Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowAppendCommentGuide",NO,rating);
+
+   Bool0("SSAdFeedAudioClient","hasAd",NO,audio);
+   Void1("SSAdFeedAudioATModel","setMaterielData:",NO,audio,NULL);
+   Void1("SSAdFeedAudioATModel","updateWithMaterielData:",NO,audio,NULL);
+   Bool0("SSAdCommonConfigAdapter","audioPatchAdSwitch",NO,audio);
+   Bool0("SSAdCommonConfigAdapter","audioInfoFlowAdSwitch",NO,audio);
+   Void0("SSAdFeedAudioClient","initLoader",NO,audio);
+   Void0("SSAdFeedAudioClient","initMetaverseLoader",NO,audio);
+   Void0("SSAdFeedAudioClient","metaverReload",NO,audio);
+   Void0("SSAdFeedAudioClient","addFeedAudioAd",NO,audio);
+   Void1("SSAdFeedAudioClient","showMetaverseDataIfNeed:",NO,audio,NULL);
+   Void1("SSAdFeedAudioClient","showMannorDataIfNeed:",NO,audio,NULL);
+   InstallChapterTitle();
+   InstallReaderInlineDramaAdHooks();
+   InstallAudioBookSyncAndRemoteHooks();
+  });
  });
 }
