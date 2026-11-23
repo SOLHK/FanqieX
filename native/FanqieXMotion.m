@@ -4630,10 +4630,10 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             typeof(self) s = weakSelf;
-            if (!s || s.mode != FQXTopCapsuleTouchIdle || s.paging) return;
-            if (s.pendingTapIndex != NSNotFound && CACurrentMediaTime() >= s.pendingTapExpiry) {
-                s.pendingTapIndex = NSNotFound;
-                s.pendingTapExpiry = 0.0;
+            if (!s || s->_mode != FQXTopCapsuleTouchIdle || s->_paging) return;
+            if (s->_pendingTapIndex != NSNotFound && CACurrentMediaTime() >= s->_pendingTapExpiry) {
+                s->_pendingTapIndex = NSNotFound;
+                s->_pendingTapExpiry = 0.0;
                 [s placePillAtRestingAnimated:YES];
             }
         });
