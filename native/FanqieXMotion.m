@@ -1643,6 +1643,7 @@ static NSInteger FQXIntGet(id target, const char *name, NSInteger fallback) {
 
 static const void *FQXPlatterOriginalGlassKey = &FQXPlatterOriginalGlassKey;
 static const void *FQXPlatterAppliedStyleKey = &FQXPlatterAppliedStyleKey;
+static const void *FQXPlatterAppliedEffectKey = &FQXPlatterAppliedEffectKey;
 static BOOL gFQXPlatterGlassProbed = NO;
 static BOOL gFQXPlatterGlassSupported = NO;
 
@@ -1696,12 +1697,16 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
 }
 
 // Swap only the platter material. UIKit still drives selection and the interactive lens.
-static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, FQXDockMaterialMode mode) {
-    if (!effectObj) return (mode != FQXDockMaterialIOS18Gaussian);
+static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, id appliedEffect, FQXDockMaterialMode mode) {
+    if (mode == FQXDockMaterialIOS18Gaussian) return (effectObj != nil);
+    if (!effectObj) return YES;
     if ([effectObj isKindOfClass:UIBlurEffect.class]) return YES;
-    if (mode == FQXDockMaterialNewGlass || mode == FQXDockMaterialLegacyGlass) {
-        NSInteger curStyle = FQXIntGet(effectObj, "style", -1);
-        if (curStyle == 0) return YES; // UIKit reverted Clear (1) back to milky Regular (0)
+    // Compare against the exact UIVisualEffect instance we previously installed so iOS 27.2
+    // compatibility platters (_UITabBarItemPlatterView) never enter a false hostReset loop
+    // when UIGlassEffect doesn't expose a readable Clear style property.
+    if (appliedEffect) {
+        if (effectObj == appliedEffect || [effectObj isEqual:appliedEffect]) return NO;
+        return YES;
     }
     return NO;
 }
@@ -1709,6 +1714,7 @@ static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, FQXDockMaterialMode mo
 static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMaterialMode mode) {
     if (!platter) return;
     NSNumber *applied = objc_getAssociatedObject(platter, FQXPlatterAppliedStyleKey);
+    id appliedEffect = objc_getAssociatedObject(platter, FQXPlatterAppliedEffectKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *surface = (UIVisualEffectView *)platter;
@@ -1717,25 +1723,26 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         if (reduce) {
             if (original) surface.effect = original == NSNull.null ? nil : original;
             objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(surface, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             return;
         }
         BOOL wantsClear = (mode == FQXDockMaterialIOS18Gaussian);
         // UIKit may rebuild its background when appearance/items change.
-        BOOL hostReset = wantsClear
-            ? (current != nil)
-            : FQXGlassEffectNeedsStyleReapply(current, mode);
+        BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, mode);
         if (!original || (!wantsClear && hostReset && current)) {
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         NSInteger desired = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
         if (!applied || applied.integerValue != desired || hostReset) {
-            surface.effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, YES, NO);
+            UIVisualEffect *newEffect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, YES, NO);
+            surface.effect = newEffect;
             surface.backgroundColor = UIColor.clearColor;
             surface.contentView.backgroundColor = UIColor.clearColor;
             FQXApplyCornerConfiguration(surface, 0.0, NO);
             objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, @(desired), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(surface, FQXPlatterAppliedEffectKey, surface.effect, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_glass_material", @{
                 @"mode": @((NSInteger)mode),
                 @"isDark": @(isDark),
@@ -1755,6 +1762,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             [platter setValue:(orig == NSNull.null ? nil : orig) forKey:@"glassEffect"];
         } @catch (__unused NSException *e) {}
         objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(platter, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(platter, FQXPlatterOriginalGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [platter setNeedsLayout];
         return;
@@ -1773,7 +1781,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     gFQXPlatterGlassSupported = YES;
 
     NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
-    BOOL hostReset = FQXGlassEffectNeedsStyleReapply(current, mode);
+    BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, mode);
     if (applied && applied.integerValue == desiredStamp && !hostReset) return;
 
     if (!objc_getAssociatedObject(platter, FQXPlatterOriginalGlassKey)) {
@@ -1797,7 +1805,14 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         gFQXPlatterGlassSupported = NO;
         return;
     }
+    id persisted = nil;
+    @try {
+        persisted = [platter valueForKey:@"glassEffect"];
+    } @catch (__unused NSException *e) {
+        persisted = effect;
+    }
     objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(platter, FQXPlatterAppliedEffectKey, persisted ?: effect, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [platter setNeedsLayout];
     FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_glass_material", @{
         @"mode": @((NSInteger)mode),
@@ -1854,11 +1869,18 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
     }
     FQXApplyDockPlatterGlass(platter, dark, mode);
     static Class platterCls = Nil;
+    static Class itemPlatterCls = Nil;
     static dispatch_once_t pOnce;
-    dispatch_once(&pOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
-    if (platterCls && platter && platter.superview) {
+    dispatch_once(&pOnce, ^{
+        platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
+        itemPlatterCls = NSClassFromString(@"UIKit._UITabBarItemPlatterView");
+    });
+    if ((platterCls || itemPlatterCls) && platter && platter.superview) {
         for (UIView *sib in platter.superview.subviews) {
-            if (sib != platter && [sib isKindOfClass:platterCls]) {
+            if (sib == platter) continue;
+            BOOL isSiblingPlatter = (platterCls && [sib isKindOfClass:platterCls]) ||
+                (itemPlatterCls && [sib isKindOfClass:itemPlatterCls]);
+            if (isSiblingPlatter) {
                 if (sib.backgroundColor && ![sib.backgroundColor isEqual:UIColor.clearColor]) {
                     sib.backgroundColor = UIColor.clearColor;
                 }
@@ -2685,7 +2707,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         [allTitles addObject:title];
     }
     FQXDockDetachedUpdateHostModules(allTitles);
-    NSInteger detIdx = FQXDockDetachedResolveIndex(allTitles);
+    NSString *detachedReason = nil;
+    NSInteger detIdx = FQXDockDetachedResolveIndexWithReason(allTitles, &detachedReason);
     self.detachedHostIndex = detIdx;
 
     NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|",
@@ -2745,10 +2768,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
         [self applyDockItemImages];
         FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_state", @{
+            @"prefEnabled": @(FQXDockDetachedIsEnabled()),
             @"detachedEnabled": @(detIdx != NSNotFound),
+            @"detachedActive": @(detIdx != NSNotFound),
+            @"storedModule": FQXDockDetachedStoredModule(),
             @"detachedModule": (detIdx != NSNotFound && (NSUInteger)detIdx < allTitles.count) ? allTitles[(NSUInteger)detIdx] : @"",
+            @"resolvedIndex": @(detIdx == NSNotFound ? -1 : detIdx),
+            @"visibleTitles": allTitles,
             @"capsuleCount": @(capsuleTitles.count),
             @"totalVisibleModules": @(allTitles.count),
+            @"bottomMineEnabled": @(FQXDockIsModuleAllowedByBottomPrefs(@"我的")),
+            @"inactiveReason": detachedReason ?: @"unknown",
         }, NO);
     } else if (detIdx != NSNotFound && (NSUInteger)detIdx < self.buttons.count && self.detachedButton) {
         UIButton *detBtn = self.buttons[(NSUInteger)detIdx];
@@ -3123,13 +3153,20 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         UIView *curPlatter = FQXFindDockPlatter(self.nativeDockBar);
         if (curPlatter) {
             objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(curPlatter, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             static Class platterCls = Nil;
+            static Class itemPlatterCls = Nil;
             static dispatch_once_t spOnce;
-            dispatch_once(&spOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
-            if (platterCls && curPlatter.superview) {
+            dispatch_once(&spOnce, ^{
+                platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
+                itemPlatterCls = NSClassFromString(@"UIKit._UITabBarItemPlatterView");
+            });
+            if ((platterCls || itemPlatterCls) && curPlatter.superview) {
                 for (UIView *sib in curPlatter.superview.subviews) {
-                    if ([sib isKindOfClass:platterCls]) {
+                    if ((platterCls && [sib isKindOfClass:platterCls]) ||
+                        (itemPlatterCls && [sib isKindOfClass:itemPlatterCls])) {
                         objc_setAssociatedObject(sib, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        objc_setAssociatedObject(sib, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     }
                 }
             }
@@ -3201,6 +3238,288 @@ static const void *FQXDramaHeaderFallbackSelectionKey(void) {
 
 static const void *FQXDramaHeaderSelectionOwnerKey(void) {
     return (const void *)sel_registerName("fqx_dramaHeaderSelectionOwner191");
+}
+
+static const void *FQXDramaCompactLayoutActiveKey = &FQXDramaCompactLayoutActiveKey;
+static const void *FQXDramaCompactHiddenCountKey = &FQXDramaCompactHiddenCountKey;
+static const void *FQXDramaCompactRemovedGapKey = &FQXDramaCompactRemovedGapKey;
+static const void *FQXDramaCompactRelayoutScheduledKey = &FQXDramaCompactRelayoutScheduledKey;
+static NSMutableDictionary<NSString *, NSValue *> *gFQXDramaCompactOrigElems = nil;
+static NSMutableDictionary<NSString *, NSValue *> *gFQXDramaCompactOrigItem = nil;
+static NSMutableDictionary<NSString *, NSValue *> *gFQXDramaCompactOrigSize = nil;
+static BOOL gFQXDramaCompactComputing = NO;
+
+static void FQXInitDramaCompactOrigMaps(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gFQXDramaCompactOrigElems = [NSMutableDictionary dictionary];
+        gFQXDramaCompactOrigItem = [NSMutableDictionary dictionary];
+        gFQXDramaCompactOrigSize = [NSMutableDictionary dictionary];
+    });
+}
+
+static IMP FQXLookupDramaCompactOrig(NSDictionary<NSString *, NSValue *> *map, Class cls) {
+    for (Class c = cls; c; c = class_getSuperclass(c)) {
+        NSString *name = NSStringFromClass(c);
+        if (!name.length) continue;
+        NSValue *val = map[name];
+        if (val) return (IMP)val.pointerValue;
+    }
+    return NULL;
+}
+
+// Collapse dead minimumInteritemSpacing around hidden 0.5pt Drama category cells so hiding middle
+// sub-tabs (e.g. 看剧/漫剧) renders tightly spaced, centered titles like [推荐 最近 收藏] with
+// zero empty gap, while keeping real NSIndexPaths intact for tap/drag/AlignedGlass capsule sizing.
+static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
+                                          CGRect outCompacted[24],
+                                          BOOL outHidden[24],
+                                          NSInteger *outCount,
+                                          CGSize *outContentSize) {
+    if (!layout || gFQXDramaCompactComputing || !FQXGlassEnabled()) return NO;
+    if (!objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) return NO;
+    UICollectionView *cv = layout.collectionView;
+    if (!cv || [cv numberOfSections] < 1) return NO;
+    NSInteger count = [cv numberOfItemsInSection:0];
+    if (count < 2 || count > 24) return NO;
+
+    Class cls = object_getClass(layout);
+    IMP itemImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigItem, cls);
+    IMP sizeImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigSize, cls);
+    if (!itemImp) return NO;
+
+    gFQXDramaCompactComputing = YES;
+    CGRect raw[24];
+    NSInteger visibleCount = 0;
+    NSInteger hiddenCount = 0;
+    NSInteger firstVisible = -1;
+    NSInteger lastVisible = -1;
+    for (NSInteger i = 0; i < count; ++i) {
+        NSIndexPath *ip = [NSIndexPath indexPathForItem:i inSection:0];
+        UICollectionViewLayoutAttributes *a =
+            ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))itemImp)(layout, @selector(layoutAttributesForItemAtIndexPath:), ip);
+        raw[i] = a ? a.frame : CGRectZero;
+        BOOL isHidden = (CGRectGetWidth(raw[i]) <= 2.0 || CGRectGetHeight(raw[i]) <= 4.0);
+        outHidden[i] = isHidden;
+        if (isHidden) {
+            hiddenCount++;
+        } else {
+            visibleCount++;
+            if (firstVisible < 0) firstVisible = i;
+            lastVisible = i;
+        }
+    }
+    CGSize origSize = sizeImp
+        ? ((CGSize (*)(id, SEL))sizeImp)(layout, @selector(collectionViewContentSize))
+        : cv.contentSize;
+    gFQXDramaCompactComputing = NO;
+
+    if (hiddenCount == 0 || visibleCount == 0 || firstVisible < 0 || lastVisible < 0) {
+        objc_setAssociatedObject(layout, FQXDramaCompactHiddenCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(layout, FQXDramaCompactRemovedGapKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return NO;
+    }
+
+    // Measure native inter-item gap from any two adjacent visible items first.
+    CGFloat spacing = -1.0;
+    for (NSInteger i = 0; i + 1 < count; ++i) {
+        if (!outHidden[i] && !outHidden[i + 1]) {
+            CGFloat g = CGRectGetMinX(raw[i + 1]) - CGRectGetMaxX(raw[i]);
+            if (g >= 4.0 && g <= 36.0) {
+                spacing = g;
+                break;
+            }
+        }
+    }
+    if (spacing < 0.0 && [layout isKindOfClass:UICollectionViewFlowLayout.class]) {
+        UICollectionViewFlowLayout *fl = (UICollectionViewFlowLayout *)layout;
+        CGFloat cand = (fl.scrollDirection == UICollectionViewScrollDirectionHorizontal)
+            ? fl.minimumLineSpacing : fl.minimumInteritemSpacing;
+        if (cand >= 6.0 && cand <= 32.0) spacing = cand;
+    }
+    if (spacing < 0.0) spacing = 18.0;
+
+    CGFloat cursorX = CGRectGetMinX(raw[firstVisible]);
+    BOOL placedAny = NO;
+    for (NSInteger i = 0; i < count; ++i) {
+        if (!outHidden[i]) {
+            if (placedAny) cursorX += spacing;
+            outCompacted[i] = CGRectMake(round(cursorX * 2.0) / 2.0,
+                                         raw[i].origin.y,
+                                         raw[i].size.width,
+                                         raw[i].size.height);
+            cursorX = CGRectGetMaxX(outCompacted[i]);
+            placedAny = YES;
+        } else {
+            outCompacted[i] = CGRectMake(cursorX, raw[i].origin.y, 0.5, MAX(1.0, raw[i].size.height));
+        }
+    }
+
+    CGFloat removedGap = MAX(0.0, CGRectGetMaxX(raw[lastVisible]) - CGRectGetMaxX(outCompacted[lastVisible]));
+    CGFloat trailing = MAX(0.0, MIN(24.0, origSize.width - CGRectGetMaxX(raw[lastVisible])));
+    if (trailing < 1.0) trailing = MAX(0.0, MIN(24.0, CGRectGetMinX(raw[firstVisible])));
+    if (outContentSize) {
+        *outContentSize = CGSizeMake(MAX(1.0, cursorX + trailing), MAX(1.0, origSize.height));
+    }
+    if (outCount) *outCount = count;
+    objc_setAssociatedObject(layout, FQXDramaCompactHiddenCountKey, @(hiddenCount), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(layout, FQXDramaCompactRemovedGapKey, @(round(removedGap * 10.0) / 10.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return removedGap > 1.0;
+}
+
+static NSArray<UICollectionViewLayoutAttributes *> *HookDramaCompactAttrsInRect(UICollectionViewLayout *layout,
+                                                                                SEL cmd,
+                                                                                CGRect rect) {
+    IMP orig = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigElems, object_getClass(layout));
+    if (!orig) return nil;
+    NSArray<UICollectionViewLayoutAttributes *> *origAttrs =
+        ((NSArray<UICollectionViewLayoutAttributes *> *(*)(id, SEL, CGRect))orig)(layout, cmd, rect);
+    if (gFQXDramaCompactComputing || !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) {
+        return origAttrs;
+    }
+    CGRect compacted[24];
+    BOOL hidden[24];
+    NSInteger count = 0;
+    CGSize newSize = CGSizeZero;
+    if (!FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize)) {
+        return origAttrs;
+    }
+    NSMutableArray<UICollectionViewLayoutAttributes *> *result =
+        [NSMutableArray arrayWithCapacity:(origAttrs.count + (NSUInteger)count)];
+    BOOL seen[24] = {0};
+    for (UICollectionViewLayoutAttributes *attr in origAttrs) {
+        if (attr.representedElementCategory == UICollectionElementCategoryCell &&
+            attr.indexPath.section == 0 &&
+            attr.indexPath.item >= 0 && attr.indexPath.item < count) {
+            NSInteger idx = attr.indexPath.item;
+            seen[idx] = YES;
+            UICollectionViewLayoutAttributes *copy = [attr copy];
+            copy.frame = compacted[idx];
+            if (hidden[idx]) {
+                copy.alpha = 0.0;
+                copy.hidden = YES;
+            }
+            [result addObject:copy];
+        } else {
+            [result addObject:attr];
+        }
+    }
+    IMP itemImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigItem, object_getClass(layout));
+    if (itemImp) {
+        gFQXDramaCompactComputing = YES;
+        for (NSInteger i = 0; i < count; ++i) {
+            if (seen[i] || hidden[i]) continue;
+            if (!CGRectIntersectsRect(compacted[i], rect)) continue;
+            NSIndexPath *ip = [NSIndexPath indexPathForItem:i inSection:0];
+            UICollectionViewLayoutAttributes *rawAttr =
+                ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))itemImp)(layout, @selector(layoutAttributesForItemAtIndexPath:), ip);
+            if (rawAttr) {
+                UICollectionViewLayoutAttributes *copy = [rawAttr copy];
+                copy.frame = compacted[i];
+                [result addObject:copy];
+            }
+        }
+        gFQXDramaCompactComputing = NO;
+    }
+    return result;
+}
+
+static UICollectionViewLayoutAttributes *HookDramaCompactAttrForItem(UICollectionViewLayout *layout,
+                                                                     SEL cmd,
+                                                                     NSIndexPath *indexPath) {
+    IMP orig = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigItem, object_getClass(layout));
+    if (!orig) return nil;
+    UICollectionViewLayoutAttributes *origAttr =
+        ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))orig)(layout, cmd, indexPath);
+    if (!origAttr || gFQXDramaCompactComputing ||
+        !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) ||
+        indexPath.section != 0 || indexPath.item < 0 || indexPath.item >= 24) {
+        return origAttr;
+    }
+    CGRect compacted[24];
+    BOOL hidden[24];
+    NSInteger count = 0;
+    CGSize newSize = CGSizeZero;
+    if (!FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize) ||
+        indexPath.item >= count) {
+        return origAttr;
+    }
+    UICollectionViewLayoutAttributes *copy = [origAttr copy];
+    copy.frame = compacted[indexPath.item];
+    if (hidden[indexPath.item]) {
+        copy.alpha = 0.0;
+        copy.hidden = YES;
+    }
+    return copy;
+}
+
+static CGSize HookDramaCompactContentSize(UICollectionViewLayout *layout, SEL cmd) {
+    IMP orig = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigSize, object_getClass(layout));
+    if (!orig) return CGSizeZero;
+    CGSize origSize = ((CGSize (*)(id, SEL))orig)(layout, cmd);
+    if (gFQXDramaCompactComputing || !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) {
+        return origSize;
+    }
+    CGRect compacted[24];
+    BOOL hidden[24];
+    NSInteger count = 0;
+    CGSize newSize = CGSizeZero;
+    if (FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize)) {
+        return newSize;
+    }
+    return origSize;
+}
+
+static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, UIView *header) {
+    if (![cv isKindOfClass:UICollectionView.class]) return;
+    UICollectionViewLayout *layout = cv.collectionViewLayout;
+    if (!layout) return;
+    FQXInitDramaCompactOrigMaps();
+
+    Class cls = object_getClass(layout);
+    NSString *clsName = NSStringFromClass(cls);
+    if (cls && clsName.length && !gFQXDramaCompactOrigElems[clsName]) {
+        IMP origElems = NULL;
+        IMP origItem = NULL;
+        IMP origSize = NULL;
+        if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForElementsInRect:), NO,
+                                "@48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16",
+                                (IMP)HookDramaCompactAttrsInRect, &origElems) && origElems) {
+            gFQXDramaCompactOrigElems[clsName] = [NSValue valueWithPointer:(const void *)origElems];
+        }
+        if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForItemAtIndexPath:), NO,
+                                "@24@0:8@16",
+                                (IMP)HookDramaCompactAttrForItem, &origItem) && origItem) {
+            gFQXDramaCompactOrigItem[clsName] = [NSValue valueWithPointer:(const void *)origItem];
+        }
+        if (FQXInstallOwnedHook(cls, @selector(collectionViewContentSize), NO,
+                                "{CGSize=dd}16@0:8",
+                                (IMP)HookDramaCompactContentSize, &origSize) && origSize) {
+            gFQXDramaCompactOrigSize[clsName] = [NSValue valueWithPointer:(const void *)origSize];
+        }
+    }
+
+    BOOL wasTagged = [objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) boolValue];
+    if (!wasTagged) {
+        objc_setAssociatedObject(layout, FQXDramaCompactLayoutActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (![objc_getAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey) boolValue]) {
+            objc_setAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            __weak UICollectionViewLayout *weakLayout = layout;
+            __weak UICollectionView *weakCV = cv;
+            __weak UIView *weakHeader = header;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UICollectionViewLayout *strongLayout = weakLayout;
+                UICollectionView *strongCV = weakCV;
+                UIView *strongHeader = weakHeader;
+                if (strongLayout) {
+                    objc_setAssociatedObject(strongLayout, FQXDramaCompactRelayoutScheduledKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    [strongLayout invalidateLayout];
+                }
+                if (strongCV) [strongCV layoutIfNeeded];
+                if (strongHeader) [strongHeader setNeedsLayout];
+            });
+        }
+    }
 }
 
 static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__autoreleasing *outSource);
@@ -3315,8 +3634,11 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         }
         pillEffect = FQXMakeGlassEffect(glassStyle, YES, pillTint);
     } else {
+        // On dark/black video letterboxing (#1D1D1D), dark-on-dark fill is invisible; use a
+        // subtle translucent neutral highlight matching native dark-mode selection optics while
+        // keeping light backgrounds softly recessed with zero white haze.
         pillContentFill = isDark
-            ? [UIColor colorWithWhite:0.0 alpha:0.18]
+            ? [UIColor colorWithWhite:1.0 alpha:0.16]
             : [UIColor colorWithWhite:0.0 alpha:0.08];
     }
 
@@ -3337,6 +3659,9 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         changes();
     }
     NSInteger blurStrength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:DramaHeaderBlurPrefKey]);
+    UICollectionViewLayout *cvLayout = self.collectionView.collectionViewLayout;
+    NSNumber *hiddenCnt = cvLayout ? objc_getAssociatedObject(cvLayout, FQXDramaCompactHiddenCountKey) : nil;
+    NSNumber *removedGap = cvLayout ? objc_getAssociatedObject(cvLayout, FQXDramaCompactRemovedGapKey) : nil;
     FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_top_glass_material", @{
         @"isDark": @(isDark),
         @"darkSource": self.lastDarkSource ?: @"unknown",
@@ -3346,6 +3671,11 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         @"outerEffectClass": outerEffect ? (NSStringFromClass(outerEffect.class) ?: @"") : @"nil",
         @"pillEffectClass": pillEffect ? (NSStringFromClass(pillEffect.class) ?: @"") : @"nil",
         @"pillInteractiveLens": @(pillInteractiveLens),
+        @"pillHidden": @(self.pillGlass.hidden),
+        @"pillFrame": FQXDockRectArray(self.pillGlass.frame),
+        @"selectedIndex": @(self.lastSelectedIndex == NSNotFound ? -1 : self.lastSelectedIndex),
+        @"hiddenItemCount": hiddenCnt ?: @0,
+        @"compactedRemovedGapPt": removedGap ?: @0,
         @"visibleGlassLayers": @(pillEffect ? 2 : 1),
         @"blurStrength": @(blurStrength),
         @"reduceTransparency": @(reduce),
@@ -3693,13 +4023,13 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
 
     UIView *header = categories.superview;
+    FQXEnsureDramaCompactLayoutForCollectionView(cv, header);
     NSString *darkSource = nil;
     BOOL isDark = header ? FQXDramaHeaderHostIsDark(header, tabs, &darkSource)
                          : ((outer.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) ||
                             (outer.overrideUserInterfaceStyle == UIUserInterfaceStyleUnspecified &&
                              outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark));
     self.lastDarkSource = darkSource ?: @"outer_trait";
-    [self applyMaterialToOuter:outer isDark:isDark];
 
     if (self.mode == FQXTopCapsuleTouchIdle) {
         NSInteger sel = [self currentHostSelectedIndex];
@@ -3707,6 +4037,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         self.lastSelectedIndex = sel;
         [self placePillAtRestingAnimated:selChanged];
     }
+    [self applyMaterialToOuter:outer isDark:isDark];
 }
 
 @end
@@ -3757,6 +4088,11 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
             }
         }
     }
+    if (selected < 0) {
+        id tabsDel = FQXObjGet(tabs, "delegate");
+        NSInteger curIdx = FQXIntGet(tabsDel, "curTabIndex", -1);
+        if (curIdx >= 0) selected = curIdx;
+    }
 
     // 1. Authoritative host tab-model background polarity when available.
     SEL bgSel = sel_registerName("bottomTabBackgroundColorWithTabModel:");
@@ -3776,13 +4112,22 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     // 2. Inspect active category label ink luminance (white ink => dark video backdrop;
     // dark ink => light content page), matching real visual polarity immediately on tab switch.
     UICollectionView *cv = FQXObjGet(tabs, "collectionView");
-    if ([cv isKindOfClass:UICollectionView.class] && selected >= 0) {
-        NSIndexPath *ip = [NSIndexPath indexPathForItem:selected inSection:0];
-        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
+    if ([cv isKindOfClass:UICollectionView.class]) {
+        UICollectionViewCell *cell = (selected >= 0)
+            ? [cv cellForItemAtIndexPath:[NSIndexPath indexPathForItem:selected inSection:0]]
+            : nil;
+        if (!cell) {
+            for (UICollectionViewCell *vc in cv.visibleCells) {
+                if (!vc.hidden && vc.alpha > 0.1 && CGRectGetWidth(vc.bounds) > 4.0) {
+                    cell = vc;
+                    break;
+                }
+            }
+        }
         UILabel *lbl = cell ? FQXFindFirstVisibleLabel(cell, 0) : nil;
         CGFloat inkLuma = 0.0;
         if (lbl && FQXColorLuminance(lbl.textColor, lbl.traitCollection, &inkLuma)) {
-            if (inkLuma >= 0.68) {
+            if (inkLuma >= 0.65) {
                 if (outSource) *outSource = @"active_label_ink";
                 return YES;
             }
@@ -3938,6 +4283,10 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
 
     id headerOwner = FQXObjGet(header, "delegate");
     UIView *headerTabs = FQXObjGet(headerOwner, "simpleTabView");
+    UICollectionView *headerCV = FQXObjGet(headerTabs, "collectionView");
+    if ([headerCV isKindOfClass:UICollectionView.class]) {
+        FQXEnsureDramaCompactLayoutForCollectionView(headerCV, header);
+    }
     NSString *darkSource = nil;
     BOOL isDark = FQXDramaHeaderHostIsDark(header, headerTabs, &darkSource);
     BOOL blurDark = FQXGlassDarkTintEnabled() ? isDark : FQXAppIsInNightMode();
@@ -4437,13 +4786,20 @@ static void FQXRefreshDynamicIslandState(void);
             UIView *curPlatter = FQXFindDockPlatter(tabBar);
             if (curPlatter) {
                 objc_setAssociatedObject(curPlatter, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(curPlatter, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 static Class platterCls = Nil;
+                static Class itemPlatterCls = Nil;
                 static dispatch_once_t rmOnce;
-                dispatch_once(&rmOnce, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
-                if (platterCls && curPlatter.superview) {
+                dispatch_once(&rmOnce, ^{
+                    platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
+                    itemPlatterCls = NSClassFromString(@"UIKit._UITabBarItemPlatterView");
+                });
+                if ((platterCls || itemPlatterCls) && curPlatter.superview) {
                     for (UIView *sib in curPlatter.superview.subviews) {
-                        if ([sib isKindOfClass:platterCls]) {
+                        if ((platterCls && [sib isKindOfClass:platterCls]) ||
+                            (itemPlatterCls && [sib isKindOfClass:itemPlatterCls])) {
                             objc_setAssociatedObject(sib, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                            objc_setAssociatedObject(sib, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                         }
                     }
                 }

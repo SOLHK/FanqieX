@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.5beta4 测试版
+## FanqieX 1.9.5beta5 测试版
 
-建立底栏单材质所有权机制（`FQXDockMaterialOwner` + `-[UIVisualEffectView setEffect:]` 守卫），彻底消除 `Lmaterial_update` 在展开态反复向底层 `proxy` 写入乳白 `Regular (0)` 玻璃导致的深浅色泛白、书架白色蒙层与左右胶囊粘连桥接；彻底修复「Dock 独立圆形模块」（含「我的」等任意可见模块）与左侧胶囊真实几何分离（8~12pt 间距零重叠）、顶层 Z 序维护、`SSTabBar` 命中路由直达与真实宿主导航回退链；增强短剧顶部明暗极性判定并新增 9 项低噪节流诊断事件。
+修复短剧顶部分类隐藏中间子标签（如看剧/漫剧）后因残留 `minimumInteritemSpacing` 导致胶囊内出现大幅空白间隔（如 `[推荐      最近 收藏]`）以及纯黑背景视频上选中胶囊几乎不可见的问题；修复「底栏显示：我的」关闭后开启独立圆形模块或选择「我的」时无反馈且无法恢复的问题（支持一键自动恢复对应底栏入口并即时刷新 `SSTabBarController`）；修复 iOS 27.2 兼容布局（`_UITabBarItemPlatterView`）下 `dock_glass_material` 误判 `hostReset` 反复刷屏并触发日志限流的问题。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.5beta4.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.5beta5.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta4。
+插件文件名、诊断日志和 Mach-O 构建标识统一为 1.9.5beta5。
 
 ## FanqieX 1.76
 

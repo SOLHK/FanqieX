@@ -312,7 +312,7 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         NSUInteger found = [values indexOfObject:@(saved)];
         idx = (found != NSNotFound) ? (NSInteger)found : 0;
     } else if (row.popoverKind == 8) {
-        NSArray<NSString *> *mods = FQXDockDetachedAvailableModules();
+        NSArray<NSString *> *mods = FQXDockDetachedAllKnownModules();
         options = mods;
         values = nil;
         NSString *saved = FQXDockDetachedStoredModule();
@@ -320,7 +320,10 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
             NSUInteger found = [mods indexOfObject:saved];
             idx = (found != NSNotFound) ? (NSInteger)found : -1;
         } else {
-            idx = mods.count > 0 ? ((NSInteger)mods.count - 1) : -1;
+            NSArray<NSString *> *avail = FQXDockDetachedAvailableModules();
+            NSString *defMod = avail.lastObject ?: mods.lastObject;
+            NSUInteger found = defMod ? [mods indexOfObject:defMod] : NSNotFound;
+            idx = (found != NSNotFound) ? (NSInteger)found : -1;
         }
         if (outOptions) *outOptions = options;
         if (outValues) *outValues = nil;
@@ -964,8 +967,9 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         cell.textLabel.text = row.title;
         cell.textLabel.numberOfLines = 2;
         if (row.popoverKind == 8) {
-            NSArray<NSString *> *mods = FQXDockDetachedAvailableModules();
-            if (mods.count < 2) {
+            NSArray<NSString *> *avail = FQXDockDetachedAvailableModules();
+            NSArray<NSString *> *allMods = FQXDockDetachedAllKnownModules();
+            if (allMods.count < 2) {
                 cell.textLabel.textColor = UIColor.secondaryLabelColor;
                 cell.detailTextLabel.text = searching
                     ? [@"可用模块不足 · " stringByAppendingString:row.path]
@@ -977,10 +981,12 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             }
             NSString *saved = FQXDockDetachedStoredModule();
             NSString *detail = nil;
-            if (saved.length > 0 && ![mods containsObject:saved]) {
-                detail = [NSString stringWithFormat:@"%@（已隐藏）", saved];
+            if (saved.length > 0 && !FQXDockIsModuleAllowedByBottomPrefs(saved)) {
+                detail = [NSString stringWithFormat:@"%@（底栏已隐藏·点此恢复）", saved];
+            } else if (saved.length > 0 && ![avail containsObject:saved]) {
+                detail = [NSString stringWithFormat:@"%@（当前未启用）", saved];
             } else {
-                detail = saved.length > 0 ? saved : (mods.lastObject ?: @"");
+                detail = saved.length > 0 ? saved : (avail.lastObject ?: allMods.lastObject ?: @"");
             }
             cell.detailTextLabel.text = searching
                 ? [NSString stringWithFormat:@"%@ · %@", detail, row.path]
@@ -1076,6 +1082,12 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                 id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
                 sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             } else if ([row.path isEqualToString:@"页面与导航/底栏入口"]) {
+                NSString *lbl = sw.accessibilityLabel ?: @"";
+                if ([lbl hasPrefix:@"底栏显示："]) {
+                    NSString *modName = [lbl substringFromIndex:[@"底栏显示：" length]];
+                    BOOL allowed = FQXDockIsModuleAllowedByBottomPrefs(modName);
+                    if (sw.on != allowed) sw.on = allowed;
+                }
                 for (id target in sw.allTargets.allObjects) {
                     [sw removeTarget:target action:@selector(bottomTabToggleChanged:) forControlEvents:UIControlEventValueChanged];
                 }
@@ -1203,6 +1215,13 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         return;
     }
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:toggle.accessibilityIdentifier];
+    if (enabled && [toggle.accessibilityIdentifier isEqualToString:FQXDockDetachedEnabledPrefKey]) {
+        NSString *savedMod = FQXDockDetachedStoredModule();
+        if (savedMod.length > 0 && !FQXDockIsModuleAllowedByBottomPrefs(savedMod)) {
+            FQXDockRestoreBottomEntryForModule(savedMod);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ [self rebuild]; });
+    }
     Class cleanup = NSClassFromString(@"FQXCleanup");
     SEL selector = NSSelectorFromString(@"refreshForKey:");
     if ([cleanup respondsToSelector:selector])
@@ -1315,17 +1334,24 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                 if (options.count < 2) return;
                 for (NSUInteger i = 0; i < options.count; ++i) {
                     NSString *modTitle = options[i];
+                    BOOL hiddenInBottom = !FQXDockIsModuleAllowedByBottomPrefs(modTitle);
+                    NSString *label = hiddenInBottom
+                        ? [modTitle stringByAppendingString:@"（已隐藏·点选恢复）"]
+                        : modTitle;
                     NSString *optTitle = ((NSInteger)i == curIdx)
-                        ? [modTitle stringByAppendingString:@"  ✓"] : modTitle;
+                        ? [label stringByAppendingString:@"  ✓"] : label;
                     [picker addAction:[UIAlertAction actionWithTitle:optTitle style:UIAlertActionStyleDefault
                         handler:^(__unused UIAlertAction *action) {
+                            if (!FQXDockIsModuleAllowedByBottomPrefs(modTitle)) {
+                                FQXDockRestoreBottomEntryForModule(modTitle);
+                            }
                             [NSUserDefaults.standardUserDefaults setObject:modTitle forKey:prefKey];
                             Class cleanup = NSClassFromString(@"FQXCleanup");
                             SEL selector = NSSelectorFromString(@"refreshForKey:");
                             if ([cleanup respondsToSelector:selector]) {
                                 ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
                             }
-                            [weakMenu.tableView reloadData];
+                            [weakMenu rebuild];
                         }]];
                 }
                 [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];

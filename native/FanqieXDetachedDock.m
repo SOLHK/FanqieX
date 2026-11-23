@@ -10,25 +10,65 @@ NSString *const FQXDockDetachedModulePrefKey = @"FanqieX.DockDetachedModule.1";
 static os_unfair_lock gFQXDetachedModulesLock = OS_UNFAIR_LOCK_INIT;
 static NSArray<NSString *> *gFQXObservedHostModules = nil;
 
-static BOOL FQXModuleTitleAllowedByBottomPrefs(NSString *title) {
-    if (!title.length) return NO;
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    NSString *prefKey = nil;
+NSString * _Nullable FQXDockBottomPrefKeyForModuleTitle(NSString *title) {
+    if (!title.length) return nil;
     if ([title isEqualToString:@"书城"] || [title isEqualToString:@"首页"]) {
-        prefKey = @"FanqieX.BottomBookstore.1";
+        return @"FanqieX.BottomBookstore.1";
     } else if ([title isEqualToString:@"短剧"] || [title isEqualToString:@"视频"]) {
-        prefKey = @"FanqieX.BottomDrama.1";
+        return @"FanqieX.BottomDrama.1";
     } else if ([title isEqualToString:@"书架"]) {
-        prefKey = @"FanqieX.BottomBookshelf.1";
+        return @"FanqieX.BottomBookshelf.1";
     } else if ([title isEqualToString:@"我的"]) {
-        prefKey = @"FanqieX.BottomMine.1";
+        return @"FanqieX.BottomMine.1";
     } else if ([title isEqualToString:@"商城"]) {
-        prefKey = @"FanqieX.BottomMall.1";
+        return @"FanqieX.BottomMall.1";
     }
+    return nil;
+}
+
+BOOL FQXDockIsModuleAllowedByBottomPrefs(NSString *title) {
+    if (!title.length) return NO;
+    NSString *prefKey = FQXDockBottomPrefKeyForModuleTitle(title);
     if (!prefKey) return YES;
-    id stored = [ud objectForKey:prefKey];
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:prefKey];
     if ([stored respondsToSelector:@selector(boolValue)]) {
         return [stored boolValue];
+    }
+    return YES;
+}
+
+static UIViewController *FQXFindSSTabBarControllerInHierarchy(UIViewController *vc, NSInteger depth) {
+    if (!vc || depth > 5) return nil;
+    Class tabCls = NSClassFromString(@"SSTabBarController");
+    if (tabCls && [vc isKindOfClass:tabCls]) return vc;
+    for (UIViewController *child in vc.childViewControllers) {
+        UIViewController *found = FQXFindSSTabBarControllerInHierarchy(child, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static UIViewController *FQXActiveSSTabBarController(void) {
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        for (UIWindow *win in ws.windows) {
+            UIViewController *found = FQXFindSSTabBarControllerInHierarchy(win.rootViewController, 0);
+            if (found) return found;
+        }
+    }
+    return nil;
+}
+
+BOOL FQXDockRestoreBottomEntryForModule(NSString *title) {
+    NSString *prefKey = FQXDockBottomPrefKeyForModuleTitle(title);
+    if (!prefKey) return NO;
+    if (FQXDockIsModuleAllowedByBottomPrefs(title)) return NO;
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:prefKey];
+    UIViewController *tabVC = FQXActiveSSTabBarController();
+    SEL refreshSel = NSSelectorFromString(@"refreshTabBar");
+    if (tabVC && [tabVC respondsToSelector:refreshSel]) {
+        ((void (*)(id, SEL))objc_msgSend)(tabVC, refreshSel);
     }
     return YES;
 }
@@ -60,7 +100,7 @@ void FQXDockDetachedUpdateHostModules(NSArray<NSString *> *visibleTitles) {
     } else {
         NSMutableArray<NSString *> *merged = [NSMutableArray arrayWithCapacity:gFQXObservedHostModules.count];
         for (NSString *prev in gFQXObservedHostModules) {
-            if ([cleaned containsObject:prev] || !FQXModuleTitleAllowedByBottomPrefs(prev)) {
+            if ([cleaned containsObject:prev] || !FQXDockIsModuleAllowedByBottomPrefs(prev)) {
                 if (![merged containsObject:prev]) [merged addObject:prev];
             }
         }
@@ -80,33 +120,62 @@ NSArray<NSString *> *FQXDockDetachedAvailableModules(void) {
     NSArray<NSString *> *source = observed.count ? observed : @[@"书城", @"短剧", @"书架", @"我的"];
     NSMutableArray<NSString *> *available = [NSMutableArray arrayWithCapacity:source.count];
     for (NSString *title in source) {
-        if (FQXModuleTitleAllowedByBottomPrefs(title) && ![available containsObject:title]) {
+        if (FQXDockIsModuleAllowedByBottomPrefs(title) && ![available containsObject:title]) {
             [available addObject:title];
         }
     }
     return available;
 }
 
-NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles) {
-    if (!FQXDockDetachedIsEnabled() || visibleTitles.count < 2) {
+NSArray<NSString *> *FQXDockDetachedAllKnownModules(void) {
+    os_unfair_lock_lock(&gFQXDetachedModulesLock);
+    NSArray<NSString *> *observed = gFQXObservedHostModules;
+    os_unfair_lock_unlock(&gFQXDetachedModulesLock);
+
+    NSMutableArray<NSString *> *result = [NSMutableArray arrayWithCapacity:5];
+    for (NSString *title in observed) {
+        if (title.length > 0 && ![result containsObject:title]) {
+            [result addObject:title];
+        }
+    }
+    for (NSString *std in @[@"书城", @"短剧", @"书架", @"我的"]) {
+        if (![result containsObject:std]) {
+            [result addObject:std];
+        }
+    }
+    return result;
+}
+
+NSInteger FQXDockDetachedResolveIndexWithReason(NSArray<NSString *> *visibleTitles,
+                                                NSString * _Nullable __autoreleasing * _Nullable outReason) {
+    if (!FQXDockDetachedIsEnabled()) {
+        if (outReason) *outReason = @"pref_disabled";
+        return NSNotFound;
+    }
+    if (visibleTitles.count < 2) {
+        if (outReason) *outReason = @"too_few_modules";
         return NSNotFound;
     }
     NSString *saved = FQXDockDetachedStoredModule();
     if (!saved.length) {
         for (NSInteger i = (NSInteger)visibleTitles.count - 1; i >= 0; --i) {
             NSString *candidate = visibleTitles[(NSUInteger)i];
-            if (candidate.length > 0 && FQXModuleTitleAllowedByBottomPrefs(candidate)) {
+            if (candidate.length > 0 && FQXDockIsModuleAllowedByBottomPrefs(candidate)) {
                 [NSUserDefaults.standardUserDefaults setObject:candidate forKey:FQXDockDetachedModulePrefKey];
+                if (outReason) *outReason = @"ok_auto_default";
                 return i;
             }
         }
+        if (outReason) *outReason = @"no_allowed_candidate";
         return NSNotFound;
     }
-    if (!FQXModuleTitleAllowedByBottomPrefs(saved)) {
+    if (!FQXDockIsModuleAllowedByBottomPrefs(saved)) {
+        if (outReason) *outReason = @"module_hidden_by_bottom_pref";
         return NSNotFound;
     }
     NSUInteger idx = [visibleTitles indexOfObject:saved];
     if (idx == NSNotFound) {
+        if (outReason) *outReason = @"module_not_in_host_buttons";
         return NSNotFound;
     }
     // Never leave the left capsule empty: require at least 1 remaining non-empty module.
@@ -114,7 +183,16 @@ NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles) {
     for (NSUInteger i = 0; i < visibleTitles.count; ++i) {
         if (i != idx && visibleTitles[i].length > 0) ++remaining;
     }
-    return remaining >= 1 ? (NSInteger)idx : NSNotFound;
+    if (remaining < 1) {
+        if (outReason) *outReason = @"insufficient_remaining_modules";
+        return NSNotFound;
+    }
+    if (outReason) *outReason = @"ok";
+    return (NSInteger)idx;
+}
+
+NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles) {
+    return FQXDockDetachedResolveIndexWithReason(visibleTitles, NULL);
 }
 
 static void FQXApplyCapsuleCornerToGlass(UIView *view) {

@@ -7,9 +7,15 @@ FOUNDATION_EXPORT NSString *const FQXDockDetachedModulePrefKey;
 
 BOOL FQXDockDetachedIsEnabled(void);
 NSString *FQXDockDetachedStoredModule(void);
+NSString * _Nullable FQXDockBottomPrefKeyForModuleTitle(NSString *title);
+BOOL FQXDockIsModuleAllowedByBottomPrefs(NSString *title);
+BOOL FQXDockRestoreBottomEntryForModule(NSString *title);
 void FQXDockDetachedUpdateHostModules(NSArray<NSString *> *visibleTitles);
 NSArray<NSString *> *FQXDockDetachedAvailableModules(void);
+NSArray<NSString *> *FQXDockDetachedAllKnownModules(void);
 NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles);
+NSInteger FQXDockDetachedResolveIndexWithReason(NSArray<NSString *> *visibleTitles,
+                                                NSString * _Nullable __autoreleasing * _Nullable outReason);
 
 @interface FQXDetachedDockButtonView : UIView
 @property(nonatomic, strong, readonly) UIVisualEffectView *glassView;
