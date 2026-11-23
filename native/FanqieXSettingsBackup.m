@@ -32,6 +32,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.AudioButtonBlur.1": @0,
         @"FanqieX.DramaHeaderBlur.1": @0,
         @"FanqieX.DramaHeaderButtonScale.1": @100,
+        @"FanqieX.DramaPlaybackOptionsMaterial.1": @0,
+        @"FanqieX.DramaPlaybackOptionsBlur.1": @0,
         @"FanqieX.ShareMaterialStyle.1": @1,
         @"FanqieX.ShareBlur.1": @0,
         @"FanqieX.DramaAlbumTitleLines.1": @0,
@@ -151,12 +153,17 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     if ([key isEqualToString:@"FanqieAdBlock.Options.1"]) {
         return number >= 0 && number <= 0x3FFFF && number == trunc(number) ? @((NSInteger)number) : nil;
     }
+    if ([key isEqualToString:@"FanqieX.DramaPlaybackOptionsMaterial.1"]) {
+        return number == -1 || number == 0 || number == 1 || number == 2 || number == 4
+            ? @((NSInteger)number) : nil;
+    }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||
         [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
+        [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
         [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"] ||
         [key isEqualToString:@"FanqieX.ShareBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
@@ -178,6 +185,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         if ([key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) maximum = 6;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
             [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
+            [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
             [key isEqualToString:@"FanqieX.ShareBlur.1"]) maximum = 100;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;
     }

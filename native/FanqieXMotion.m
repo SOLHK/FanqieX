@@ -9903,6 +9903,19 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     UICollectionViewLayout *layout = collection.collectionViewLayout;
     UIView *fold = FQXMineShortcutFold(collection);
+    if (fold && [layout isKindOfClass:objc_lookUpClass("SSFuncLayout")]) {
+        // Its content-size pass sets the page rectangles used to open and size the second page.
+        FQXRestoreMineFlow(collection);
+        FQXSafeSetUIntProp(fold, "colCountInFirstPage", "setColCountInFirstPage:", 4);
+        SEL gapSelector = sel_registerName("externShowGap");
+        Method gapMethod = class_getInstanceMethod(object_getClass(layout), gapSelector);
+        if (gapMethod && strcmp(method_getTypeEncoding(gapMethod), "d16@0:8") == 0 &&
+            ((double (*)(id, SEL))objc_msgSend)(layout, gapSelector) != 0.0) {
+            FQXSafeSetDoubleProp(layout, NULL, "setExternShowGap:", 0.0);
+            [layout invalidateLayout];
+        }
+        return;
+    }
     UIView *card = FQXMineShortcutCardForView(collection);
     NSUInteger count = FQXMineTotalItemCount(collection);
     CGFloat width = CGRectGetWidth(collection.bounds);
@@ -18734,6 +18747,152 @@ static void HookKMPShareLayout(UIViewController *controller, SEL cmd) {
     if (fillsWrapper) FQXAudioClearBackground(sheet, styled);
 }
 
+static NSString *const DramaPlaybackOptionsMaterialPrefKey = @"FanqieX.DramaPlaybackOptionsMaterial.1";
+static NSString *const DramaPlaybackOptionsBlurPrefKey = @"FanqieX.DramaPlaybackOptionsBlur.1";
+static const CGFloat DramaPlaybackOptionsGroupAlpha = 0.18;
+static const char DramaPlaybackOptionsSurfaceKey;
+static const char DramaPlaybackOptionsMaterialStampKey;
+static const char DramaPlaybackOptionsSavedColorKey;
+static const char DramaPlaybackOptionsSavedEffectKey;
+
+static void FQXSetPlaybackOptionsBackground(UIView *view, BOOL active, CGFloat alpha) {
+    if (!view) return;
+    UIColor *current = view.backgroundColor;
+    UIColor *original = objc_getAssociatedObject(view, &DramaPlaybackOptionsSavedColorKey);
+    if (active) {
+        if (current && CGColorGetAlpha([current resolvedColorWithTraitCollection:view.traitCollection].CGColor) > alpha + 0.001) {
+            objc_setAssociatedObject(view, &DramaPlaybackOptionsSavedColorKey, current, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            view.backgroundColor = alpha == 0.0 ? UIColor.clearColor : [current colorWithAlphaComponent:alpha];
+        }
+    } else if (original) {
+        UIColor *applied = alpha == 0.0 ? UIColor.clearColor : [original colorWithAlphaComponent:alpha];
+        if ([current isEqual:applied]) view.backgroundColor = original;
+        objc_setAssociatedObject(view, &DramaPlaybackOptionsSavedColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void FQXSetPlaybackOptionsNativeBackdrop(UIVisualEffectView *backdrop, BOOL active) {
+    UIVisualEffect *nativeEffect = backdrop.effect;
+    if (active && nativeEffect) {
+        objc_setAssociatedObject(backdrop, &DramaPlaybackOptionsSavedEffectKey, nativeEffect, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        backdrop.effect = nil;
+    } else if (!active && backdrop) {
+        UIVisualEffect *saved = objc_getAssociatedObject(backdrop, &DramaPlaybackOptionsSavedEffectKey);
+        if (saved && !nativeEffect) backdrop.effect = saved;
+        if (saved) objc_setAssociatedObject(backdrop, &DramaPlaybackOptionsSavedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
+    UIView *root = controller.viewIfLoaded;
+    if (!root || CGRectIsEmpty(root.bounds)) return;
+    UIVisualEffectView *surface = objc_getAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey);
+    id config = FQXObjGet(controller, "config");
+    NSArray *items = FQXObjGet(controller, "settingItems");
+    NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
+    NSInteger material = [prefs integerForKey:DramaPlaybackOptionsMaterialPrefKey];
+    BOOL active = !FQXHotPrefsSnapshot().glassDisabled && material != -1 &&
+        !FQXBoolGet(config, "isLandscapeMode", NO) && [items isKindOfClass:NSArray.class] && items.count > 0;
+    if (!active && !surface) return;
+    UITableView *table = FQXObjGet(controller, "tableView");
+    if (![table isKindOfClass:UITableView.class] || ![table isDescendantOfView:root]) return;
+    UIVisualEffectView *nativeBackdrop = nil;
+    UIView *nativeTint = nil;
+    if (FQXBoolGet(controller, "useBlurBackground", NO)) {
+        UIView *blur = FQXObjGet(controller, "blurView");
+        if ([blur isKindOfClass:UIVisualEffectView.class] && [blur isDescendantOfView:root]) {
+            nativeBackdrop = (UIVisualEffectView *)blur;
+            nativeTint = FQXObjGet(controller, "effectViewContentView");
+        }
+    }
+
+    if (!active) {
+        FQXClearDockBackdropBlur(surface);
+        FQXReleaseCommentSurface(surface);
+        objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        BOOL followDock = material != FQXCommentMaterialClearGlass && material != FQXCommentMaterialRegularGlass &&
+                          material != FQXCommentMaterialGaussianBlur;
+        FQXDockMaterialMode dockMode = FQXCurrentDockMaterialMode();
+        BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+        BOOL gaussian = !reduce && (!FQXGlassEnabled() || (followDock && dockMode == FQXDockMaterialIOS18Gaussian) ||
+                                     material == FQXCommentMaterialGaussianBlur);
+        BOOL dark = FQXAppIsInNightMode();
+        CGFloat luma;
+        UIColor *panelColor = FQXObjGet(controller, "panelSolidBackgroundColor");
+        if (FQXColorLuminance(panelColor, root.traitCollection, &luma)) dark = luma < 0.45;
+        BOOL darkTint = FQXGlassDarkTintEnabled();
+        CGFloat radius = FQXReadHostSheetCornerRadius(root, nil);
+
+        if (surface && [surface isKindOfClass:FQXBackdropBlurView.class] != gaussian) {
+            FQXClearDockBackdropBlur(surface);
+            FQXReleaseCommentSurface(surface);
+            surface = nil;
+        }
+        if (!surface) {
+            if (gaussian) {
+                FQXBackdropBlurView *blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+                blur->_commentPureMode = YES;
+                surface = blur;
+            } else {
+                surface = [[UIVisualEffectView alloc] initWithEffect:nil];
+            }
+            surface.userInteractionEnabled = NO;
+            surface.accessibilityElementsHidden = YES;
+            surface.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            objc_setAssociatedObject(surface, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!CGRectEqualToRect(surface.frame, root.bounds)) surface.frame = root.bounds;
+        if (root.subviews.firstObject != surface) [root insertSubview:surface atIndex:0];
+        FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
+        if (gaussian) {
+            NSInteger strength = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
+            [(FQXBackdropBlurView *)surface configurePercent:(strength ?: 55) dark:dark
+                                                   baseTint:0.16 maxTint:0.32 chromeBorder:NO];
+        } else {
+            NSInteger stamp = ((followDock ? 10 + dockMode : material) << 3) | (dark << 2) | (darkTint << 1) | reduce;
+            NSNumber *previous = objc_getAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey);
+            if (!previous || previous.integerValue != stamp) {
+                UIVisualEffect *effect;
+                if (reduce) {
+                    effect = [UIBlurEffect effectWithStyle:dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight];
+                } else if (followDock) {
+                    effect = FQXMakeDockEffectForMode(dockMode, dark, NO, NO);
+                } else {
+                    effect = FQXBuildCommentGlassEffect((FQXCommentMaterialStyle)material, dark && darkTint, NO, NO);
+                }
+                surface.effect = effect;
+                objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            FQXApplyBackdropBlur(surface, surface.contentView, nil, surface.contentView.bounds, radius, dark,
+                                 DramaPlaybackOptionsBlurPrefKey);
+        }
+    }
+
+    FQXSetPlaybackOptionsBackground(root, active, 0.0);
+    FQXSetPlaybackOptionsBackground(table, active, 0.0);
+    FQXSetPlaybackOptionsBackground(nativeTint, active, 0.0);
+    FQXSetPlaybackOptionsNativeBackdrop(nativeBackdrop, active);
+    for (UITableViewCell *cell in table.visibleCells) {
+        FQXSetPlaybackOptionsBackground(cell, active, DramaPlaybackOptionsGroupAlpha);
+    }
+}
+
+static void (*OrigDramaPlaybackOptionsLayout)(id, SEL);
+static void HookDramaPlaybackOptionsLayout(UIViewController *controller, SEL cmd) {
+    OrigDramaPlaybackOptionsLayout(controller, cmd);
+    FQXStyleDramaPlaybackOptions(controller);
+}
+
+static id (*OrigDramaPlaybackOptionsCell)(id, SEL, UITableView *, NSIndexPath *);
+static id HookDramaPlaybackOptionsCell(UIViewController *controller, SEL cmd, UITableView *table, NSIndexPath *index) {
+    UITableViewCell *cell = OrigDramaPlaybackOptionsCell(controller, cmd, table, index);
+    BOOL active = objc_getAssociatedObject(controller.viewIfLoaded, &DramaPlaybackOptionsSurfaceKey) != nil;
+    FQXSetPlaybackOptionsBackground(cell, active, DramaPlaybackOptionsGroupAlpha);
+    return cell;
+}
+
 static CGPoint FQXAudioStockCenter(UIView *view) {
     CGPoint current = view.center;
     NSValue *applied = objc_getAssociatedObject(view, AudioAppliedPositionKey);
@@ -21577,6 +21736,9 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("SSShortVideoHostRightInteractionCommentView", "updateCommentLabelWithCount:", "v24@0:8q16", OrigHostDramaCommentCount, HookHostDramaCommentCount);
             HOOK_INST("SSShortVideoRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigDramaCommentLayout, HookDramaCommentLayout);
             HOOK_INST("SSShortVideoHostRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigHostDramaCommentLayout, HookHostDramaCommentLayout);
+
+            HOOK_INST("FQVShortVideoSettingsViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaPlaybackOptionsLayout, HookDramaPlaybackOptionsLayout);
+            HOOK_INST("FQVShortVideoSettingsViewController", "tableView:cellForRowAtIndexPath:", "@32@0:8@16@24", OrigDramaPlaybackOptionsCell, HookDramaPlaybackOptionsCell);
 
             // Highest available drama resolution
             HOOK_INST("FQVShortVideoListVCPlayerComponent", "resolutionWithModel:", "@24@0:8@16", OrigResolutionWithModel, HookResolutionWithModel);
