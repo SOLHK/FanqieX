@@ -14376,16 +14376,65 @@ static const void *FQXSharePaperBackdropKey = &FQXSharePaperBackdropKey;
 static const void *FQXShareForceDarkKey = &FQXShareForceDarkKey;
 static const void *FQXShareSavedTextColorKey = &FQXShareSavedTextColorKey;
 static const void *FQXShareSavedBtnTitleColorKey = &FQXShareSavedBtnTitleColorKey;
+static const void *FQXShareSavedOrigImageKey = &FQXShareSavedOrigImageKey;
+static const void *FQXShareAppliedMonoImageKey = &FQXShareAppliedMonoImageKey;
+static const void *FQXShareSavedBtnOrigImageKey = &FQXShareSavedBtnOrigImageKey;
+static const void *FQXShareAppliedBtnMonoImageKey = &FQXShareAppliedBtnMonoImageKey;
+static const void *FQXShareSavedMaskKey = &FQXShareSavedMaskKey;
+static const void *FQXShareSavedClipsKey = &FQXShareSavedClipsKey;
+static const void *FQXShareSavedCornerRKey = &FQXShareSavedCornerRKey;
+static const void *FQXShareSavedCornerMaskKey = &FQXShareSavedCornerMaskKey;
+static const void *FQXShareSavedGrabberBgKey = &FQXShareSavedGrabberBgKey;
+static const void *FQXShareHiddenSublayerKey = &FQXShareHiddenSublayerKey;
 static const void *FQXShareStyledStampKey = &FQXShareStyledStampKey;
 static const void *FQXShareDiagLoggedKey = &FQXShareDiagLoggedKey;
 static const void *FQXShareMarkedSheetKey = &FQXShareMarkedSheetKey;
+static const void *FQXShareAssociatedCardKey = &FQXShareAssociatedCardKey;
+static const void *FQXShareAssociatedRootKey = &FQXShareAssociatedRootKey;
 static NSMutableDictionary<NSString *, NSValue *> *gFQXDynamicShareOrigLayouts = nil;
+static NSMutableDictionary<NSString *, NSValue *> *gFQXDynamicShareCellOrigLayouts = nil;
+
+@interface FQXShareWeakBox : NSObject
+@property(nonatomic, weak) UIView *view;
+@end
+@implementation FQXShareWeakBox
+@end
+
+static void FQXSetWeakAssocView(id owner, const void *key, UIView *target) {
+    if (!owner || !key) return;
+    if (!target) {
+        objc_setAssociatedObject(owner, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    FQXShareWeakBox *box = objc_getAssociatedObject(owner, key);
+    if (![box isKindOfClass:FQXShareWeakBox.class]) {
+        box = [[FQXShareWeakBox alloc] init];
+        objc_setAssociatedObject(owner, key, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    box.view = target;
+}
+
+static UIView *FQXGetWeakAssocView(id owner, const void *key) {
+    if (!owner || !key) return nil;
+    FQXShareWeakBox *box = objc_getAssociatedObject(owner, key);
+    return [box isKindOfClass:FQXShareWeakBox.class] ? box.view : nil;
+}
 
 static NSHashTable<UIView *> *FQXTrackedShareSheets(void) {
     static NSHashTable<UIView *> *table;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
     return table;
+}
+
+static NSCache<NSString *, UIImage *> *FQXMonochromeShareIconCache(void) {
+    static NSCache<NSString *, UIImage *> *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 96;
+    });
+    return cache;
 }
 
 static UIViewController *FQXFindVisibleVCKindInHierarchy(UIViewController *vc, Class targetCls, NSInteger depth) {
@@ -14419,21 +14468,30 @@ static UIViewController *FQXFindVisibleVCKindInHierarchy(UIViewController *vc, C
     return nil;
 }
 
-static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
-    Class readerCls = NSClassFromString(@"BDReaderViewController");
-    if (!readerCls) return nil;
+static UIViewController *FQXFindVisibleClassInWindows(UIWindow *window, Class targetCls) {
+    if (!targetCls) return nil;
     UIViewController *found = window.rootViewController
-        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, readerCls, 0) : nil;
+        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, targetCls, 0) : nil;
     if (found) return found;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *win in ((UIWindowScene *)scene).windows) {
             if (win == window || win.hidden || win.alpha <= 0.01) continue;
-            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, readerCls, 0);
+            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, targetCls, 0);
             if (found) return found;
         }
     }
     return nil;
+}
+
+static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
+    return FQXFindVisibleClassInWindows(window, NSClassFromString(@"BDReaderViewController"));
+}
+
+static UIViewController *FQXFindVisibleDramaVCInWindow(UIWindow *window) {
+    UIViewController *vc = FQXFindVisibleClassInWindows(window, NSClassFromString(@"FQVShortVideoListViewController"));
+    if (vc) return vc;
+    return FQXFindVisibleClassInWindows(window, NSClassFromString(@"SSVideoSeriesFeedViewController"));
 }
 
 static UIColor *FQXSampleCenterPixelColor(UIImage *image) {
@@ -14529,7 +14587,6 @@ static UIColor *FQXSampleActiveReaderPaperColor(UIWindow *window,
             if (outFromReader) *outFromReader = YES;
             return paper;
         }
-        // Fallback: inspect readerVC.view.backgroundColor directly
         UIColor *rootBg = readerVC.view.backgroundColor;
         if (rootBg) {
             UIColor *resolved = [rootBg resolvedColorWithTraitCollection:readerVC.view.traitCollection];
@@ -14579,51 +14636,445 @@ static NSString *FQXHexStringForColor(UIColor *color) {
     return @"dynamic";
 }
 
+// Convert colored/dark circular share icons (e.g. WeChat, Moments, Douyin, Link, Weibo, QQ)
+// or standalone transparent glyphs into unified crisp pure-black (light mode) or pure-white
+// (dark/night mode) monochrome logos while preserving anti-aliased inner glyph detail.
+static UIImage *FQXMakeMonochromeShareLogoImage(UIImage *orig, BOOL isDark) {
+    if (![orig isKindOfClass:UIImage.class]) return nil;
+    NSString *cacheKey = [NSString stringWithFormat:@"%p_%d", (const void *)orig, isDark ? 1 : 0];
+    UIImage *cached = [FQXMonochromeShareIconCache() objectForKey:cacheKey];
+    if (cached) return cached;
+
+    UIColor *monoColor = isDark ? UIColor.whiteColor : UIColor.blackColor;
+    CGImageRef cg = orig.CGImage;
+    if (!cg || orig.isSymbolImage) {
+        UIImage *tinted = [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (tinted) [FQXMonochromeShareIconCache() setObject:tinted forKey:cacheKey];
+        return tinted ?: orig;
+    }
+
+    size_t srcW = CGImageGetWidth(cg);
+    size_t srcH = CGImageGetHeight(cg);
+    if (srcW < 12 || srcH < 12) {
+        UIImage *tinted = [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (tinted) [FQXMonochromeShareIconCache() setObject:tinted forKey:cacheKey];
+        return tinted ?: orig;
+    }
+
+    size_t w = srcW;
+    size_t h = srcH;
+    if (w > 192 || h > 192) {
+        double ratio = 192.0 / (double)MAX(w, h);
+        w = MAX((size_t)16, (size_t)llround((double)w * ratio));
+        h = MAX((size_t)16, (size_t)llround((double)h * ratio));
+    }
+
+    size_t byteCount = w * h * 4;
+    uint8_t *rgba = (uint8_t *)calloc(byteCount, 1);
+    if (!rgba) return [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(rgba, w, h, 8, w * 4, cs,
+                                             (CGBitmapInfo)(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+    if (!ctx) {
+        CGColorSpaceRelease(cs);
+        free(rgba);
+        return [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+    CGContextSetInterpolationQuality(ctx, kCGInterpolationHigh);
+    CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, (CGFloat)w, (CGFloat)h), cg);
+    CGContextRelease(ctx);
+
+    double cx = (double)w * 0.5;
+    double cy = (double)h * 0.5;
+    double rad = (double)MIN(w, h) * 0.5;
+    double r92Sq = (rad * 0.92) * (rad * 0.92);
+    double r94Sq = (rad * 0.94) * (rad * 0.94);
+    double r72Sq = (rad * 0.72) * (rad * 0.72);
+    double r90Sq = (rad * 0.90) * (rad * 0.90);
+
+    NSUInteger totalInCircle = 0;
+    NSUInteger opaqueInCircle = 0;
+    NSUInteger whiteGlyphCount = 0;
+    NSUInteger coloredOrDarkBgCount = 0;
+    double bgSumR = 0.0, bgSumG = 0.0, bgSumB = 0.0;
+    NSUInteger bgCnt = 0;
+    double allRingR = 0.0, allRingG = 0.0, allRingB = 0.0;
+    NSUInteger allRingCnt = 0;
+
+    for (size_t y = 0; y < h; ++y) {
+        double dy = ((double)y + 0.5) - cy;
+        for (size_t x = 0; x < w; ++x) {
+            double dx = ((double)x + 0.5) - cx;
+            double d2 = dx * dx + dy * dy;
+            if (d2 > r92Sq) continue;
+            totalInCircle++;
+            size_t idx = (y * w + x) * 4;
+            uint8_t a8 = rgba[idx + 3];
+            if (a8 < 128) continue;
+            opaqueInCircle++;
+            double a = (double)a8 / 255.0;
+            double r = MIN(1.0, ((double)rgba[idx + 0] / 255.0) / a);
+            double g = MIN(1.0, ((double)rgba[idx + 1] / 255.0) / a);
+            double b = MIN(1.0, ((double)rgba[idx + 2] / 255.0) / a);
+            double mx = MAX(r, MAX(g, b));
+            double mn = MIN(r, MIN(g, b));
+            double sat = mx - mn;
+            double luma = 0.299 * r + 0.587 * g + 0.114 * b;
+            if (luma > 0.78 && sat < 0.18) whiteGlyphCount++;
+            if (sat >= 0.14 || luma < 0.65) coloredOrDarkBgCount++;
+            if (d2 >= r72Sq && d2 <= r90Sq && a8 > 215) {
+                allRingR += r; allRingG += g; allRingB += b; allRingCnt++;
+                if (!(luma > 0.82 && sat < 0.12)) {
+                    bgSumR += r; bgSumG += g; bgSumB += b; bgCnt++;
+                }
+            }
+        }
+    }
+
+    BOOL isSolidDisk = (totalInCircle > 0 && opaqueInCircle >= (NSUInteger)((double)totalInCircle * 0.60));
+    BOOL isColoredOrDarkDiskWithWhiteGlyph = (isSolidDisk &&
+                                              bgCnt > 0 &&
+                                              whiteGlyphCount >= MAX((NSUInteger)6, (NSUInteger)((double)opaqueInCircle * 0.025)) &&
+                                              coloredOrDarkBgCount >= (NSUInteger)((double)opaqueInCircle * 0.25));
+    double ringR = allRingCnt > 0 ? (allRingR / (double)allRingCnt) : 0.0;
+    double ringG = allRingCnt > 0 ? (allRingG / (double)allRingCnt) : 0.0;
+    double ringB = allRingCnt > 0 ? (allRingB / (double)allRingCnt) : 0.0;
+    double ringLuma = 0.299 * ringR + 0.587 * ringG + 0.114 * ringB;
+    double ringSat = MAX(ringR, MAX(ringG, ringB)) - MIN(ringR, MIN(ringG, ringB));
+    BOOL isWhiteDiskWithDarkOrColoredGlyph = (isSolidDisk && !isColoredOrDarkDiskWithWhiteGlyph &&
+                                              allRingCnt > 0 && ringLuma > 0.85 && ringSat < 0.12 &&
+                                              coloredOrDarkBgCount >= MAX((NSUInteger)6, (NSUInteger)((double)opaqueInCircle * 0.025)));
+
+    if (!isColoredOrDarkDiskWithWhiteGlyph && !isWhiteDiskWithDarkOrColoredGlyph) {
+        CGColorSpaceRelease(cs);
+        free(rgba);
+        UIImage *tinted = [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (tinted) [FQXMonochromeShareIconCache() setObject:tinted forKey:cacheKey];
+        return tinted ?: orig;
+    }
+
+    uint8_t *outBuf = (uint8_t *)calloc(byteCount, 1);
+    if (!outBuf) {
+        CGColorSpaceRelease(cs);
+        free(rgba);
+        return [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+
+    double bR = bgCnt > 0 ? (bgSumR / (double)bgCnt) : ringR;
+    double bG = bgCnt > 0 ? (bgSumG / (double)bgCnt) : ringG;
+    double bB = bgCnt > 0 ? (bgSumB / (double)bgCnt) : ringB;
+    double vR = 1.0 - bR;
+    double vG = 1.0 - bG;
+    double vB = 1.0 - bB;
+    double vLen2 = MAX(0.08, vR * vR + vG * vG + vB * vB);
+    uint8_t inkVal = isDark ? 255 : 0;
+
+    size_t minX = w, maxX = 0, minY = h, maxY = 0;
+    NSUInteger extractedPixels = 0;
+
+    for (size_t y = 0; y < h; ++y) {
+        double dy = ((double)y + 0.5) - cy;
+        for (size_t x = 0; x < w; ++x) {
+            double dx = ((double)x + 0.5) - cx;
+            if (dx * dx + dy * dy > r94Sq) continue;
+            size_t idx = (y * w + x) * 4;
+            uint8_t a8 = rgba[idx + 3];
+            if (a8 < 12) continue;
+            double a = (double)a8 / 255.0;
+            double r = MIN(1.0, ((double)rgba[idx + 0] / 255.0) / a);
+            double g = MIN(1.0, ((double)rgba[idx + 1] / 255.0) / a);
+            double b = MIN(1.0, ((double)rgba[idx + 2] / 255.0) / a);
+
+            double glyphA = 0.0;
+            if (isColoredOrDarkDiskWithWhiteGlyph) {
+                double proj = ((r - bR) * vR + (g - bG) * vG + (b - bB) * vB) / vLen2;
+                if (proj > 0.14) {
+                    glyphA = MIN(1.0, (proj - 0.14) / 0.78) * a;
+                }
+            } else {
+                double dr = 1.0 - r, dg = 1.0 - g, db = 1.0 - b;
+                double distW = sqrt(dr * dr + dg * dg + db * db);
+                if (distW > 0.14) {
+                    glyphA = MIN(1.0, (distW - 0.14) / 0.50) * a;
+                }
+            }
+            if (glyphA <= 0.01) continue;
+            uint8_t oa = (uint8_t)llround(MAX(0.0, MIN(1.0, glyphA)) * 255.0);
+            uint8_t premul = (inkVal == 255) ? oa : 0;
+            outBuf[idx + 0] = premul;
+            outBuf[idx + 1] = premul;
+            outBuf[idx + 2] = premul;
+            outBuf[idx + 3] = oa;
+            if (oa > 64) {
+                extractedPixels++;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    free(rgba);
+
+    if (extractedPixels < 8 || maxX <= minX || maxY <= minY) {
+        CGColorSpaceRelease(cs);
+        free(outBuf);
+        UIImage *tinted = [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (tinted) [FQXMonochromeShareIconCache() setObject:tinted forKey:cacheKey];
+        return tinted ?: orig;
+    }
+
+    CGContextRef outCtx = CGBitmapContextCreate(outBuf, w, h, 8, w * 4, cs,
+                                                (CGBitmapInfo)(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+    CGImageRef rawGlyphCG = outCtx ? CGBitmapContextCreateImage(outCtx) : NULL;
+    if (outCtx) CGContextRelease(outCtx);
+    CGColorSpaceRelease(cs);
+    free(outBuf);
+
+    if (!rawGlyphCG) {
+        return [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+
+    // Re-center and gently optically boost the extracted logo to ~68% of the icon canvas
+    // (capped at 1.32x) so removing the colored disk leaves a balanced, unified monochrome mark.
+    CGSize ptSize = orig.size;
+    if (ptSize.width < 12.0 || ptSize.height < 12.0) {
+        CGFloat sc = orig.scale > 0.5 ? orig.scale : UIScreen.mainScreen.scale;
+        ptSize = CGSizeMake((CGFloat)w / sc, (CGFloat)h / sc);
+    }
+    CGRect cropPx = CGRectMake((CGFloat)minX, (CGFloat)minY,
+                               (CGFloat)(maxX - minX + 1), (CGFloat)(maxY - minY + 1));
+    CGImageRef croppedCG = CGImageCreateWithImageInRect(rawGlyphCG, cropPx);
+    CGImageRelease(rawGlyphCG);
+
+    UIImage *result = nil;
+    if (croppedCG) {
+        UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat defaultFormat];
+        fmt.opaque = NO;
+        fmt.scale = orig.scale > 0.5 ? orig.scale : UIScreen.mainScreen.scale;
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:ptSize format:fmt];
+        CGFloat cropW = CGRectGetWidth(cropPx);
+        CGFloat cropH = CGRectGetHeight(cropPx);
+        CGFloat basePtW = cropW * (ptSize.width / (CGFloat)w);
+        CGFloat basePtH = cropH * (ptSize.height / (CGFloat)h);
+        CGFloat maxDim = MAX(basePtW, basePtH);
+        CGFloat desiredDim = MIN(ptSize.width, ptSize.height) * 0.68;
+        CGFloat boost = (maxDim > 1.0) ? MIN(1.32, MAX(1.0, desiredDim / maxDim)) : 1.0;
+        CGFloat drawW = basePtW * boost;
+        CGFloat drawH = basePtH * boost;
+        CGRect drawRect = CGRectMake((ptSize.width - drawW) * 0.5,
+                                     (ptSize.height - drawH) * 0.5,
+                                     drawW, drawH);
+        UIImage *glyphUI = [UIImage imageWithCGImage:croppedCG scale:fmt.scale orientation:UIImageOrientationUp];
+        result = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *rctx) {
+            [glyphUI drawInRect:drawRect];
+        }];
+        CGImageRelease(croppedCG);
+        result = [result imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+
+    if (!result) {
+        result = [orig imageWithTintColor:monoColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+    if (result) [FQXMonochromeShareIconCache() setObject:result forKey:cacheKey];
+    return result;
+}
+
+static void FQXSetShareSheetHostClipping(UIView *view, BOOL unclip) {
+    if (!view) return;
+    if (unclip) {
+        if (!objc_getAssociatedObject(view, FQXShareSavedClipsKey)) {
+            objc_setAssociatedObject(view, FQXShareSavedClipsKey, @(view.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (view.clipsToBounds) view.clipsToBounds = NO;
+        if (view.layer.mask) {
+            if (!objc_getAssociatedObject(view, FQXShareSavedMaskKey)) {
+                objc_setAssociatedObject(view, FQXShareSavedMaskKey, view.layer.mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            view.layer.mask = nil;
+        }
+        if (view.layer.cornerRadius > 0.5) {
+            if (!objc_getAssociatedObject(view, FQXShareSavedCornerRKey)) {
+                objc_setAssociatedObject(view, FQXShareSavedCornerRKey, @(view.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(view, FQXShareSavedCornerMaskKey, @(view.layer.maskedCorners), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            view.layer.cornerRadius = 0.0;
+        }
+        // Hide any opaque/tinted full-bleed host CALayer backdrops directly on sheet.layer.
+        CGRect sb = view.bounds;
+        for (CALayer *sub in view.layer.sublayers) {
+            if (sub.delegate != nil) continue; // belongs to a UIView subview
+            if (CGRectGetWidth(sub.frame) >= CGRectGetWidth(sb) * 0.75 &&
+                CGRectGetHeight(sub.frame) >= CGRectGetHeight(sb) * 0.50 &&
+                !sub.hidden) {
+                objc_setAssociatedObject(sub, FQXShareHiddenSublayerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                sub.hidden = YES;
+            }
+        }
+    } else {
+        NSNumber *savedClips = objc_getAssociatedObject(view, FQXShareSavedClipsKey);
+        if (savedClips) {
+            view.clipsToBounds = savedClips.boolValue;
+            objc_setAssociatedObject(view, FQXShareSavedClipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        CALayer *savedMask = objc_getAssociatedObject(view, FQXShareSavedMaskKey);
+        if (savedMask) {
+            view.layer.mask = savedMask;
+            objc_setAssociatedObject(view, FQXShareSavedMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        NSNumber *savedCornerR = objc_getAssociatedObject(view, FQXShareSavedCornerRKey);
+        if (savedCornerR) {
+            view.layer.cornerRadius = savedCornerR.doubleValue;
+            NSNumber *savedCornerMask = objc_getAssociatedObject(view, FQXShareSavedCornerMaskKey);
+            if (savedCornerMask) view.layer.maskedCorners = (CACornerMask)savedCornerMask.unsignedIntegerValue;
+            objc_setAssociatedObject(view, FQXShareSavedCornerRKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(view, FQXShareSavedCornerMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        for (CALayer *sub in view.layer.sublayers) {
+            if ([objc_getAssociatedObject(sub, FQXShareHiddenSublayerKey) boolValue]) {
+                sub.hidden = NO;
+                objc_setAssociatedObject(sub, FQXShareHiddenSublayerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+    }
+}
+
+static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama);
+
+static void HookDynamicShareCellLayout(UIView *cell, SEL cmd) {
+    IMP orig = NULL;
+    if (gFQXDynamicShareCellOrigLayouts) {
+        for (Class c = object_getClass(cell); c && c != UICollectionViewCell.class && c != UIView.class; c = class_getSuperclass(c)) {
+            NSValue *v = gFQXDynamicShareCellOrigLayouts[NSStringFromClass(c) ?: @""];
+            if (v) { orig = (IMP)v.pointerValue; break; }
+        }
+    }
+    if (orig) ((void (*)(id, SEL))orig)(cell, cmd);
+    if (!cell.window) return;
+    // Walk up to find an enclosing marked share sheet and re-apply lightweight cleanup/monochrome styling.
+    for (UIView *cur = cell.superview; cur; cur = cur.superview) {
+        if (objc_getAssociatedObject(cur, FQXShareMarkedSheetKey)) {
+            BOOL forceDark = [objc_getAssociatedObject(cur, FQXShareForceDarkKey) boolValue];
+            UIView *root = FQXGetWeakAssocView(cur, FQXShareAssociatedRootKey) ?: cur.superview;
+            FQXStyleShareSheet(cur, root, forceDark);
+            break;
+        }
+    }
+}
+
+static void FQXEnsureShareCellClassHooked(UIView *cell) {
+    if (![cell isKindOfClass:UICollectionViewCell.class]) return;
+    Class cls = object_getClass(cell);
+    if (!cls || cls == UICollectionViewCell.class) return;
+    NSString *name = NSStringFromClass(cls);
+    if (!name.length || [name hasPrefix:@"UI"] || [name hasPrefix:@"_UI"]) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gFQXDynamicShareCellOrigLayouts = [NSMutableDictionary dictionary]; });
+    if (gFQXDynamicShareCellOrigLayouts[name]) return;
+    IMP orig = NULL;
+    if (FQXInstallOwnedHook(cls, @selector(layoutSubviews), NO, "v16@0:8",
+                            (IMP)HookDynamicShareCellLayout, &orig) && orig) {
+        gFQXDynamicShareCellOrigLayouts[name] = [NSValue valueWithPointer:(const void *)orig];
+    }
+}
+
+typedef struct {
+    NSInteger neutralizedEffects;
+    NSInteger monochromeIcons;
+} FQXShareCleanupStats;
+
 static void FQXApplyShareSubtreeCleanup(UIView *view,
                                         UIView *rootSheet,
                                         BOOL clear,
                                         BOOL adaptInk,
+                                        BOOL monochromeIcons,
                                         BOOL isDark,
-                                        NSInteger depth) {
-    if (!view || depth > 8) return;
+                                        NSInteger depth,
+                                        FQXShareCleanupStats *stats) {
+    if (!view || depth > 16) return;
     if ([view isKindOfClass:FQXCommentGlassSurfaceView.class] ||
         [view isKindOfClass:FQXBackdropBlurView.class] ||
         view == objc_getAssociatedObject(rootSheet, FQXSharePaperBackdropKey)) {
         return;
     }
 
+    // Neutralize any host UIVisualEffectView (e.g. native UIBlurEffect) inside the share sheet
+    // so it never double-blurs on top of our Clear Liquid Glass surface.
+    if ([view isKindOfClass:UIVisualEffectView.class]) {
+        FQXNeutralizeHostEffectView((UIVisualEffectView *)view, clear);
+        if (clear && stats) stats->neutralizedEffects++;
+        return;
+    }
+
+    if (clear && [view isKindOfClass:UICollectionViewCell.class]) {
+        FQXEnsureShareCellClassHooked(view);
+    }
+
     CGRect b = view.bounds;
     CGFloat w = CGRectGetWidth(b);
     CGFloat h = CGRectGetHeight(b);
+    CGRect sb = rootSheet.bounds;
+    CGFloat sheetW = CGRectGetWidth(sb);
+    CGFloat sheetH = CGRectGetHeight(sb);
 
-    // Protect share channel icon badges (circular colored/dark icon containers, UIImageViews, small buttons)
-    // and subtle 0.5-1.5pt divider hairlines so only neutral card/row/collection containers become clear.
-    BOOL isSmallIconBadge = (w > 10.0 && w <= 68.0 && h > 10.0 && h <= 68.0 &&
+    BOOL isHairline = (h > 0.0 && h <= 1.5 && w >= 60.0);
+    BOOL isGrabberPill = (w >= 20.0 && w <= 68.0 && h >= 2.0 && h <= 8.0 &&
+                          CGRectGetMinY([view convertRect:b toView:rootSheet]) <= 26.0 &&
+                          ![view isKindOfClass:UILabel.class] &&
+                          ![view isKindOfClass:UIImageView.class] &&
+                          ![view isKindOfClass:UIButton.class]);
+    BOOL isSmallIconBadge = (w > 16.0 && w <= 72.0 && h > 16.0 && h <= 72.0 &&
+                             ![view isKindOfClass:UILabel.class] &&
                              (view.layer.cornerRadius >= 10.0 ||
                               view.layer.mask != nil ||
                               [view isKindOfClass:UIImageView.class] ||
                               (fabs(w - h) <= 4.0 && w >= 28.0)));
-    BOOL isHairline = (h > 0.0 && h <= 1.5 && w >= 60.0);
+    BOOL isFullBleedWrapper = (view != rootSheet &&
+                               ![view isKindOfClass:UIScrollView.class] &&
+                               ![view isKindOfClass:UIImageView.class] &&
+                               w >= sheetW - 12.0 && h >= sheetH - 12.0);
+    BOOL isFullBleedBgImage = ([view isKindOfClass:UIImageView.class] &&
+                               w >= sheetW * 0.72 && h >= sheetH * 0.45);
 
     if (clear) {
-        BOOL isCellContent = ([view.superview isKindOfClass:UICollectionViewCell.class] &&
-                              view == ((UICollectionViewCell *)view.superview).contentView);
-        BOOL isContainerClass = ([view isKindOfClass:UICollectionView.class] ||
-                                 [view isKindOfClass:UIScrollView.class] ||
-                                 [view isKindOfClass:UICollectionViewCell.class] ||
-                                 [view isKindOfClass:UITableView.class] ||
-                                 [view isKindOfClass:UITableViewCell.class] ||
-                                 view == rootSheet ||
-                                 isCellContent);
-        BOOL isNeutralBg = FQXColorIsNeutralSurface(view.backgroundColor, view.traitCollection);
-        BOOL isWideNeutral = (!isSmallIconBadge && !isHairline && (w >= 76.0 || h >= 72.0) && isNeutralBg);
-        BOOL isCancelOrHeaderBtn = ([view isKindOfClass:UIButton.class] && w >= 120.0 && h >= 32.0 && isNeutralBg);
-        if ((isContainerClass || isWideNeutral || isCancelOrHeaderBtn) && !isSmallIconBadge && !isHairline) {
-            if (![view isKindOfClass:UIImageView.class] && ![view isKindOfClass:UILabel.class]) {
+        if (isFullBleedWrapper) {
+            FQXSetShareSheetHostClipping(view, YES);
+        }
+        if (isFullBleedBgImage) {
+            FQXAudioSetHiddenTracked(view, YES);
+        }
+        if (isGrabberPill) {
+            if (view.backgroundColor && !objc_getAssociatedObject(view, FQXShareSavedGrabberBgKey)) {
+                objc_setAssociatedObject(view, FQXShareSavedGrabberBgKey, view.backgroundColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            view.backgroundColor = [UIColor colorWithWhite:(isDark ? 1.0 : 0.0) alpha:0.32];
+        } else if (!isHairline) {
+            BOOL isCellContent = ([view.superview isKindOfClass:UICollectionViewCell.class] &&
+                                  view == ((UICollectionViewCell *)view.superview).contentView);
+            BOOL isContainerClass = ([view isKindOfClass:UICollectionView.class] ||
+                                     [view isKindOfClass:UIScrollView.class] ||
+                                     [view isKindOfClass:UICollectionViewCell.class] ||
+                                     [view isKindOfClass:UITableView.class] ||
+                                     [view isKindOfClass:UITableViewCell.class] ||
+                                     view == rootSheet ||
+                                     isFullBleedWrapper ||
+                                     isCellContent);
+            BOOL isNeutralBg = FQXColorIsNeutralSurface(view.backgroundColor, view.traitCollection);
+            BOOL isWideNeutral = (!isSmallIconBadge && (w >= 76.0 || h >= 72.0) && isNeutralBg);
+            BOOL isCancelOrHeaderBtn = ([view isKindOfClass:UIButton.class] && w >= 120.0 && h >= 32.0 && isNeutralBg);
+            // When monochrome icon mode is active, also clear colored circular badge containers
+            // behind transparent white-glyph UIImageViews so no stray colored disk remains.
+            BOOL clearBadgeContainer = (monochromeIcons && isSmallIconBadge &&
+                                        ![view isKindOfClass:UIImageView.class] &&
+                                        ![view isKindOfClass:UIButton.class]);
+            if ((isContainerClass || isWideNeutral || isCancelOrHeaderBtn || clearBadgeContainer) &&
+                ![view isKindOfClass:UIImageView.class] && ![view isKindOfClass:UILabel.class]) {
                 FQXAudioClearBackground(view, YES);
                 if (view.layer.backgroundColor && CGColorGetAlpha(view.layer.backgroundColor) > 0.001) {
                     UIColor *lbg = [UIColor colorWithCGColor:view.layer.backgroundColor];
-                    if (FQXColorIsNeutralSurface(lbg, view.traitCollection)) {
+                    if (clearBadgeContainer || FQXColorIsNeutralSurface(lbg, view.traitCollection)) {
                         if (!objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey)) {
                             objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, lbg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                         }
@@ -14632,13 +15083,54 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
                 }
             }
         }
+
+        if (monochromeIcons) {
+            if ([view isKindOfClass:UIImageView.class] && !isFullBleedBgImage &&
+                w >= 14.0 && w <= 76.0 && h >= 14.0 && h <= 76.0) {
+                UIImageView *iv = (UIImageView *)view;
+                UIImage *curImg = iv.image;
+                if (curImg) {
+                    UIImage *appliedMono = objc_getAssociatedObject(iv, FQXShareAppliedMonoImageKey);
+                    UIImage *origImg = objc_getAssociatedObject(iv, FQXShareSavedOrigImageKey);
+                    if (!origImg || (curImg != appliedMono && curImg != origImg)) {
+                        origImg = curImg;
+                        objc_setAssociatedObject(iv, FQXShareSavedOrigImageKey, origImg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                    UIImage *mono = FQXMakeMonochromeShareLogoImage(origImg, isDark);
+                    if (mono) {
+                        if (iv.image != mono) iv.image = mono;
+                        objc_setAssociatedObject(iv, FQXShareAppliedMonoImageKey, mono, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        if (stats) stats->monochromeIcons++;
+                    }
+                }
+                FQXAudioClearBackground(iv, YES);
+            } else if ([view isKindOfClass:UIButton.class] && w <= 96.0 && h <= 96.0) {
+                UIButton *btn = (UIButton *)view;
+                UIImage *curBtnImg = [btn imageForState:UIControlStateNormal];
+                if (curBtnImg && curBtnImg.size.width >= 14.0 && curBtnImg.size.width <= 76.0) {
+                    UIImage *appliedMono = objc_getAssociatedObject(btn, FQXShareAppliedBtnMonoImageKey);
+                    UIImage *origImg = objc_getAssociatedObject(btn, FQXShareSavedBtnOrigImageKey);
+                    if (!origImg || (curBtnImg != appliedMono && curBtnImg != origImg)) {
+                        origImg = curBtnImg;
+                        objc_setAssociatedObject(btn, FQXShareSavedBtnOrigImageKey, origImg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                    UIImage *mono = FQXMakeMonochromeShareLogoImage(origImg, isDark);
+                    if (mono) {
+                        if (curBtnImg != mono) [btn setImage:mono forState:UIControlStateNormal];
+                        objc_setAssociatedObject(btn, FQXShareAppliedBtnMonoImageKey, mono, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        if (stats) stats->monochromeIcons++;
+                    }
+                }
+            }
+        }
+
         if (adaptInk) {
             UIColor *targetInk = isDark
-                ? [UIColor colorWithWhite:1.0 alpha:0.92]
-                : [UIColor colorWithWhite:0.0 alpha:0.88];
+                ? [UIColor colorWithWhite:1.0 alpha:0.94]
+                : [UIColor colorWithWhite:0.0 alpha:0.92];
             if ([view isKindOfClass:UILabel.class]) {
                 UILabel *lbl = (UILabel *)view;
-                if (lbl.text.length > 0 && lbl.textColor &&
+                if ((lbl.text.length > 0 || lbl.attributedText.length > 0) && lbl.textColor &&
                     FQXColorIsNeutralSurface(lbl.textColor, lbl.traitCollection)) {
                     if (!objc_getAssociatedObject(lbl, FQXShareSavedTextColorKey)) {
                         objc_setAssociatedObject(lbl, FQXShareSavedTextColorKey, lbl.textColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -14648,7 +15140,7 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
             } else if ([view isKindOfClass:UIButton.class]) {
                 UIButton *btn = (UIButton *)view;
                 UIColor *curTitleCol = [btn titleColorForState:UIControlStateNormal];
-                if (btn.currentTitle.length > 0 && curTitleCol &&
+                if ((btn.currentTitle.length > 0 || btn.currentAttributedTitle.length > 0) && curTitleCol &&
                     FQXColorIsNeutralSurface(curTitleCol, btn.traitCollection)) {
                     if (!objc_getAssociatedObject(btn, FQXShareSavedBtnTitleColorKey)) {
                         objc_setAssociatedObject(btn, FQXShareSavedBtnTitleColorKey, curTitleCol, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -14658,29 +15150,49 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
             }
         }
     } else {
+        FQXSetShareSheetHostClipping(view, NO);
+        FQXAudioSetHiddenTracked(view, NO);
+        UIColor *savedGrabber = objc_getAssociatedObject(view, FQXShareSavedGrabberBgKey);
+        if ([savedGrabber isKindOfClass:UIColor.class]) {
+            view.backgroundColor = savedGrabber;
+            objc_setAssociatedObject(view, FQXShareSavedGrabberBgKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         FQXAudioClearBackground(view, NO);
         UIColor *savedLayerBg = objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey);
         if ([savedLayerBg isKindOfClass:UIColor.class]) {
             view.layer.backgroundColor = savedLayerBg.CGColor;
             objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        if ([view isKindOfClass:UILabel.class]) {
-            UIColor *savedText = objc_getAssociatedObject(view, FQXShareSavedTextColorKey);
-            if ([savedText isKindOfClass:UIColor.class]) {
-                ((UILabel *)view).textColor = savedText;
-                objc_setAssociatedObject(view, FQXShareSavedTextColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if ([view isKindOfClass:UIImageView.class]) {
+            UIImage *origImg = objc_getAssociatedObject(view, FQXShareSavedOrigImageKey);
+            if ([origImg isKindOfClass:UIImage.class]) {
+                ((UIImageView *)view).image = origImg;
+                objc_setAssociatedObject(view, FQXShareSavedOrigImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(view, FQXShareAppliedMonoImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         } else if ([view isKindOfClass:UIButton.class]) {
+            UIImage *origBtnImg = objc_getAssociatedObject(view, FQXShareSavedBtnOrigImageKey);
+            if ([origBtnImg isKindOfClass:UIImage.class]) {
+                [(UIButton *)view setImage:origBtnImg forState:UIControlStateNormal];
+                objc_setAssociatedObject(view, FQXShareSavedBtnOrigImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(view, FQXShareAppliedBtnMonoImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
             UIColor *savedBtn = objc_getAssociatedObject(view, FQXShareSavedBtnTitleColorKey);
             if ([savedBtn isKindOfClass:UIColor.class]) {
                 [(UIButton *)view setTitleColor:savedBtn forState:UIControlStateNormal];
                 objc_setAssociatedObject(view, FQXShareSavedBtnTitleColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
+        } else if ([view isKindOfClass:UILabel.class]) {
+            UIColor *savedText = objc_getAssociatedObject(view, FQXShareSavedTextColorKey);
+            if ([savedText isKindOfClass:UIColor.class]) {
+                ((UILabel *)view).textColor = savedText;
+                objc_setAssociatedObject(view, FQXShareSavedTextColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
     }
 
     for (UIView *sub in view.subviews) {
-        FQXApplyShareSubtreeCleanup(sub, rootSheet, clear, adaptInk, isDark, depth + 1);
+        FQXApplyShareSubtreeCleanup(sub, rootSheet, clear, adaptInk, monochromeIcons, isDark, depth + 1, stats);
     }
 }
 
@@ -14702,7 +15214,8 @@ static void FQXRemoveShareSheetStyling(UIView *sheet) {
     if (sheet.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
         sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
     }
-    FQXApplyShareSubtreeCleanup(sheet, sheet, NO, NO, NO, 0);
+    FQXSetShareSheetHostClipping(sheet, NO);
+    FQXApplyShareSubtreeCleanup(sheet, sheet, NO, NO, NO, NO, 0, NULL);
 }
 
 static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama) {
@@ -14713,6 +15226,9 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     [FQXTrackedShareSheets() addObject:sheet];
     objc_setAssociatedObject(sheet, FQXShareForceDarkKey, @(forceDarkDrama), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(sheet, FQXShareMarkedSheetKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (root && root != sheet) {
+        FQXSetWeakAssocView(sheet, FQXShareAssociatedRootKey, root);
+    }
 
     if (FQXHotPrefsSnapshot().glassDisabled) {
         FQXRemoveShareSheetStyling(sheet);
@@ -14725,7 +15241,6 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         return NO;
     }
 
-    // Clear any legacy SheetGlassKey surface so only one backdrop exists.
     if (objc_getAssociatedObject(sheet, SheetGlassKey)) {
         FQXRemoveGlassSheet(sheet);
     }
@@ -14741,19 +15256,22 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         } else {
             isDark = FQXAppIsInNightMode();
         }
-    } else if (forceDarkDrama) {
+    } else if (forceDarkDrama || FQXFindVisibleDramaVCInWindow(sheet.window) != nil) {
         isDark = YES;
     } else {
         isDark = FQXAppIsInNightMode();
     }
 
-    CGFloat cornerR = FQXReadHostSheetCornerRadius(sheet, root);
-    if (cornerR < 16.0) cornerR = 20.0;
+    CGFloat hostCornerR = FQXReadHostSheetCornerRadius(sheet, root);
+    CGFloat cornerR = (hostCornerR >= 10.0 && hostCornerR <= 22.0) ? hostCornerR : 18.0;
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL darkTint = FQXGlassDarkTintEnabled();
     NSInteger blurPct = reduceTrans ? 0 : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:ShareBlurPrefKey]);
+    BOOL hadMask = (sheet.layer.mask != nil || objc_getAssociatedObject(sheet, FQXShareSavedMaskKey) != nil);
+    BOOL hadClips = (sheet.clipsToBounds || [objc_getAssociatedObject(sheet, FQXShareSavedClipsKey) boolValue]);
+    FQXShareCleanupStats stats = {0, 0};
 
-    // Mode 3: 原书底色 (Novel original paper background / matching theme surface on Drama)
+    // Mode 3: 原书底色 (Novel original paper background / matching dark theme surface on Drama)
     if (style == FQXShareMaterialBookBackground) {
         UIVisualEffectView *oldSurface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
         if (oldSurface) {
@@ -14777,16 +15295,18 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         }
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
+        FQXSetShareSheetHostClipping(sheet, YES);
         if (!CGRectEqualToRect(paperBg.frame, sb)) paperBg.frame = sb;
         paperBg.layer.cornerRadius = cornerR;
         paperBg.backgroundColor = fillColor;
         if (sheet.subviews.firstObject != paperBg) [sheet insertSubview:paperBg atIndex:0];
         UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
         if (sheet.overrideUserInterfaceStyle != uiStyle) sheet.overrideUserInterfaceStyle = uiStyle;
-        FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, isDark, 0);
+        FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
         [CATransaction commit];
 
-        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f", isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb)];
+        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f|%ld",
+                             isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb), (long)stats.monochromeIcons];
         if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
             objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
             FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
@@ -14796,6 +15316,10 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
                 @"fromReader": @(fromReader),
                 @"isDark": @(isDark),
                 @"paperHex": FQXHexStringForColor(fillColor),
+                @"monochromeIcons": @(stats.monochromeIcons),
+                @"neutralizedEffects": @(stats.neutralizedEffects),
+                @"sheetHadMask": @(hadMask),
+                @"sheetHadClips": @(hadClips),
                 @"sheetFrame": FQXDockRectArray(sb),
             }, NO);
         }
@@ -14846,16 +15370,27 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+    // Match Comment Sheet's verified Clear Liquid Glass compositor policy:
+    // Use UIUserInterfaceStyleUnspecified on Clear Glass so iOS 26/27 renders crisp
+    // transparent glass with bright optical rim refraction (never milky/frosted Light haze).
+    UIUserInterfaceStyle surfaceUIStyle = (effStyle == FQXShareMaterialClearGlass)
+        ? UIUserInterfaceStyleUnspecified
+        : (isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
+    UIUserInterfaceStyle hostUIStyle = isDark
+        ? UIUserInterfaceStyleDark
+        : ((effStyle == FQXShareMaterialClearGlass) ? UIUserInterfaceStyleUnspecified : UIUserInterfaceStyleLight);
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    // Remove host layer.mask / clipsToBounds so Core Animation never offscreen-rasterizes
+    // UIGlassEffect or clips its specular top rim highlight.
+    FQXSetShareSheetHostClipping(sheet, YES);
     if (!CGRectEqualToRect(surface.frame, sb)) surface.frame = sb;
     if (sheet.subviews.firstObject != surface) [sheet insertSubview:surface atIndex:0];
-    if (sheet.overrideUserInterfaceStyle != uiStyle) sheet.overrideUserInterfaceStyle = uiStyle;
-    if (surface.overrideUserInterfaceStyle != uiStyle) surface.overrideUserInterfaceStyle = uiStyle;
+    if (sheet.overrideUserInterfaceStyle != hostUIStyle) sheet.overrideUserInterfaceStyle = hostUIStyle;
+    if (surface.overrideUserInterfaceStyle != surfaceUIStyle) surface.overrideUserInterfaceStyle = surfaceUIStyle;
     FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, cornerR);
-    FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, isDark, 0);
+    FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
     [CATransaction commit];
 
     if (wantsGaussian) {
@@ -14873,9 +15408,11 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
             NSInteger glassStyle = (reduceTrans || effStyle == FQXShareMaterialRegularGlass) ? 0 : 1;
             UIColor *tint = (!reduceTrans && effStyle == FQXShareMaterialClearGlass && darkTint && isDark)
                 ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
-            gv.effect = FQXMakeGlassEffect(glassStyle, YES, tint);
-            gv.backgroundColor = UIColor.clearColor;
-            gv.contentView.backgroundColor = UIColor.clearColor;
+            UIVisualEffect *glassEffect = FQXMakeGlassEffect(glassStyle, YES, tint);
+            [UIView performWithoutAnimation:^{
+                gv.overrideUserInterfaceStyle = surfaceUIStyle;
+                gv.effect = glassEffect;
+            }];
             objc_setAssociatedObject(gv, FQXShareStyledStampKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         // Supplemental blur on top of Liquid Glass ONLY when user sets ShareBlur > 0 (0 = none).
@@ -14904,10 +15441,18 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         }
     }
 
-    NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f",
-                         (long)effStyle, isDark ? 1 : 0, (long)blurPct, darkTint ? 1 : 0, CGRectGetHeight(sb)];
+    NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f|%ld|%ld",
+                         (long)effStyle, isDark ? 1 : 0, (long)blurPct, darkTint ? 1 : 0,
+                         CGRectGetHeight(sb), (long)stats.monochromeIcons, (long)stats.neutralizedEffects];
     if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
         objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        NSMutableArray<NSString *> *subClasses = [NSMutableArray array];
+        for (UIView *sub in sheet.subviews) {
+            if (subClasses.count >= 8) break;
+            [subClasses addObject:[NSString stringWithFormat:@"%@(%.0fx%.0f)",
+                                   NSStringFromClass(sub.class) ?: @"?",
+                                   CGRectGetWidth(sub.bounds), CGRectGetHeight(sub.bounds)]];
+        }
         FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
             @"sheetClass": NSStringFromClass(sheet.class) ?: @"",
             @"rootClass": root ? (NSStringFromClass(root.class) ?: @"") : @"",
@@ -14916,6 +15461,13 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
             @"fromReader": @(fromReader),
             @"isDark": @(isDark),
             @"darkTint": @(darkTint),
+            @"surfaceEffectClass": surface.effect ? (NSStringFromClass(surface.effect.class) ?: @"") : @"nil",
+            @"surfaceOverrideStyle": @((NSInteger)surface.overrideUserInterfaceStyle),
+            @"monochromeIcons": @(stats.monochromeIcons),
+            @"neutralizedEffects": @(stats.neutralizedEffects),
+            @"sheetHadMask": @(hadMask),
+            @"sheetHadClips": @(hadClips),
+            @"subviewSummary": subClasses,
             @"sheetFrame": FQXDockRectArray(sb),
         }, NO);
     }
@@ -14930,7 +15482,8 @@ static void FQXRefreshAllShareSheets(void) {
     for (UIView *sheet in FQXTrackedShareSheets().allObjects) {
         if (!sheet.superview) continue;
         BOOL forceDark = [objc_getAssociatedObject(sheet, FQXShareForceDarkKey) boolValue];
-        FQXStyleShareSheet(sheet, sheet.superview, forceDark);
+        UIView *root = FQXGetWeakAssocView(sheet, FQXShareAssociatedRootKey) ?: sheet.superview;
+        FQXStyleShareSheet(sheet, root, forceDark);
     }
 }
 
@@ -14941,7 +15494,7 @@ static NSSet<NSString *> *FQXShareChannelMarkers(void) {
         markers = [NSSet setWithArray:@[
             @"微信", @"朋友圈", @"微信好友", @"抖音好友", @"发布到抖音",
             @"复制链接", @"生成分享图", @"微博", @"QQ", @"QQ空间",
-            @"私信", @"分享给好友", @"分享到", @"保存图片", @"转发",
+            @"私信", @"分享给好友", @"分享到", @"分享至", @"保存图片", @"转发",
         ]];
     });
     return markers;
@@ -14951,13 +15504,18 @@ static NSInteger FQXCountShareChannelMarkersInView(UIView *root,
                                                    NSMutableSet<NSString *> *matched,
                                                    NSInteger *visitedBudget,
                                                    NSInteger depth) {
-    if (!root || root.hidden || root.alpha <= 0.01 || depth > 9 || *visitedBudget <= 0) return (NSInteger)matched.count;
+    if (!root || root.hidden || root.alpha <= 0.01 || depth > 16 || *visitedBudget <= 0) return (NSInteger)matched.count;
     (*visitedBudget)--;
     NSString *text = nil;
     if ([root isKindOfClass:UILabel.class]) {
-        text = ((UILabel *)root).text;
+        UILabel *lbl = (UILabel *)root;
+        text = lbl.text.length ? lbl.text : lbl.attributedText.string;
     } else if ([root isKindOfClass:UIButton.class]) {
-        text = ((UIButton *)root).currentTitle;
+        UIButton *btn = (UIButton *)root;
+        text = btn.currentTitle.length ? btn.currentTitle : btn.currentAttributedTitle.string;
+    }
+    if (!text.length && root.accessibilityLabel.length > 0 && root.accessibilityLabel.length <= 16) {
+        text = root.accessibilityLabel;
     }
     if (text.length > 0 && text.length <= 16) {
         NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
@@ -14983,7 +15541,7 @@ static UIView *FQXFindShareSheetCardInRoot(UIView *root, UIWindow *window) {
     NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:root];
     NSInteger inspected = 0;
     UIView *best = nil;
-    while (queue.count > 0 && inspected < 48) {
+    while (queue.count > 0 && inspected < 140) {
         UIView *cur = queue.firstObject;
         [queue removeObjectAtIndex:0];
         if (!cur || cur.hidden || cur.alpha <= 0.01) continue;
@@ -14995,10 +15553,10 @@ static UIView *FQXFindShareSheetCardInRoot(UIView *root, UIWindow *window) {
         CGFloat h = CGRectGetHeight(inWin);
         BOOL isBottomCard = (w >= winW - 36.0) &&
                             (h >= 120.0 && h <= winH * 0.78) &&
-                            (CGRectGetMaxY(inWin) >= winH - 48.0);
+                            (CGRectGetMaxY(inWin) >= winH - 64.0);
         if (isBottomCard) {
             NSMutableSet<NSString *> *hits = [NSMutableSet set];
-            NSInteger budget = 96;
+            NSInteger budget = 240;
             if (FQXCountShareChannelMarkersInView(cur, hits, &budget, 0) >= 2) {
                 best = cur;
                 break;
@@ -15011,6 +15569,23 @@ static UIView *FQXFindShareSheetCardInRoot(UIView *root, UIWindow *window) {
     return best;
 }
 
+static UIView *FQXFindFirstCustomViewInside(UIView *view, NSInteger depth) {
+    if (!view || depth > 8) return nil;
+    NSString *name = NSStringFromClass(view.class) ?: @"";
+    if (name.length && ![name hasPrefix:@"UI"] && ![name hasPrefix:@"_UI"] &&
+        ![name hasPrefix:@"FQX"] && ![name hasPrefix:@"FanqieX"] &&
+        ![view isKindOfClass:UICollectionViewCell.class] &&
+        ![view isKindOfClass:UILabel.class] &&
+        ![view isKindOfClass:UIImageView.class]) {
+        return view;
+    }
+    for (UIView *sub in view.subviews) {
+        UIView *found = FQXFindFirstCustomViewInside(sub, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
 static void HookDynamicShareSheetLayout(UIView *view, SEL cmd) {
     IMP orig = NULL;
     if (gFQXDynamicShareOrigLayouts) {
@@ -15020,19 +15595,30 @@ static void HookDynamicShareSheetLayout(UIView *view, SEL cmd) {
         }
     }
     if (orig) ((void (*)(id, SEL))orig)(view, cmd);
-    if (objc_getAssociatedObject(view, FQXShareMarkedSheetKey) && view.window) {
-        BOOL forceDark = [objc_getAssociatedObject(view, FQXShareForceDarkKey) boolValue];
-        FQXStyleShareSheet(view, view.superview, forceDark);
+    if (!view.window) return;
+    UIView *card = FQXGetWeakAssocView(view, FQXShareAssociatedCardKey);
+    if (!card && objc_getAssociatedObject(view, FQXShareMarkedSheetKey)) {
+        card = view;
+    }
+    if (card && card.window) {
+        BOOL forceDark = [objc_getAssociatedObject(card, FQXShareForceDarkKey) boolValue];
+        UIView *root = FQXGetWeakAssocView(card, FQXShareAssociatedRootKey) ?: card.superview;
+        FQXStyleShareSheet(card, root, forceDark);
     }
 }
 
-static void FQXEnsureShareSheetClassHooked(UIView *sheet) {
-    if (!sheet) return;
-    Class cls = object_getClass(sheet);
+static void FQXEnsureShareSheetClassHooked(UIView *target, UIView *card) {
+    if (!target) return;
+    if (card && target != card) {
+        FQXSetWeakAssocView(target, FQXShareAssociatedCardKey, card);
+    }
+    Class cls = object_getClass(target);
     if (!cls || cls == UIView.class) return;
     NSString *name = NSStringFromClass(cls);
     if (!name.length || [name hasPrefix:@"UI"] || [name hasPrefix:@"_UI"] ||
-        [name isEqualToString:@"SSVideoSharePanelView"]) return;
+        [name hasPrefix:@"FQX"] || [name hasPrefix:@"FanqieX"] ||
+        [name isEqualToString:@"SSVideoSharePanelView"] ||
+        [name isEqualToString:@"SSReadingSharePanel"]) return;
     static dispatch_once_t mapOnce;
     dispatch_once(&mapOnce, ^{ gFQXDynamicShareOrigLayouts = [NSMutableDictionary dictionary]; });
     if (gFQXDynamicShareOrigLayouts[name]) return;
@@ -15043,24 +15629,43 @@ static void FQXEnsureShareSheetClassHooked(UIView *sheet) {
     }
 }
 
+static BOOL FQXShouldSkipShareCandidateClass(NSString *clsName) {
+    if (!clsName.length) return YES;
+    if ([clsName hasPrefix:@"FQX"] || [clsName hasPrefix:@"FanqieX"]) return YES;
+    if ([clsName hasPrefix:@"_UI"]) {
+        if ([clsName containsString:@"Sheet"] || [clsName containsString:@"Transition"] ||
+            [clsName containsString:@"DropShadow"] || [clsName containsString:@"Presentation"]) {
+            return NO;
+        }
+        return YES;
+    }
+    return NO;
+}
+
 static void FQXInspectCandidateShareContainer(UIView *root) {
     if (!root || !root.window || root.hidden || root.alpha <= 0.01) return;
     NSString *clsName = NSStringFromClass(root.class) ?: @"";
-    if ([clsName hasPrefix:@"_UI"] || [clsName hasPrefix:@"FQX"] || [clsName hasPrefix:@"FanqieX"]) return;
+    if (FQXShouldSkipShareCandidateClass(clsName)) return;
     if ([root isKindOfClass:NSClassFromString(@"SSVideoSharePanelView")]) {
         FQXStyleShareSheet(root, root.superview, YES);
         return;
     }
 
     NSMutableSet<NSString *> *hits = [NSMutableSet set];
-    NSInteger budget = 110;
+    NSInteger budget = 320;
     if (FQXCountShareChannelMarkersInView(root, hits, &budget, 0) < 2) return;
 
     UIView *card = FQXFindShareSheetCardInRoot(root, root.window);
     if (!card) return;
-    FQXEnsureShareSheetClassHooked(card);
+    FQXEnsureShareSheetClassHooked(card, card);
+    if (root != card) FQXEnsureShareSheetClassHooked(root, card);
+    UIView *innerCustom = FQXFindFirstCustomViewInside(card, 0);
+    if (innerCustom && innerCustom != card && innerCustom != root) {
+        FQXEnsureShareSheetClassHooked(innerCustom, card);
+    }
     BOOL forceDark = (FQXFindVisibleReaderVCInWindow(root.window) == nil) &&
-                     ([clsName containsString:@"Video"] || [clsName containsString:@"Drama"]);
+                     (FQXFindVisibleDramaVCInWindow(root.window) != nil ||
+                      [clsName containsString:@"Video"] || [clsName containsString:@"Drama"]);
     FQXStyleShareSheet(card, root, forceDark);
 }
 
@@ -15069,25 +15674,24 @@ static NSMutableDictionary<NSString *, NSValue *> *gFQXShareViewOrigDidMoveWindo
 static void FQXScheduleCandidateShareInspection(UIView *candidate) {
     if (!candidate) return;
     NSString *clsName = NSStringFromClass(candidate.class) ?: @"";
-    if ([clsName hasPrefix:@"_UI"] || [clsName hasPrefix:@"FQX"] || [clsName hasPrefix:@"FanqieX"] ||
-        [candidate isKindOfClass:UIVisualEffectView.class]) {
+    if (FQXShouldSkipShareCandidateClass(clsName) || [candidate isKindOfClass:UIVisualEffectView.class]) {
         return;
     }
     __weak UIView *weakView = candidate;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIView *v = weakView;
-        if (v && v.window) FQXInspectCandidateShareContainer(v);
-    });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIView *v = weakView;
-        if (v && v.window) FQXInspectCandidateShareContainer(v);
-    });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.28 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIView *v = weakView;
-        if (v && v.window && !objc_getAssociatedObject(v, FQXShareMarkedSheetKey)) {
+    static const double delays[] = {0.0, 0.14, 0.38, 0.72};
+    for (size_t i = 0; i < sizeof(delays) / sizeof(delays[0]); ++i) {
+        double d = delays[i];
+        void (^task)(void) = ^{
+            UIView *v = weakView;
+            if (!v || !v.window) return;
             FQXInspectCandidateShareContainer(v);
+        };
+        if (d <= 0.0) {
+            dispatch_async(dispatch_get_main_queue(), task);
+        } else {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d * NSEC_PER_SEC)), dispatch_get_main_queue(), task);
         }
-    });
+    }
 }
 
 static void HookNamedShareViewDidMoveWindow(UIView *view, SEL cmd) {
@@ -15115,12 +15719,20 @@ static void FQXHookHostSharePanelSubclasses(void) {
             if (!cname || !strstr(cname, "Share")) continue;
             if (strncmp(cname, "UI", 2) == 0 || strncmp(cname, "_UI", 3) == 0 ||
                 strncmp(cname, "FQX", 3) == 0 || strncmp(cname, "FanqieX", 7) == 0 ||
-                strcmp(cname, "SSVideoSharePanelView") == 0) {
+                strcmp(cname, "SSVideoSharePanelView") == 0 ||
+                strcmp(cname, "SSReadingSharePanel") == 0) {
+                continue;
+            }
+            if (strstr(cname, "Button") || strstr(cname, "Btn") || strstr(cname, "Icon") ||
+                strstr(cname, "Cell") || strstr(cname, "Item") || strstr(cname, "Badge") ||
+                strstr(cname, "Label") || strstr(cname, "Image") || strstr(cname, "Tip") ||
+                strstr(cname, "Toast") || strstr(cname, "RightInteraction")) {
                 continue;
             }
             if (!(strstr(cname, "Panel") || strstr(cname, "Sheet") || strstr(cname, "Board") ||
                   strstr(cname, "Pop") || strstr(cname, "Menu") || strstr(cname, "Dialog") ||
-                  strstr(cname, "Container"))) {
+                  strstr(cname, "Container") || strstr(cname, "Card") || strstr(cname, "Content") ||
+                  strstr(cname, "Alert") || strstr(cname, "View"))) {
                 continue;
             }
             BOOL isViewSubclass = NO;
@@ -15140,6 +15752,21 @@ static void FQXHookHostSharePanelSubclasses(void) {
     });
 }
 
+static UIView *FQXEnclosingModalSheetRootForView(UIView *view) {
+    if (!view || !view.window) return view;
+    UIView *best = view;
+    for (UIView *cur = view.superview; cur && cur != view.window; cur = cur.superview) {
+        NSString *cname = NSStringFromClass(cur.class) ?: @"";
+        if ([cname containsString:@"Transition"] || [cname containsString:@"DropShadow"] ||
+            [cname containsString:@"Sheet"] || [cname containsString:@"Share"] ||
+            [cname containsString:@"Modal"] || [cname containsString:@"Pop"] ||
+            [cname containsString:@"LayoutContainer"]) {
+            best = cur;
+        }
+    }
+    return best;
+}
+
 static void (*OrigWindowAddSubviewForShare)(id, SEL, id);
 static void HookWindowAddSubviewForShare(UIWindow *window, SEL cmd, UIView *subview) {
     if (OrigWindowAddSubviewForShare) OrigWindowAddSubviewForShare(window, cmd, subview);
@@ -15147,6 +15774,20 @@ static void HookWindowAddSubviewForShare(UIWindow *window, SEL cmd, UIView *subv
     NSString *winName = NSStringFromClass(window.class) ?: @"";
     if ([winName containsString:@"Keyboard"] || [winName containsString:@"Effects"]) return;
     FQXScheduleCandidateShareInspection(subview);
+}
+
+static void (*OrigWindowMakeKeyForShare)(id, SEL);
+static void HookWindowMakeKeyForShare(UIWindow *window, SEL cmd) {
+    if (OrigWindowMakeKeyForShare) OrigWindowMakeKeyForShare(window, cmd);
+    if (!window) return;
+    NSString *winName = NSStringFromClass(window.class) ?: @"";
+    if ([winName containsString:@"Keyboard"] || [winName containsString:@"Effects"]) return;
+    if (window.rootViewController.viewIfLoaded) {
+        FQXScheduleCandidateShareInspection(window.rootViewController.viewIfLoaded);
+    }
+    for (UIView *sub in window.subviews) {
+        FQXScheduleCandidateShareInspection(sub);
+    }
 }
 
 static void (*OrigVCPresentForShare)(id, SEL, id, BOOL, id);
@@ -15160,14 +15801,85 @@ static void HookVCPresentForShare(UIViewController *self, SEL cmd, UIViewControl
     NSString *vcName = NSStringFromClass(vc.class) ?: @"";
     if ([vcName hasPrefix:@"FQX"] || [vcName hasPrefix:@"FanqieX"]) return;
     __weak UIViewController *weakVC = vc;
+    static const double delays[] = {0.0, 0.14, 0.38, 0.72};
+    for (size_t i = 0; i < sizeof(delays) / sizeof(delays[0]); ++i) {
+        double d = delays[i];
+        void (^task)(void) = ^{
+            UIViewController *s = weakVC;
+            if (!s || !s.isViewLoaded || !s.view.window) return;
+            UIView *modalRoot = FQXEnclosingModalSheetRootForView(s.view);
+            FQXInspectCandidateShareContainer(modalRoot ?: s.view);
+        };
+        if (d <= 0.0) {
+            dispatch_async(dispatch_get_main_queue(), task);
+        } else {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d * NSEC_PER_SEC)), dispatch_get_main_queue(), task);
+        }
+    }
+}
+
+static void (*OrigVCViewDidAppearForShare)(id, SEL, BOOL);
+static void HookVCViewDidAppearForShare(UIViewController *self, SEL cmd, BOOL animated) {
+    if (OrigVCViewDidAppearForShare) OrigVCViewDidAppearForShare(self, cmd, animated);
+    if (!self || !self.isViewLoaded || !self.view.window) return;
+    if ([self isKindOfClass:UINavigationController.class] ||
+        [self isKindOfClass:UITabBarController.class] ||
+        [self isKindOfClass:UIAlertController.class] ||
+        [self isKindOfClass:UISearchController.class]) {
+        return;
+    }
+    NSString *vcName = NSStringFromClass(self.class) ?: @"";
+    if ([vcName hasPrefix:@"FQX"] || [vcName hasPrefix:@"FanqieX"] ||
+        [vcName hasPrefix:@"BDReader"] || [vcName hasPrefix:@"SSBookShelf"] ||
+        [vcName hasPrefix:@"SSBookStore"] || [vcName hasPrefix:@"SSVideoSeriesFeed"] ||
+        [vcName hasPrefix:@"FQVShortVideoList"]) {
+        return;
+    }
+    UIWindow *win = self.view.window;
+    CGFloat winH = CGRectGetHeight(win.bounds);
+    BOOL isModalOrSheet = (self.presentingViewController != nil) ||
+                          (self.navigationController.presentingViewController != nil) ||
+                          (winH > 300.0 && CGRectGetHeight(self.view.bounds) <= winH * 0.82) ||
+                          [vcName containsString:@"Share"] ||
+                          [vcName containsString:@"Sheet"];
+    if (!isModalOrSheet) return;
+    UIView *modalRoot = FQXEnclosingModalSheetRootForView(self.navigationController.viewIfLoaded ?: self.view);
+    FQXScheduleCandidateShareInspection(modalRoot ?: self.view);
+}
+
+static void (*OrigNavPushForShare)(id, SEL, id, BOOL);
+static void HookNavPushForShare(UINavigationController *nav, SEL cmd, UIViewController *vc, BOOL animated) {
+    if (OrigNavPushForShare) OrigNavPushForShare(nav, cmd, vc, animated);
+    if (!nav || !vc) return;
+    NSString *vcName = NSStringFromClass(vc.class) ?: @"";
+    if ([vcName hasPrefix:@"FQX"] || [vcName hasPrefix:@"FanqieX"]) return;
+    __weak UINavigationController *weakNav = nav;
+    __weak UIViewController *weakVC = vc;
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *s = weakVC;
-        if (s && s.isViewLoaded && s.view.window) FQXInspectCandidateShareContainer(s.view);
+        UINavigationController *sNav = weakNav;
+        UIViewController *sVC = weakVC;
+        if (!sNav || !sNav.isViewLoaded || !sNav.view.window) return;
+        CGFloat winH = CGRectGetHeight(sNav.view.window.bounds);
+        BOOL isModalOrSheet = (sNav.presentingViewController != nil) ||
+                              (winH > 300.0 && CGRectGetHeight(sNav.view.bounds) <= winH * 0.82) ||
+                              [vcName containsString:@"Share"] ||
+                              [vcName containsString:@"Sheet"];
+        if (!isModalOrSheet) return;
+        UIView *modalRoot = FQXEnclosingModalSheetRootForView(sNav.view);
+        FQXScheduleCandidateShareInspection(modalRoot ?: (sVC.viewIfLoaded ?: sNav.view));
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *s = weakVC;
-        if (s && s.isViewLoaded && s.view.window) FQXInspectCandidateShareContainer(s.view);
-    });
+}
+
+static void (*OrigReadingSharePanelLayout)(id, SEL);
+static void HookReadingSharePanelLayout(UIView *panel, SEL cmd) {
+    if (OrigReadingSharePanelLayout) OrigReadingSharePanelLayout(panel, cmd);
+    if (panel.window) FQXInspectCandidateShareContainer(panel);
+}
+
+static void (*OrigReadingSharePanelDidMoveWindow)(id, SEL);
+static void HookReadingSharePanelDidMoveWindow(UIView *panel, SEL cmd) {
+    if (OrigReadingSharePanelDidMoveWindow) OrigReadingSharePanelDidMoveWindow(panel, cmd);
+    if (panel.window) FQXScheduleCandidateShareInspection(panel);
 }
 
 static void (*OrigSharePanelLayout)(id, SEL);
@@ -18096,12 +18808,25 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQCParagraphCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentListAppeared, HookReaderCommentListAppeared);
         HOOK_INST("SSVideoSharePanelView", "layoutSubviews", "v16@0:8", OrigSharePanelLayout, HookSharePanelLayout);
         HOOK_INST("SSUGKmpSharePanelContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPShareLayout, HookKMPShareLayout);
+        HOOK_INST("SSReadingSharePanel", "layoutSubviews", "v16@0:8", OrigReadingSharePanelLayout, HookReadingSharePanelLayout);
+        HOOK_INST("SSReadingSharePanel", "didMoveToWindow", "v16@0:8", OrigReadingSharePanelDidMoveWindow, HookReadingSharePanelDidMoveWindow);
         FQXInstallOwnedHook(UIWindow.class, @selector(addSubview:), NO, "v24@0:8@16",
                             (IMP)HookWindowAddSubviewForShare, (IMP *)&OrigWindowAddSubviewForShare);
+        FQXInstallOwnedHook(UIWindow.class, @selector(makeKeyAndVisible), NO, "v16@0:8",
+                            (IMP)HookWindowMakeKeyForShare, (IMP *)&OrigWindowMakeKeyForShare);
         if (!FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@?28",
+                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
+            !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@28",
+                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare) &&
+            !FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@?32",
                                  (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare)) {
-            FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@28",
+            FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v40@0:8@16B24@32",
                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare);
+        }
+        if (!FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v28@0:8@16B24",
+                                 (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare)) {
+            FQXInstallOwnedHook(UINavigationController.class, @selector(pushViewController:animated:), NO, "v32@0:8@16B24",
+                                (IMP)HookNavPushForShare, (IMP *)&OrigNavPushForShare);
         }
         FQXHookHostSharePanelSubclasses();
 
@@ -18252,6 +18977,8 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSNewAudioPlayViewController", "viewDidDisappear:", "v20@0:8B16", OrigAudioVCDidDisappearIsland, HookAudioVCDidDisappearIsland);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidAppear:", "v20@0:8B16", OrigTTSReaderDidAppearIsland, HookTTSReaderDidAppearIsland);
         HOOK_INST("SSAudioPlayTTSReaderPageViewController", "viewDidDisappear:", "v20@0:8B16", OrigTTSReaderDidDisappearIsland, HookTTSReaderDidDisappearIsland);
+        FQXInstallOwnedHook(UIViewController.class, @selector(viewDidAppear:), NO, "v20@0:8B16",
+                            (IMP)HookVCViewDidAppearForShare, (IMP *)&OrigVCViewDidAppearForShare);
 
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
                                                         object:nil
@@ -18311,6 +19038,7 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                          queue:NSOperationQueue.mainQueue
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXReapplyAllTrackedCommentGlass();
+            FQXRefreshAllShareSheets();
         }];
 
         dispatch_async(dispatch_get_main_queue(), ^{
