@@ -9025,7 +9025,7 @@ static void FQXInstallMineScrollSnapDelegateHook(id delegate) {
             } else if ([scrollView isKindOfClass:UICollectionView.class] &&
                        [objc_getAssociatedObject(scrollView, FQXMineScrollTrackedKey) boolValue]) {
                 FQXMineShortcutFlowState *st = objc_getAssociatedObject(scrollView, FQXMineFlowStateKey);
-                if (st->_active && st->_pageControl && st->_pages > 0 && st->_viewportSize.width > 1.0) {
+                if (st && st->_active && st->_pageControl && st->_pages > 0 && st->_viewportSize.width > 1.0) {
                     NSInteger cur = MAX(0, MIN((NSInteger)st->_pages - 1,
                         (NSInteger)llround(scrollView.contentOffset.x / st->_viewportSize.width)));
                     FQXUpdateMinePageControl(st->_pageControl, (NSInteger)st->_pages, cur);
@@ -9513,7 +9513,7 @@ static BOOL FQXInstallMineItemSizeHook(id delegate) {
                                                               UICollectionViewLayout *layout, NSIndexPath *index) {
                 CGSize native = ((CGSize (*)(id, SEL, id, id, id))origSize)(owner, sizeSel, collection, layout, index);
                 FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-                if (state->_active && state->_layout == layout) {
+                if (state && state->_active && state->_layout == layout) {
                     if (index.section == 0 && index.item == 0) state->_nativeItemSize = native;
                     return state->_appliedItemSize;
                 }
@@ -9531,7 +9531,7 @@ static BOOL FQXInstallMineItemSizeHook(id delegate) {
             IMP hookLine = imp_implementationWithBlock(^CGFloat(id owner, UICollectionView *collection,
                                                                  UICollectionViewLayout *layout, NSInteger section) {
                 FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-                if (state->_active && state->_layout == layout) return 0.0;
+                if (state && state->_active && state->_layout == layout) return 0.0;
                 return ((CGFloat (*)(id, SEL, id, id, NSInteger))origLine)(owner, lineSel, collection, layout, section);
             });
             if (FQXInstallMineValidatedHook(cls, lineSel, 5, "d", "f", hookLine, &origLine)) {
@@ -9546,7 +9546,7 @@ static BOOL FQXInstallMineItemSizeHook(id delegate) {
             IMP hookInter = imp_implementationWithBlock(^CGFloat(id owner, UICollectionView *collection,
                                                                   UICollectionViewLayout *layout, NSInteger section) {
                 FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-                if (state->_active && state->_layout == layout) return 0.0;
+                if (state && state->_active && state->_layout == layout) return 0.0;
                 return ((CGFloat (*)(id, SEL, id, id, NSInteger))origInter)(owner, interSel, collection, layout, section);
             });
             if (FQXInstallMineValidatedHook(cls, interSel, 5, "d", "f", hookInter, &origInter)) {
@@ -9576,7 +9576,7 @@ static BOOL FQXInstallMineSectionInsetHook(id delegate) {
             UIEdgeInsets native = ((UIEdgeInsets (*)(id, SEL, id, id, NSInteger))original)(
                 owner, selector, collection, layout, section);
             FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-            if (state->_active && state->_layout == layout) {
+            if (state && state->_active && state->_layout == layout) {
                 return UIEdgeInsetsMake(state->_topInset, 0.0, native.bottom, 0.0);
             }
             return native;
@@ -9617,7 +9617,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
         IMP sizeHook = imp_implementationWithBlock(^CGSize(UICollectionViewLayout *owner) {
             UICollectionView *cv = owner.collectionView;
             FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
-            if (state->_active && state->_layout == owner &&
+            if (state && state->_active && state->_layout == owner &&
                 state->_pages > 0 && state->_viewportSize.width > 0.0 && state->_viewportHeight > 0.0) {
                 return CGSizeMake(state->_viewportSize.width * (CGFloat)state->_pages, state->_viewportHeight);
             }
@@ -9639,7 +9639,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
                 ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))origItem)(owner, sel, indexPath);
             UICollectionView *cv = owner.collectionView;
             FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
-            if (!state->_active || state->_layout != owner ||
+            if (!state || !state->_active || state->_layout != owner ||
                 !state->_columns || state->_slotWidth < 44.0) {
                 return native;
             }
@@ -9670,7 +9670,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
                 ((NSArray *(*)(id, SEL, CGRect))origRect)(owner, sel, rect);
             UICollectionView *cv = owner.collectionView;
             FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
-            if (!state->_active || state->_layout != owner ||
+            if (!state || !state->_active || state->_layout != owner ||
                 !state->_columns || state->_slotWidth < 44.0) {
                 return native;
             }
@@ -9709,7 +9709,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
         IMP boundsHook = imp_implementationWithBlock(^BOOL(UICollectionViewLayout *owner, CGRect newBounds) {
             UICollectionView *cv = owner.collectionView;
             FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
-            if (state->_active && state->_layout == owner) return YES;
+            if (state && state->_active && state->_layout == owner) return YES;
             return ((BOOL (*)(id, SEL, CGRect))origBounds)(owner, sel, newBounds);
         });
         if (FQXInstallMineValidatedHook(cls, sel, 3, "B", "c", boundsHook, &origBounds)) {
@@ -9727,7 +9727,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
             CGPoint native = ((CGPoint (*)(id, SEL, CGPoint, CGPoint))origOffset)(owner, sel, proposed, velocity);
             UICollectionView *cv = owner.collectionView;
             FQXMineShortcutFlowState *state = cv ? objc_getAssociatedObject(cv, FQXMineFlowStateKey) : nil;
-            if (state->_active && state->_layout == owner && state->_pages > 0 && state->_viewportSize.width > 1.0) {
+            if (state && state->_active && state->_layout == owner && state->_pages > 0 && state->_viewportSize.width > 1.0) {
                 CGFloat vw = state->_viewportSize.width;
                 NSInteger page = (NSInteger)llround(proposed.x / vw);
                 if (page < 0) page = 0;
@@ -9746,7 +9746,7 @@ static void FQXInstallMineLayoutHooks(UICollectionViewLayout *layout) {
 
 static void FQXEnforceMineVisibleCellFrames(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-    if (!state->_active || state->_layout != collection.collectionViewLayout ||
+    if (!state || !state->_active || state->_layout != collection.collectionViewLayout ||
         state->_columns != 4 || state->_slotWidth < 44.0) return;
     NSMutableSet<UICollectionViewCell *> *visited = [NSMutableSet set];
     for (NSIndexPath *ip in [collection indexPathsForVisibleItems]) {
@@ -9840,7 +9840,7 @@ static void FQXRestoreMineFlow(UICollectionView *collection) {
 
 static void FQXCompleteMineFlowPage(UICollectionView *collection) {
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
-    if (!state->_active || state->_layout != collection.collectionViewLayout) return;
+    if (!state || !state->_active || state->_layout != collection.collectionViewLayout) return;
     NSUInteger count = FQXMineTotalItemCount(collection);
     if (!count || !state->_columns) return;
     NSUInteger pages = FQXComputeMineTotalPages(state, count);
@@ -9982,6 +9982,7 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     }
     CGFloat actualItemHeight = MAX(32.0, contentHeight - topInset - bottomInset);
 
+    // Class-wide layout hooks can run before this collection has associated flow state.
     FQXInstallMineLayoutHooks(layout);
     if (flow) {
         FQXInstallMineItemSizeHook(delegate);
@@ -10183,7 +10184,7 @@ static void FQXInstallMineScrollHook(UICollectionView *collection) {
         __block IMP origCS = NULL;
         IMP csHook = imp_implementationWithBlock(^(UICollectionView *view, CGSize cs) {
             FQXMineShortcutFlowState *state = objc_getAssociatedObject(view, FQXMineFlowStateKey);
-            if (state->_active && state->_layout == view.collectionViewLayout &&
+            if (state && state->_active && state->_layout == view.collectionViewLayout &&
                 state->_pages > 0 && state->_viewportSize.width > 0.0 && state->_viewportHeight > 0.0) {
                 CGSize targetCS = CGSizeMake(state->_viewportSize.width * (CGFloat)state->_pages, state->_viewportHeight);
                 if (fabs(cs.width - targetCS.width) > 1.0 || fabs(cs.height - targetCS.height) > 1.0) {
@@ -10358,7 +10359,7 @@ static UICollectionViewLayoutAttributes *FQXApplyMineCellLayoutAttributes(UIColl
         if ((!state || !state->_active) && CGRectGetWidth(ownerCV.bounds) >= 160.0) {
             FQXScheduleDeferredMineCollectionPass(ownerCV);
         }
-        if (state->_active && state->_columns == 4 && state->_slotWidth >= 44.0) {
+        if (state && state->_active && state->_columns == 4 && state->_slotWidth >= 44.0) {
             NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(ownerCV, attrs.indexPath);
             if (flatIdx != NSNotFound) {
                 CGRect target = FQXMineFrameForFlatIndex(state, flatIdx);
@@ -10389,7 +10390,7 @@ static CGRect FQXRewriteMineCellFrame(UICollectionViewCell *cell, CGRect incomin
     if ((!state || !state->_active) && CGRectGetWidth(ownerCV.bounds) >= 160.0) {
         FQXScheduleDeferredMineCollectionPass(ownerCV);
     }
-    if (state->_active && state->_columns == 4 && state->_slotWidth >= 44.0) {
+    if (state && state->_active && state->_columns == 4 && state->_slotWidth >= 44.0) {
         NSIndexPath *ip = [ownerCV indexPathForCell:cell] ?: objc_getAssociatedObject(cell, FQXMineCellLastIndexPathKey);
         if (ip) {
             NSUInteger flatIdx = FQXMineFlatIndexForIndexPath(ownerCV, ip);
