@@ -17,8 +17,21 @@ static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
+static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
+static NSString *const ShareBlurKey = @"FanqieX.ShareBlur.1";
+static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
 static const char BlurSliderKey;
 static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
+
+static NSInteger ClampSliderPercent(double value, double minVal, double maxVal) {
+    if (!isfinite(value)) return (NSInteger)llround(minVal);
+    NSInteger rounded = (NSInteger)llround(value);
+    NSInteger lo = (NSInteger)llround(minVal);
+    NSInteger hi = (NSInteger)llround(maxVal);
+    if (rounded < lo) return lo;
+    if (rounded > hi) return hi;
+    return rounded;
+}
 
 @interface FQXBlurSlider : UISlider
 @property(nonatomic, weak) UILabel *valueLabel;
@@ -27,11 +40,11 @@ static NSString *const BottomIconsOnlyLegacyKey = @"FanqieX.BottomIconsOnly.1";
 
 @implementation FQXBlurSlider
 - (void)accessibilityIncrement {
-    self.value = FQXBlurPercent(self.value + 1.0);
+    self.value = (float)ClampSliderPercent(self.value + 1.0, self.minimumValue, self.maximumValue);
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 - (void)accessibilityDecrement {
-    self.value = FQXBlurPercent(self.value - 1.0);
+    self.value = (float)ClampSliderPercent(self.value - 1.0, self.minimumValue, self.maximumValue);
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 @end
@@ -105,6 +118,9 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL authorInformation;
 @property(nonatomic) BOOL hiddenFromSearch;
 @property(nonatomic, copy) NSString *blurKey;
+@property(nonatomic) NSInteger sliderMin;
+@property(nonatomic) NSInteger sliderMax;
+@property(nonatomic) NSInteger sliderDefault;
 @property(nonatomic, copy) NSString *popoverKey;
 @property(nonatomic, copy) NSArray<NSString *> *popoverOptions;
 @property(nonatomic, copy) NSArray<NSNumber *> *popoverValues;
@@ -242,6 +258,13 @@ static NSInteger CurrentSavedCommentMaterialStyle(void) {
     return (val >= 0 && val <= 4) ? val : 0;
 }
 
+static NSInteger CurrentSavedShareMaterialStyle(void) {
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:ShareMaterialStyleKey];
+    if (!stored) return 1;
+    NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 1;
+    return (val >= 0 && val <= 4) ? val : 1;
+}
+
 static NSInteger CurrentSavedCommentAppearanceMode(void) {
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentAppearanceModeKey];
     if (!stored) return 0;
@@ -328,6 +351,10 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         if (outOptions) *outOptions = options;
         if (outValues) *outValues = nil;
         return idx;
+    } else if (row.popoverKind == 10) {
+        NSInteger saved = CurrentSavedShareMaterialStyle();
+        NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
+        idx = (found != NSNotFound) ? (NSInteger)found : 1;
     } else if (values.count == options.count && options.count > 0) {
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
@@ -390,8 +417,61 @@ static void AddBlurRow(FQXSettingsMenu *menu, NSString *route, NSString *title, 
     blur.path = route;
     blur.keywords = @"模糊程度 模糊强度 自定义 玻璃";
     blur.blurKey = key;
+    blur.sliderMin = 0;
+    blur.sliderMax = 100;
+    blur.sliderDefault = 0;
     blur.height = 82;
     [menu.catalog addObject:blur];
+}
+
+static void AddScaleSliderRow(FQXSettingsMenu *menu,
+                              NSString *route,
+                              NSString *title,
+                              NSString *key,
+                              NSInteger minVal,
+                              NSInteger maxVal,
+                              NSInteger defVal,
+                              BOOL hiddenFromSearch,
+                              NSString *keywords) {
+    FQXSettingRow *row = [FQXSettingRow new];
+    row.title = title;
+    row.path = route;
+    row.hiddenFromSearch = hiddenFromSearch;
+    row.keywords = keywords ?: @"大小 尺寸 缩放 自定义";
+    row.blurKey = key;
+    row.sliderMin = minVal;
+    row.sliderMax = maxVal;
+    row.sliderDefault = defVal;
+    row.height = 82;
+    [menu.catalog addObject:row];
+}
+
+static void AddShareStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch, BOOL includeBlur) {
+    FQXSettingRow *shareRow = [FQXSettingRow new];
+    shareRow.title = @"分享页面材质";
+    shareRow.path = route;
+    shareRow.hiddenFromSearch = hiddenFromSearch;
+    shareRow.keywords = @"分享页面材质 分享页面 分享 分享弹窗 短剧分享 小说分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 毛玻璃 磨砂 原书底色 原书 原版默认 材质 玻璃 透明";
+    shareRow.popoverKey = ShareMaterialStyleKey;
+    shareRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"模糊玻璃", @"高斯模糊", @"原书底色"];
+    shareRow.popoverValues = @[@0, @1, @4, @2, @3];
+    shareRow.popoverKind = 10;
+    shareRow.height = 52;
+    [menu.catalog addObject:shareRow];
+
+    if (includeBlur) {
+        FQXSettingRow *blur = [FQXSettingRow new];
+        blur.title = @"分享页面模糊程度";
+        blur.path = route;
+        blur.hiddenFromSearch = hiddenFromSearch;
+        blur.keywords = @"分享页面模糊程度 分享 模糊程度 模糊强度 液态玻璃 高斯模糊 短剧 小说";
+        blur.blurKey = ShareBlurKey;
+        blur.sliderMin = 0;
+        blur.sliderMax = 100;
+        blur.sliderDefault = 0;
+        blur.height = 82;
+        [menu.catalog addObject:blur];
+    }
 }
 
 static void AddDockMaterialRows(FQXSettingsMenu *menu) {
@@ -498,9 +578,16 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     AddCommentStyleRows(menu, @"短剧/播放设置", YES);
     AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
+    AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
+    AddShareStyleRows(menu, @"短剧/播放设置", YES, NO);
+    AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
     AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
+    NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
+    AddScaleSliderRow(menu, @"短剧/顶部分类", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, NO, topSizeKeywords);
+    AddScaleSliderRow(menu, @"外观/玻璃与尺寸", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, YES, topSizeKeywords);
+    AddScaleSliderRow(menu, @"短剧/播放设置", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, YES, topSizeKeywords);
     FQXSettingRow *albumTitle = [FQXSettingRow new];
     albumTitle.title = @"合集标题显示";
     albumTitle.path = @"短剧/播放设置";
@@ -906,18 +993,24 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         value.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
         value.textColor = UIColor.secondaryLabelColor;
         FQXBlurSlider *slider = [FQXBlurSlider new];
-        slider.minimumValue = 0;
-        slider.maximumValue = 100;
+        NSInteger minV = row.sliderMax > row.sliderMin ? row.sliderMin : 0;
+        NSInteger maxV = row.sliderMax > row.sliderMin ? row.sliderMax : 100;
+        NSInteger defV = row.sliderMax > row.sliderMin ? row.sliderDefault : 0;
+        id storedObj = [NSUserDefaults.standardUserDefaults objectForKey:row.blurKey];
+        NSInteger storedVal = (storedObj && [storedObj respondsToSelector:@selector(integerValue)])
+            ? [storedObj integerValue] : defV;
+        slider.minimumValue = (float)minV;
+        slider.maximumValue = (float)maxV;
         slider.continuous = ![row.blurKey isEqualToString:@"FanqieX.AudioButtonBlur.1"];
-        slider.value = (float)MAX(0, MIN(100, [NSUserDefaults.standardUserDefaults integerForKey:row.blurKey]));
+        slider.value = (float)ClampSliderPercent((double)storedVal, (double)minV, (double)maxV);
         slider.accessibilityIdentifier = row.blurKey;
         slider.accessibilityLabel = row.title;
         value.text = [NSString stringWithFormat:@"%.0f%%", slider.value];
         slider.accessibilityValue = value.text;
         slider.valueLabel = value;
         UIStepper *stepper = [UIStepper new];
-        stepper.minimumValue = 0;
-        stepper.maximumValue = 100;
+        stepper.minimumValue = (double)minV;
+        stepper.maximumValue = (double)maxV;
         stepper.stepValue = 1;
         stepper.value = slider.value;
         stepper.wraps = NO;
@@ -941,7 +1034,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             [title.leadingAnchor constraintEqualToAnchor:margins.leadingAnchor],
             [title.centerYAnchor constraintEqualToAnchor:stepper.centerYAnchor],
             [title.trailingAnchor constraintLessThanOrEqualToAnchor:value.leadingAnchor constant:-8],
-            [value.widthAnchor constraintEqualToConstant:42],
+            [value.widthAnchor constraintEqualToConstant:48],
             [value.trailingAnchor constraintEqualToAnchor:stepper.leadingAnchor constant:-8],
             [value.centerYAnchor constraintEqualToAnchor:stepper.centerYAnchor],
             [stepper.trailingAnchor constraintEqualToAnchor:margins.trailingAnchor],
@@ -1127,18 +1220,18 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
 
 - (void)blurStepperChanged:(UIStepper *)stepper {
     FQXBlurSlider *slider = objc_getAssociatedObject(stepper, &BlurSliderKey);
-    slider.value = FQXBlurPercent(stepper.value);
+    slider.value = (float)ClampSliderPercent(stepper.value, slider.minimumValue, slider.maximumValue);
     [self blurChanged:slider];
 }
 
 - (void)blurDidEndTracking:(FQXBlurSlider *)slider {
-    NSInteger strength = FQXBlurPercent(slider.value);
+    NSInteger strength = ClampSliderPercent(slider.value, slider.minimumValue, slider.maximumValue);
     [slider setValue:(float)strength animated:NO];
     [self blurChanged:slider];
 }
 
 - (void)blurChanged:(FQXBlurSlider *)slider {
-    NSInteger strength = FQXBlurPercent(slider.value);
+    NSInteger strength = ClampSliderPercent(slider.value, slider.minimumValue, slider.maximumValue);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSString *key = slider.accessibilityIdentifier;
     if (!key.length) return;

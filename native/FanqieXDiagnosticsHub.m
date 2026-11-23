@@ -10,7 +10,7 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.5beta6";
+static NSString *const kFQXHubPluginVersion = @"1.9.5beta7";
 static const NSUInteger kFQXHubMaxDiskBytesPerFile = 512 * 1024; // 512 KB x 2 rotating files max
 static const NSUInteger kFQXHubRingNormalLimit = 1500;
 static const NSUInteger kFQXHubRingEnhancedLimit = 3600;

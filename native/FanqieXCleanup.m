@@ -107,6 +107,9 @@ static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurKey = @"FanqieX.CommentBlur.1";
 static NSString *const AudioButtonBlurKey = @"FanqieX.AudioButtonBlur.1";
 static NSString *const DramaHeaderBlurKey = @"FanqieX.DramaHeaderBlur.1";
+static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
+static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
+static NSString *const ShareBlurKey = @"FanqieX.ShareBlur.1";
 
 static pthread_mutex_t FQXOptionCacheLock = PTHREAD_MUTEX_INITIALIZER;
 static NSMutableDictionary<NSString *, id> *FQXOptionCache = nil;
@@ -1961,10 +1964,18 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshDramaControls");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
-    } else if ([key isEqualToString:DramaHeaderBlurKey]) {
+    } else if ([key isEqualToString:DramaHeaderBlurKey] ||
+               [key isEqualToString:DramaHeaderButtonScaleKey]) {
         Class motion = NSClassFromString(@"FQXDockMotion");
         SEL refresh = NSSelectorFromString(@"refreshDramaHeaderBlur");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
+    } else if ([key isEqualToString:ShareMaterialStyleKey] ||
+               [key isEqualToString:ShareBlurKey]) {
+        Class dockMotion = NSClassFromString(@"FQXDockMotion");
+        SEL refreshShareSel = NSSelectorFromString(@"refreshShareGlass");
+        if ([dockMotion respondsToSelector:refreshShareSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
+        }
     } else if ([key isEqualToString:CommentBlurKey]) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshBlurSel = NSSelectorFromString(@"refreshCommentBlurStrength");
@@ -2037,11 +2048,15 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         Class dockMotion = NSClassFromString(@"FQXDockMotion");
         SEL refreshDockSel = NSSelectorFromString(@"refreshDockMaterial");
         SEL refreshTopSel = NSSelectorFromString(@"refreshDramaHeaderBlur");
+        SEL refreshShareSel = NSSelectorFromString(@"refreshShareGlass");
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
         if ([dockMotion respondsToSelector:refreshTopSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshTopSel);
+        }
+        if ([dockMotion respondsToSelector:refreshShareSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
         }
     } else if ([key isEqualToString:AudioDynamicIslandKey] ||
                [key isEqualToString:DramaDynamicIslandKey]) {

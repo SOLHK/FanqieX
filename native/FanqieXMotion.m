@@ -76,6 +76,9 @@ static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurPrefKey = @"FanqieX.CommentBlur.1";
 static NSString *const AudioButtonBlurPrefKey = @"FanqieX.AudioButtonBlur.1";
 static NSString *const DramaHeaderBlurPrefKey = @"FanqieX.DramaHeaderBlur.1";
+static NSString *const DramaHeaderButtonScalePrefKey = @"FanqieX.DramaHeaderButtonScale.1";
+static NSString *const ShareMaterialStylePrefKey = @"FanqieX.ShareMaterialStyle.1";
+static NSString *const ShareBlurPrefKey = @"FanqieX.ShareBlur.1";
 static NSString *const ReaderHotCommentBadgePrefKey = @"FanqieX.ReaderHotCommentBadge.1";
 static NSString *const ShelfEditButtonPrefKey = @"FanqieX.ShelfEditButton.1";
 static NSString *const CommentActivityBannerPrefKey = @"FanqieX.CommentActivityBanner.1";
@@ -111,6 +114,14 @@ typedef NS_ENUM(NSInteger, FQXCommentComposerStyle) {
     FQXCommentComposerFloatingDetached = 2, // CoolApk-style floating detached rounded glass card
 };
 
+typedef NS_ENUM(NSInteger, FQXShareMaterialStyle) {
+    FQXShareMaterialNative = 0,         // 原版默认
+    FQXShareMaterialClearGlass = 1,     // 液态玻璃（清透）
+    FQXShareMaterialGaussianBlur = 2,   // 高斯模糊
+    FQXShareMaterialBookBackground = 3, // 原书底色
+    FQXShareMaterialRegularGlass = 4,   // 模糊玻璃（Regular）
+};
+
 static BOOL FQXIsNativeGlassCommentStyle(FQXCommentMaterialStyle style) {
     return style == FQXCommentMaterialClearGlass || style == FQXCommentMaterialRegularGlass;
 }
@@ -119,6 +130,8 @@ typedef struct {
     FQXCommentMaterialStyle commentMaterialStyle;
     FQXCommentAppearanceMode commentAppearanceMode;
     FQXCommentComposerStyle commentComposerStyle;
+    FQXShareMaterialStyle shareMaterialStyle;
+    NSInteger dramaHeaderButtonScale;
     NSInteger dockMaterialMode;
     BOOL hasStoredComposerStyle;
     BOOL glassDisabled;
@@ -174,6 +187,21 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
 
     NSInteger dockMat = [ud integerForKey:DockMaterialPrefKey];
     fresh.dockMaterialMode = (dockMat >= 0 && dockMat <= 3) ? dockMat : 0;
+
+    id shareMatObj = [ud objectForKey:ShareMaterialStylePrefKey];
+    NSInteger shareMat = (shareMatObj && [shareMatObj respondsToSelector:@selector(integerValue)])
+        ? [shareMatObj integerValue] : FQXShareMaterialClearGlass;
+    if (shareMat < FQXShareMaterialNative || shareMat > FQXShareMaterialRegularGlass) {
+        shareMat = FQXShareMaterialClearGlass;
+    }
+    fresh.shareMaterialStyle = (FQXShareMaterialStyle)shareMat;
+
+    id hdrScaleObj = [ud objectForKey:DramaHeaderButtonScalePrefKey];
+    NSInteger hdrScale = (hdrScaleObj && [hdrScaleObj respondsToSelector:@selector(integerValue)])
+        ? [hdrScaleObj integerValue] : 100;
+    if (hdrScale < 70 || hdrScale > 130) hdrScale = 100;
+    fresh.dramaHeaderButtonScale = hdrScale;
+
     fresh.glassDisabled = ([ud integerForKey:GlassDisabledPrefKey] != 0);
     fresh.glassDarkTint = [ud boolForKey:GlassDarkTintPrefKey];
 
@@ -209,6 +237,15 @@ static BOOL FQXGlassDarkTintEnabled(void) {
 
 static FQXCommentMaterialStyle FQXCurrentCommentMaterialStyle(void) {
     return FQXHotPrefsSnapshot().commentMaterialStyle;
+}
+
+static FQXShareMaterialStyle FQXCurrentShareMaterialStyle(void) {
+    return FQXHotPrefsSnapshot().shareMaterialStyle;
+}
+
+static NSInteger FQXDramaHeaderButtonScalePercent(void) {
+    NSInteger v = FQXHotPrefsSnapshot().dramaHeaderButtonScale;
+    return (v >= 70 && v <= 130) ? v : 100;
 }
 
 static FQXCommentComposerStyle FQXCurrentCommentComposerStyle(void) {
@@ -3470,6 +3507,8 @@ static const void *FQXDramaCompactLayoutActiveKey = &FQXDramaCompactLayoutActive
 static const void *FQXDramaCompactHiddenCountKey = &FQXDramaCompactHiddenCountKey;
 static const void *FQXDramaCompactRemovedGapKey = &FQXDramaCompactRemovedGapKey;
 static const void *FQXDramaCompactRelayoutScheduledKey = &FQXDramaCompactRelayoutScheduledKey;
+static const void *FQXDramaCompactAppliedScaleKey = &FQXDramaCompactAppliedScaleKey;
+static const void *FQXDramaBaseTitleFontKey = &FQXDramaBaseTitleFontKey;
 static const void *FQXDramaOuterCenterDeltaXKey = &FQXDramaOuterCenterDeltaXKey;
 static const void *FQXDramaPagerControllerKey = &FQXDramaPagerControllerKey;
 static const void *FQXDramaPagerPolicySigKey = &FQXDramaPagerPolicySigKey;
@@ -3631,11 +3670,30 @@ static void FQXSafeSetObjProp(id obj, const char *getterName, const char *setter
     ((void (*)(id, SEL, id))objc_msgSend)(obj, setSel, value);
 }
 
-static void FQXStabilizeDramaCategoryCellModel(id model, UIFont *fallbackFont) {
+static UIFont *FQXScaledDramaTitleFontForTabs(UIView *tabs) {
+    if (!tabs) return nil;
+    UIFont *baseFont = objc_getAssociatedObject(tabs, FQXDramaBaseTitleFontKey);
+    if (![baseFont isKindOfClass:UIFont.class]) {
+        UIFont *cur = FQXObjGet(tabs, "titleFont");
+        if ([cur isKindOfClass:UIFont.class]) {
+            baseFont = cur;
+            objc_setAssociatedObject(tabs, FQXDramaBaseTitleFontKey, baseFont, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    if (![baseFont isKindOfClass:UIFont.class]) return nil;
+    NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
+    if (scalePct == 100) return baseFont;
+    CGFloat scale = (CGFloat)scalePct / 100.0;
+    CGFloat pt = round(MAX(11.0, MIN(22.0, baseFont.pointSize * scale)) * 2.0) / 2.0;
+    if (fabs(pt - baseFont.pointSize) < 0.25) return baseFont;
+    return [baseFont fontWithSize:pt];
+}
+
+static void FQXStabilizeDramaCategoryCellModel(id model, UIFont *lockedFont) {
     if (!model) return;
     // Mirror AlignedGlass's verified ShelfPrepareTabModel boundary: lock zoom scales,
-    // stroke animation, and selected font to normal font so swiping never shifts font
-    // size, weight, baseline, or capsule width.
+    // stroke animation, and selected font to lockedFont so swiping never shifts font
+    // size, weight, baseline, or capsule width (and honors DramaHeaderButtonScale).
     FQXSafeSetBoolProp(model, "isTitleLabelZoomEnabled", "setTitleLabelZoomEnabled:", NO);
     FQXSafeSetBoolProp(model, "isCellWidthZoomEnabled", "setCellWidthZoomEnabled:", NO);
     FQXSafeSetBoolProp(model, "isSelectedAnimationEnabled", "setSelectedAnimationEnabled:", NO);
@@ -3649,10 +3707,10 @@ static void FQXStabilizeDramaCategoryCellModel(id model, UIFont *fallbackFont) {
     FQXSafeSetDoubleProp(model, "titleLabelVerticalOffset", "setTitleLabelVerticalOffset:", 0.0);
     FQXSafeSetDoubleProp(model, "titleLabelZoomSelectedVerticalOffset", "setTitleLabelZoomSelectedVerticalOffset:", 0.0);
     FQXSafeSetUIntProp(model, "titleLabelAnchorPointStyle", "setTitleLabelAnchorPointStyle:", 0);
-    UIFont *normalFont = FQXObjGet(model, "titleFont");
-    if (![normalFont isKindOfClass:UIFont.class]) normalFont = fallbackFont;
-    if ([normalFont isKindOfClass:UIFont.class]) {
-        FQXSafeSetObjProp(model, "titleSelectedFont", "setTitleSelectedFont:", normalFont);
+    UIFont *targetFont = [lockedFont isKindOfClass:UIFont.class] ? lockedFont : FQXObjGet(model, "titleFont");
+    if ([targetFont isKindOfClass:UIFont.class]) {
+        FQXSafeSetObjProp(model, "titleFont", "setTitleFont:", targetFont);
+        FQXSafeSetObjProp(model, "titleSelectedFont", "setTitleSelectedFont:", targetFont);
     }
 }
 
@@ -3661,7 +3719,7 @@ static void FQXResetLabelTransformAndFont(UILabel *label, UIFont *lockedFont) {
     if (!CGAffineTransformIsIdentity(label.transform)) {
         label.transform = CGAffineTransformIdentity;
     }
-    if (lockedFont && label.font && fabs(label.font.pointSize - lockedFont.pointSize) > 0.25) {
+    if (lockedFont && (!label.font || fabs(label.font.pointSize - lockedFont.pointSize) > 0.25)) {
         label.font = lockedFont;
     }
 }
@@ -3676,21 +3734,22 @@ static void FQXStabilizeDramaCategoryTabs(UIView *tabs) {
     FQXSafeSetDoubleProp(tabs, "cellWidthZoomScale", "setCellWidthZoomScale:", 1.0);
     FQXSafeSetDoubleProp(tabs, "titleLabelZoomSelectedVerticalOffset", "setTitleLabelZoomSelectedVerticalOffset:", 0.0);
     FQXSafeSetUIntProp(tabs, "titleLabelAnchorPointStyle", "setTitleLabelAnchorPointStyle:", 0);
-    UIFont *normalFont = FQXObjGet(tabs, "titleFont");
-    if ([normalFont isKindOfClass:UIFont.class]) {
-        FQXSafeSetObjProp(tabs, "titleSelectedFont", "setTitleSelectedFont:", normalFont);
+    UIFont *lockedFont = FQXScaledDramaTitleFontForTabs(tabs);
+    if ([lockedFont isKindOfClass:UIFont.class]) {
+        FQXSafeSetObjProp(tabs, "titleFont", "setTitleFont:", lockedFont);
+        FQXSafeSetObjProp(tabs, "titleSelectedFont", "setTitleSelectedFont:", lockedFont);
     }
     NSArray *ds = FQXObjGet(tabs, "dataSource");
     if ([ds isKindOfClass:NSArray.class]) {
         for (NSUInteger i = 0; i < ds.count && i < 24; ++i) {
-            FQXStabilizeDramaCategoryCellModel(ds[i], normalFont);
+            FQXStabilizeDramaCategoryCellModel(ds[i], lockedFont);
         }
     }
     UICollectionView *cv = FQXObjGet(tabs, "collectionView");
     if ([cv isKindOfClass:UICollectionView.class]) {
         for (UICollectionViewCell *cell in cv.visibleCells) {
-            FQXResetLabelTransformAndFont(FQXObjGet(cell, "titleLabel"), normalFont);
-            FQXResetLabelTransformAndFont(FQXObjGet(cell, "maskTitleLabel"), normalFont);
+            FQXResetLabelTransformAndFont(FQXObjGet(cell, "titleLabel"), lockedFont);
+            FQXResetLabelTransformAndFont(FQXObjGet(cell, "maskTitleLabel"), lockedFont);
         }
     }
 }
@@ -3727,7 +3786,7 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
     UICollectionView *cv = layout.collectionView;
     if (!cv || [cv numberOfSections] < 1) return NO;
     NSInteger count = [cv numberOfItemsInSection:0];
-    if (count < 2 || count > 24) return NO;
+    if (count < 1 || count > 24) return NO;
 
     Class cls = object_getClass(layout);
     IMP itemImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigItem, cls);
@@ -3760,7 +3819,10 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
         : cv.contentSize;
     gFQXDramaCompactComputing = NO;
 
-    if (hiddenCount == 0 || visibleCount == 0 || firstVisible < 0 || lastVisible < 0) {
+    NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
+    BOOL scaled = (scalePct != 100);
+    CGFloat scale = (CGFloat)scalePct / 100.0;
+    if ((!scaled && hiddenCount == 0) || visibleCount == 0 || firstVisible < 0 || lastVisible < 0) {
         objc_setAssociatedObject(layout, FQXDramaCompactHiddenCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(layout, FQXDramaCompactRemovedGapKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return NO;
@@ -3785,15 +3847,69 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
     }
     if (spacing < 0.0) spacing = 18.0;
 
+    UIView *tabsView = nil;
+    for (UIView *cur = cv.superview; cur; cur = cur.superview) {
+        if (FQXDramaHeaderForTabs(cur)) {
+            tabsView = cur;
+            break;
+        }
+    }
+    UIFont *scaledFont = scaled ? FQXScaledDramaTitleFontForTabs(tabsView) : nil;
+    NSArray *ds = scaled ? FQXObjGet(tabsView, "dataSource") : nil;
+    if (![ds isKindOfClass:NSArray.class]) ds = nil;
+
+    CGFloat itemWidths[24];
+    CGFloat totalItemW = 0.0;
+    CGFloat extraTextPad = round(MAX(4.0, MIN(10.0, 6.0 * scale)));
+    for (NSInteger i = 0; i < count; ++i) {
+        if (outHidden[i]) {
+            itemWidths[i] = 0.5;
+            continue;
+        }
+        CGFloat w = round(raw[i].size.width * 2.0) / 2.0;
+        if (scaled) {
+            NSString *title = ((NSUInteger)i < ds.count) ? FQXObjGet(ds[(NSUInteger)i], "title") : nil;
+            if ([title isKindOfClass:NSString.class] && title.length > 0 && scaledFont) {
+                CGFloat textW = ceil([title sizeWithAttributes:@{NSFontAttributeName: scaledFont}].width);
+                w = round((textW + extraTextPad) * 2.0) / 2.0;
+            } else {
+                w = round(MAX(20.0, raw[i].size.width * scale) * 2.0) / 2.0;
+            }
+        }
+        itemWidths[i] = w;
+        totalItemW += w;
+    }
+
+    CGFloat effectiveSpacing = scaled ? (round(MAX(8.0, MIN(28.0, spacing * scale)) * 2.0) / 2.0) : spacing;
+    if (scaled && visibleCount > 1 && CGRectGetWidth(cv.bounds) > 80.0) {
+        CGFloat leadEst = MAX(6.0, MIN(16.0, CGRectGetMinX(raw[firstVisible])));
+        CGFloat availForGaps = CGRectGetWidth(cv.bounds) - leadEst * 2.0 - totalItemW;
+        CGFloat neededGaps = effectiveSpacing * (CGFloat)(visibleCount - 1);
+        if (neededGaps > availForGaps && availForGaps > 0.0) {
+            CGFloat fitted = floor((availForGaps / (CGFloat)(visibleCount - 1)) * 2.0) / 2.0;
+            effectiveSpacing = MAX(8.0, MIN(effectiveSpacing, fitted));
+        }
+    }
+
     CGFloat cursorX = MAX(8.0, MIN(16.0, CGRectGetMinX(raw[firstVisible])));
     BOOL placedAny = NO;
     for (NSInteger i = 0; i < count; ++i) {
         if (!outHidden[i]) {
-            if (placedAny) cursorX += spacing;
+            if (placedAny) cursorX += effectiveSpacing;
+            CGFloat cellH = raw[i].size.height;
+            CGFloat cellY = raw[i].origin.y;
+            if (scaledFont) {
+                CGFloat minH = ceil(scaledFont.lineHeight) + 2.0;
+                if (cellH < minH) {
+                    CGFloat midY = CGRectGetMidY(raw[i]);
+                    cellH = minH;
+                    cellY = round((midY - cellH * 0.5) * 2.0) / 2.0;
+                }
+            }
             outCompacted[i] = CGRectMake(round(cursorX * 2.0) / 2.0,
-                                         raw[i].origin.y,
-                                         round(raw[i].size.width * 2.0) / 2.0,
-                                         raw[i].size.height);
+                                         cellY,
+                                         itemWidths[i],
+                                         cellH);
             cursorX = CGRectGetMaxX(outCompacted[i]);
             placedAny = YES;
         } else {
@@ -3810,7 +3926,7 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
     if (outCount) *outCount = count;
     objc_setAssociatedObject(layout, FQXDramaCompactHiddenCountKey, @(hiddenCount), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(layout, FQXDramaCompactRemovedGapKey, @(round(removedGap * 10.0) / 10.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return removedGap > 1.0;
+    return scaled || (removedGap > 1.0);
 }
 
 static NSArray<UICollectionViewLayoutAttributes *> *HookDramaCompactAttrsInRect(UICollectionViewLayout *layout,
@@ -3946,8 +4062,12 @@ static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, U
     }
 
     BOOL wasTagged = [objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) boolValue];
-    if (!wasTagged) {
+    NSInteger curScale = FQXDramaHeaderButtonScalePercent();
+    NSNumber *prevScale = objc_getAssociatedObject(layout, FQXDramaCompactAppliedScaleKey);
+    BOOL scaleChanged = (!prevScale || prevScale.integerValue != curScale);
+    if (!wasTagged || scaleChanged) {
         objc_setAssociatedObject(layout, FQXDramaCompactLayoutActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(layout, FQXDramaCompactAppliedScaleKey, @(curScale), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (![objc_getAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey) boolValue]) {
             objc_setAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             __weak UICollectionViewLayout *weakLayout = layout;
@@ -4057,7 +4177,8 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     // as the sole Clear Liquid Glass and render a clean recessed non-white capsule indicator; during
     // active press/drag, materialize live interactive Clear glass on pillGlass for fluid refraction.
     BOOL pillInteractiveLens = darkTint || reduce || (self.mode != FQXTopCapsuleTouchIdle);
-    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (pillInteractiveLens ? 16 : 0);
+    NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (pillInteractiveLens ? 16 : 0) | (scalePct << 5);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
     BOOL outerLost = (!outer.effect || [outer.effect isKindOfClass:UIBlurEffect.class]);
     if (applied && applied.integerValue == stamp && !outerLost) {
@@ -4121,6 +4242,8 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         @"pillHidden": @(self.pillGlass.hidden),
         @"pillFrame": FQXDockRectArray(self.pillGlass.frame),
         @"outerWidth": @(round(CGRectGetWidth(outer.bounds) * 10.0) / 10.0),
+        @"outerHeight": @(round(CGRectGetHeight(outer.bounds) * 10.0) / 10.0),
+        @"buttonScalePercent": @(scalePct),
         @"outerCenterDeltaX": centerDeltaX ?: @0,
         @"selectedIndex": @(self.lastSelectedIndex == NSNotFound ? -1 : self.lastSelectedIndex),
         @"hiddenItemCount": hiddenCnt ?: @0,
@@ -4210,16 +4333,17 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         hasPrev = YES;
     }
     if (hasPrev) pillW = CGRectGetWidth(prevRect);
-    pillW += 12.0;
+    CGFloat scale = (CGFloat)FQXDramaHeaderButtonScalePercent() / 100.0;
+    pillW += round(MAX(8.0, MIN(18.0, 12.0 * scale)) * 2.0) / 2.0;
 
     CGPoint inOuter = [cv convertPoint:CGPointMake(anchorX, CGRectGetMidY(cv.bounds)) toView:outer.contentView];
     CGRect ob = outer.contentView.bounds;
-    CGFloat insetY = 3.0;
-    CGFloat pillH = MAX(22.0, CGRectGetHeight(ob) - insetY * 2.0);
-    CGFloat minX = 3.0;
-    CGFloat maxX = MAX(minX, CGRectGetWidth(ob) - pillW - 3.0);
+    CGFloat insetY = (scale < 0.85) ? 2.5 : 3.0;
+    CGFloat pillH = MAX(18.0, CGRectGetHeight(ob) - insetY * 2.0);
+    CGFloat minX = insetY;
+    CGFloat maxX = MAX(minX, CGRectGetWidth(ob) - pillW - insetY);
     CGFloat x = MIN(maxX, MAX(minX, inOuter.x - pillW * 0.5));
-    return CGRectMake(x, (CGRectGetHeight(ob) - pillH) * 0.5, MIN(pillW, CGRectGetWidth(ob) - 6.0), pillH);
+    return CGRectMake(x, (CGRectGetHeight(ob) - pillH) * 0.5, MIN(pillW, CGRectGetWidth(ob) - insetY * 2.0), pillH);
 }
 
 - (void)placePill:(CGRect)target animated:(BOOL)animated {
@@ -4414,7 +4538,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
     UIVisualEffectView *outer = objc_getAssociatedObject(categories, FQXDramaHeaderSurfaceKey());
     if (![outer isKindOfClass:UIVisualEffectView.class] || outer.superview != categories ||
-        outer.hidden || CGRectGetWidth(outer.bounds) < 40.0 || CGRectGetHeight(outer.bounds) > 48.0) {
+        outer.hidden || CGRectGetWidth(outer.bounds) < 30.0 || CGRectGetHeight(outer.bounds) > 60.0) {
         [self invalidate];
         return;
     }
@@ -4602,6 +4726,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 
 static const void *FQXSearchBtnGlassStampKey = &FQXSearchBtnGlassStampKey;
 static const void *FQXSearchBtnCircleGlassKey = &FQXSearchBtnCircleGlassKey;
+static const void *FQXSearchBtnOrigImageKey = &FQXSearchBtnOrigImageKey;
 
 static FQXFlexGlassView *FQXEnsureDramaSearchCircleGlass(UIButton *searchBtn) {
     if (!searchBtn) return nil;
@@ -4660,15 +4785,35 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
         circle.overrideUserInterfaceStyle = uiStyle;
     }
 
-    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0);
+    NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (scalePct << 5);
     NSNumber *applied = objc_getAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey);
     BOOL effectMissing = (!circle.effect || [circle.effect isKindOfClass:UIBlurEffect.class]);
     BOOL configHasBgGlass = (cur && cur.background.visualEffect != nil);
     if (applied && applied.integerValue == stamp && !effectMissing && !configHasBgGlass) return;
 
     if (cur) {
+        UIImage *origImg = objc_getAssociatedObject(searchBtn, FQXSearchBtnOrigImageKey);
+        if (![origImg isKindOfClass:UIImage.class] && [cur.image isKindOfClass:UIImage.class]) {
+            origImg = cur.image;
+            objc_setAssociatedObject(searchBtn, FQXSearchBtnOrigImageKey, origImg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        UIImage *iconImg = origImg ?: cur.image;
+        if (scalePct != 100) {
+            CGFloat scale = (CGFloat)scalePct / 100.0;
+            CGFloat symPt = round(MAX(14.0, MIN(29.0, 23.0 * scale)) * 2.0) / 2.0;
+            UIImageSymbolConfiguration *symCfg =
+                [UIImageSymbolConfiguration configurationWithPointSize:symPt
+                                                                weight:UIImageSymbolWeightRegular
+                                                                 scale:UIImageSymbolScaleMedium];
+            UIImage *sym = [UIImage systemImageNamed:@"magnifyingglass" withConfiguration:symCfg];
+            if (sym) {
+                UIColor *iconTint = isDark ? UIColor.whiteColor : [UIColor colorWithWhite:0.12 alpha:0.92];
+                iconImg = [sym imageWithTintColor:iconTint renderingMode:UIImageRenderingModeAlwaysOriginal];
+            }
+        }
         UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
-        cfg.image = cur.image;
+        cfg.image = iconImg;
         cfg.contentInsets = NSDirectionalEdgeInsetsZero;
         cfg.background.visualEffect = nil;
         cfg.background.backgroundColor = UIColor.clearColor;
@@ -4699,6 +4844,7 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
         @"hasTint": @(tint != nil),
         @"effectClass": glassEffect ? (NSStringFromClass(glassEffect.class) ?: @"") : @"nil",
         @"blurStrength": @(blurStrength),
+        @"buttonScalePercent": @(scalePct),
         @"reduceTransparency": @(reduce),
         @"singleLayer": @YES,
         @"circleFrame": FQXDockRectArray(searchBtn.frame),
@@ -5066,11 +5212,41 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     BOOL isDark = FQXDramaHeaderHostIsDark(header, headerTabs, &darkSource);
     BOOL blurDark = FQXGlassDarkTintEnabled() ? isDark : FQXAppIsInNightMode();
 
+    NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
+    CGFloat scale = (CGFloat)scalePct / 100.0;
+    CGFloat baseH = MIN(38.0, MAX(32.0, CGRectGetHeight(headerBounds) - 2.0));
+    CGFloat targetH = round(MAX(26.0, MIN(48.0, baseH * scale)));
+
+    CGFloat safeTopInHeader = CGRectGetMinY(headerBounds);
+    if (header.window && CGRectGetHeight(header.window.bounds) > CGRectGetWidth(header.window.bounds)) {
+        CGFloat winSafeTop = header.window.safeAreaInsets.top;
+        if (winSafeTop > 0.0) {
+            CGRect r = [header.window convertRect:CGRectMake(0.0, winSafeTop, 1.0, 1.0) toView:header];
+            if (r.origin.y > safeTopInHeader) safeTopInHeader = r.origin.y;
+        }
+    }
+
     UIView *categories = FQXObjGet(header, "tabContainer");
     UIVisualEffectView *outer = categories ? objc_getAssociatedObject(categories, FQXDramaHeaderSurfaceKey()) : nil;
     if (![outer isKindOfClass:UIVisualEffectView.class] || outer.superview != categories ||
-        outer.hidden || CGRectGetWidth(outer.bounds) < 40.0 || CGRectGetHeight(outer.bounds) > 48.0) {
+        outer.hidden || CGRectGetWidth(outer.bounds) < 30.0 || CGRectGetHeight(outer.bounds) > 60.0) {
         if (searchBtn && !searchBtn.hidden) {
+            if (header.clipsToBounds) header.clipsToBounds = NO;
+            CGRect curSearch = searchBtn.frame;
+            CGFloat searchMidY = (CGRectGetHeight(curSearch) > 10.0)
+                ? CGRectGetMidY(curSearch)
+                : (safeTopInHeader + 4.0 + targetH * 0.5);
+            CGFloat targetY = round(MAX(safeTopInHeader + 1.0, searchMidY - targetH * 0.5));
+            CGRect targetSearch = CGRectMake(round(CGRectGetMaxX(headerBounds) - 12.0 - targetH),
+                                             targetY,
+                                             targetH,
+                                             targetH);
+            if (fabs(CGRectGetMinX(curSearch) - targetSearch.origin.x) > 0.5 ||
+                fabs(CGRectGetMinY(curSearch) - targetSearch.origin.y) > 0.5 ||
+                fabs(CGRectGetWidth(curSearch) - targetSearch.size.width) > 0.5 ||
+                fabs(CGRectGetHeight(curSearch) - targetSearch.size.height) > 0.5) {
+                searchBtn.frame = targetSearch;
+            }
             FQXSyncDramaSearchButtonGlass(searchBtn, isDark, darkSource, CGRectZero);
             FQXFlexGlassView *circle = objc_getAssociatedObject(searchBtn, FQXSearchBtnCircleGlassKey);
             UIView *blurHost = circle ? circle.contentView : searchBtn;
@@ -5080,19 +5256,19 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
         return;
     }
 
-    // Never inflate targetH beyond headerBounds height (doing so clipped the bottom 3-4pt of
-    // both the top capsule and search circle into flat white corners). Keep a clean 38pt max
-    // height (leaving >= 1pt breathing room top/bottom) and disable container clipping on the
-    // glass surfaces so continuous capsule curves render completely unobstructed.
-    CGFloat availH = MAX(32.0, CGRectGetHeight(headerBounds) - 2.0);
-    CGFloat targetH = MIN(38.0, availH);
-
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
 
     if (header.clipsToBounds) header.clipsToBounds = NO;
     if (categories.clipsToBounds) categories.clipsToBounds = NO;
     if (outer.clipsToBounds) outer.clipsToBounds = NO;
+    if ([headerCV isKindOfClass:UICollectionView.class]) {
+        BOOL fitsHoriz = (headerCV.contentSize.width <= CGRectGetWidth(headerCV.bounds) + 1.0);
+        BOOL wantNoClip = (scalePct > 100 && fitsHoriz);
+        if (headerCV.clipsToBounds == wantNoClip) {
+            headerCV.clipsToBounds = !wantNoClip;
+        }
+    }
     FQXApplyCornerConfiguration(outer, 0.0, NO);
 
     // Keep collectionView contentOffset anchored at x=0 when all visible titles fit inside its bounds,
@@ -5105,8 +5281,10 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
         headerCV.contentOffset = CGPointMake(0.0, headerCV.contentOffset.y);
     }
 
-    // Recompute tight symmetric capsule horizontal span directly from the compacted visible cells.
+    // Recompute tight symmetric capsule horizontal span directly from the compacted/scaled visible cells.
     CGRect of = outer.frame;
+    CGRect firstInCat = CGRectZero;
+    BOOL hasVisInCat = NO;
     if ([headerCV isKindOfClass:UICollectionView.class] && [headerCV numberOfSections] > 0) {
         NSInteger itemCount = [headerCV numberOfItemsInSection:0];
         CGRect firstVis = CGRectZero;
@@ -5123,13 +5301,21 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
             lastVis = a.frame;
         }
         if (hasVis) {
-            CGRect firstInCat = [headerCV convertRect:firstVis toView:categories];
+            firstInCat = [headerCV convertRect:firstVis toView:categories];
             CGRect lastInCat = [headerCV convertRect:lastVis toView:categories];
-            CGFloat padX = 11.0;
+            hasVisInCat = YES;
+            CGFloat padX = round(MAX(7.0, MIN(16.0, 11.0 * scale)) * 2.0) / 2.0;
             CGFloat desiredLeft = round((CGRectGetMinX(firstInCat) - padX) * 2.0) / 2.0;
             CGFloat desiredRight = round((CGRectGetMaxX(lastInCat) + padX) * 2.0) / 2.0;
             CGFloat desiredW = desiredRight - desiredLeft;
-            if (desiredW >= 40.0 && desiredW <= CGRectGetWidth(headerBounds) - 16.0) {
+            CGFloat maxCapsuleW = CGRectGetWidth(headerBounds) - ((searchBtn && !searchBtn.hidden) ? (targetH + 32.0) : 24.0);
+            if (maxCapsuleW < 100.0) maxCapsuleW = CGRectGetWidth(headerBounds) - 16.0;
+            if (desiredW > maxCapsuleW) {
+                CGFloat mid = (desiredLeft + desiredRight) * 0.5;
+                desiredW = maxCapsuleW;
+                desiredLeft = round((mid - desiredW * 0.5) * 2.0) / 2.0;
+            }
+            if (desiredW >= 30.0 && desiredW <= CGRectGetWidth(headerBounds) - 12.0) {
                 if (fabs(of.origin.x - desiredLeft) > 0.5 || fabs(of.size.width - desiredW) > 0.5) {
                     of.origin.x = desiredLeft;
                     of.size.width = desiredW;
@@ -5139,21 +5325,24 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
         }
     }
 
-    if (fabs(CGRectGetHeight(of) - targetH) > 0.5) {
-        CGFloat midY = CGRectGetMidY(of);
-        of.origin.y = round(midY - targetH * 0.5);
+    CGFloat targetMidY = hasVisInCat ? CGRectGetMidY(firstInCat) : CGRectGetMidY(of);
+    CGFloat desiredY = round((targetMidY - targetH * 0.5) * 2.0) / 2.0;
+    if (fabs(CGRectGetHeight(of) - targetH) > 0.5 || fabs(of.origin.y - desiredY) > 0.5) {
+        of.origin.y = desiredY;
         of.size.height = targetH;
         outer.frame = of;
     }
 
     CGRect outerInHeader = [categories convertRect:outer.frame toView:header];
-    CGFloat maxAllowedY = CGRectGetMaxY(headerBounds) - 1.0;
-    CGFloat minAllowedY = CGRectGetMinY(headerBounds) + 1.0;
-    if (CGRectGetMaxY(outerInHeader) > maxAllowedY + 0.5) {
-        CGFloat shift = maxAllowedY - CGRectGetMaxY(outerInHeader);
-        of.origin.y = round(of.origin.y + shift);
-        outer.frame = of;
-        outerInHeader = [categories convertRect:outer.frame toView:header];
+    CGFloat minAllowedY = MAX(CGRectGetMinY(headerBounds) + 1.0, safeTopInHeader + 1.0);
+    if (scalePct <= 100) {
+        CGFloat maxAllowedY = CGRectGetMaxY(headerBounds) - 1.0;
+        if (CGRectGetMaxY(outerInHeader) > maxAllowedY + 0.5) {
+            CGFloat shift = maxAllowedY - CGRectGetMaxY(outerInHeader);
+            of.origin.y = round(of.origin.y + shift);
+            outer.frame = of;
+            outerInHeader = [categories convertRect:outer.frame toView:header];
+        }
     }
     if (CGRectGetMinY(outerInHeader) < minAllowedY - 0.5) {
         CGFloat shift = minAllowedY - CGRectGetMinY(outerInHeader);
@@ -5189,7 +5378,7 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
         CGRect outerInWin = [categories convertRect:outer.frame toView:header.window];
         CGFloat winW = CGRectGetWidth(header.window.bounds);
         CGFloat outerW = CGRectGetWidth(outerInWin);
-        if (winW > 120.0 && outerW >= 40.0) {
+        if (winW > 120.0 && outerW >= 30.0) {
             CGFloat desiredMidX = CGRectGetMidX(header.window.bounds);
             if (searchBtn && !searchBtn.hidden) {
                 CGRect searchInWin = [header convertRect:searchBtn.frame toView:header.window];
@@ -5343,19 +5532,18 @@ static void (*OrigDramaTabsRefreshCellModel)(id, SEL, id, NSInteger);
 static void HookDramaTabsRefreshCellModel(UIView *tabs, SEL cmd, id cellModel, NSInteger index) {
     if (OrigDramaTabsRefreshCellModel) OrigDramaTabsRefreshCellModel(tabs, cmd, cellModel, index);
     if (FQXDramaHeaderForTabs(tabs)) {
-        UIFont *normalFont = FQXObjGet(tabs, "titleFont");
-        FQXStabilizeDramaCategoryCellModel(cellModel, [normalFont isKindOfClass:UIFont.class] ? normalFont : nil);
+        UIFont *lockedFont = FQXScaledDramaTitleFontForTabs(tabs);
+        FQXStabilizeDramaCategoryCellModel(cellModel, lockedFont);
     }
 }
 
 static void (*OrigDramaTabsRefreshSelectedModels)(id, SEL, id, id);
 static void HookDramaTabsRefreshSelectedModels(UIView *tabs, SEL cmd, id selectedModel, id unselectedModel) {
     BOOL isDrama = (FQXDramaHeaderForTabs(tabs) != nil);
-    UIFont *normalFont = isDrama ? FQXObjGet(tabs, "titleFont") : nil;
-    if (![normalFont isKindOfClass:UIFont.class]) normalFont = nil;
+    UIFont *lockedFont = isDrama ? FQXScaledDramaTitleFontForTabs(tabs) : nil;
     if (isDrama) {
-        FQXStabilizeDramaCategoryCellModel(selectedModel, normalFont);
-        FQXStabilizeDramaCategoryCellModel(unselectedModel, normalFont);
+        FQXStabilizeDramaCategoryCellModel(selectedModel, lockedFont);
+        FQXStabilizeDramaCategoryCellModel(unselectedModel, lockedFont);
     }
     if (OrigDramaTabsRefreshSelectedModels) OrigDramaTabsRefreshSelectedModels(tabs, cmd, selectedModel, unselectedModel);
     if (isDrama) {
@@ -5370,15 +5558,14 @@ static void HookDramaTabsRefreshLeftRight(UIView *tabs, SEL cmd, id leftModel, i
     BOOL isDrama = (FQXDramaHeaderForTabs(tabs) != nil);
     if (OrigDramaTabsRefreshLeftRight) OrigDramaTabsRefreshLeftRight(tabs, cmd, leftModel, rightModel, ratio);
     if (isDrama) {
-        UIFont *normalFont = FQXObjGet(tabs, "titleFont");
-        if (![normalFont isKindOfClass:UIFont.class]) normalFont = nil;
-        FQXStabilizeDramaCategoryCellModel(leftModel, normalFont);
-        FQXStabilizeDramaCategoryCellModel(rightModel, normalFont);
+        UIFont *lockedFont = FQXScaledDramaTitleFontForTabs(tabs);
+        FQXStabilizeDramaCategoryCellModel(leftModel, lockedFont);
+        FQXStabilizeDramaCategoryCellModel(rightModel, lockedFont);
         UICollectionView *cv = FQXObjGet(tabs, "collectionView");
         if ([cv isKindOfClass:UICollectionView.class]) {
             for (UICollectionViewCell *cell in cv.visibleCells) {
-                FQXResetLabelTransformAndFont(FQXObjGet(cell, "titleLabel"), normalFont);
-                FQXResetLabelTransformAndFont(FQXObjGet(cell, "maskTitleLabel"), normalFont);
+                FQXResetLabelTransformAndFont(FQXObjGet(cell, "titleLabel"), lockedFont);
+                FQXResetLabelTransformAndFont(FQXObjGet(cell, "maskTitleLabel"), lockedFont);
             }
         }
     }
@@ -5450,6 +5637,7 @@ static void FQXRefreshAllDramaControlsInWindows(void);
 static void FQXRefreshAllPinchCleanStates(void);
 static void FQXReapplyAllTrackedCommentGlass(void);
 static void FQXRefreshCommentBlurStrengthOnly(void);
+static void FQXRefreshAllShareSheets(void);
 static void FQXCompactRuntimeMemory(void);
 static void FQXRefreshAllShelfEditButtons(void);
 static void FQXRefreshAllShelfHeaderControls(void);
@@ -5473,6 +5661,7 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshDramaPinchClean;
 + (void)refreshCommentGlass;
 + (void)refreshCommentBlurStrength;
++ (void)refreshShareGlass;
 + (void)refreshDockAppearance;
 + (void)refreshDockMaterial;
 + (void)refreshReaderHotCommentBadge;
@@ -5690,7 +5879,16 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshDramaHeaderBlur {
     FQXInvalidateHotPrefsCache();
     for (UIView *header in FQXTrackedDramaHeaders().allObjects) {
-        if (header.window) FQXSyncDramaTopCapsuleForHeader(header);
+        if (!header.window) continue;
+        id owner = FQXObjGet(header, "delegate");
+        UIView *tabs = FQXObjGet(owner, "simpleTabView");
+        UICollectionView *cv = FQXObjGet(tabs, "collectionView");
+        if ([tabs isKindOfClass:UIView.class]) FQXStabilizeDramaCategoryTabs(tabs);
+        if ([cv isKindOfClass:UICollectionView.class]) {
+            [cv.collectionViewLayout invalidateLayout];
+            [cv layoutIfNeeded];
+        }
+        FQXSyncDramaTopCapsuleForHeader(header);
     }
 }
 
@@ -5707,6 +5905,11 @@ static void FQXRefreshDynamicIslandState(void);
 + (void)refreshCommentBlurStrength {
     FQXInvalidateHotPrefsCache();
     FQXRefreshCommentBlurStrengthOnly();
+}
+
++ (void)refreshShareGlass {
+    FQXInvalidateHotPrefsCache();
+    FQXRefreshAllShareSheets();
 }
 
 + (void)refreshDockAppearance {
@@ -11051,10 +11254,6 @@ static BOOL FQXStyleGlassSheetWithRoot(UIView *sheet, UIView *root, BOOL comment
     return YES;
 }
 
-static BOOL FQXStyleGlassSheet(UIView *sheet, BOOL commentSheet, BOOL readerSheet) {
-    return FQXStyleGlassSheetWithRoot(sheet, nil, commentSheet, readerSheet);
-}
-
 static const void *CommentSavedOpaqueKey = &CommentSavedOpaqueKey;
 
 static void FQXClearCommentSurface(UIView *view, BOOL clear) {
@@ -14170,14 +14369,815 @@ static void HookReaderCommentListAppeared(UIViewController *controller, SEL cmd,
     FQXScheduleDelayedReaderCommentRestyle(controller);
 }
 
+#pragma mark - Unified Short Drama & Novel Share Sheet Material System
+
+static const void *FQXShareGlassSurfaceKey = &FQXShareGlassSurfaceKey;
+static const void *FQXSharePaperBackdropKey = &FQXSharePaperBackdropKey;
+static const void *FQXShareForceDarkKey = &FQXShareForceDarkKey;
+static const void *FQXShareSavedTextColorKey = &FQXShareSavedTextColorKey;
+static const void *FQXShareSavedBtnTitleColorKey = &FQXShareSavedBtnTitleColorKey;
+static const void *FQXShareStyledStampKey = &FQXShareStyledStampKey;
+static const void *FQXShareDiagLoggedKey = &FQXShareDiagLoggedKey;
+static const void *FQXShareMarkedSheetKey = &FQXShareMarkedSheetKey;
+static NSMutableDictionary<NSString *, NSValue *> *gFQXDynamicShareOrigLayouts = nil;
+
+static NSHashTable<UIView *> *FQXTrackedShareSheets(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static UIViewController *FQXFindVisibleVCKindInHierarchy(UIViewController *vc, Class targetCls, NSInteger depth) {
+    if (!vc || !targetCls || depth > 12) return nil;
+    if ([vc isKindOfClass:targetCls] && vc.isViewLoaded && vc.view.window && !vc.view.hidden && vc.view.alpha > 0.05) {
+        return vc;
+    }
+    if (vc.presentedViewController && vc.presentedViewController != vc) {
+        UIViewController *found = FQXFindVisibleVCKindInHierarchy(vc.presentedViewController, targetCls, depth + 1);
+        if (found) return found;
+    }
+    if ([vc isKindOfClass:UINavigationController.class]) {
+        UINavigationController *nav = (UINavigationController *)vc;
+        UIViewController *found = FQXFindVisibleVCKindInHierarchy(nav.topViewController, targetCls, depth + 1);
+        if (found) return found;
+        for (UIViewController *item in nav.viewControllers.reverseObjectEnumerator) {
+            if (item == nav.topViewController) continue;
+            found = FQXFindVisibleVCKindInHierarchy(item, targetCls, depth + 1);
+            if (found) return found;
+        }
+    }
+    if ([vc isKindOfClass:UITabBarController.class]) {
+        UIViewController *sel = ((UITabBarController *)vc).selectedViewController;
+        UIViewController *found = FQXFindVisibleVCKindInHierarchy(sel, targetCls, depth + 1);
+        if (found) return found;
+    }
+    for (UIViewController *child in vc.childViewControllers.reverseObjectEnumerator) {
+        UIViewController *found = FQXFindVisibleVCKindInHierarchy(child, targetCls, depth + 1);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
+    Class readerCls = NSClassFromString(@"BDReaderViewController");
+    if (!readerCls) return nil;
+    UIViewController *found = window.rootViewController
+        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, readerCls, 0) : nil;
+    if (found) return found;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
+            if (win == window || win.hidden || win.alpha <= 0.01) continue;
+            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, readerCls, 0);
+            if (found) return found;
+        }
+    }
+    return nil;
+}
+
+static UIColor *FQXSampleCenterPixelColor(UIImage *image) {
+    CGImageRef cg = image.CGImage;
+    if (!cg) return nil;
+    size_t w = CGImageGetWidth(cg);
+    size_t h = CGImageGetHeight(cg);
+    if (w < 8 || h < 8) return nil;
+    CGRect crop = CGRectMake((CGFloat)(w / 2), (CGFloat)(h / 2), 1.0, 1.0);
+    CGImageRef pixelImg = CGImageCreateWithImageInRect(cg, crop);
+    if (!pixelImg) return nil;
+    uint8_t rgba[4] = {0, 0, 0, 0};
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(rgba, 1, 1, 8, 4, cs,
+                                             (CGBitmapInfo)(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+    CGColorSpaceRelease(cs);
+    if (!ctx) {
+        CGImageRelease(pixelImg);
+        return nil;
+    }
+    CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, 1.0, 1.0), pixelImg);
+    CGContextRelease(ctx);
+    CGImageRelease(pixelImg);
+    if (rgba[3] < 200) return nil;
+    CGFloat a = (CGFloat)rgba[3] / 255.0;
+    CGFloat r = MIN(1.0, ((CGFloat)rgba[0] / 255.0) / a);
+    CGFloat g = MIN(1.0, ((CGFloat)rgba[1] / 255.0) / a);
+    CGFloat b = MIN(1.0, ((CGFloat)rgba[2] / 255.0) / a);
+    return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+}
+
+static UIColor *FQXExtractOpaqueCanvasColor(UIView *view,
+                                            CGFloat minW,
+                                            CGFloat minH,
+                                            UIView *excludingSubtree,
+                                            NSInteger depth) {
+    if (!view || view.hidden || view.alpha < 0.85 || depth > 4) return nil;
+    if (excludingSubtree && (view == excludingSubtree || [view isDescendantOfView:excludingSubtree])) return nil;
+    if ([view isKindOfClass:UIVisualEffectView.class]) return nil;
+
+    // Prefer deeper full-screen reader page canvas (e.g. page background view) over root wrapper.
+    for (UIView *sub in view.subviews) {
+        CGRect sb = sub.bounds;
+        if (CGRectGetWidth(sb) >= minW && CGRectGetHeight(sb) >= minH) {
+            UIColor *deeper = FQXExtractOpaqueCanvasColor(sub, minW, minH, excludingSubtree, depth + 1);
+            if (deeper) return deeper;
+        }
+    }
+
+    if ([view isKindOfClass:UIImageView.class]) {
+        UIImage *img = ((UIImageView *)view).image;
+        if (img) {
+            UIColor *sampled = FQXSampleCenterPixelColor(img);
+            if (sampled) return sampled;
+        }
+    }
+
+    UIColor *bg = view.backgroundColor;
+    if (bg) {
+        UIColor *resolved = [bg resolvedColorWithTraitCollection:view.traitCollection];
+        CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+        if ([resolved getRed:&r green:&g blue:&b alpha:&a] && a >= 0.85) {
+            return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+        }
+        if ([resolved getWhite:&w alpha:&a] && a >= 0.85) {
+            return [UIColor colorWithWhite:w alpha:1.0];
+        }
+    }
+    if (view.layer.backgroundColor) {
+        UIColor *lbg = [UIColor colorWithCGColor:view.layer.backgroundColor];
+        CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+        if ([lbg getRed:&r green:&g blue:&b alpha:&a] && a >= 0.85) {
+            return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+        }
+        if ([lbg getWhite:&w alpha:&a] && a >= 0.85) {
+            return [UIColor colorWithWhite:w alpha:1.0];
+        }
+    }
+    return nil;
+}
+
+static UIColor *FQXSampleActiveReaderPaperColor(UIWindow *window,
+                                                UIView *excludingSheet,
+                                                BOOL *outFromReader) {
+    if (outFromReader) *outFromReader = NO;
+    UIViewController *readerVC = FQXFindVisibleReaderVCInWindow(window);
+    if (readerVC && readerVC.isViewLoaded && readerVC.view) {
+        CGRect rb = readerVC.view.bounds;
+        CGFloat minW = MAX(200.0, CGRectGetWidth(rb) - 24.0);
+        CGFloat minH = MAX(320.0, CGRectGetHeight(rb) - 180.0);
+        UIColor *paper = FQXExtractOpaqueCanvasColor(readerVC.view, minW, minH, excludingSheet, 0);
+        if (paper) {
+            if (outFromReader) *outFromReader = YES;
+            return paper;
+        }
+        // Fallback: inspect readerVC.view.backgroundColor directly
+        UIColor *rootBg = readerVC.view.backgroundColor;
+        if (rootBg) {
+            UIColor *resolved = [rootBg resolvedColorWithTraitCollection:readerVC.view.traitCollection];
+            CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+            if ([resolved getRed:&r green:&g blue:&b alpha:&a] && a >= 0.5) {
+                if (outFromReader) *outFromReader = YES;
+                return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+            }
+            if ([resolved getWhite:&w alpha:&a] && a >= 0.5) {
+                if (outFromReader) *outFromReader = YES;
+                return [UIColor colorWithWhite:w alpha:1.0];
+            }
+        }
+    }
+    return nil;
+}
+
+static BOOL FQXColorIsNeutralSurface(UIColor *color, UITraitCollection *traits) {
+    if (![color isKindOfClass:UIColor.class]) return NO;
+    UIColor *resolved = traits ? [color resolvedColorWithTraitCollection:traits] : color;
+    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+    if ([resolved getRed:&r green:&g blue:&b alpha:&a]) {
+        if (a < 0.01) return NO;
+        CGFloat mx = MAX(r, MAX(g, b));
+        CGFloat mn = MIN(r, MIN(g, b));
+        return (mx - mn) < 0.14;
+    }
+    if ([resolved getWhite:&w alpha:&a]) {
+        return a >= 0.01;
+    }
+    return NO;
+}
+
+static NSString *FQXHexStringForColor(UIColor *color) {
+    if (!color) return @"none";
+    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
+    if ([color getRed:&r green:&g blue:&b alpha:&a]) {
+        return [NSString stringWithFormat:@"#%02X%02X%02X",
+                (int)round(MAX(0.0, MIN(1.0, r)) * 255.0),
+                (int)round(MAX(0.0, MIN(1.0, g)) * 255.0),
+                (int)round(MAX(0.0, MIN(1.0, b)) * 255.0)];
+    }
+    if ([color getWhite:&w alpha:&a]) {
+        int v = (int)round(MAX(0.0, MIN(1.0, w)) * 255.0);
+        return [NSString stringWithFormat:@"#%02X%02X%02X", v, v, v];
+    }
+    return @"dynamic";
+}
+
+static void FQXApplyShareSubtreeCleanup(UIView *view,
+                                        UIView *rootSheet,
+                                        BOOL clear,
+                                        BOOL adaptInk,
+                                        BOOL isDark,
+                                        NSInteger depth) {
+    if (!view || depth > 8) return;
+    if ([view isKindOfClass:FQXCommentGlassSurfaceView.class] ||
+        [view isKindOfClass:FQXBackdropBlurView.class] ||
+        view == objc_getAssociatedObject(rootSheet, FQXSharePaperBackdropKey)) {
+        return;
+    }
+
+    CGRect b = view.bounds;
+    CGFloat w = CGRectGetWidth(b);
+    CGFloat h = CGRectGetHeight(b);
+
+    // Protect share channel icon badges (circular colored/dark icon containers, UIImageViews, small buttons)
+    // and subtle 0.5-1.5pt divider hairlines so only neutral card/row/collection containers become clear.
+    BOOL isSmallIconBadge = (w > 10.0 && w <= 68.0 && h > 10.0 && h <= 68.0 &&
+                             (view.layer.cornerRadius >= 10.0 ||
+                              view.layer.mask != nil ||
+                              [view isKindOfClass:UIImageView.class] ||
+                              (fabs(w - h) <= 4.0 && w >= 28.0)));
+    BOOL isHairline = (h > 0.0 && h <= 1.5 && w >= 60.0);
+
+    if (clear) {
+        BOOL isCellContent = ([view.superview isKindOfClass:UICollectionViewCell.class] &&
+                              view == ((UICollectionViewCell *)view.superview).contentView);
+        BOOL isContainerClass = ([view isKindOfClass:UICollectionView.class] ||
+                                 [view isKindOfClass:UIScrollView.class] ||
+                                 [view isKindOfClass:UICollectionViewCell.class] ||
+                                 [view isKindOfClass:UITableView.class] ||
+                                 [view isKindOfClass:UITableViewCell.class] ||
+                                 view == rootSheet ||
+                                 isCellContent);
+        BOOL isNeutralBg = FQXColorIsNeutralSurface(view.backgroundColor, view.traitCollection);
+        BOOL isWideNeutral = (!isSmallIconBadge && !isHairline && (w >= 76.0 || h >= 72.0) && isNeutralBg);
+        BOOL isCancelOrHeaderBtn = ([view isKindOfClass:UIButton.class] && w >= 120.0 && h >= 32.0 && isNeutralBg);
+        if ((isContainerClass || isWideNeutral || isCancelOrHeaderBtn) && !isSmallIconBadge && !isHairline) {
+            if (![view isKindOfClass:UIImageView.class] && ![view isKindOfClass:UILabel.class]) {
+                FQXAudioClearBackground(view, YES);
+                if (view.layer.backgroundColor && CGColorGetAlpha(view.layer.backgroundColor) > 0.001) {
+                    UIColor *lbg = [UIColor colorWithCGColor:view.layer.backgroundColor];
+                    if (FQXColorIsNeutralSurface(lbg, view.traitCollection)) {
+                        if (!objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey)) {
+                            objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, lbg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        }
+                        view.layer.backgroundColor = NULL;
+                    }
+                }
+            }
+        }
+        if (adaptInk) {
+            UIColor *targetInk = isDark
+                ? [UIColor colorWithWhite:1.0 alpha:0.92]
+                : [UIColor colorWithWhite:0.0 alpha:0.88];
+            if ([view isKindOfClass:UILabel.class]) {
+                UILabel *lbl = (UILabel *)view;
+                if (lbl.text.length > 0 && lbl.textColor &&
+                    FQXColorIsNeutralSurface(lbl.textColor, lbl.traitCollection)) {
+                    if (!objc_getAssociatedObject(lbl, FQXShareSavedTextColorKey)) {
+                        objc_setAssociatedObject(lbl, FQXShareSavedTextColorKey, lbl.textColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                    lbl.textColor = targetInk;
+                }
+            } else if ([view isKindOfClass:UIButton.class]) {
+                UIButton *btn = (UIButton *)view;
+                UIColor *curTitleCol = [btn titleColorForState:UIControlStateNormal];
+                if (btn.currentTitle.length > 0 && curTitleCol &&
+                    FQXColorIsNeutralSurface(curTitleCol, btn.traitCollection)) {
+                    if (!objc_getAssociatedObject(btn, FQXShareSavedBtnTitleColorKey)) {
+                        objc_setAssociatedObject(btn, FQXShareSavedBtnTitleColorKey, curTitleCol, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                    [btn setTitleColor:targetInk forState:UIControlStateNormal];
+                }
+            }
+        }
+    } else {
+        FQXAudioClearBackground(view, NO);
+        UIColor *savedLayerBg = objc_getAssociatedObject(view, FQXCommentSavedLayerBgKey);
+        if ([savedLayerBg isKindOfClass:UIColor.class]) {
+            view.layer.backgroundColor = savedLayerBg.CGColor;
+            objc_setAssociatedObject(view, FQXCommentSavedLayerBgKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if ([view isKindOfClass:UILabel.class]) {
+            UIColor *savedText = objc_getAssociatedObject(view, FQXShareSavedTextColorKey);
+            if ([savedText isKindOfClass:UIColor.class]) {
+                ((UILabel *)view).textColor = savedText;
+                objc_setAssociatedObject(view, FQXShareSavedTextColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        } else if ([view isKindOfClass:UIButton.class]) {
+            UIColor *savedBtn = objc_getAssociatedObject(view, FQXShareSavedBtnTitleColorKey);
+            if ([savedBtn isKindOfClass:UIColor.class]) {
+                [(UIButton *)view setTitleColor:savedBtn forState:UIControlStateNormal];
+                objc_setAssociatedObject(view, FQXShareSavedBtnTitleColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+    }
+
+    for (UIView *sub in view.subviews) {
+        FQXApplyShareSubtreeCleanup(sub, rootSheet, clear, adaptInk, isDark, depth + 1);
+    }
+}
+
+static void FQXRemoveShareSheetStyling(UIView *sheet) {
+    if (!sheet) return;
+    UIVisualEffectView *oldLegacy = objc_getAssociatedObject(sheet, SheetGlassKey);
+    if (oldLegacy) FQXRemoveGlassSheet(sheet);
+    UIVisualEffectView *surface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
+    if (surface) {
+        FQXReleaseCommentSurface(surface);
+        objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    UIView *paperBg = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
+    if (paperBg) {
+        [paperBg removeFromSuperview];
+        objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    objc_setAssociatedObject(sheet, FQXShareStyledStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (sheet.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
+        sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+    }
+    FQXApplyShareSubtreeCleanup(sheet, sheet, NO, NO, NO, 0);
+}
+
+static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama) {
+    if (![sheet isKindOfClass:UIView.class]) return NO;
+    CGRect sb = sheet.bounds;
+    if (CGRectGetWidth(sb) < 120.0 || CGRectGetHeight(sb) < 72.0) return NO;
+
+    [FQXTrackedShareSheets() addObject:sheet];
+    objc_setAssociatedObject(sheet, FQXShareForceDarkKey, @(forceDarkDrama), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sheet, FQXShareMarkedSheetKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    if (FQXHotPrefsSnapshot().glassDisabled) {
+        FQXRemoveShareSheetStyling(sheet);
+        return NO;
+    }
+
+    FQXShareMaterialStyle style = FQXCurrentShareMaterialStyle();
+    if (style == FQXShareMaterialNative) {
+        FQXRemoveShareSheetStyling(sheet);
+        return NO;
+    }
+
+    // Clear any legacy SheetGlassKey surface so only one backdrop exists.
+    if (objc_getAssociatedObject(sheet, SheetGlassKey)) {
+        FQXRemoveGlassSheet(sheet);
+    }
+
+    // Resolve context: Novel Reader paper color & optical dark/light polarity.
+    BOOL fromReader = NO;
+    UIColor *paperColor = FQXSampleActiveReaderPaperColor(sheet.window, root ?: sheet, &fromReader);
+    BOOL isDark = NO;
+    if (fromReader && paperColor) {
+        CGFloat luma = 0.5;
+        if (FQXColorLuminance(paperColor, sheet.traitCollection, &luma)) {
+            isDark = (luma < 0.45);
+        } else {
+            isDark = FQXAppIsInNightMode();
+        }
+    } else if (forceDarkDrama) {
+        isDark = YES;
+    } else {
+        isDark = FQXAppIsInNightMode();
+    }
+
+    CGFloat cornerR = FQXReadHostSheetCornerRadius(sheet, root);
+    if (cornerR < 16.0) cornerR = 20.0;
+    BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
+    BOOL darkTint = FQXGlassDarkTintEnabled();
+    NSInteger blurPct = reduceTrans ? 0 : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:ShareBlurPrefKey]);
+
+    // Mode 3: 原书底色 (Novel original paper background / matching theme surface on Drama)
+    if (style == FQXShareMaterialBookBackground) {
+        UIVisualEffectView *oldSurface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
+        if (oldSurface) {
+            FQXReleaseCommentSurface(oldSurface);
+            objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        UIColor *fillColor = paperColor ?: (isDark
+            ? [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0]
+            : [UIColor colorWithRed:0.968 green:0.960 blue:0.941 alpha:1.0]);
+        UIView *paperBg = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
+        if (!paperBg) {
+            paperBg = [[UIView alloc] initWithFrame:sb];
+            paperBg.userInteractionEnabled = NO;
+            paperBg.accessibilityElementsHidden = YES;
+            paperBg.isAccessibilityElement = NO;
+            paperBg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            paperBg.layer.cornerCurve = kCACornerCurveContinuous;
+            paperBg.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+            paperBg.clipsToBounds = YES;
+            objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, paperBg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        if (!CGRectEqualToRect(paperBg.frame, sb)) paperBg.frame = sb;
+        paperBg.layer.cornerRadius = cornerR;
+        paperBg.backgroundColor = fillColor;
+        if (sheet.subviews.firstObject != paperBg) [sheet insertSubview:paperBg atIndex:0];
+        UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+        if (sheet.overrideUserInterfaceStyle != uiStyle) sheet.overrideUserInterfaceStyle = uiStyle;
+        FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, isDark, 0);
+        [CATransaction commit];
+
+        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f", isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb)];
+        if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
+            objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
+                @"sheetClass": NSStringFromClass(sheet.class) ?: @"",
+                @"rootClass": root ? (NSStringFromClass(root.class) ?: @"") : @"",
+                @"materialStyle": @((NSInteger)style),
+                @"fromReader": @(fromReader),
+                @"isDark": @(isDark),
+                @"paperHex": FQXHexStringForColor(fillColor),
+                @"sheetFrame": FQXDockRectArray(sb),
+            }, NO);
+        }
+        return YES;
+    }
+
+    // Remove paper backdrop when switching to Liquid Glass / Frosted Glass / Gaussian Blur
+    UIView *oldPaper = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
+    if (oldPaper) {
+        [oldPaper removeFromSuperview];
+        objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    // Fallback to Gaussian Blur on pre-iOS 26 if native UIGlassEffect is unavailable
+    FQXShareMaterialStyle effStyle = style;
+    if ((effStyle == FQXShareMaterialClearGlass || effStyle == FQXShareMaterialRegularGlass) && !FQXGlassEnabled()) {
+        effStyle = FQXShareMaterialGaussianBlur;
+    }
+
+    BOOL wantsGaussian = (effStyle == FQXShareMaterialGaussianBlur);
+    UIVisualEffectView *surface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
+    BOOL isBlurView = [surface isKindOfClass:FQXBackdropBlurView.class];
+    BOOL isGlassView = [surface isKindOfClass:FQXCommentGlassSurfaceView.class];
+    if (surface && ((wantsGaussian && !isBlurView) || (!wantsGaussian && !isGlassView))) {
+        FQXReleaseCommentSurface(surface);
+        objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        surface = nil;
+    }
+    if (!surface) {
+        if (wantsGaussian) {
+            FQXBackdropBlurView *bv = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+            bv.commentPureMode = YES;
+            bv.opaque = NO;
+            bv.backgroundColor = UIColor.clearColor;
+            bv.contentView.backgroundColor = UIColor.clearColor;
+            surface = bv;
+        } else {
+            FQXCommentGlassSurfaceView *gv = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
+            gv.flexSourceView = sheet;
+            gv.isBarGlass = NO;
+            surface = gv;
+        }
+        surface.userInteractionEnabled = NO;
+        surface.accessibilityElementsHidden = YES;
+        surface.isAccessibilityElement = NO;
+        surface.alpha = 1.0;
+        surface.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (!CGRectEqualToRect(surface.frame, sb)) surface.frame = sb;
+    if (sheet.subviews.firstObject != surface) [sheet insertSubview:surface atIndex:0];
+    if (sheet.overrideUserInterfaceStyle != uiStyle) sheet.overrideUserInterfaceStyle = uiStyle;
+    if (surface.overrideUserInterfaceStyle != uiStyle) surface.overrideUserInterfaceStyle = uiStyle;
+    FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, cornerR);
+    FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, isDark, 0);
+    [CATransaction commit];
+
+    if (wantsGaussian) {
+        FQXBackdropBlurView *bv = (FQXBackdropBlurView *)surface;
+        NSInteger effectivePct = reduceTrans ? 100 : (blurPct > 0 ? blurPct : 55);
+        [bv configurePercent:effectivePct dark:isDark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
+    } else {
+        FQXCommentGlassSurfaceView *gv = (FQXCommentGlassSurfaceView *)surface;
+        gv.flexSourceView = sheet;
+        gv.cornerKind = FQXCommentCornerTopSheet;
+        gv.cornerRadius = cornerR;
+        NSInteger desiredStamp = ((NSInteger)effStyle * 100) + (isDark ? 10 : 0) + (darkTint ? 2 : 0) + (reduceTrans ? 1 : 0);
+        NSNumber *appliedStamp = objc_getAssociatedObject(gv, FQXShareStyledStampKey);
+        if (!gv.effect || !appliedStamp || appliedStamp.integerValue != desiredStamp) {
+            NSInteger glassStyle = (reduceTrans || effStyle == FQXShareMaterialRegularGlass) ? 0 : 1;
+            UIColor *tint = (!reduceTrans && effStyle == FQXShareMaterialClearGlass && darkTint && isDark)
+                ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+            gv.effect = FQXMakeGlassEffect(glassStyle, YES, tint);
+            gv.backgroundColor = UIColor.clearColor;
+            gv.contentView.backgroundColor = UIColor.clearColor;
+            objc_setAssociatedObject(gv, FQXShareStyledStampKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        // Supplemental blur on top of Liquid Glass ONLY when user sets ShareBlur > 0 (0 = none).
+        if (blurPct > 0 && !reduceTrans) {
+            FQXBackdropBlurView *sub = gv.supplementalBlur;
+            if (!sub) {
+                sub = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+                sub.commentPureMode = YES;
+                sub.userInteractionEnabled = NO;
+                sub.accessibilityElementsHidden = YES;
+                sub.isAccessibilityElement = NO;
+                sub.opaque = NO;
+                sub.backgroundColor = UIColor.clearColor;
+                sub.contentView.backgroundColor = UIColor.clearColor;
+                sub.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                gv.supplementalBlur = sub;
+            }
+            if (sub.superview != gv.contentView) [gv.contentView insertSubview:sub atIndex:0];
+            sub.frame = gv.contentView.bounds;
+            FQXApplyCommentCornerConfig(sub, FQXCommentCornerTopSheet, cornerR);
+            [sub configurePercent:blurPct dark:isDark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
+        } else if (gv.supplementalBlur) {
+            [gv.supplementalBlur invalidateBlurAnimator];
+            [gv.supplementalBlur removeFromSuperview];
+            gv.supplementalBlur = nil;
+        }
+    }
+
+    NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f",
+                         (long)effStyle, isDark ? 1 : 0, (long)blurPct, darkTint ? 1 : 0, CGRectGetHeight(sb)];
+    if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
+        objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
+            @"sheetClass": NSStringFromClass(sheet.class) ?: @"",
+            @"rootClass": root ? (NSStringFromClass(root.class) ?: @"") : @"",
+            @"materialStyle": @((NSInteger)effStyle),
+            @"blurPercent": @(blurPct),
+            @"fromReader": @(fromReader),
+            @"isDark": @(isDark),
+            @"darkTint": @(darkTint),
+            @"sheetFrame": FQXDockRectArray(sb),
+        }, NO);
+    }
+    return YES;
+}
+
+static void FQXRefreshAllShareSheets(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllShareSheets(); });
+        return;
+    }
+    for (UIView *sheet in FQXTrackedShareSheets().allObjects) {
+        if (!sheet.superview) continue;
+        BOOL forceDark = [objc_getAssociatedObject(sheet, FQXShareForceDarkKey) boolValue];
+        FQXStyleShareSheet(sheet, sheet.superview, forceDark);
+    }
+}
+
+static NSSet<NSString *> *FQXShareChannelMarkers(void) {
+    static NSSet<NSString *> *markers;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        markers = [NSSet setWithArray:@[
+            @"微信", @"朋友圈", @"微信好友", @"抖音好友", @"发布到抖音",
+            @"复制链接", @"生成分享图", @"微博", @"QQ", @"QQ空间",
+            @"私信", @"分享给好友", @"分享到", @"保存图片", @"转发",
+        ]];
+    });
+    return markers;
+}
+
+static NSInteger FQXCountShareChannelMarkersInView(UIView *root,
+                                                   NSMutableSet<NSString *> *matched,
+                                                   NSInteger *visitedBudget,
+                                                   NSInteger depth) {
+    if (!root || root.hidden || root.alpha <= 0.01 || depth > 9 || *visitedBudget <= 0) return (NSInteger)matched.count;
+    (*visitedBudget)--;
+    NSString *text = nil;
+    if ([root isKindOfClass:UILabel.class]) {
+        text = ((UILabel *)root).text;
+    } else if ([root isKindOfClass:UIButton.class]) {
+        text = ((UIButton *)root).currentTitle;
+    }
+    if (text.length > 0 && text.length <= 16) {
+        NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if ([FQXShareChannelMarkers() containsObject:trimmed]) {
+            [matched addObject:trimmed];
+            if (matched.count >= 2) return (NSInteger)matched.count;
+        }
+    }
+    for (UIView *sub in root.subviews) {
+        FQXCountShareChannelMarkersInView(sub, matched, visitedBudget, depth + 1);
+        if (matched.count >= 2) return (NSInteger)matched.count;
+    }
+    return (NSInteger)matched.count;
+}
+
+static UIView *FQXFindShareSheetCardInRoot(UIView *root, UIWindow *window) {
+    if (!root || !window) return nil;
+    CGFloat winW = CGRectGetWidth(window.bounds);
+    CGFloat winH = CGRectGetHeight(window.bounds);
+    if (winW < 200.0 || winH < 300.0) return nil;
+
+    // Breadth-first search for the highest full-width bottom-anchored card holding >= 2 share channels.
+    NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:root];
+    NSInteger inspected = 0;
+    UIView *best = nil;
+    while (queue.count > 0 && inspected < 48) {
+        UIView *cur = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        if (!cur || cur.hidden || cur.alpha <= 0.01) continue;
+        if ([cur isKindOfClass:UICollectionView.class] || [cur isKindOfClass:UITableView.class]) continue;
+        inspected++;
+
+        CGRect inWin = [cur convertRect:cur.bounds toView:window];
+        CGFloat w = CGRectGetWidth(inWin);
+        CGFloat h = CGRectGetHeight(inWin);
+        BOOL isBottomCard = (w >= winW - 36.0) &&
+                            (h >= 120.0 && h <= winH * 0.78) &&
+                            (CGRectGetMaxY(inWin) >= winH - 48.0);
+        if (isBottomCard) {
+            NSMutableSet<NSString *> *hits = [NSMutableSet set];
+            NSInteger budget = 96;
+            if (FQXCountShareChannelMarkersInView(cur, hits, &budget, 0) >= 2) {
+                best = cur;
+                break;
+            }
+        }
+        for (UIView *sub in cur.subviews) {
+            if (!sub.hidden && sub.alpha > 0.01) [queue addObject:sub];
+        }
+    }
+    return best;
+}
+
+static void HookDynamicShareSheetLayout(UIView *view, SEL cmd) {
+    IMP orig = NULL;
+    if (gFQXDynamicShareOrigLayouts) {
+        for (Class c = object_getClass(view); c && c != UIView.class; c = class_getSuperclass(c)) {
+            NSValue *v = gFQXDynamicShareOrigLayouts[NSStringFromClass(c) ?: @""];
+            if (v) { orig = (IMP)v.pointerValue; break; }
+        }
+    }
+    if (orig) ((void (*)(id, SEL))orig)(view, cmd);
+    if (objc_getAssociatedObject(view, FQXShareMarkedSheetKey) && view.window) {
+        BOOL forceDark = [objc_getAssociatedObject(view, FQXShareForceDarkKey) boolValue];
+        FQXStyleShareSheet(view, view.superview, forceDark);
+    }
+}
+
+static void FQXEnsureShareSheetClassHooked(UIView *sheet) {
+    if (!sheet) return;
+    Class cls = object_getClass(sheet);
+    if (!cls || cls == UIView.class) return;
+    NSString *name = NSStringFromClass(cls);
+    if (!name.length || [name hasPrefix:@"UI"] || [name hasPrefix:@"_UI"] ||
+        [name isEqualToString:@"SSVideoSharePanelView"]) return;
+    static dispatch_once_t mapOnce;
+    dispatch_once(&mapOnce, ^{ gFQXDynamicShareOrigLayouts = [NSMutableDictionary dictionary]; });
+    if (gFQXDynamicShareOrigLayouts[name]) return;
+    IMP orig = NULL;
+    if (FQXInstallOwnedHook(cls, @selector(layoutSubviews), NO, "v16@0:8",
+                            (IMP)HookDynamicShareSheetLayout, &orig) && orig) {
+        gFQXDynamicShareOrigLayouts[name] = [NSValue valueWithPointer:(const void *)orig];
+    }
+}
+
+static void FQXInspectCandidateShareContainer(UIView *root) {
+    if (!root || !root.window || root.hidden || root.alpha <= 0.01) return;
+    NSString *clsName = NSStringFromClass(root.class) ?: @"";
+    if ([clsName hasPrefix:@"_UI"] || [clsName hasPrefix:@"FQX"] || [clsName hasPrefix:@"FanqieX"]) return;
+    if ([root isKindOfClass:NSClassFromString(@"SSVideoSharePanelView")]) {
+        FQXStyleShareSheet(root, root.superview, YES);
+        return;
+    }
+
+    NSMutableSet<NSString *> *hits = [NSMutableSet set];
+    NSInteger budget = 110;
+    if (FQXCountShareChannelMarkersInView(root, hits, &budget, 0) < 2) return;
+
+    UIView *card = FQXFindShareSheetCardInRoot(root, root.window);
+    if (!card) return;
+    FQXEnsureShareSheetClassHooked(card);
+    BOOL forceDark = (FQXFindVisibleReaderVCInWindow(root.window) == nil) &&
+                     ([clsName containsString:@"Video"] || [clsName containsString:@"Drama"]);
+    FQXStyleShareSheet(card, root, forceDark);
+}
+
+static NSMutableDictionary<NSString *, NSValue *> *gFQXShareViewOrigDidMoveWindow = nil;
+
+static void FQXScheduleCandidateShareInspection(UIView *candidate) {
+    if (!candidate) return;
+    NSString *clsName = NSStringFromClass(candidate.class) ?: @"";
+    if ([clsName hasPrefix:@"_UI"] || [clsName hasPrefix:@"FQX"] || [clsName hasPrefix:@"FanqieX"] ||
+        [candidate isKindOfClass:UIVisualEffectView.class]) {
+        return;
+    }
+    __weak UIView *weakView = candidate;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *v = weakView;
+        if (v && v.window) FQXInspectCandidateShareContainer(v);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIView *v = weakView;
+        if (v && v.window) FQXInspectCandidateShareContainer(v);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.28 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIView *v = weakView;
+        if (v && v.window && !objc_getAssociatedObject(v, FQXShareMarkedSheetKey)) {
+            FQXInspectCandidateShareContainer(v);
+        }
+    });
+}
+
+static void HookNamedShareViewDidMoveWindow(UIView *view, SEL cmd) {
+    IMP orig = NULL;
+    if (gFQXShareViewOrigDidMoveWindow) {
+        for (Class c = object_getClass(view); c && c != UIView.class; c = class_getSuperclass(c)) {
+            NSValue *v = gFQXShareViewOrigDidMoveWindow[NSStringFromClass(c) ?: @""];
+            if (v) { orig = (IMP)v.pointerValue; break; }
+        }
+    }
+    if (orig) ((void (*)(id, SEL))orig)(view, cmd);
+    if (view.window) FQXScheduleCandidateShareInspection(view);
+}
+
+static void FQXHookHostSharePanelSubclasses(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gFQXShareViewOrigDidMoveWindow = [NSMutableDictionary dictionary];
+        unsigned int count = 0;
+        Class *classes = objc_copyClassList(&count);
+        if (!classes) return;
+        for (unsigned int i = 0; i < count; ++i) {
+            Class c = classes[i];
+            const char *cname = class_getName(c);
+            if (!cname || !strstr(cname, "Share")) continue;
+            if (strncmp(cname, "UI", 2) == 0 || strncmp(cname, "_UI", 3) == 0 ||
+                strncmp(cname, "FQX", 3) == 0 || strncmp(cname, "FanqieX", 7) == 0 ||
+                strcmp(cname, "SSVideoSharePanelView") == 0) {
+                continue;
+            }
+            if (!(strstr(cname, "Panel") || strstr(cname, "Sheet") || strstr(cname, "Board") ||
+                  strstr(cname, "Pop") || strstr(cname, "Menu") || strstr(cname, "Dialog") ||
+                  strstr(cname, "Container"))) {
+                continue;
+            }
+            BOOL isViewSubclass = NO;
+            for (Class s = class_getSuperclass(c); s; s = class_getSuperclass(s)) {
+                if (s == UIView.class) { isViewSubclass = YES; break; }
+            }
+            if (!isViewSubclass) continue;
+            NSString *key = [NSString stringWithUTF8String:cname];
+            if (!key.length || gFQXShareViewOrigDidMoveWindow[key]) continue;
+            IMP orig = NULL;
+            if (FQXInstallOwnedHook(c, @selector(didMoveToWindow), NO, "v16@0:8",
+                                    (IMP)HookNamedShareViewDidMoveWindow, &orig) && orig) {
+                gFQXShareViewOrigDidMoveWindow[key] = [NSValue valueWithPointer:(const void *)orig];
+            }
+        }
+        free(classes);
+    });
+}
+
+static void (*OrigWindowAddSubviewForShare)(id, SEL, id);
+static void HookWindowAddSubviewForShare(UIWindow *window, SEL cmd, UIView *subview) {
+    if (OrigWindowAddSubviewForShare) OrigWindowAddSubviewForShare(window, cmd, subview);
+    if (!window || !subview) return;
+    NSString *winName = NSStringFromClass(window.class) ?: @"";
+    if ([winName containsString:@"Keyboard"] || [winName containsString:@"Effects"]) return;
+    FQXScheduleCandidateShareInspection(subview);
+}
+
+static void (*OrigVCPresentForShare)(id, SEL, id, BOOL, id);
+static void HookVCPresentForShare(UIViewController *self, SEL cmd, UIViewController *vc, BOOL animated, void (^completion)(void)) {
+    if (OrigVCPresentForShare) OrigVCPresentForShare(self, cmd, vc, animated, completion);
+    if (!vc || [vc isKindOfClass:UIAlertController.class] ||
+        [vc isKindOfClass:UIActivityViewController.class] ||
+        [vc isKindOfClass:UISearchController.class]) {
+        return;
+    }
+    NSString *vcName = NSStringFromClass(vc.class) ?: @"";
+    if ([vcName hasPrefix:@"FQX"] || [vcName hasPrefix:@"FanqieX"]) return;
+    __weak UIViewController *weakVC = vc;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIViewController *s = weakVC;
+        if (s && s.isViewLoaded && s.view.window) FQXInspectCandidateShareContainer(s.view);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIViewController *s = weakVC;
+        if (s && s.isViewLoaded && s.view.window) FQXInspectCandidateShareContainer(s.view);
+    });
+}
+
 static void (*OrigSharePanelLayout)(id, SEL);
 static void HookSharePanelLayout(UIView *panel, SEL cmd) {
     OrigSharePanelLayout(panel, cmd);
-    BOOL glass = FQXStyleGlassSheet(panel, NO, NO);
-    FQXAudioClearBackground(FQXObjGet(panel, "collectionView"), glass);
+    BOOL styled = FQXStyleShareSheet(panel, panel.superview, YES);
+    FQXAudioClearBackground(FQXObjGet(panel, "collectionView"), styled);
     UIView *controls = FQXObjGet(panel, "controlView");
-    FQXAudioClearBackground(controls, glass);
-    FQXAudioClearBackground(FQXObjGet(controls, "collectionView"), glass);
+    FQXAudioClearBackground(controls, styled);
+    FQXAudioClearBackground(FQXObjGet(controls, "collectionView"), styled);
 }
 
 static void (*OrigKMPShareLayout)(id, SEL);
@@ -14188,12 +15188,17 @@ static void HookKMPShareLayout(UIViewController *controller, SEL cmd) {
     UIView *root = controller.viewIfLoaded;
     if (!sheet || ![sheet isDescendantOfView:root]) return;
     // The wrapper can include a full-screen dismissal area. Use its actual
-    // content frame in that arrangement, so the glass starts at the sheet.
+    // content frame in that arrangement, so the material starts at the sheet.
     BOOL fillsWrapper = fabs(CGRectGetHeight(root.bounds) - CGRectGetHeight(sheet.bounds)) < 2.0;
     UIView *previous = fillsWrapper ? sheet : root;
-    if (objc_getAssociatedObject(previous, SheetGlassKey)) FQXRemoveGlassSheet(previous);
-    BOOL glass = FQXStyleGlassSheet(fillsWrapper ? root : sheet, NO, NO);
-    if (fillsWrapper) FQXAudioClearBackground(sheet, glass);
+    if (objc_getAssociatedObject(previous, SheetGlassKey) ||
+        objc_getAssociatedObject(previous, FQXShareGlassSurfaceKey) ||
+        objc_getAssociatedObject(previous, FQXSharePaperBackdropKey)) {
+        FQXRemoveShareSheetStyling(previous);
+    }
+    UIView *target = fillsWrapper ? root : sheet;
+    BOOL styled = FQXStyleShareSheet(target, root, FQXFindVisibleReaderVCInWindow(root.window) == nil);
+    if (fillsWrapper) FQXAudioClearBackground(sheet, styled);
 }
 
 static CGPoint FQXAudioStockCenter(UIView *view) {
@@ -17091,6 +18096,14 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("FQCParagraphCommentListViewController", "viewDidAppear:", "v20@0:8B16", OrigReaderCommentListAppeared, HookReaderCommentListAppeared);
         HOOK_INST("SSVideoSharePanelView", "layoutSubviews", "v16@0:8", OrigSharePanelLayout, HookSharePanelLayout);
         HOOK_INST("SSUGKmpSharePanelContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPShareLayout, HookKMPShareLayout);
+        FQXInstallOwnedHook(UIWindow.class, @selector(addSubview:), NO, "v24@0:8@16",
+                            (IMP)HookWindowAddSubviewForShare, (IMP *)&OrigWindowAddSubviewForShare);
+        if (!FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@?28",
+                                 (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare)) {
+            FQXInstallOwnedHook(UIViewController.class, @selector(presentViewController:animated:completion:), NO, "v36@0:8@16B24@28",
+                                (IMP)HookVCPresentForShare, (IMP *)&OrigVCPresentForShare);
+        }
+        FQXHookHostSharePanelSubclasses();
 
         // 1. Drama spacing immediate sync on navigation push/pop & foreground crossfade
         HOOK_INST("FQVShortVideoListViewController", "viewWillAppear:", "v20@0:8B16", OrigShortVideoListWillAppear, HookShortVideoListWillAppear);
