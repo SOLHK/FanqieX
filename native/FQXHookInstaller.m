@@ -6,7 +6,7 @@
 
 typedef struct {
     uintptr_t owner;
-    uintptr_t sel;
+    SEL sel;
     uint8_t classMethod;
 } FQXHookKey;
 
@@ -15,9 +15,10 @@ static FQXHookKey *FQXHookTable = NULL;
 static size_t FQXHookCap = 0;
 static size_t FQXHookCount = 0;
 
-static inline size_t FQXHookHash(uintptr_t owner, uintptr_t sel, uint8_t clsMethod) {
+static inline size_t FQXHookHash(uintptr_t owner, SEL sel, uint8_t clsMethod) {
+    uintptr_t selAddr = (uintptr_t)sel_getName(sel);
     uint64_t h = ((uint64_t)owner * 11400714819323198485ULL) ^
-                 ((uint64_t)sel * 14029467366897019727ULL) ^
+                 ((uint64_t)selAddr * 14029467366897019727ULL) ^
                  ((uint64_t)clsMethod * 0x9e3779b97f4a7c15ULL);
     h ^= h >> 33;
     h *= 0xff51afd7ed558ccdULL;
@@ -25,19 +26,19 @@ static inline size_t FQXHookHash(uintptr_t owner, uintptr_t sel, uint8_t clsMeth
     return (size_t)h;
 }
 
-static BOOL FQXHookTableContains(uintptr_t owner, uintptr_t sel, uint8_t clsMethod) {
+static BOOL FQXHookTableContains(uintptr_t owner, SEL sel, uint8_t clsMethod) {
     if (!FQXHookTable || FQXHookCap == 0) return NO;
     size_t mask = FQXHookCap - 1;
     size_t idx = FQXHookHash(owner, sel, clsMethod) & mask;
     for (;;) {
         FQXHookKey entry = FQXHookTable[idx];
         if (entry.owner == 0) return NO;
-        if (entry.owner == owner && entry.sel == sel && entry.classMethod == clsMethod) return YES;
+        if (entry.owner == owner && sel_isEqual(entry.sel, sel) && entry.classMethod == clsMethod) return YES;
         idx = (idx + 1) & mask;
     }
 }
 
-static void FQXHookTableInsert(uintptr_t owner, uintptr_t sel, uint8_t clsMethod) {
+static void FQXHookTableInsert(uintptr_t owner, SEL sel, uint8_t clsMethod) {
     if (!FQXHookTable || (FQXHookCount + 1) * 10 >= FQXHookCap * 7) {
         size_t newCap = FQXHookCap ? (FQXHookCap * 2) : 1024;
         FQXHookKey *newTable = (FQXHookKey *)calloc(newCap, sizeof(FQXHookKey));
@@ -58,7 +59,7 @@ static void FQXHookTableInsert(uintptr_t owner, uintptr_t sel, uint8_t clsMethod
     size_t idx = FQXHookHash(owner, sel, clsMethod) & mask;
     while (FQXHookTable[idx].owner != 0) {
         if (FQXHookTable[idx].owner == owner &&
-            FQXHookTable[idx].sel == sel &&
+            sel_isEqual(FQXHookTable[idx].sel, sel) &&
             FQXHookTable[idx].classMethod == clsMethod) return;
         idx = (idx + 1) & mask;
     }
@@ -74,11 +75,10 @@ BOOL FQXInstallOwnedHook(Class target, SEL selector, BOOL classMethod,
     Class owner = classMethod ? object_getClass(target) : target;
     if (!owner) return NO;
     uintptr_t ownerKey = (uintptr_t)(__bridge void *)owner;
-    uintptr_t selKey = (uintptr_t)selector;
     uint8_t clsFlag = classMethod ? 1 : 0;
 
     pthread_mutex_lock(&FQXHookLock);
-    if (FQXHookTableContains(ownerKey, selKey, clsFlag)) {
+    if (FQXHookTableContains(ownerKey, selector, clsFlag)) {
         pthread_mutex_unlock(&FQXHookLock);
         return NO;
     }
@@ -116,7 +116,7 @@ BOOL FQXInstallOwnedHook(Class target, SEL selector, BOOL classMethod,
     }
     if (original) *original = previous;
     method_setImplementation(own, replacement);
-    FQXHookTableInsert(ownerKey, selKey, clsFlag);
+    FQXHookTableInsert(ownerKey, selector, clsFlag);
     pthread_mutex_unlock(&FQXHookLock);
     return YES;
 }
