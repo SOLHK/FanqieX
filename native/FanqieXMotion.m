@@ -9898,22 +9898,69 @@ static IMP FQXLookupMineOrigItemIMP(UICollectionViewLayout *layout) {
     return NULL;
 }
 
+static CGRect (*OrigMineFoldItemFrame)(id, SEL, NSIndexPath *);
+static CGRect HookMineFoldItemFrame(UICollectionViewLayout *layout, SEL cmd, NSIndexPath *indexPath) {
+    CGRect native = OrigMineFoldItemFrame(layout, cmd, indexPath);
+    if (indexPath.section != 0 || indexPath.item >= 4 || !FQXGlassEnabled()) return native;
+
+    UICollectionView *collection = layout.collectionView;
+    UIView *fold = FQXMineShortcutFold(collection);
+    UIView *row = fold ? FQXMineOuterRowForView(fold) : nil;
+    if (!row) return native;
+    UIView *host = FQXObjGet(row, "contentView");
+    if (host.superview != row) host = row;
+    // The card glass is inserted below the native shortcut content.
+    UIVisualEffectView *glass = (UIVisualEffectView *)host.subviews.firstObject;
+    if (![glass isKindOfClass:UIVisualEffectView.class] || glass.hidden ||
+        ![glass.effect isKindOfClass:objc_lookUpClass("UIGlassEffect")]) return native;
+
+    // Convert to the zero-offset content coordinates of the native first page.
+    CGPoint offset = collection.bounds.origin;
+    CGRect card = CGRectOffset([glass convertRect:glass.bounds toView:collection], -offset.x, -offset.y);
+    NSInteger columns = MIN(4, [collection numberOfItemsInSection:0]);
+    if (indexPath.item >= columns) return native;
+    CGFloat slotWidth = CGRectGetWidth(card) / columns;
+    CGFloat clearance = MAX(27.0, CGRectGetHeight(native) * 0.5);
+    if (slotWidth < CGRectGetWidth(native) || CGRectGetHeight(card) < 2.0 * clearance) return native;
+
+    CGFloat centerX = CGRectGetMinX(card) + (indexPath.item + 0.5) * slotWidth;
+    CGFloat centerY = CGRectGetMidY(card);
+    UIView *indicator = FQXMinePageControl(fold, row);
+    if (indicator && !indicator.hidden && indicator.alpha > 0.05) {
+        CGRect dots = [indicator convertRect:indicator.bounds toView:collection];
+        CGFloat lastCenterY = CGRectGetMinY(dots) - offset.y - clearance - 2.0;
+        if (lastCenterY < CGRectGetMinY(card) + clearance) return native;
+        centerY = MIN(centerY, lastCenterY);
+    }
+    native.origin = CGPointMake(centerX - CGRectGetWidth(native) * 0.5,
+                                centerY - CGRectGetHeight(native) * 0.5);
+    return native;
+}
+
 static void FQXSyncMineFlow(UICollectionView *collection) {
     if (!FQXIsInnerMineShortcutScroll(collection)) return;
     FQXMineShortcutFlowState *state = objc_getAssociatedObject(collection, FQXMineFlowStateKey);
     UICollectionViewLayout *layout = collection.collectionViewLayout;
     UIView *fold = FQXMineShortcutFold(collection);
-    if (fold && [layout isKindOfClass:objc_lookUpClass("SSFuncLayout")]) {
+    Class foldLayoutClass = objc_lookUpClass("SSFuncLayout");
+    if (fold && [layout isKindOfClass:foldLayoutClass]) {
         // Its content-size pass sets the page rectangles used to open and size the second page.
         FQXRestoreMineFlow(collection);
         FQXSafeSetUIntProp(fold, "colCountInFirstPage", "setColCountInFirstPage:", 4);
+        static dispatch_once_t nativeFrameHookOnce;
+        __block BOOL needsLayoutInvalidation = NO;
+        dispatch_once(&nativeFrameHookOnce, ^{
+            needsLayoutInvalidation = FQXInstallOwnedHook(foldLayoutClass, sel_registerName("frameForItemAtIndexPath:"), NO,
+                "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", (IMP)HookMineFoldItemFrame, (IMP *)&OrigMineFoldItemFrame);
+        });
         SEL gapSelector = sel_registerName("externShowGap");
         Method gapMethod = class_getInstanceMethod(object_getClass(layout), gapSelector);
         if (gapMethod && strcmp(method_getTypeEncoding(gapMethod), "d16@0:8") == 0 &&
             ((double (*)(id, SEL))objc_msgSend)(layout, gapSelector) != 0.0) {
             FQXSafeSetDoubleProp(layout, NULL, "setExternShowGap:", 0.0);
-            [layout invalidateLayout];
+            needsLayoutInvalidation = YES;
         }
+        if (needsLayoutInvalidation) [layout invalidateLayout];
         return;
     }
     UIView *card = FQXMineShortcutCardForView(collection);
@@ -18783,6 +18830,46 @@ static void FQXSetPlaybackOptionsNativeBackdrop(UIVisualEffectView *backdrop, BO
     }
 }
 
+static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gaussian, BOOL reduce,
+                                           BOOL dark, CGFloat radius, NSInteger extraBlur) {
+    FQXBackdropBlurView *blur;
+    if (gaussian) {
+        blur = (FQXBackdropBlurView *)surface;
+    } else {
+        FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
+        blur = glass->_supplementalBlur;
+        if (reduce) {
+            [blur invalidateBlurAnimator];
+            [blur removeFromSuperview];
+            glass->_supplementalBlur = nil;
+            return;
+        }
+        glass->_cornerKind = FQXCommentCornerTopSheet;
+        glass->_cornerRadius = radius;
+        if (!blur) {
+            blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+            blur->_commentPureMode = YES;
+            blur.userInteractionEnabled = NO;
+            blur.accessibilityElementsHidden = YES;
+            blur.opaque = NO;
+            blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            glass->_supplementalBlur = blur;
+        }
+        if (blur.superview != surface.contentView) [surface.contentView insertSubview:blur atIndex:0];
+        if (!CGRectEqualToRect(blur.frame, surface.contentView.bounds)) blur.frame = surface.contentView.bounds;
+        FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
+    }
+
+    // Keep the video colors behind the glass, but diffuse the player controls before drawing native text.
+    NSInteger strength = 60 + (extraBlur * 40 + 50) / 100;
+    CGFloat tintAlpha = dark ? 0.68 : 0.70;
+    [blur configurePercent:strength dark:dark baseTint:tintAlpha maxTint:tintAlpha chromeBorder:NO];
+    // The UIKit blur fallback has no hardware tint overlay.
+    UIColor *fill = blur->_usingHardwareFilter ? UIColor.clearColor
+        : [UIColor colorWithWhite:(dark ? 0.10 : 0.97) alpha:tintAlpha];
+    if (![blur.contentView.backgroundColor isEqual:fill]) blur.contentView.backgroundColor = fill;
+}
+
 static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     UIView *root = controller.viewIfLoaded;
     if (!root || CGRectIsEmpty(root.bounds)) return;
@@ -18807,7 +18894,6 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     }
 
     if (!active) {
-        FQXClearDockBackdropBlur(surface);
         FQXReleaseCommentSurface(surface);
         objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else {
@@ -18825,7 +18911,6 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         CGFloat radius = FQXReadHostSheetCornerRadius(root, nil);
 
         if (surface && [surface isKindOfClass:FQXBackdropBlurView.class] != gaussian) {
-            FQXClearDockBackdropBlur(surface);
             FQXReleaseCommentSurface(surface);
             surface = nil;
         }
@@ -18835,10 +18920,13 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 blur->_commentPureMode = YES;
                 surface = blur;
             } else {
-                surface = [[UIVisualEffectView alloc] initWithEffect:nil];
+                FQXCommentGlassSurfaceView *glass = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
+                glass->_isSheetBackdrop = YES;
+                surface = glass;
             }
             surface.userInteractionEnabled = NO;
             surface.accessibilityElementsHidden = YES;
+            surface.opaque = NO;
             surface.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
             objc_setAssociatedObject(surface, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -18846,11 +18934,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         if (!CGRectEqualToRect(surface.frame, root.bounds)) surface.frame = root.bounds;
         if (root.subviews.firstObject != surface) [root insertSubview:surface atIndex:0];
         FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
-        if (gaussian) {
-            NSInteger strength = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
-            [(FQXBackdropBlurView *)surface configurePercent:(strength ?: 55) dark:dark
-                                                   baseTint:0.16 maxTint:0.32 chromeBorder:NO];
-        } else {
+        if (!gaussian) {
             NSInteger stamp = ((followDock ? 10 + dockMode : material) << 3) | (dark << 2) | (darkTint << 1) | reduce;
             NSNumber *previous = objc_getAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey);
             if (!previous || previous.integerValue != stamp) {
@@ -18865,9 +18949,9 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 surface.effect = effect;
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
-            FQXApplyBackdropBlur(surface, surface.contentView, nil, surface.contentView.bounds, radius, dark,
-                                 DramaPlaybackOptionsBlurPrefKey);
         }
+        NSInteger extraBlur = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
+        FQXSyncPlaybackOptionsBackdrop(surface, gaussian, reduce, dark, radius, extraBlur);
     }
 
     FQXSetPlaybackOptionsBackground(root, active, 0.0);

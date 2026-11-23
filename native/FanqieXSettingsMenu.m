@@ -594,7 +594,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     playbackOptionsMaterial.popoverValues = @[@0, @(-1), @1, @4, @2];
     playbackOptionsMaterial.height = 52;
     [menu.catalog addObject:playbackOptionsMaterial];
-    AddBlurRow(menu, @"短剧/播放设置", @"播放选项面板模糊程度", DramaPlaybackOptionsBlurKey);
+    AddBlurRow(menu, @"短剧/播放设置", @"播放选项面板额外模糊", DramaPlaybackOptionsBlurKey);
     AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
