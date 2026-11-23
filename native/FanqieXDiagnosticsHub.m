@@ -10,16 +10,18 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.6beta3";
-static const NSUInteger kFQXHubMaxDiskBytesPerFile = 512 * 1024; // 512 KB x 2 rotating files max
-static const NSUInteger kFQXHubRingNormalLimit = 1500;
-static const NSUInteger kFQXHubRingEnhancedLimit = 3600;
-static const NSUInteger kFQXHubRecentFailuresLimit = 28;
+static NSString *const kFQXHubPluginVersion = @"1.9.6beta4";
+static const NSUInteger kFQXHubMaxDiskBytesPerFile = 256 * 1024; // 256 KB x 2 rotating files max
+static const NSUInteger kFQXHubWriteFlushBytes = 8 * 1024;       // Batch JSONL disk writes in 8 KB chunks
+static const NSUInteger kFQXHubRingNormalLimit = 48;             // Disk JSONL stores history; keep tiny RAM tail
+static const NSUInteger kFQXHubRingEnhancedLimit = 160;
+static const NSUInteger kFQXHubRecentFailuresLimit = 20;
 
 static _Atomic BOOL gFQXDiagEnabled = YES;
 static _Atomic BOOL gFQXDiagEnhanced = NO;
 static _Atomic uint64_t gFQXHubSequence = 0;
 static _Atomic uint64_t gFQXHubDroppedCount = 0;
+static _Atomic uint64_t gFQXNetReqSeq = 0;
 
 static uint8_t gFQXSessionSalt[16];
 static dispatch_once_t gFQXSaltOnce;
@@ -278,9 +280,56 @@ static NSURL *FQXHubPreviousFileURL(void) {
     return [FQXHubDirectoryURL() URLByAppendingPathComponent:@"hub-prev.jsonl" isDirectory:NO];
 }
 
+static NSMutableData *gFQXWriteBuffer = nil;
+static unsigned long long gFQXActiveFileBytes = 0;
+static BOOL gFQXActiveBytesInitialized = NO;
+static BOOL gFQXFlushTimerArmed = NO;
+
+static void FQXFlushWriteBufferOnHubQueue(void) {
+    if (!gFQXWriteBuffer.length) return;
+    NSURL *dir = FQXHubDirectoryURL();
+    NSURL *active = FQXHubActiveFileURL();
+    NSURL *prev = FQXHubPreviousFileURL();
+    if (!dir || !active || !prev) {
+        [gFQXWriteBuffer setLength:0];
+        return;
+    }
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (!gFQXActiveBytesInitialized) {
+        [fm createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+        NSDictionary<NSFileAttributeKey, id> *attrs = [fm attributesOfItemAtPath:active.path error:NULL];
+        gFQXActiveFileBytes = attrs ? [attrs fileSize] : 0;
+        gFQXActiveBytesInitialized = YES;
+    }
+    if (gFQXActiveFileBytes + gFQXWriteBuffer.length > kFQXHubMaxDiskBytesPerFile) {
+        [fm removeItemAtURL:prev error:NULL];
+        [fm moveItemAtURL:active toURL:prev error:NULL];
+        gFQXActiveFileBytes = 0;
+    }
+    if (gFQXActiveFileBytes == 0 || ![fm fileExistsAtPath:active.path]) {
+        [fm createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+        if ([gFQXWriteBuffer writeToURL:active options:NSDataWritingAtomic error:NULL]) {
+            gFQXActiveFileBytes = gFQXWriteBuffer.length;
+        }
+    } else {
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingToURL:active error:NULL];
+        if (fh) {
+            [fh seekToEndReturningOffset:NULL error:NULL];
+            if ([fh writeData:gFQXWriteBuffer error:NULL]) {
+                gFQXActiveFileBytes += gFQXWriteBuffer.length;
+            }
+            [fh closeAndReturnError:NULL];
+        }
+    }
+    [gFQXWriteBuffer setLength:0];
+}
+
 void FQXDiagnosticsHubPurgeFiles(void) {
     dispatch_async(FQXHubQueue(), ^{
         [gFQXHubRing removeAllObjects];
+        [gFQXWriteBuffer setLength:0];
+        gFQXActiveFileBytes = 0;
+        gFQXActiveBytesInitialized = YES;
         NSFileManager *fm = NSFileManager.defaultManager;
         NSURL *active = FQXHubActiveFileURL();
         NSURL *prev = FQXHubPreviousFileURL();
@@ -314,10 +363,10 @@ static BOOL FQXAllowByRateLimiter(FQXDiagCategory category, BOOL highPriority) {
 }
 
 static void FQXAppendJSONLineOnHubQueue(NSDictionary<NSString *, id> *entry) {
-    if (!gFQXHubRing) {
-        gFQXHubRing = [NSMutableArray arrayWithCapacity:512];
-    }
     NSUInteger cap = FQXDiagnosticsHubIsEnhanced() ? kFQXHubRingEnhancedLimit : kFQXHubRingNormalLimit;
+    if (!gFQXHubRing) {
+        gFQXHubRing = [NSMutableArray arrayWithCapacity:cap];
+    }
     if (gFQXHubRing.count >= cap) {
         NSUInteger dropCount = gFQXHubRing.count - cap + 1;
         [gFQXHubRing removeObjectsInRange:NSMakeRange(0, dropCount)];
@@ -329,35 +378,21 @@ static void FQXAppendJSONLineOnHubQueue(NSDictionary<NSString *, id> *entry) {
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:entry options:0 error:&jsonErr];
     if (!jsonData.length || jsonErr) return;
 
-    NSURL *dir = FQXHubDirectoryURL();
-    NSURL *active = FQXHubActiveFileURL();
-    NSURL *prev = FQXHubPreviousFileURL();
-    if (!dir || !active || !prev) return;
-
-    NSFileManager *fm = NSFileManager.defaultManager;
-    [fm createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:NULL];
-
-    NSDictionary<NSFileAttributeKey, id> *attrs = [fm attributesOfItemAtPath:active.path error:NULL];
-    unsigned long long curSize = [attrs fileSize];
-    if (curSize + jsonData.length + 2 > kFQXHubMaxDiskBytesPerFile) {
-        [fm removeItemAtURL:prev error:NULL];
-        [fm moveItemAtURL:active toURL:prev error:NULL];
+    if (!gFQXWriteBuffer) {
+        gFQXWriteBuffer = [NSMutableData dataWithCapacity:kFQXHubWriteFlushBytes + 1024];
     }
-
-    NSMutableData *line = [NSMutableData dataWithCapacity:jsonData.length + 1];
-    [line appendData:jsonData];
+    [gFQXWriteBuffer appendData:jsonData];
     const char nl = '\n';
-    [line appendBytes:&nl length:1];
+    [gFQXWriteBuffer appendBytes:&nl length:1];
 
-    if (![fm fileExistsAtPath:active.path]) {
-        [line writeToURL:active options:NSDataWritingAtomic error:NULL];
-    } else {
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingToURL:active error:NULL];
-        if (fh) {
-            [fh seekToEndReturningOffset:NULL error:NULL];
-            [fh writeData:line error:NULL];
-            [fh closeAndReturnError:NULL];
-        }
+    if (gFQXWriteBuffer.length >= kFQXHubWriteFlushBytes) {
+        FQXFlushWriteBufferOnHubQueue();
+    } else if (!gFQXFlushTimerArmed) {
+        gFQXFlushTimerArmed = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1500 * NSEC_PER_MSEC)), FQXHubQueue(), ^{
+            gFQXFlushTimerArmed = NO;
+            FQXFlushWriteBufferOnHubQueue();
+        });
     }
 }
 
@@ -457,12 +492,31 @@ static void FQXSanitizeURLInfo(id urlCandidate,
     if (outQueryKeys) *outQueryKeys = qKeys;
 }
 
+static NSString *FQXNextNetReqId(void) {
+    uint64_t n = atomic_fetch_add_explicit(&gFQXNetReqSeq, 1, memory_order_relaxed) + 1;
+    return [NSString stringWithFormat:@"r%llx", (unsigned long long)(n & 0xffffffULL)];
+}
+
+static BOOL FQXIsStaticAssetRequest(NSString *domain, NSString *path) {
+    NSString *lowerDom = domain.lowercaseString ?: @"";
+    if ([lowerDom hasSuffix:@"fqnovelpic.com"] || [lowerDom hasSuffix:@"byteimg.com"] ||
+        [lowerDom hasSuffix:@"ecombdimg.com"] || [lowerDom hasSuffix:@"bdstatic.com"]) {
+        return YES;
+    }
+    NSString *lowerPath = path.lowercaseString ?: @"";
+    return [lowerPath hasSuffix:@".heic"] || [lowerPath hasSuffix:@".webp"] ||
+           [lowerPath hasSuffix:@".png"] || [lowerPath hasSuffix:@".jpg"] ||
+           [lowerPath hasSuffix:@".jpeg"] || [lowerPath hasSuffix:@".gif"] ||
+           [lowerPath hasSuffix:@".avif"] || [lowerPath hasSuffix:@".svg"];
+}
+
 static BOOL FQXDomainIsSnssdk(NSString *domain) {
     if (!domain.length) return NO;
     return [domain isEqualToString:@"is.snssdk.com"] || [domain hasSuffix:@".snssdk.com"];
 }
 
 static BOOL FQXPathLooksCritical(NSString *domain, NSString *path) {
+    if (FQXIsStaticAssetRequest(domain, path)) return NO;
     if (FQXDomainIsSnssdk(domain)) return YES;
     NSString *lowerDom = domain.lowercaseString ?: @"";
     NSString *lowerPath = path.lowercaseString ?: @"";
@@ -536,6 +590,9 @@ static void FQXRecordRecentFailureSummary(NSString *domain,
                                           NSInteger statusCode,
                                           NSError *error,
                                           NSString *interceptSource) {
+    if ([stage isEqualToString:@"cancelled"] && FQXIsStaticAssetRequest(domain, path)) {
+        return;
+    }
     BOOL isSnssdk = [domain isEqualToString:@"is.snssdk.com"];
     os_unfair_lock_lock(&gFQXRecentFailLock);
     if (isSnssdk) {
@@ -579,9 +636,10 @@ static NSArray<NSDictionary<NSString *, id> *> *FQXRecentFailuresWithinSeconds(N
 
 #pragma mark - Collector 1: BDRpcAsyncOperation + TTNet + NSURLSession
 
-static const void *kFQXRpcTrackKey = &kFQXRpcTrackKey;
-static const void *kFQXTaskTrackKey = &kFQXTaskTrackKey;
-
+static const char FQXK_kFQXRpcTrackKey = 0;
+#define kFQXRpcTrackKey ((const void *)&FQXK_kFQXRpcTrackKey)
+static const char FQXK_kFQXTaskTrackKey = 0;
+#define kFQXTaskTrackKey ((const void *)&FQXK_kFQXTaskTrackKey)
 static void FQXExtractBDRpcRequestMetadata(id req,
                                            NSString **outMethod,
                                            NSString **outDomain,
@@ -640,8 +698,8 @@ static id FQXHookBDRpcInit(id self, SEL cmd, id request, id completion) {
     NSArray<NSString *> *queryKeys = nil;
     FQXExtractBDRpcRequestMetadata(request, &method, &domain, &path, &queryKeys);
 
-    NSMutableDictionary<NSString *, id> *ctx = [NSMutableDictionary dictionaryWithCapacity:10];
-    ctx[@"requestId"] = NSUUID.UUID.UUIDString ?: @"req";
+    NSMutableDictionary<NSString *, id> *ctx = [NSMutableDictionary dictionaryWithCapacity:8];
+    ctx[@"requestId"] = FQXNextNetReqId();
     ctx[@"domain"] = domain ?: @"rpc.fanqie";
     ctx[@"path"] = path ?: @"/";
     ctx[@"queryKeys"] = queryKeys ?: @[];
@@ -902,7 +960,7 @@ static void FQXObserveGenericHttpTaskStart(id task, NSString *transport) {
     id methodCand = FQXSafeObjMsg0(req, "HTTPMethod") ?: FQXSafeObjMsg0(req, "httpMethod");
     NSString *httpMethod = ([methodCand isKindOfClass:NSString.class] && [(NSString *)methodCand length])
         ? [(NSString *)methodCand uppercaseString] : @"GET";
-    NSString *reqId = NSUUID.UUID.UUIDString ?: @"http";
+    NSString *reqId = FQXNextNetReqId();
 
     FQXWatchedNetworkTask *watch = [[FQXWatchedNetworkTask alloc] init];
     watch.task = task;
@@ -987,7 +1045,7 @@ static id FQXHookURLSessionDataTaskWithRequest(id self,
         return gOrigURLSessionDataReq ? gOrigURLSessionDataReq(self, cmd, request, completionHandler) : nil;
     }
 
-    NSString *reqId = NSUUID.UUID.UUIDString ?: @"urlsession";
+    NSString *reqId = FQXNextNetReqId();
     NSString *httpMethod = request.HTTPMethod.length ? request.HTTPMethod.uppercaseString : @"GET";
     CFTimeInterval startMono = CACurrentMediaTime();
 
@@ -1167,7 +1225,8 @@ BOOL FQXDiagInstallOwnedHook(Class target,
 
 #pragma mark - Collector 3 & 4: View Lifecycle & TTS Paragraph Positioning (2.3, 2.4 & Part IV)
 
-static const void *kFQXEntranceViewGenKey = &kFQXEntranceViewGenKey;
+static const char FQXK_kFQXEntranceViewGenKey = 0;
+#define kFQXEntranceViewGenKey ((const void *)&FQXK_kFQXEntranceViewGenKey)
 static _Atomic uint64_t gFQXParaViewCreatedTotal = 0;
 static _Atomic uint64_t gFQXParaViewHiddenByHostCount = 0;
 static _Atomic uint64_t gFQXParaViewRemovedCount = 0;
@@ -1559,10 +1618,12 @@ static void InstallTTSAndViewLifecycleHooks(void) {
 #pragma mark - Collector 5: Security Verification & WKWebView Diagnostics + Blank Recovery (Part III)
 
 static _Atomic int gFQXActiveSecurityVerifyViews = 0;
-static const void *kFQXVerifyWebViewObservedKey = &kFQXVerifyWebViewObservedKey;
-static const void *kFQXVerifyWebViewReloadedKey = &kFQXVerifyWebViewReloadedKey;
-static const void *kFQXVerifyLastURLKey = &kFQXVerifyLastURLKey;
-
+static const char FQXK_kFQXVerifyWebViewObservedKey = 0;
+#define kFQXVerifyWebViewObservedKey ((const void *)&FQXK_kFQXVerifyWebViewObservedKey)
+static const char FQXK_kFQXVerifyWebViewReloadedKey = 0;
+#define kFQXVerifyWebViewReloadedKey ((const void *)&FQXK_kFQXVerifyWebViewReloadedKey)
+static const char FQXK_kFQXVerifyLastURLKey = 0;
+#define kFQXVerifyLastURLKey ((const void *)&FQXK_kFQXVerifyLastURLKey)
 static BOOL FQXClassNameIsSecurityVerification(NSString *clsName) {
     if (!clsName.length) return NO;
     return [clsName hasPrefix:@"BDTuring"] ||
@@ -1806,6 +1867,31 @@ void FQXDiagnosticsHubInstall(void) {
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXRefreshDiagPrefsFromDefaults();
         }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                        object:nil
+                                                         queue:nil
+                                                    usingBlock:^(__unused NSNotification *note) {
+            dispatch_async(FQXHubQueue(), ^{
+                FQXFlushWriteBufferOnHubQueue();
+                [gFQXHubRing removeAllObjects];
+            });
+        }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
+                                                        object:nil
+                                                         queue:nil
+                                                    usingBlock:^(__unused NSNotification *note) {
+            os_unfair_lock_lock(&gFQXHookCountLock);
+            [gFQXHookCallCounts removeAllObjects];
+            os_unfair_lock_unlock(&gFQXHookCountLock);
+            os_unfair_lock_lock(&gFQXRecentFailLock);
+            [gFQXRecentNetFailures removeAllObjects];
+            os_unfair_lock_unlock(&gFQXRecentFailLock);
+            dispatch_async(FQXHubQueue(), ^{
+                FQXFlushWriteBufferOnHubQueue();
+                [gFQXHubRing removeAllObjects];
+                [gFQXWatchedTasks removeAllObjects];
+            });
+        }];
 
         // Keep only lightweight network diagnostic hooks synchronous in dyld init.
         // Defer TTS method-list scans, WKWebView/BDTuring hooks, and host Account SDK
@@ -1894,6 +1980,7 @@ void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
     NSString *desiredCatKey = FQXDiagCategoryKey((FQXDiagCategory)clampedFilter);
 
     dispatch_async(FQXHubQueue(), ^{
+        FQXFlushWriteBufferOnHubQueue();
         NSError *readErr = nil;
         NSData *coreData = [NSData dataWithContentsOfURL:coreExportURL options:0 error:&readErr];
         if (!coreData.length) {

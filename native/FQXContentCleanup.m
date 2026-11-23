@@ -212,8 +212,8 @@ static _Thread_local NSUInteger ForegroundSplashDepth;
 static void(*OriginalForegroundEnter)(id,SEL);
 static void ForegroundEnter(id o,SEL cmd){
  ++ForegroundSplashDepth;
- @try { OriginalForegroundEnter(o,cmd); }
- @finally { --ForegroundSplashDepth; }
+ if(OriginalForegroundEnter)OriginalForegroundEnter(o,cmd);
+ if(ForegroundSplashDepth>0)--ForegroundSplashDepth;
 }
 static void(*OriginalSplashBanner)(id,SEL);
 static void SplashBanner(id o,SEL cmd){
