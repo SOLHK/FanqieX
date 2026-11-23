@@ -171,7 +171,10 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
         if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 3;
         if ([key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
-            [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"]) maximum = 4;
+            [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"]) {
+            maximum = 4;
+            if (number == 3) return @0;
+        }
         if ([key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) maximum = 6;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
             [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||

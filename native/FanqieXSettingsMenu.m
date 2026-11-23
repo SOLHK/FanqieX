@@ -255,6 +255,7 @@ static NSInteger CurrentSavedCommentMaterialStyle(void) {
     id stored = [ud objectForKey:CommentMaterialStyleKey];
     if (!stored) return 0;
     NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
+    if (val == 3) return 0;
     return (val >= 0 && val <= 4) ? val : 0;
 }
 
@@ -262,6 +263,7 @@ static NSInteger CurrentSavedShareMaterialStyle(void) {
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:ShareMaterialStyleKey];
     if (!stored) return 1;
     NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 1;
+    if (val == 3) return 0;
     return (val >= 0 && val <= 4) ? val : 1;
 }
 
@@ -451,10 +453,10 @@ static void AddShareStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hidde
     shareRow.title = @"分享页面材质";
     shareRow.path = route;
     shareRow.hiddenFromSearch = hiddenFromSearch;
-    shareRow.keywords = @"分享页面材质 分享页面 分享 分享弹窗 短剧分享 小说分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 毛玻璃 磨砂 原书底色 原书 原版默认 材质 玻璃 透明";
+    shareRow.keywords = @"分享页面材质 分享页面 分享 分享弹窗 短剧分享 小说分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 毛玻璃 磨砂 原版默认 材质 玻璃 透明";
     shareRow.popoverKey = ShareMaterialStyleKey;
-    shareRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"模糊玻璃", @"高斯模糊", @"原书底色"];
-    shareRow.popoverValues = @[@0, @1, @4, @2, @3];
+    shareRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"模糊玻璃", @"高斯模糊"];
+    shareRow.popoverValues = @[@0, @1, @4, @2];
     shareRow.popoverKind = 10;
     shareRow.height = 52;
     [menu.catalog addObject:shareRow];
@@ -494,10 +496,10 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     materialRow.title = @"评论区材质";
     materialRow.path = route;
     materialRow.hiddenFromSearch = hiddenFromSearch;
-    materialRow.keywords = @"评论区材质 评论区清透玻璃 评论区模糊玻璃 评论区液态玻璃 评论区高斯模糊 评论区原书底色 评论区 原版默认 评价 短剧评论 看书评论 小说评论 段评 清透玻璃 模糊玻璃 Clear Regular 液态玻璃 高斯模糊 毛玻璃 磨砂 iOS18 原书底色 原生 不透明 默认背景 材质 透明 玻璃";
+    materialRow.keywords = @"评论区材质 评论区清透玻璃 评论区模糊玻璃 评论区液态玻璃 评论区高斯模糊 评论区 原版默认 评价 短剧评论 看书评论 小说评论 段评 清透玻璃 模糊玻璃 Clear Regular 液态玻璃 高斯模糊 毛玻璃 磨砂 iOS18 原生 不透明 默认背景 材质 透明 玻璃";
     materialRow.popoverKey = CommentMaterialStyleKey;
-    materialRow.popoverOptions = @[@"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊", @"原书底色"];
-    materialRow.popoverValues = @[@0, @1, @4, @2, @3];
+    materialRow.popoverOptions = @[@"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊"];
+    materialRow.popoverValues = @[@0, @1, @4, @2];
     materialRow.popoverKind = 4;
     materialRow.height = 52;
     [menu.catalog addObject:materialRow];
@@ -653,7 +655,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.DramaShowLike.1":@"短剧 右侧 点赞 爱心 红心 互动按钮 隐藏",
             @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
             @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
-            @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原书 玻璃 外观",
+            @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原版默认 玻璃 外观",
             @"FanqieX.AudioDynamicIsland.1":@"听书 灵动岛 听书灵动岛 朗读灵动岛 退出听书 上一章 下一章 暂停 播放 后台 胶囊",
             @"FanqieX.DramaDynamicIsland.1":@"短剧 灵动岛 短剧灵动岛 漫剧灵动岛 后台听剧 退出短剧 主页 桌面 上一集 下一集 暂停 播放 胶囊",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",

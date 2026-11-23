@@ -97,7 +97,6 @@ typedef NS_ENUM(NSInteger, FQXCommentMaterialStyle) {
     FQXCommentMaterialNative = 0,         // Original Fanqie comment background
     FQXCommentMaterialClearGlass = 1,     // iOS 26+ UIGlassEffectStyleClear (Clear)
     FQXCommentMaterialGaussianBlur = 2,   // Independent continuous 1..100 Gaussian Blur
-    FQXCommentMaterialBookBackground = 3, // Novel original reading paper background
     FQXCommentMaterialRegularGlass = 4,   // iOS 26+ UIGlassEffectStyleRegular (Regular)
     FQXCommentMaterialLiquidGlass = FQXCommentMaterialClearGlass,
 };
@@ -118,7 +117,6 @@ typedef NS_ENUM(NSInteger, FQXShareMaterialStyle) {
     FQXShareMaterialNative = 0,         // 原版默认
     FQXShareMaterialClearGlass = 1,     // 液态玻璃（清透）
     FQXShareMaterialGaussianBlur = 2,   // 高斯模糊
-    FQXShareMaterialBookBackground = 3, // 原书底色
     FQXShareMaterialRegularGlass = 4,   // 模糊玻璃（Regular）
 };
 
@@ -168,7 +166,7 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     id matObj = [ud objectForKey:CommentMaterialStylePrefKey];
     NSInteger mat = (matObj && [matObj respondsToSelector:@selector(integerValue)]) ? [matObj integerValue] : 0;
-    if (mat < FQXCommentMaterialNative || mat > FQXCommentMaterialRegularGlass) mat = FQXCommentMaterialNative;
+    if (mat < FQXCommentMaterialNative || mat > FQXCommentMaterialRegularGlass || mat == 3) mat = FQXCommentMaterialNative;
     fresh.commentMaterialStyle = (FQXCommentMaterialStyle)mat;
 
     id appObj = [ud objectForKey:CommentAppearanceModePrefKey];
@@ -191,7 +189,9 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     id shareMatObj = [ud objectForKey:ShareMaterialStylePrefKey];
     NSInteger shareMat = (shareMatObj && [shareMatObj respondsToSelector:@selector(integerValue)])
         ? [shareMatObj integerValue] : FQXShareMaterialClearGlass;
-    if (shareMat < FQXShareMaterialNative || shareMat > FQXShareMaterialRegularGlass) {
+    if (shareMat == 3) {
+        shareMat = FQXShareMaterialNative;
+    } else if (shareMat < FQXShareMaterialNative || shareMat > FQXShareMaterialRegularGlass) {
         shareMat = FQXShareMaterialClearGlass;
     }
     fresh.shareMaterialStyle = (FQXShareMaterialStyle)shareMat;
@@ -323,7 +323,6 @@ static BOOL FQXAppIsInNightMode(void) {
 }
 
 static BOOL FQXCommentsUseDarkTheme(void) {
-    if (FQXCurrentCommentMaterialStyle() == FQXCommentMaterialBookBackground) return FQXAppIsInNightMode();
     FQXCommentAppearanceMode appMode = FQXCurrentCommentAppearanceMode();
     if (appMode == FQXCommentAppearanceLight) return NO;
     if (appMode == FQXCommentAppearanceDark) return YES;
@@ -352,7 +351,7 @@ static BOOL FQXAudioGlassEnabled(void) {
 static BOOL FQXCommentStylingEnabled(void) {
     if (FQXHotPrefsSnapshot().glassDisabled) return NO;
     FQXCommentMaterialStyle style = FQXCurrentCommentMaterialStyle();
-    if (style == FQXCommentMaterialNative || style == FQXCommentMaterialBookBackground) return NO;
+    if (style == FQXCommentMaterialNative) return NO;
     if (style == FQXCommentMaterialGaussianBlur) return YES;
     return FQXGlassEnabled();
 }
@@ -365,7 +364,6 @@ static FQXCommentMaterialStyle FQXComposerEffectiveMaterialStyle(void) {
 }
 
 static BOOL FQXShouldOverrideCommentTheme(void) {
-    if (FQXCurrentCommentMaterialStyle() == FQXCommentMaterialBookBackground) return NO;
     return FQXCommentStylingEnabled() || FQXCommentAppearanceOverrideActive();
 }
 
@@ -4122,10 +4120,16 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 @property(nonatomic) NSInteger lastSelectedIndex;
 @property(nonatomic) BOOL paging;
 @property(nonatomic) NSInteger hoverIndex;
+@property(nonatomic) NSInteger pendingTapIndex;
+@property(nonatomic) CFTimeInterval pendingTapExpiry;
+@property(nonatomic) CFTimeInterval lastSwipeTime;
 @property(nonatomic) CGFloat anchorX;
 @property(nonatomic, copy) NSString *lastDarkSource;
 - (void)placePillAtRestingAnimated:(BOOL)animated;
 - (void)placePillAtIndex:(NSInteger)sel animated:(BOOL)animated;
+- (CGRect)itemRectForIndex:(NSInteger)index;
+- (CGRect)pillRectForAnchorX:(CGFloat)anchorX;
+- (void)updatePillForSwipeFromIndex:(NSInteger)leftIndex toIndex:(NSInteger)rightIndex ratio:(CGFloat)ratio;
 @end
 
 @implementation FQXDramaTopCapsuleInteraction
@@ -4135,6 +4139,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     if (self) {
         _lastSelectedIndex = NSNotFound;
         _hoverIndex = NSNotFound;
+        _pendingTapIndex = NSNotFound;
     }
     return self;
 }
@@ -4196,8 +4201,8 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     // Avoid double-stacking two untinted UIGlassEffectStyleClear surfaces at rest (which compounds
     // into a milky-white solid oval on the selected tab). At rest when darkTint is OFF, keep outer
     // as the sole Clear Liquid Glass and render a clean recessed non-white capsule indicator; during
-    // active press/drag, materialize live interactive Clear glass on pillGlass for fluid refraction.
-    BOOL pillInteractiveLens = darkTint || reduce || (self.mode != FQXTopCapsuleTouchIdle);
+    // active press/drag/horizontal swipe, materialize live interactive Clear glass on pillGlass immediately.
+    BOOL pillInteractiveLens = darkTint || reduce || self.paging || (self.mode != FQXTopCapsuleTouchIdle);
     NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
     NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (pillInteractiveLens ? 16 : 0) | (scalePct << 5);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
@@ -4241,10 +4246,14 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
             [self syncRestingPillCorners];
         }
     };
-    if (applied) {
-        [UIView animateWithDuration:0.20 animations:changes];
+    if (applied && !pillInteractiveLens && !self.paging && self.mode == FQXTopCapsuleTouchIdle) {
+        [UIView animateWithDuration:0.12
+                              delay:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                         animations:changes
+                         completion:nil];
     } else {
-        changes();
+        [UIView performWithoutAnimation:changes];
     }
     NSInteger blurStrength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:DramaHeaderBlurPrefKey]);
     UICollectionViewLayout *cvLayout = self.collectionView.collectionViewLayout;
@@ -4406,10 +4415,10 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         return;
     }
     if (animated && !UIAccessibilityIsReduceMotionEnabled()) {
-        [UIView animateWithDuration:0.42
+        [UIView animateWithDuration:0.24
                               delay:0.0
-             usingSpringWithDamping:0.78
-              initialSpringVelocity:0.0
+             usingSpringWithDamping:0.86
+              initialSpringVelocity:0.6
                             options:UIViewAnimationOptionBeginFromCurrentState |
                                     UIViewAnimationOptionAllowUserInteraction
                          animations:^{
@@ -4424,23 +4433,72 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
 }
 
+- (CGRect)itemRectForIndex:(NSInteger)index {
+    UICollectionView *cv = self.collectionView;
+    if (index == NSNotFound || index < 0 || !cv || [cv numberOfSections] <= 0 || index >= [cv numberOfItemsInSection:0]) {
+        return CGRectZero;
+    }
+    NSIndexPath *ip = [NSIndexPath indexPathForItem:index inSection:0];
+    UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
+    if (cell && !cell.hidden && CGRectGetWidth(cell.frame) >= 6.0) {
+        return cell.frame;
+    }
+    UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:ip];
+    return (attr && CGRectGetWidth(attr.frame) >= 6.0) ? attr.frame : CGRectZero;
+}
+
+- (void)updatePillForSwipeFromIndex:(NSInteger)leftIndex toIndex:(NSInteger)rightIndex ratio:(CGFloat)ratio {
+    if (!self.pillGlass || !self.outerGlass || !self.collectionView) return;
+    if (self.mode != FQXTopCapsuleTouchIdle) return;
+    CGFloat clamped = MAX(0.0, MIN(1.0, ratio));
+    CGRect leftRect = [self itemRectForIndex:leftIndex];
+    CGRect rightRect = [self itemRectForIndex:rightIndex];
+    if (CGRectGetWidth(leftRect) < 6.0 && CGRectGetWidth(rightRect) < 6.0) return;
+
+    BOOL activeSwipe = (clamped > 0.005 && clamped < 0.995);
+    BOOL wasPaging = self.paging;
+    self.paging = activeSwipe;
+    if (activeSwipe) {
+        self.lastSwipeTime = CACurrentMediaTime();
+        self.pendingTapIndex = NSNotFound;
+        self.pendingTapExpiry = 0.0;
+    } else {
+        self.lastSwipeTime = 0.0;
+    }
+
+    CGFloat anchorX = 0.0;
+    if (CGRectGetWidth(leftRect) >= 6.0 && CGRectGetWidth(rightRect) >= 6.0) {
+        CGFloat lx = CGRectGetMidX(leftRect);
+        CGFloat rx = CGRectGetMidX(rightRect);
+        anchorX = lx + (rx - lx) * clamped;
+    } else if (CGRectGetWidth(leftRect) >= 6.0) {
+        anchorX = CGRectGetMidX(leftRect);
+    } else {
+        anchorX = CGRectGetMidX(rightRect);
+    }
+    self.anchorX = anchorX;
+    if (wasPaging != activeSwipe) {
+        [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
+    }
+    [self.pillGlass.layer removeAllAnimations];
+    [self placePill:[self pillRectForAnchorX:anchorX] animated:NO];
+
+    if (!activeSwipe) {
+        NSInteger landed = (clamped >= 0.995 && CGRectGetWidth(rightRect) >= 6.0) ? rightIndex : leftIndex;
+        if (landed >= 0) self.lastSelectedIndex = landed;
+    }
+}
+
 - (void)placePillAtIndex:(NSInteger)sel animated:(BOOL)animated {
     if (self.paging) {
-        [self placePill:CGRectZero animated:NO];
+        // Keep the live interpolated swipe position untouched until paging finishes.
         return;
     }
-    UICollectionView *cv = self.collectionView;
-    if (sel != NSNotFound && sel >= 0 && cv && [cv numberOfSections] > 0 && sel < [cv numberOfItemsInSection:0]) {
-        NSIndexPath *ip = [NSIndexPath indexPathForItem:sel inSection:0];
-        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
-        CGRect itemRect = (cell && !cell.hidden && CGRectGetWidth(cell.frame) >= 6.0)
-            ? cell.frame
-            : ([cv layoutAttributesForItemAtIndexPath:ip].frame);
-        if (CGRectGetWidth(itemRect) >= 6.0) {
-            self.anchorX = CGRectGetMidX(itemRect);
-            [self placePill:[self pillRectForAnchorX:self.anchorX] animated:animated];
-            return;
-        }
+    CGRect itemRect = [self itemRectForIndex:sel];
+    if (CGRectGetWidth(itemRect) >= 6.0) {
+        self.anchorX = CGRectGetMidX(itemRect);
+        [self placePill:[self pillRectForAnchorX:self.anchorX] animated:animated];
+        return;
     }
     [self placePill:CGRectZero animated:NO];
 }
@@ -4471,23 +4529,43 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         CGFloat x = [gr locationInView:cv].x;
         NSInteger idx = [self itemIndexAtCollectionX:x];
         if (idx == NSNotFound) return;
-        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:idx inSection:0]];
-        if (!attr) return;
+        CGRect itemRect = [self itemRectForIndex:idx];
+        if (CGRectGetWidth(itemRect) < 6.0) return;
+        self.paging = NO;
+        self.lastSwipeTime = 0.0;
+        self.pendingTapIndex = idx;
+        self.pendingTapExpiry = CACurrentMediaTime() + 0.35;
         self.mode = FQXTopCapsuleTouchPressing;
         [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
-        self.anchorX = CGRectGetMidX(attr.frame);
+        self.anchorX = CGRectGetMidX(itemRect);
         [self placePill:[self pillRectForAnchorX:self.anchorX] animated:YES];
     } else if (gr.state == UIGestureRecognizerStateEnded ||
                gr.state == UIGestureRecognizerStateCancelled ||
                gr.state == UIGestureRecognizerStateFailed) {
         if (self.mode != FQXTopCapsuleTouchPressing) return;
+        BOOL endedCleanly = (gr.state == UIGestureRecognizerStateEnded);
+        if (!endedCleanly) {
+            self.pendingTapIndex = NSNotFound;
+            self.pendingTapExpiry = 0.0;
+        } else {
+            self.pendingTapExpiry = CACurrentMediaTime() + 0.30;
+        }
         self.mode = FQXTopCapsuleTouchIdle;
         [self applyMaterialToOuter:self.outerGlass isDark:[self currentResolvedDarkState]];
+        if (!endedCleanly) {
+            [self placePillAtRestingAnimated:YES];
+            return;
+        }
         __weak typeof(self) weakSelf = self;
-        dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
             typeof(self) s = weakSelf;
-            if (!s || s.mode != FQXTopCapsuleTouchIdle) return;
-            [s placePillAtRestingAnimated:YES];
+            if (!s || s.mode != FQXTopCapsuleTouchIdle || s.paging) return;
+            if (s.pendingTapIndex != NSNotFound && CACurrentMediaTime() >= s.pendingTapExpiry) {
+                s.pendingTapIndex = NSNotFound;
+                s.pendingTapExpiry = 0.0;
+                [s placePillAtRestingAnimated:YES];
+            }
         });
     }
 }
@@ -4576,6 +4654,9 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     self.paging = NO;
     self.lastSelectedIndex = NSNotFound;
     self.hoverIndex = NSNotFound;
+    self.pendingTapIndex = NSNotFound;
+    self.pendingTapExpiry = 0.0;
+    self.lastSwipeTime = 0.0;
 }
 
 - (void)syncWithTabs:(UIView *)tabs {
@@ -4658,11 +4739,26 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
                              outer.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark));
     self.lastDarkSource = darkSource ?: @"outer_trait";
 
-    if (self.mode == FQXTopCapsuleTouchIdle) {
+    if (self.paging && self.lastSwipeTime > 0.0 && (CACurrentMediaTime() - self.lastSwipeTime) > 0.25) {
+        self.paging = NO;
+        self.lastSwipeTime = 0.0;
+    }
+    if (self.mode == FQXTopCapsuleTouchIdle && !self.paging) {
         NSInteger sel = [self currentHostSelectedIndex];
+        if (self.pendingTapIndex != NSNotFound) {
+            if (sel == self.pendingTapIndex) {
+                self.pendingTapIndex = NSNotFound;
+                self.pendingTapExpiry = 0.0;
+            } else if (CACurrentMediaTime() < self.pendingTapExpiry) {
+                sel = self.pendingTapIndex;
+            } else {
+                self.pendingTapIndex = NSNotFound;
+                self.pendingTapExpiry = 0.0;
+            }
+        }
         BOOL selChanged = (self.lastSelectedIndex != NSNotFound && sel != NSNotFound && sel != self.lastSelectedIndex);
         self.lastSelectedIndex = sel;
-        [self placePillAtRestingAnimated:selChanged];
+        [self placePillAtIndex:sel animated:selChanged];
     }
     [self applyMaterialToOuter:outer isDark:isDark];
 }
@@ -5577,12 +5673,23 @@ static void HookDramaCommitTabIndex(id owner, SEL cmd, NSInteger index, int type
     }
     FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
     if (interaction && interaction.mode == FQXTopCapsuleTouchIdle) {
-        [interaction.pillGlass.layer removeAllAnimations];
+        BOOL wasPaging = interaction.paging;
         interaction.paging = NO;
+        interaction.lastSwipeTime = 0.0;
+        interaction.pendingTapIndex = NSNotFound;
+        interaction.pendingTapExpiry = 0.0;
         NSInteger resolved = [interaction currentHostSelectedIndex];
         NSInteger finalIdx = (resolved != NSNotFound) ? resolved : index;
+        BOOL indexChanged = (interaction.lastSelectedIndex != NSNotFound && finalIdx != interaction.lastSelectedIndex);
         interaction.lastSelectedIndex = finalIdx;
-        [interaction placePillAtIndex:finalIdx animated:NO];
+        CGRect target = [interaction pillRectForAnchorX:CGRectGetMidX([interaction itemRectForIndex:finalIdx])];
+        BOOL alreadyNear = fabs(CGRectGetMinX(interaction.pillGlass.frame) - CGRectGetMinX(target)) <= 2.5;
+        if (wasPaging || alreadyNear) {
+            [interaction.pillGlass.layer removeAllAnimations];
+            [interaction placePillAtIndex:finalIdx animated:NO];
+        } else {
+            [interaction placePillAtIndex:finalIdx animated:indexChanged];
+        }
     }
     UIView *header = FQXObjGet(owner, "headerView");
     if ([header isKindOfClass:UIView.class]) {
@@ -5599,16 +5706,14 @@ static void HookDramaScrollBetweenTabs(id owner, SEL cmd, id tabs, id leftItem, 
     }
     FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
     if (!interaction || interaction.mode != FQXTopCapsuleTouchIdle) return;
-    UIView *listContainer = FQXFindDramaListContainerForFeed(owner);
-    UIScrollView *pagerScroll = FQXObjGet(listContainer, "scrollView");
-    BOOL userInteractiveScroll = [pagerScroll isKindOfClass:UIScrollView.class] &&
-        pagerScroll.scrollEnabled &&
-        (pagerScroll.isTracking || pagerScroll.isDragging || pagerScroll.isDecelerating);
-    BOOL paging = userInteractiveScroll && ratio > 0.0 && ratio < 1.0;
-    if (interaction.paging == paging) return;
-    interaction.paging = paging;
-    [interaction.pillGlass.layer removeAllAnimations];
-    [interaction placePillAtRestingAnimated:NO];
+    if (leftIndex >= 0 && rightIndex >= 0 && leftIndex != rightIndex) {
+        [interaction updatePillForSwipeFromIndex:leftIndex toIndex:rightIndex ratio:ratio];
+    } else if (interaction.paging && (ratio <= 0.005 || ratio >= 0.995)) {
+        interaction.paging = NO;
+        interaction.lastSwipeTime = 0.0;
+        [interaction applyMaterialToOuter:interaction.outerGlass isDark:[interaction currentResolvedDarkState]];
+        [interaction placePillAtRestingAnimated:NO];
+    }
 }
 
 static void (*OrigDramaTabsRefreshDataSource)(id, SEL);
@@ -5644,8 +5749,11 @@ static void HookDramaTabsRefreshSelectedModels(UIView *tabs, SEL cmd, id selecte
     if (isDrama) {
         FQXStabilizeDramaCategoryTabs(tabs);
         FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
-        if (interaction && interaction.mode == FQXTopCapsuleTouchIdle) {
+        if (interaction && interaction.mode == FQXTopCapsuleTouchIdle &&
+            (!interaction.paging || interaction.lastSwipeTime <= 0.0 ||
+             (CACurrentMediaTime() - interaction.lastSwipeTime) > 0.15)) {
             interaction.paging = NO;
+            interaction.lastSwipeTime = 0.0;
         }
         UIView *header = FQXDramaHeaderForTabs(tabs);
         if (header) {
@@ -5674,6 +5782,17 @@ static void HookDramaTabsRefreshLeftRight(UIView *tabs, SEL cmd, id leftModel, i
             for (UICollectionViewCell *cell in cv.visibleCells) {
                 FQXResetLabelTransformAndFont(FQXObjGet(cell, "titleLabel"), lockedFont);
                 FQXResetLabelTransformAndFont(FQXObjGet(cell, "maskTitleLabel"), lockedFont);
+            }
+        }
+        FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
+        if (interaction && interaction.mode == FQXTopCapsuleTouchIdle && leftModel && rightModel && leftModel != rightModel) {
+            NSArray *ds = FQXObjGet(tabs, "dataSource");
+            if ([ds isKindOfClass:NSArray.class]) {
+                NSUInteger leftIdx = [ds indexOfObjectIdenticalTo:leftModel];
+                NSUInteger rightIdx = [ds indexOfObjectIdenticalTo:rightModel];
+                if (leftIdx != NSNotFound && rightIdx != NSNotFound && leftIdx != rightIdx) {
+                    [interaction updatePillForSwipeFromIndex:(NSInteger)leftIdx toIndex:(NSInteger)rightIdx ratio:ratio];
+                }
             }
         }
     }
@@ -8451,11 +8570,11 @@ static UIView *FQXMinePageControl(UIView *fold, UIView *card);
     }
     CGRect target = bounds;
     if (view != host) {
-        // Reserve headroom for enlarged circular buttons & badges inside the card without
+        // Reserve symmetric headroom for enlarged circular buttons & badges inside the card without
         // overlapping the page control or exposing any extra row below the card.
         CGRect card = [host convertRect:host.bounds toView:view];
-        CGFloat top = MAX(CGRectGetMinY(card), CGRectGetMinY(bounds) - 14.0);
-        CGFloat bottom = MIN(CGRectGetMaxY(card), CGRectGetMaxY(bounds) + 14.0);
+        CGFloat top = MAX(CGRectGetMinY(card), CGRectGetMinY(bounds) - 8.0);
+        CGFloat bottom = MIN(CGRectGetMaxY(card), CGRectGetMaxY(bounds) + 8.0);
         UIView *pc = FQXMinePageControl(fold, host);
         if (pc && !pc.hidden && pc.alpha > 0.05) {
             CGRect pcRect = [pc convertRect:pc.bounds toView:view];
@@ -9819,10 +9938,20 @@ static void FQXEnlargeMineShortcutButtonInCell(UICollectionViewCell *cell, BOOL 
     UIView *card = outerRow ?: FQXMineShortcutCardForView(cell);
     if (!card) return;
 
-    UIView *glyph = isOrder
-        ? (FQXObjGet(cell, "productImage") ?: FQXObjGet(cell, "image"))
-        : (FQXObjGet(cell, "image") ?: FQXObjGet(cell, "productImage"));
-    UIView *caption = isOrder
+    static Class entryItemCls = Nil;
+    static dispatch_once_t entryOnce;
+    dispatch_once(&entryOnce, ^{
+        entryItemCls = NSClassFromString(@"SSMyUser621FunctionEntryItemCell");
+    });
+    // Match AlignedGlass.m: SSMyUser621FunctionEntryItemCell uses productImage/functionType,
+    // while SSMyUserCollectionViewFunCell and SSMyUserCollectionViewOrderFunCell use image/label.
+    BOOL useOrderProps = isOrder || (entryItemCls && [cell isKindOfClass:entryItemCls]);
+    UIView *primaryGlyph = useOrderProps ? FQXObjGet(cell, "productImage") : FQXObjGet(cell, "image");
+    UIView *fallbackGlyph = useOrderProps ? FQXObjGet(cell, "image") : FQXObjGet(cell, "productImage");
+    UIView *glyph = ([primaryGlyph isKindOfClass:UIImageView.class] && primaryGlyph.superview == content && !primaryGlyph.hidden)
+        ? primaryGlyph
+        : fallbackGlyph;
+    UIView *caption = useOrderProps
         ? (FQXObjGet(cell, "functionType") ?: FQXObjGet(cell, "label"))
         : (FQXObjGet(cell, "label") ?: FQXObjGet(cell, "functionType"));
     if (![glyph isKindOfClass:UIImageView.class] || glyph.superview != content || glyph.hidden) return;
@@ -9842,27 +9971,19 @@ static void FQXEnlargeMineShortcutButtonInCell(UICollectionViewCell *cell, BOOL 
 
     BOOL iconsOnly = [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.MineQuickIconsOnly.1"];
     CGRect cb = content.bounds;
-    CGRect cardInContent = [card convertRect:card.bounds toView:content];
-    CGFloat topLimit = CGRectGetMinY(cardInContent) + 6.0;
-    CGFloat bottomLimit = CGRectGetMaxY(cardInContent) - 10.0;
-    UIView *pc = FQXMinePageControl(FQXMineShortcutFold(cell), card);
-    if (pc && !pc.hidden && pc.alpha > 0.05) {
-        CGRect pcInContent = [pc convertRect:pc.bounds toView:content];
-        if (CGRectGetMinY(pcInContent) > topLimit + 40.0) {
-            bottomLimit = MIN(bottomLimit, CGRectGetMinY(pcInContent) - 6.0);
-        }
-    }
-    CGFloat availH = bottomLimit - topLimit;
-    CGFloat desiredMax = iconsOnly ? 62.0 : 60.0;
-    CGFloat maxByW = CGRectGetWidth(cb) - 10.0;
-    CGFloat maxByH = (availH >= 42.0) ? (availH - 2.0) : (CGRectGetHeight(cb) + 10.0);
+    CGFloat cellW = CGRectGetWidth(cb);
+    CGFloat cellH = CGRectGetHeight(cb);
+    // Keep EVERY button strictly centered on its own cell's content.bounds centerline so all
+    // buttons across Page 1 and Page 2 stay on one razor-flat horizontal row and NEVER drift
+    // downward onto the page control dots regardless of card/pageControl layout timing.
+    CGFloat desiredMax = iconsOnly ? 54.0 : 52.0;
+    CGFloat maxByW = (cellW >= 54.0) ? (cellW - 4.0) : (cellW - 2.0);
+    CGFloat maxByH = cellH + 10.0;
     CGFloat pillSide = floor(MIN(desiredMax, MIN(maxByW, maxByH)));
-    if (pillSide < 46.0) return;
+    if (pillSide < 44.0) return;
 
-    CGFloat centerY = (availH >= pillSide)
-        ? (topLimit + availH * 0.5)
-        : CGRectGetMidY(cb);
-    CGRect pillRect = CGRectMake(floor((CGRectGetWidth(cb) - pillSide) * 0.5),
+    CGFloat centerY = CGRectGetMidY(cb);
+    CGRect pillRect = CGRectMake(floor((cellW - pillSide) * 0.5),
                                  floor(centerY - pillSide * 0.5),
                                  pillSide,
                                  pillSide);
@@ -9881,8 +10002,8 @@ static void FQXEnlargeMineShortcutButtonInCell(UICollectionViewCell *cell, BOOL 
     aspect = MAX(0.65, MIN(1.55, aspect));
 
     CGFloat targetSpan = iconsOnly
-        ? round(MIN(32.0, MAX(26.0, pillSide * 0.48)))
-        : round(MIN(26.0, MAX(22.0, pillSide * 0.40)));
+        ? round(MIN(28.0, MAX(25.0, pillSide * 0.50)))
+        : round(MIN(24.0, MAX(21.0, pillSide * 0.42)));
     CGFloat gw = (aspect >= 1.0) ? targetSpan : round(targetSpan * aspect);
     CGFloat gh = (aspect >= 1.0) ? round(targetSpan / aspect) : targetSpan;
 
@@ -9893,13 +10014,17 @@ static void FQXEnlargeMineShortcutButtonInCell(UICollectionViewCell *cell, BOOL 
         if (!CGRectEqualToRect(iv.frame, gRect)) iv.frame = gRect;
     } else {
         CGFloat captionH = 16.0;
-        CGFloat gap = 3.0;
+        CGFloat gap = 2.0;
         CGFloat groupTop = round(CGRectGetMinY(pillRect) + (pillSide - gh - gap - captionH) * 0.5);
         CGRect gRect = CGRectMake(round(CGRectGetMidX(pillRect) - gw * 0.5), groupTop, gw, gh);
         if (!CGRectEqualToRect(iv.frame, gRect)) iv.frame = gRect;
-        CGFloat textW = MIN(56.0, pillSide - 6.0);
+        CGFloat textW = MIN(52.0, pillSide - 6.0);
         CGRect cRect = CGRectMake(round(CGRectGetMidX(pillRect) - textW * 0.5), groupTop + gh + gap, textW, captionH);
         if (!CGRectEqualToRect(caption.frame, cRect)) caption.frame = cRect;
+    }
+    if (!useOrderProps && [fallbackGlyph isKindOfClass:UIImageView.class] &&
+        fallbackGlyph != glyph && fallbackGlyph.superview == content && !fallbackGlyph.hidden) {
+        if (!CGRectEqualToRect(fallbackGlyph.frame, iv.frame)) fallbackGlyph.frame = iv.frame;
     }
 
     NSString *diagSig = [NSString stringWithFormat:@"%.0f|%.0f|%d", pillSide, targetSpan, iconsOnly ? 1 : 0];
@@ -9910,9 +10035,9 @@ static void FQXEnlargeMineShortcutButtonInCell(UICollectionViewCell *cell, BOOL 
             @"pillSide": @(pillSide),
             @"glyphSpan": @(targetSpan),
             @"iconsOnly": @(iconsOnly),
-            @"cellWidth": @(round(CGRectGetWidth(cb) * 10.0) / 10.0),
-            @"cellHeight": @(round(CGRectGetHeight(cb) * 10.0) / 10.0),
-            @"availCardH": @(round(availH * 10.0) / 10.0),
+            @"cellWidth": @(round(cellW * 10.0) / 10.0),
+            @"cellHeight": @(round(cellH * 10.0) / 10.0),
+            @"pillOriginY": @(round(CGRectGetMinY(pillRect) * 10.0) / 10.0),
         }, NO);
     }
 }
@@ -9956,7 +10081,7 @@ static void HookMineOrderCellLayout(UICollectionViewCell *self, SEL _cmd) {
     }
     if (OrigMineOrderCellLayout) OrigMineOrderCellLayout(self, _cmd);
     FQXSyncOwnerCollectionFromShortcutCell(self);
-    FQXEnlargeMineShortcutButtonInCell(self, YES);
+    FQXEnlargeMineShortcutButtonInCell(self, NO);
 }
 
 static void (*OrigMineEntryItemLayout)(id, SEL);
@@ -9967,7 +10092,7 @@ static void HookMineEntryItemLayout(UICollectionViewCell *self, SEL _cmd) {
     }
     if (OrigMineEntryItemLayout) OrigMineEntryItemLayout(self, _cmd);
     FQXSyncOwnerCollectionFromShortcutCell(self);
-    FQXEnlargeMineShortcutButtonInCell(self, NO);
+    FQXEnlargeMineShortcutButtonInCell(self, YES);
 }
 
 #pragma mark - Short Drama Progress Bar Right-Overflow Clamp & Cold-Start Spacing Sync
@@ -16514,7 +16639,6 @@ static void HookReaderCommentListAppeared(UIViewController *controller, SEL cmd,
 #pragma mark - Unified Short Drama & Novel Share Sheet Material System
 
 static const void *FQXShareGlassSurfaceKey = &FQXShareGlassSurfaceKey;
-static const void *FQXSharePaperBackdropKey = &FQXSharePaperBackdropKey;
 static const void *FQXShareForceDarkKey = &FQXShareForceDarkKey;
 static const void *FQXShareSavedTextColorKey = &FQXShareSavedTextColorKey;
 static const void *FQXShareSavedAttrTextKey = &FQXShareSavedAttrTextKey;
@@ -16759,22 +16883,6 @@ static BOOL FQXColorIsNeutralSurface(UIColor *color, UITraitCollection *traits) 
         return a >= 0.01;
     }
     return NO;
-}
-
-static NSString *FQXHexStringForColor(UIColor *color) {
-    if (!color) return @"none";
-    CGFloat r = 0, g = 0, b = 0, a = 0, w = 0;
-    if ([color getRed:&r green:&g blue:&b alpha:&a]) {
-        return [NSString stringWithFormat:@"#%02X%02X%02X",
-                (int)round(MAX(0.0, MIN(1.0, r)) * 255.0),
-                (int)round(MAX(0.0, MIN(1.0, g)) * 255.0),
-                (int)round(MAX(0.0, MIN(1.0, b)) * 255.0)];
-    }
-    if ([color getWhite:&w alpha:&a]) {
-        int v = (int)round(MAX(0.0, MIN(1.0, w)) * 255.0);
-        return [NSString stringWithFormat:@"#%02X%02X%02X", v, v, v];
-    }
-    return @"dynamic";
 }
 
 // Convert colored/dark circular share icons (e.g. WeChat, Moments, Douyin, Link, Weibo, QQ)
@@ -17136,8 +17244,7 @@ static void FQXApplyShareSubtreeCleanup(UIView *view,
                                         FQXShareCleanupStats *stats) {
     if (!view || depth > 16) return;
     if ([view isKindOfClass:FQXCommentGlassSurfaceView.class] ||
-        [view isKindOfClass:FQXBackdropBlurView.class] ||
-        view == objc_getAssociatedObject(rootSheet, FQXSharePaperBackdropKey)) {
+        [view isKindOfClass:FQXBackdropBlurView.class]) {
         return;
     }
 
@@ -17473,11 +17580,6 @@ static void FQXRemoveShareSheetStyling(UIView *sheet) {
         FQXReleaseCommentSurface(surface);
         objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    UIView *paperBg = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
-    if (paperBg) {
-        [paperBg removeFromSuperview];
-        objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
     objc_setAssociatedObject(sheet, FQXShareStyledStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (sheet.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
         sheet.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
@@ -17535,70 +17637,6 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     BOOL hadClips = (sheet.clipsToBounds || [objc_getAssociatedObject(sheet, FQXShareSavedClipsKey) boolValue]);
     FQXShareCleanupStats stats = {0, 0};
     NSInteger clearedDimmers = FQXSyncShareBackdropDimmer(sheet, YES);
-
-    // Mode 3: 原书底色 (Novel original paper background / matching dark theme surface on Drama)
-    if (style == FQXShareMaterialBookBackground) {
-        UIVisualEffectView *oldSurface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
-        if (oldSurface) {
-            FQXReleaseCommentSurface(oldSurface);
-            objc_setAssociatedObject(sheet, FQXShareGlassSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        UIColor *fillColor = paperColor ?: (isDark
-            ? [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0]
-            : [UIColor colorWithRed:0.968 green:0.960 blue:0.941 alpha:1.0]);
-        UIView *paperBg = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
-        if (!paperBg) {
-            paperBg = [[UIView alloc] initWithFrame:sb];
-            paperBg.userInteractionEnabled = NO;
-            paperBg.accessibilityElementsHidden = YES;
-            paperBg.isAccessibilityElement = NO;
-            paperBg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            paperBg.layer.cornerCurve = kCACornerCurveContinuous;
-            paperBg.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
-            paperBg.clipsToBounds = YES;
-            objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, paperBg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        FQXSetShareSheetHostClipping(sheet, YES);
-        if (!CGRectEqualToRect(paperBg.frame, sb)) paperBg.frame = sb;
-        paperBg.layer.cornerRadius = cornerR;
-        paperBg.backgroundColor = fillColor;
-        if (sheet.subviews.firstObject != paperBg) [sheet insertSubview:paperBg atIndex:0];
-        UIUserInterfaceStyle uiStyle = isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
-        if (sheet.overrideUserInterfaceStyle != uiStyle) sheet.overrideUserInterfaceStyle = uiStyle;
-        FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
-        [CATransaction commit];
-
-        NSString *diagSig = [NSString stringWithFormat:@"3|%d|%@|%.0f|%ld|%ld",
-                             isDark ? 1 : 0, FQXHexStringForColor(fillColor), CGRectGetHeight(sb),
-                             (long)stats.monochromeIcons, (long)clearedDimmers];
-        if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
-            objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
-            FQXDiagRecordEvent(FQXDiagCategoryUI, @"share_panel_styled", @{
-                @"sheetClass": NSStringFromClass(sheet.class) ?: @"",
-                @"rootClass": root ? (NSStringFromClass(root.class) ?: @"") : @"",
-                @"materialStyle": @((NSInteger)style),
-                @"fromReader": @(fromReader),
-                @"isDark": @(isDark),
-                @"paperHex": FQXHexStringForColor(fillColor),
-                @"monochromeIcons": @(stats.monochromeIcons),
-                @"neutralizedEffects": @(stats.neutralizedEffects),
-                @"clearedDimmers": @(clearedDimmers),
-                @"sheetHadMask": @(hadMask),
-                @"sheetHadClips": @(hadClips),
-                @"sheetFrame": FQXDockRectArray(sb),
-            }, NO);
-        }
-        return YES;
-    }
-
-    // Remove paper backdrop when switching to Liquid Glass / Frosted Glass / Gaussian Blur
-    UIView *oldPaper = objc_getAssociatedObject(sheet, FQXSharePaperBackdropKey);
-    if (oldPaper) {
-        [oldPaper removeFromSuperview];
-        objc_setAssociatedObject(sheet, FQXSharePaperBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
 
     // Fallback to Gaussian Blur on pre-iOS 26 if native UIGlassEffect is unavailable
     FQXShareMaterialStyle effStyle = style;
@@ -18109,8 +18147,7 @@ static void HookKMPShareLayout(UIViewController *controller, SEL cmd) {
     BOOL fillsWrapper = fabs(CGRectGetHeight(root.bounds) - CGRectGetHeight(sheet.bounds)) < 2.0;
     UIView *previous = fillsWrapper ? sheet : root;
     if (objc_getAssociatedObject(previous, SheetGlassKey) ||
-        objc_getAssociatedObject(previous, FQXShareGlassSurfaceKey) ||
-        objc_getAssociatedObject(previous, FQXSharePaperBackdropKey)) {
+        objc_getAssociatedObject(previous, FQXShareGlassSurfaceKey)) {
         FQXRemoveShareSheetStyling(previous);
     }
     UIView *target = fillsWrapper ? root : sheet;
