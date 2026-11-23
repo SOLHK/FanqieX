@@ -622,8 +622,12 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         if ([@[@"FanqieX.ShelfRecommendationBanner.1", @"FanqieX.ShelfActivityNotice.1", @"FanqieX.ShelfEditButton.1"] containsObject:option[@"key"]]) row.path = @"书架净化/顶部与统计";
         if ([@[@"FanqieX.ShelfTabBookshelf.1", @"FanqieX.ShelfTabHistory.1", @"FanqieX.ShelfTabCollect.1", @"FanqieX.ShelfTabCircle.1", @"FanqieX.ShelfSearchButton.1", @"FanqieX.ShelfMoreButton.1"] containsObject:option[@"key"]])
             row.path = @"书架净化/顶部导航栏";
-        if ([@[@"FanqieX.ShelfFilterAll.1", @"FanqieX.ShelfFilterRead.1", @"FanqieX.ShelfFilterListen.1", @"FanqieX.ShelfFilterComic.1", @"FanqieX.ShelfFilterStar.1", @"FanqieX.ShelfHistoryFilterBar.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.ShelfFilterAll.1", @"FanqieX.ShelfFilterRead.1", @"FanqieX.ShelfFilterListen.1", @"FanqieX.ShelfFilterComic.1", @"FanqieX.ShelfFilterStar.1",
+               @"FanqieX.ShelfHistoryFilterAll.1", @"FanqieX.ShelfHistoryFilterRead.1", @"FanqieX.ShelfHistoryFilterListen.1", @"FanqieX.ShelfHistoryFilterDrama.1",
+               @"FanqieX.ShelfHistoryFilterBtn.1", @"FanqieX.ShelfHistoryEditBtn.1"] containsObject:option[@"key"]])
             row.path = @"书架净化/筛选栏标签";
+        if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1"] containsObject:option[@"key"]])
+            row.path = @"短剧/页面内容";
         if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"])
             row.path = @"外观/玻璃与尺寸";
         row.keywords = [NSString stringWithFormat:@"%@ %@ %@ 显示 隐藏 开启 关闭 开关", row.path, row.title, option[@"aliases"] ?: @""];
@@ -639,6 +643,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
             @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
             @"FanqieX.DramaHideSeriesTag.1":@"短剧 漫剧 系列剧 追剧 共 万人在追 在追 标签 入口 横幅 隐藏 关闭",
+            @"FanqieX.DramaHideTitleBadge.1":@"短剧 漫剧 上新 爆款 热播 新剧 独播 角标 徽标 标题 标签 隐藏 关闭",
+            @"FanqieX.DramaHideGenreTags.1":@"短剧 漫剧 题材 分类 季数 第1季 第2季 逆袭 都市日常 奇幻脑洞 重生 演员 标签 隐藏 关闭",
             @"FanqieX.CommentActivityBanner.1":@"评论区 公告 活动 社区公约 文明发言 活动横幅 激励 创作者计划 段评 顶部 隐藏 关闭",
             @"FanqieX.CommentSearchEntrance.1":@"评论区 大家都在搜 大家在搜 热搜 搜索 推荐 顶部 隐藏 关闭",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓 图标",
@@ -684,7 +690,12 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.ShelfFilterListen.1":@"书架 筛选栏 听书 标签 分类",
             @"FanqieX.ShelfFilterComic.1":@"书架 筛选栏 漫剧 标签 分类",
             @"FanqieX.ShelfFilterStar.1":@"书架 筛选栏 星标 标签 分类",
-            @"FanqieX.ShelfHistoryFilterBar.1":@"书架 历史 历史页 筛选栏 筛选 编辑 全部 阅读 听书 短剧 顶部栏 隐藏 关闭",
+            @"FanqieX.ShelfHistoryFilterAll.1":@"书架 历史 历史页 筛选栏 全部 标签 分类 隐藏 关闭",
+            @"FanqieX.ShelfHistoryFilterRead.1":@"书架 历史 历史页 筛选栏 阅读 标签 分类 隐藏 关闭",
+            @"FanqieX.ShelfHistoryFilterListen.1":@"书架 历史 历史页 筛选栏 听书 标签 分类 隐藏 关闭",
+            @"FanqieX.ShelfHistoryFilterDrama.1":@"书架 历史 历史页 筛选栏 短剧 漫剧 标签 分类 隐藏 关闭",
+            @"FanqieX.ShelfHistoryFilterBtn.1":@"书架 历史 历史页 筛选栏 筛选 按钮 漏斗 隐藏 关闭",
+            @"FanqieX.ShelfHistoryEditBtn.1":@"书架 历史 历史页 筛选栏 编辑 按钮 隐藏 关闭",
             @"FanqieX.SidebarMessages.1":@"侧栏 我的消息 系统通知 创作通知 全部消息 消息 抽屉 隐藏",
             @"FanqieX.SidebarVideoCreate.1":@"侧栏 视频创作 创作 抽屉 隐藏",
             @"FanqieX.SidebarReadingPref.1":@"侧栏 阅读偏好 偏好 抽屉 隐藏",
