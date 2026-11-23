@@ -598,7 +598,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     albumTitle.height = 52;
     [menu.catalog addObject:albumTitle];
 
-    NSArray *options = Invoke(NSClassFromString(@"FQXCleanup"), @"optionRows") ?: @[];
+    NSArray *options = Invoke(objc_lookUpClass("FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",
         @"notifications":@"通知管理", @"gestures":@"阅读/自动阅读", @"audio":@"阅读/智能朗读",
         @"dramaActions":@"短剧/右侧互动按钮", @"appearance":@"外观/玻璃效果", @"comment":@"评论区净化",
@@ -1259,8 +1259,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     slider.stepper.accessibilityValue = text;
     if ([defaults objectForKey:key] && [defaults integerForKey:key] == strength) return;
     [defaults setInteger:strength forKey:key];
-    Class cleanup = NSClassFromString(@"FQXCleanup");
-    SEL refresh = NSSelectorFromString(@"refreshForKey:");
+    Class cleanup = objc_lookUpClass("FQXCleanup");
+    SEL refresh = sel_registerName("refreshForKey:");
     if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, key);
 }
 
@@ -1268,7 +1268,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     BOOL isOn = toggle.isOn;
     [NSUserDefaults.standardUserDefaults setBool:isOn forKey:CompactKey];
     UIViewController *owner = self.settingsOwner;
-    SEL optionSel = NSSelectorFromString(@"fqx178_bottomOptionChanged:");
+    SEL optionSel = sel_registerName("fqx178_bottomOptionChanged:");
     if (owner && [owner respondsToSelector:optionSel]) {
         ((void (*)(id, SEL, id))objc_msgSend)(owner, optionSel, toggle);
     }
@@ -1278,8 +1278,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
 - (void)bottomTabToggleChanged:(UISwitch *)toggle {
     (void)toggle;
     dispatch_async(dispatch_get_main_queue(), ^{
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshSel = NSSelectorFromString(@"refreshDockAppearance");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshSel = sel_registerName("refreshDockAppearance");
         if ([dockMotion respondsToSelector:refreshSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSel);
         }
@@ -1315,8 +1315,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     if (row.originalToggle) {
         row.originalToggle.on = enabled;
         [row.originalToggle sendActionsForControlEvents:UIControlEventValueChanged];
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshSel = NSSelectorFromString(@"refreshAudioGlass");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshSel = sel_registerName("refreshAudioGlass");
         if ([dockMotion respondsToSelector:refreshSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSel);
         }
@@ -1330,8 +1330,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         }
         dispatch_async(dispatch_get_main_queue(), ^{ [self rebuild]; });
     }
-    Class cleanup = NSClassFromString(@"FQXCleanup");
-    SEL selector = NSSelectorFromString(@"refreshForKey:");
+    Class cleanup = objc_lookUpClass("FQXCleanup");
+    SEL selector = sel_registerName("refreshForKey:");
     if ([cleanup respondsToSelector:selector])
         ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, toggle.accessibilityIdentifier);
 }
@@ -1342,7 +1342,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         [self shareDiagnosticFile];
         return;
     }
-    SEL enqueue = NSSelectorFromString(@"fqx_enqueueDiagnosticExport:");
+    SEL enqueue = sel_registerName("fqx_enqueueDiagnosticExport:");
     if (![self respondsToSelector:enqueue]) {
         [self fqab_156_presentDiagnostics:@{@"error": @"诊断服务未加载，请重新打开设置后重试。"}];
         return;
@@ -1454,8 +1454,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                                 FQXDockRestoreBottomEntryForModule(modTitle);
                             }
                             [NSUserDefaults.standardUserDefaults setObject:modTitle forKey:prefKey];
-                            Class cleanup = NSClassFromString(@"FQXCleanup");
-                            SEL selector = NSSelectorFromString(@"refreshForKey:");
+                            Class cleanup = objc_lookUpClass("FQXCleanup");
+                            SEL selector = sel_registerName("refreshForKey:");
                             if ([cleanup respondsToSelector:selector]) {
                                 ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
                             }
@@ -1487,8 +1487,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                             }
                             strongMenu.diagnosticFile = nil;
                         }
-                        Class cleanup = NSClassFromString(@"FQXCleanup");
-                        SEL selector = NSSelectorFromString(@"refreshForKey:");
+                        Class cleanup = objc_lookUpClass("FQXCleanup");
+                        SEL selector = sel_registerName("refreshForKey:");
                         if ([cleanup respondsToSelector:selector]) {
                             ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
                         }
@@ -1522,7 +1522,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
         }
         if (row.destination) {
             Class target = NSClassFromString(row.destination);
-            SEL action = NSSelectorFromString(@"presentFromController:");
+            SEL action = sel_registerName("presentFromController:");
             void (^perform)(void) = ^{
                 if ([target respondsToSelector:action]) ((void (*)(id, SEL, id))objc_msgSend)(target, action, owner);
             };

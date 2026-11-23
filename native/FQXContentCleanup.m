@@ -179,7 +179,7 @@ static BOOL SuppressWidgetDialog(id dialog) {
   FQXDiagRecordSecurityDialogCheck(dialog,view,"SSDialogView",NO);
   return NO;
  }
- Class history=NSClassFromString(@"SSWelfareWidgetGuideView");
+ Class history=objc_lookUpClass("SSWelfareWidgetGuideView");
  if(On(KEY("ContentWidgetGuide"))&&history&&[view isKindOfClass:history]&&
     [Get(view,"widgetName") isEqual:@"widget_history"]){
   SEL close=Sel("closeButtonClicked:");
@@ -187,7 +187,7 @@ static BOOL SuppressWidgetDialog(id dialog) {
   FQXDiagRecordHook("SSDialogView","showInView:enqueue:","FanqieX.ContentWidgetGuide.1","widget_history_guide","blocked",0.0);
   return YES;
  }
- Class excerpt=NSClassFromString(@"SSBookExcerptWidgetGuideView");
+ Class excerpt=objc_lookUpClass("SSBookExcerptWidgetGuideView");
  if(On(KEY("ExcerptWidgetGuide"))&&excerpt&&[view isKindOfClass:excerpt]){
   SEL cancel=Sel("cancelButtonClicked");
   if([view respondsToSelector:cancel])((void(*)(id,SEL))objc_msgSend)(view,cancel);
@@ -201,7 +201,7 @@ static void DialogShow(id o,SEL cmd,id view,BOOL enqueue){if(!SuppressWidgetDial
 static void(*OriginalDialogInnerShow)(id,SEL,id);
 static void DialogInnerShow(id o,SEL cmd,id view){if(!SuppressWidgetDialog(o))OriginalDialogInnerShow(o,cmd,view);}
 static void InstallWidgetDialogHooks(void){
- Class c=NSClassFromString(@"SSDialogView");SEL s=Sel("showInView:enqueue:");IMP old=NULL;
+ Class c=objc_lookUpClass("SSDialogView");SEL s=Sel("showInView:enqueue:");IMP old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v32@0:8@16B24",(IMP)DialogShow,&old))OriginalDialogShow=(void*)old;
  s=Sel("innerShowInView:");old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v24@0:8@16",(IMP)DialogInnerShow,&old))OriginalDialogInnerShow=(void*)old;
@@ -223,7 +223,7 @@ static void InstallHotLaunchHooks(void){
  NSString *key=KEY("HotLaunchAds");
  Bool0("SSReadingAdSplashService","shouldShowSplashAtHotLaunch",NO,key);
  Bool0("SSReadingAdSplashService","shouldShowSplashAdAtHotLaunchByThirdParty",NO,key);
- Class c=NSClassFromString(@"SSReadingAdSplashService");SEL s=Sel("appWillEnterForeground");IMP old=NULL;
+ Class c=objc_lookUpClass("SSReadingAdSplashService");SEL s=Sel("appWillEnterForeground");IMP old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v16@0:8",(IMP)ForegroundEnter,&old))OriginalForegroundEnter=(void*)old;
  s=Sel("showBannerTopViewInSplash");old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v16@0:8",(IMP)SplashBanner,&old))OriginalSplashBanner=(void*)old;
@@ -243,9 +243,9 @@ static void RefreshChapterTitle(id o,SEL cmd,id top,id context,id book){
 static void(*OriginalSetTitle)(id,SEL,id);
 static void SetChapterTitle(id o,SEL cmd,id title){id fixed=On(KEY("ChapterTitle"))?objc_getAssociatedObject(o,&ChapterTitleAssociation):nil;OriginalSetTitle(o,cmd,fixed?:title);}
 static void InstallChapterTitle(void){
- Class c=NSClassFromString(@"SSReaderTopViewInsertManager");SEL s=Sel("refreshTopView:withPageContext:bookId:");__block IMP old=NULL;
+ Class c=objc_lookUpClass("SSReaderTopViewInsertManager");SEL s=Sel("refreshTopView:withPageContext:bookId:");__block IMP old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v40@0:8@16@24@32",(IMP)RefreshChapterTitle,&old))OriginalRefresh=(void*)old;
- c=NSClassFromString(@"FQReaderTopView");s=Sel("setTitle:");old=NULL;
+ c=objc_lookUpClass("FQReaderTopView");s=Sel("setTitle:");old=NULL;
  if(FQXInstallOwnedHook(c,s,NO,"v24@0:8@16",(IMP)SetChapterTitle,&old))OriginalSetTitle=(void*)old;
 }
 
@@ -273,7 +273,7 @@ static void InstallReaderInlineDramaAdHooks(void){
  AdConstBool0("SSReaderGenreContentManager","enableParagraphInsert",NO,NO);
  AdConstBool0("SSReaderGenreContentManager","noAdForAllScene",NO,YES);
  {
-  Class cls=NSClassFromString(@"SSReaderGenreContentManager");
+  Class cls=objc_lookUpClass("SSReaderGenreContentManager");
   SEL s1=Sel("requestContentForBookId:triggerStrategy:");__block IMP o1=NULL;
   IMP h1=imp_implementationWithBlock(^BOOL(id o,id b,NSInteger st){
    return AdBlockActive()?NO:((BOOL(*)(id,SEL,id,NSInteger))o1)(o,s1,b,st);
@@ -299,7 +299,7 @@ static void InstallReaderInlineDramaAdHooks(void){
   if(!FQXInstallOwnedHook(cls,ss,NO,"B32@0:8@16@24",hs,&os))imp_removeBlock(hs);
  }
  {
-  Class cls=NSClassFromString(@"SSReaderParaShortVideoManager");
+  Class cls=objc_lookUpClass("SSReaderParaShortVideoManager");
   SEL sa=Sel("getVideoAttachmentsWithReaderModel:chapterId:containerWidth:");__block IMP oa=NULL;
   IMP ha=imp_implementationWithBlock(^id(id o,id rm,id cid,double w){
    return AdBlockActive()?nil:((id(*)(id,SEL,id,id,double))oa)(o,sa,rm,cid,w);
@@ -312,7 +312,7 @@ static void InstallReaderInlineDramaAdHooks(void){
   if(!FQXInstallOwnedHook(cls,si,NO,"@32@0:8@16@24",hi,&oi))imp_removeBlock(hi);
  }
  {
-  Class cls=NSClassFromString(@"SSReaderParaShortVideoDataManager");
+  Class cls=objc_lookUpClass("SSReaderParaShortVideoDataManager");
   SEL sd=Sel("attachmentsWithBookId:chapterId:containerWidth:textFontSize:");__block IMP od=NULL;
   IMP hd=imp_implementationWithBlock(^id(id o,id bid,id cid,double w,double fs){
    return AdBlockActive()?nil:((id(*)(id,SEL,id,id,double,double))od)(o,sd,bid,cid,w,fs);
@@ -320,7 +320,7 @@ static void InstallReaderInlineDramaAdHooks(void){
   if(!FQXInstallOwnedHook(cls,sd,NO,"@48@0:8@16@24d32d40",hd,&od))imp_removeBlock(hd);
  }
  {
-  Class cls=NSClassFromString(@"SSReaderGenreContentRerankManager");
+  Class cls=objc_lookUpClass("SSReaderGenreContentRerankManager");
   SEL sr1=Sel("hasRecommendedContent:chapterIndex:pageIndex:pageCount:gap:");__block IMP or1=NULL;
   IMP hr1=imp_implementationWithBlock(^BOOL(id o,id bid,NSInteger ci,NSInteger pi,NSInteger pc,NSInteger g){
    return AdBlockActive()?NO:((BOOL(*)(id,SEL,id,NSInteger,NSInteger,NSInteger,NSInteger))or1)(o,sr1,bid,ci,pi,pc,g);
@@ -338,7 +338,7 @@ static void InstallReaderInlineDramaAdHooks(void){
   if(!FQXInstallOwnedHook(cls,sr3,NO,"B48@0:8@16@24@32@40",hr3,&or3))imp_removeBlock(hr3);
  }
  {
-  Class cls=NSClassFromString(@"SSReaderLayoutProcessData");
+  Class cls=objc_lookUpClass("SSReaderLayoutProcessData");
   SEL sp=Sel("paraShortVideoAttachmentDict");__block IMP op=NULL;
   IMP hp=imp_implementationWithBlock(^id(id o){
    return AdBlockActive()?nil:((id(*)(id,SEL))op)(o,sp);
@@ -395,8 +395,8 @@ static id FQXAudioSDKManager(void){
  id cached=sLastAudioSDKManager;
  os_unfair_lock_unlock(&sAudioTrackLock);
  if(cached)return cached;
- Class centerCls=NSClassFromString(@"HTSServiceCenter");
- Class sdkCls=NSClassFromString(@"SSAudioPlaySDKManager");
+ Class centerCls=objc_lookUpClass("HTSServiceCenter");
+ Class sdkCls=objc_lookUpClass("SSAudioPlaySDKManager");
  id center=Get((id)centerCls,"defaultCenter");
  SEL gs=Sel("getService:");
  if(center&&sdkCls&&[center respondsToSelector:gs]){
@@ -422,13 +422,13 @@ void FQXActivateAudioPlaybackSessionAndRemote(void);
 
 static BOOL FQXVideoNowPlayingActive(void){
  if(FQXIsDramaDynamicIslandSessionActive())return YES;
- Class fqvCls=NSClassFromString(@"FQVNowPlayingInfoCenter");
+ Class fqvCls=objc_lookUpClass("FQVNowPlayingInfoCenter");
  id fqv=Get((id)fqvCls,"defaultCenter");
  return fqv&&Get(fqv,"playingPlayer")!=nil;
 }
 static void FQXClearSystemNowPlayingIfIdle(void){
  if(FQXVideoNowPlayingActive()||FQXAudioBookAlive())return;
- Class mpCls=NSClassFromString(@"MPNowPlayingInfoCenter");
+ Class mpCls=objc_lookUpClass("MPNowPlayingInfoCenter");
  id center=Get((id)mpCls,"defaultCenter");
  VoidMsgObj(center,"setNowPlayingInfo:",nil);
 }
@@ -479,7 +479,7 @@ static _Thread_local BOOL sInEnsureRemoteCommands;
 static void FQXEnsureRemoteCommandsReadyOnMain(id playMgr,BOOL allowUpdateInfo){
  if(sInEnsureRemoteCommands||!playMgr||BoolMsg0(playMgr,"playIsStopped")||!Get(playMgr,"playInfo"))return;
  sInEnsureRemoteCommands=YES;
- Class fqvCls=NSClassFromString(@"FQVNowPlayingInfoCenter");
+ Class fqvCls=objc_lookUpClass("FQVNowPlayingInfoCenter");
  id fqv=Get((id)fqvCls,"defaultCenter");
  if(fqv&&!Get(fqv,"playingPlayer")&&BoolMsg0(fqv,"remoteCommandTargetSelf")){
   VoidMsg0(fqv,"removeRemoteCommandTarget");
@@ -487,14 +487,14 @@ static void FQXEnsureRemoteCommandsReadyOnMain(id playMgr,BOOL allowUpdateInfo){
  if(!Get(playMgr,"playCommand")||!Get(playMgr,"pauseCommand")||!Get(playMgr,"togglePlayPauseCommand")){
   VoidMsg0(playMgr,"remoteAddCommand");
  }
- Class ccCls=NSClassFromString(@"MPRemoteCommandCenter");
+ Class ccCls=objc_lookUpClass("MPRemoteCommandCenter");
  id cc=Get((id)ccCls,"sharedCommandCenter");
  for(const char **k=(const char *[]){"playCommand","pauseCommand","togglePlayPauseCommand","previousTrackCommand","nextTrackCommand",NULL};*k;++k){
   VoidMsgBool(Get(cc,*k),"setEnabled:",YES);
  }
  [UIApplication.sharedApplication beginReceivingRemoteControlEvents];
  if(allowUpdateInfo&&!Get(playMgr,"remotePlayInfo")){
-  Class mpCls=NSClassFromString(@"MPNowPlayingInfoCenter");
+  Class mpCls=objc_lookUpClass("MPNowPlayingInfoCenter");
   id mpCenter=Get((id)mpCls,"defaultCenter");
   NSDictionary *info=Get(mpCenter,"nowPlayingInfo");
   if(![info isKindOfClass:NSDictionary.class]||!info.count){
@@ -527,7 +527,7 @@ void FQXActivateAudioPlaybackSessionAndRemote(void){
 }
 static void InstallAudioBookSyncAndRemoteHooks(void){
  {
-  Class cls=NSClassFromString(@"FQReaderSaaSTTSManager");
+  Class cls=objc_lookUpClass("FQReaderSaaSTTSManager");
   SEL si=Sel("initWithReaderManager:");__block IMP oi=NULL;
   IMP hi=imp_implementationWithBlock(^id(id o,id rm){
    id res=((id(*)(id,SEL,id))oi)(o,si,rm);
@@ -554,7 +554,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,sa,NO,"v24@0:8@16",ha,&oa))imp_removeBlock(ha);
  }
  {
-  Class cls=NSClassFromString(@"SSReaderTTSParaEntranceManager");
+  Class cls=objc_lookUpClass("SSReaderTTSParaEntranceManager");
   SEL si=Sel("initWithReaderManager:");__block IMP oi=NULL;
   IMP hi=imp_implementationWithBlock(^id(id o,id rm){
    id res=((id(*)(id,SEL,id))oi)(o,si,rm);
@@ -565,7 +565,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,si,NO,"@24@0:8@16",hi,&oi))imp_removeBlock(hi);
  }
  {
-  Class cls=NSClassFromString(@"BDFQAVSpecialLogicConfig");
+  Class cls=objc_lookUpClass("BDFQAVSpecialLogicConfig");
   SEL sShow=Sel("showCommandCenter");__block IMP oShow=NULL;
   IMP hShow=imp_implementationWithBlock(^BOOL(id o){
    if(FQXAudioBookAlive()&&!FQXVideoNowPlayingActive())return YES;
@@ -589,7 +589,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,sOpt,NO,"Q16@0:8",hOpt,&oOpt))imp_removeBlock(hOpt);
  }
  {
-  Class cls=NSClassFromString(@"SSAudioMutualExclutionManager");
+  Class cls=objc_lookUpClass("SSAudioMutualExclutionManager");
   SEL sr=Sel("removeAudioRemoteCommandIfNeeded");__block IMP orv=NULL;
   IMP hr=imp_implementationWithBlock(^(id o){
    if(FQXAudioBookAlive()&&!FQXVideoNowPlayingActive()){
@@ -602,7 +602,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,sr,NO,"v16@0:8",hr,&orv))imp_removeBlock(hr);
  }
  {
-  Class cls=NSClassFromString(@"SSAudioPlaySDKManager");
+  Class cls=objc_lookUpClass("SSAudioPlaySDKManager");
   SEL sEar=Sel("enableEarphoneControl");__block IMP oEar=NULL;
   IMP hEar=imp_implementationWithBlock(^BOOL(id o){
    TrackAudioSDK(o);(void)oEar;return YES;
@@ -694,7 +694,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,sb,NO,"B24@0:8@16",hb,&ob))imp_removeBlock(hb);
  }
  {
-  Class cls=NSClassFromString(@"SSAudioServiceABTestHelper");
+  Class cls=objc_lookUpClass("SSAudioServiceABTestHelper");
   SEL sr=Sel("audioPlaybackCategoryRecoverEnable");__block IMP orv=NULL;
   IMP hr=imp_implementationWithBlock(^BOOL(id o){
    (void)o;(void)orv;return YES;
@@ -702,7 +702,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,sr,YES,"B16@0:8",hr,&orv))imp_removeBlock(hr);
  }
  {
-  Class cls=NSClassFromString(@"FQVNowPlayingInfoCenter");
+  Class cls=objc_lookUpClass("FQVNowPlayingInfoCenter");
   SEL s1=Sel("resignPlayingPlayer:");__block IMP o1=NULL;
   IMP h1=imp_implementationWithBlock(^(id o,id player){
    BOOL hadTarget=BoolMsg0(o,"remoteCommandTargetSelf");
@@ -731,7 +731,7 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   if(!FQXInstallOwnedHook(cls,s2,NO,"v16@0:8",h2,&o2))imp_removeBlock(h2);
  }
  {
-  Class cls=NSClassFromString(@"BDFQPlayManager");
+  Class cls=objc_lookUpClass("BDFQPlayManager");
   SEL sp=Sel("pauseWithSource:");__block IMP op=NULL;
   IMP hp=imp_implementationWithBlock(^(id o,id src){
    ((void(*)(id,SEL,id))op)(o,sp,src);

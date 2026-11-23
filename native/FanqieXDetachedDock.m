@@ -39,7 +39,7 @@ BOOL FQXDockIsModuleAllowedByBottomPrefs(NSString *title) {
 
 static UIViewController *FQXFindSSTabBarControllerInHierarchy(UIViewController *vc, NSInteger depth) {
     if (!vc || depth > 5) return nil;
-    Class tabCls = NSClassFromString(@"SSTabBarController");
+    Class tabCls = objc_lookUpClass("SSTabBarController");
     if (tabCls && [vc isKindOfClass:tabCls]) return vc;
     for (UIViewController *child in vc.childViewControllers) {
         UIViewController *found = FQXFindSSTabBarControllerInHierarchy(child, depth + 1);
@@ -66,7 +66,7 @@ BOOL FQXDockRestoreBottomEntryForModule(NSString *title) {
     if (FQXDockIsModuleAllowedByBottomPrefs(title)) return NO;
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:prefKey];
     UIViewController *tabVC = FQXActiveSSTabBarController();
-    SEL refreshSel = NSSelectorFromString(@"refreshTabBar");
+    SEL refreshSel = sel_registerName("refreshTabBar");
     if (tabVC && [tabVC respondsToSelector:refreshSel]) {
         ((void (*)(id, SEL))objc_msgSend)(tabVC, refreshSel);
     }
@@ -197,9 +197,9 @@ NSInteger FQXDockDetachedResolveIndex(NSArray<NSString *> *visibleTitles) {
 
 static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     if (!view) return;
-    Class cornerCls = NSClassFromString(@"UICornerConfiguration");
-    SEL capSel = NSSelectorFromString(@"capsuleConfiguration");
-    SEL setSel = NSSelectorFromString(@"setCornerConfiguration:");
+    Class cornerCls = objc_lookUpClass("UICornerConfiguration");
+    SEL capSel = sel_registerName("capsuleConfiguration");
+    SEL setSel = sel_registerName("setCornerConfiguration:");
     if (cornerCls && [cornerCls respondsToSelector:capSel] && [view respondsToSelector:setSel]) {
         id cfg = ((id (*)(id, SEL))objc_msgSend)(cornerCls, capSel);
         if (cfg) {
@@ -219,7 +219,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 - (UIView *)_flexInteractionGestureView {
     UIView *source = self.interactionSourceView;
     if (source && source.window) return source;
-    SEL sel = NSSelectorFromString(@"_flexInteractionGestureView");
+    SEL sel = sel_registerName("_flexInteractionGestureView");
     if ([UIVisualEffectView instancesRespondToSelector:sel]) {
         struct objc_super sup = { self, UIVisualEffectView.class };
         return ((id (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, sel);

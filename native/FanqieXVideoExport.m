@@ -74,9 +74,9 @@ static NSString *SafeTitle(id value) {
 
 static void CaptureSource(UIView *player, id engine) {
     id source = HostObject(engine, @selector(playSource));
-    id urlInfo = HostObject(source, NSSelectorFromString(@"usingUrlInfo"));
-    id videoInfo = HostObject(HostObject(player, @selector(model)), NSSelectorFromString(@"videoInfo"));
-    id videoID = HostObject(videoInfo, NSSelectorFromString(@"videoId"));
+    id urlInfo = HostObject(source, sel_registerName("usingUrlInfo"));
+    id videoInfo = HostObject(HostObject(player, @selector(model)), sel_registerName("videoInfo"));
+    id videoID = HostObject(videoInfo, sel_registerName("videoId"));
     RecentPlayer = player;
     RecentEngine = engine;
     RecentVideoInfo = videoInfo;
@@ -87,20 +87,20 @@ static void CaptureSource(UIView *player, id engine) {
     // separate episodes distinguishable when the host supplies no title.
     RecentTitle = SafeTitle(RecentVideoID.length ? [@"短剧视频-" stringByAppendingString:RecentVideoID] : nil);
     RecentUnavailableReason = nil;
-    if (HostFlag(urlInfo, NSSelectorFromString(@"encrypt")) || HasProtectionMarker(HostObject(urlInfo, NSSelectorFromString(@"fps"))) ||
-        HasProtectionMarker(HostObject(engine, NSSelectorFromString(@"fpsLicenseUrl"))) ||
-        HasProtectionMarker(HostObject(engine, NSSelectorFromString(@"encryptedDecryptionKey"))) ||
-        HasProtectionMarker(HostObject(engine, NSSelectorFromString(@"decryptionKey")))) {
+    if (HostFlag(urlInfo, sel_registerName("encrypt")) || HasProtectionMarker(HostObject(urlInfo, sel_registerName("fps"))) ||
+        HasProtectionMarker(HostObject(engine, sel_registerName("fpsLicenseUrl"))) ||
+        HasProtectionMarker(HostObject(engine, sel_registerName("encryptedDecryptionKey"))) ||
+        HasProtectionMarker(HostObject(engine, sel_registerName("decryptionKey")))) {
         RecentUnavailableReason = @"当前视频的来源受到保护。";
         return;
     }
-    if (HostFlag(source, NSSelectorFromString(@"isLivePlayback")) ||
-        HostFlag(engine, NSSelectorFromString(@"isDashSource")) || HostFlag(engine, NSSelectorFromString(@"isBashSource"))) {
+    if (HostFlag(source, sel_registerName("isLivePlayback")) ||
+        HostFlag(engine, sel_registerName("isDashSource")) || HostFlag(engine, sel_registerName("isBashSource"))) {
         RecentUnavailableReason = @"当前视频是直播或分离音视频流，无法作为完整文件导出。";
         return;
     }
-    RecentSource = MediaSourceURL(HostObject(source, NSSelectorFromString(@"currentUrl")));
-    id format = HostObject(engine, NSSelectorFromString(@"getFileFormat"));
+    RecentSource = MediaSourceURL(HostObject(source, sel_registerName("currentUrl")));
+    id format = HostObject(engine, sel_registerName("getFileFormat"));
     if ([format isKindOfClass:NSString.class]) RecentFormat = [format lowercaseString];
     if (!RecentSource) RecentUnavailableReason = @"请重新播放这条视频，再尝试导出可读取的视频来源。";
 }
@@ -117,7 +117,7 @@ static void PlaybackChanged(id self, SEL cmd, id engine, NSInteger state) {
     void (^capture)(void) = ^{
         UIWindow *window = player.window;
         if (!window || !CGRectIntersectsRect([player convertRect:player.bounds toView:window], window.bounds) ||
-            HostObject(player, NSSelectorFromString(@"videoEngine")) != engine) return;
+            HostObject(player, sel_registerName("videoEngine")) != engine) return;
         for (UIView *view = player; view; view = view.superview) {
             if (view.hidden || view.alpha == 0) return;
         }
@@ -165,8 +165,8 @@ static NSString *ContainerExtension(NSURL *file) {
 @implementation FQXVideoExport
 
 + (void)install {
-    Class cls = NSClassFromString(@"FQVPlayer");
-    SEL selector = NSSelectorFromString(@"videoEngine:playbackStateDidChanged:");
+    Class cls = objc_lookUpClass("FQVPlayer");
+    SEL selector = sel_registerName("videoEngine:playbackStateDidChanged:");
     Method method = class_getInstanceMethod(cls, selector);
     if (NativePlaybackChanged || !method || strcmp(method_getTypeEncoding(method), "v32@0:8@16q24")) return;
     IMP original = NULL;
@@ -178,10 +178,10 @@ static NSString *ContainerExtension(NSURL *file) {
     if (!owner || owner.presentedViewController) return;
     UIView *player = RecentPlayer;
     id engine = RecentEngine;
-    if (player && engine && HostObject(player, NSSelectorFromString(@"videoEngine")) == engine) {
-        id videoInfo = HostObject(HostObject(player, @selector(model)), NSSelectorFromString(@"videoInfo"));
-        id videoID = HostObject(videoInfo, NSSelectorFromString(@"videoId"));
-        NSURL *current = MediaSourceURL(HostObject(HostObject(engine, @selector(playSource)), NSSelectorFromString(@"currentUrl")));
+    if (player && engine && HostObject(player, sel_registerName("videoEngine")) == engine) {
+        id videoInfo = HostObject(HostObject(player, @selector(model)), sel_registerName("videoInfo"));
+        id videoID = HostObject(videoInfo, sel_registerName("videoId"));
+        NSURL *current = MediaSourceURL(HostObject(HostObject(engine, @selector(playSource)), sel_registerName("currentUrl")));
         // The CDN URL can become ready after the playing callback or change
         // with resolution. Refresh only the captured episode, not a reused
         // player's next preloaded model.

@@ -834,16 +834,18 @@ static void FQXHookBDRpcComplete(id self, SEL cmd) {
 }
 
 // Weak background watcher for TTNet TTHttpTask / delegate-mode NSURLSessionTask completion
-@interface FQXWatchedNetworkTask : NSObject
-@property(nonatomic, weak) id task;
-@property(nonatomic, copy) NSString *transport;
-@property(nonatomic, copy) NSString *requestId;
-@property(nonatomic, copy) NSString *domain;
-@property(nonatomic, copy) NSString *path;
-@property(nonatomic, copy) NSArray<NSString *> *queryKeys;
-@property(nonatomic, copy) NSString *httpMethod;
-@property(nonatomic) CFTimeInterval startMono;
-@property(nonatomic) BOOL finalized;
+@interface FQXWatchedNetworkTask : NSObject {
+@public
+    __weak id task;
+    NSString *transport;
+    NSString *requestId;
+    NSString *domain;
+    NSString *path;
+    NSArray<NSString *> *queryKeys;
+    NSString *httpMethod;
+    CFTimeInterval startMono;
+    BOOL finalized;
+}
 @end
 
 @implementation FQXWatchedNetworkTask
@@ -853,7 +855,7 @@ static NSMutableArray<FQXWatchedNetworkTask *> *gFQXWatchedTasks = nil;
 static BOOL gFQXWatcherScheduled = NO;
 
 static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id strongTask, BOOL forceTimeoutCheck) {
-    if (!entry || entry.finalized) return;
+    if (!entry || entry->finalized) return;
     id errObj = strongTask ? FQXSafeObjMsg0(strongTask, "error") : nil;
     NSError *err = [errObj isKindOfClass:NSError.class] ? (NSError *)errObj : nil;
     id respObj = strongTask ? FQXSafeObjMsg0(strongTask, "response") : nil;
@@ -864,14 +866,13 @@ static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id stron
 
     BOOL hasState = NO;
     NSInteger state = strongTask ? FQXSafeIntMsg0(strongTask, "state", &hasState) : 3;
-    // NSURLSessionTaskState: 0=Running, 1=Suspended, 2=Canceling, 3=Completed
     BOOL done = (!strongTask) || (err != nil) || (statusCode > 0) || (hasState && (state == 2 || state == 3));
-    double durMs = (CACurrentMediaTime() - entry.startMono) * 1000.0;
+    double durMs = (CACurrentMediaTime() - entry->startMono) * 1000.0;
     if (!done && !(forceTimeoutCheck && durMs > 18000.0)) {
         return;
     }
 
-    entry.finalized = YES;
+    entry->finalized = YES;
     BOOL cancelled = (hasState && state == 2) ||
                      (err && [err.domain isEqualToString:NSURLErrorDomain] && err.code == NSURLErrorCancelled);
     NSString *source = nil;
@@ -886,14 +887,14 @@ static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id stron
         : (releasedBeforePoll ? @"released_unobserved"
            : ((err || statusCode >= 400) ? @"failed" : @"returned"));
 
-    FQXRecordRecentFailureSummary(entry.domain, entry.path, stage, statusCode, err, source);
+    FQXRecordRecentFailureSummary(entry->domain, entry->path, stage, statusCode, err, source);
     NSMutableDictionary<NSString *, id> *payload = [@{
-        @"transport": entry.transport ?: @"HTTP",
-        @"requestId": entry.requestId ?: @"",
-        @"domain": entry.domain ?: @"unknown",
-        @"path": entry.path ?: @"/",
-        @"queryKeys": entry.queryKeys ?: @[],
-        @"httpMethod": entry.httpMethod ?: @"GET",
+        @"transport": entry->transport ?: @"HTTP",
+        @"requestId": entry->requestId ?: @"",
+        @"domain": entry->domain ?: @"unknown",
+        @"path": entry->path ?: @"/",
+        @"queryKeys": entry->queryKeys ?: @[],
+        @"httpMethod": entry->httpMethod ?: @"GET",
         @"stage": stage,
         @"statusCode": @(statusCode),
         @"durationMs": @(round(durMs * 10.0) / 10.0),
@@ -903,10 +904,10 @@ static void FQXFinalizeWatchedTaskOnQueue(FQXWatchedNetworkTask *entry, id stron
         @"isTimeout": @(isTimeout),
         @"isConnectionFailure": @(isConnFail),
         @"interceptSource": source ?: @"ok",
-        @"isMonitoredSnssdk": @([entry.domain isEqualToString:@"is.snssdk.com"]),
+        @"isMonitoredSnssdk": @([entry->domain isEqualToString:@"is.snssdk.com"]),
     } mutableCopy];
     if (note) payload[@"proxyAssessmentNote"] = note;
-    BOOL important = !releasedBeforePoll || [entry.domain isEqualToString:@"is.snssdk.com"];
+    BOOL important = !releasedBeforePoll || [entry->domain isEqualToString:@"is.snssdk.com"];
     FQXDiagRecordEvent(FQXDiagCategoryNetwork, @"network_request", payload, important);
 }
 
@@ -916,7 +917,7 @@ static void FQXScheduleWatchedTasksPollOnQueue(void) {
     CFTimeInterval now = CACurrentMediaTime();
     BOOL hasYoungTask = NO;
     for (FQXWatchedNetworkTask *item in gFQXWatchedTasks) {
-        if ((now - item.startMono) < 1.2) {
+        if ((now - item->startMono) < 1.2) {
             hasYoungTask = YES;
             break;
         }
@@ -926,9 +927,9 @@ static void FQXScheduleWatchedTasksPollOnQueue(void) {
         gFQXWatcherScheduled = NO;
         for (NSInteger i = (NSInteger)gFQXWatchedTasks.count - 1; i >= 0; --i) {
             FQXWatchedNetworkTask *item = gFQXWatchedTasks[(NSUInteger)i];
-            id strong = item.task;
+            id strong = item->task;
             FQXFinalizeWatchedTaskOnQueue(item, strong, YES);
-            if (item.finalized) {
+            if (item->finalized) {
                 [gFQXWatchedTasks removeObjectAtIndex:(NSUInteger)i];
             }
         }
@@ -963,14 +964,14 @@ static void FQXObserveGenericHttpTaskStart(id task, NSString *transport) {
     NSString *reqId = FQXNextNetReqId();
 
     FQXWatchedNetworkTask *watch = [[FQXWatchedNetworkTask alloc] init];
-    watch.task = task;
-    watch.transport = transport;
-    watch.requestId = reqId;
-    watch.domain = domain;
-    watch.path = path;
-    watch.queryKeys = queryKeys;
-    watch.httpMethod = httpMethod;
-    watch.startMono = CACurrentMediaTime();
+    watch->task = task;
+    watch->transport = [transport copy];
+    watch->requestId = [reqId copy];
+    watch->domain = [domain copy];
+    watch->path = [path copy];
+    watch->queryKeys = [queryKeys copy];
+    watch->httpMethod = [httpMethod copy];
+    watch->startMono = CACurrentMediaTime();
     objc_setAssociatedObject(task, kFQXTaskTrackKey, watch, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     FQXRecordRecentFailureSummary(domain, path, @"issued", 0, nil, @"issued");
@@ -989,8 +990,8 @@ static void FQXObserveGenericHttpTaskStart(id task, NSString *transport) {
     __weak id weakTask = task;
     dispatch_async(FQXHubQueue(), ^{
         if (!gFQXWatchedTasks) gFQXWatchedTasks = [NSMutableArray arrayWithCapacity:32];
-        if (gFQXWatchedTasks.count < 128 && !watch.finalized) {
-            watch.task = weakTask;
+        if (gFQXWatchedTasks.count < 128 && !watch->finalized) {
+            watch->task = weakTask;
             [gFQXWatchedTasks addObject:watch];
             FQXScheduleWatchedTasksPollOnQueue();
         }
@@ -999,16 +1000,16 @@ static void FQXObserveGenericHttpTaskStart(id task, NSString *transport) {
 
 static void FQXObserveGenericHttpTaskCancel(id task) {
     FQXWatchedNetworkTask *watch = objc_getAssociatedObject(task, kFQXTaskTrackKey);
-    if (!watch || watch.finalized || !FQXDiagnosticsHubIsEnabled()) return;
-    watch.finalized = YES;
-    double durMs = (CACurrentMediaTime() - watch.startMono) * 1000.0;
-    FQXRecordRecentFailureSummary(watch.domain, watch.path, @"cancelled", 0, nil, @"cancelled");
+    if (!watch || watch->finalized || !FQXDiagnosticsHubIsEnabled()) return;
+    watch->finalized = YES;
+    double durMs = (CACurrentMediaTime() - watch->startMono) * 1000.0;
+    FQXRecordRecentFailureSummary(watch->domain, watch->path, @"cancelled", 0, nil, @"cancelled");
     FQXDiagRecordEvent(FQXDiagCategoryNetwork, @"network_request", @{
-        @"transport": watch.transport ?: @"HTTP",
-        @"requestId": watch.requestId ?: @"",
-        @"domain": watch.domain ?: @"unknown",
-        @"path": watch.path ?: @"/",
-        @"httpMethod": watch.httpMethod ?: @"GET",
+        @"transport": watch->transport ?: @"HTTP",
+        @"requestId": watch->requestId ?: @"",
+        @"domain": watch->domain ?: @"unknown",
+        @"path": watch->path ?: @"/",
+        @"httpMethod": watch->httpMethod ?: @"GET",
         @"stage": @"cancelled",
         @"statusCode": @0,
         @"durationMs": @(round(durMs * 10.0) / 10.0),
@@ -1016,7 +1017,7 @@ static void FQXObserveGenericHttpTaskCancel(id task) {
         @"isTimeout": @NO,
         @"isConnectionFailure": @NO,
         @"interceptSource": @"cancelled",
-        @"isMonitoredSnssdk": @([watch.domain isEqualToString:@"is.snssdk.com"]),
+        @"isMonitoredSnssdk": @([watch->domain isEqualToString:@"is.snssdk.com"]),
     }, YES);
 }
 
@@ -1123,10 +1124,12 @@ static void InstallNetworkDiagnosticsHooks(void) {
     }
 
     // Hook TTNet task classes if present in host binary
-    NSArray<NSString *> *ttClasses = @[@"TTHttpTaskChromium", @"TTHttpTask"];
-    for (NSString *clsName in ttClasses) {
-        Class ttCls = NSClassFromString(clsName);
+    static const char *const kTTClasses[] = {"TTHttpTaskChromium", "TTHttpTask", NULL};
+    for (int i = 0; kTTClasses[i]; ++i) {
+        const char *clsCStr = kTTClasses[i];
+        Class ttCls = objc_lookUpClass(clsCStr);
         if (!ttCls) continue;
+        NSString *clsName = [NSString stringWithUTF8String:clsCStr];
         SEL resumeSel = sel_registerName("resume");
         __block IMP origResume = NULL;
         IMP resumeHook = imp_implementationWithBlock(^(id task) {
@@ -1147,7 +1150,7 @@ static void InstallNetworkDiagnosticsHooks(void) {
         }
     }
 
-    Class sessionCls = NSClassFromString(@"__NSURLSessionLocal") ?: NSURLSession.class;
+    Class sessionCls = objc_lookUpClass("__NSURLSessionLocal") ?: NSURLSession.class;
     FQXInstallOwnedHook(sessionCls,
                         @selector(dataTaskWithRequest:completionHandler:),
                         NO,
@@ -1358,7 +1361,7 @@ void FQXDiagRecordReaderTTSCheck(id ttsMgr,
             if (found) paraFlags[[NSString stringWithUTF8String:flagNames[i]]] = @(v);
         }
     }
-    Class paraMgrCls = NSClassFromString(@"SSReaderTTSParaEntranceManager");
+    Class paraMgrCls = objc_lookUpClass("SSReaderTTSParaEntranceManager");
     if (paraMgrCls) {
         Class meta = object_getClass(paraMgrCls);
         unsigned int mc = 0;
@@ -1385,7 +1388,7 @@ void FQXDiagRecordReaderTTSCheck(id ttsMgr,
     id rvc = FQXSafeObjMsg0(paraMgr, "readerVC") ?: FQXSafeObjMsg0(effectiveReaderMgr, "readerVC");
     BOOL vcLoaded = FQXSafeBoolMsg0(rvc, "isViewLoaded", NULL);
     UIView *rview = vcLoaded ? FQXSafeObjMsg0(rvc, "view") : nil;
-    Class arrowCls = NSClassFromString(@"SSReaderTTSParagraphEntranceView");
+    Class arrowCls = objc_lookUpClass("SSReaderTTSParagraphEntranceView");
     if ([rview isKindOfClass:UIView.class] && arrowCls) {
         visibleArrows = FQXCountVisibleSubtreeClass(rview, arrowCls, &totalArrows, 0);
     }
@@ -1466,7 +1469,7 @@ void FQXDiagRecordTTSPlaybackEvent(id sdkManager,
 }
 
 static void InstallTTSAndViewLifecycleHooks(void) {
-    Class arrowCls = NSClassFromString(@"SSReaderTTSParagraphEntranceView");
+    Class arrowCls = objc_lookUpClass("SSReaderTTSParagraphEntranceView");
     if (arrowCls) {
         SEL initSel = @selector(initWithFrame:);
         __block IMP origInit = NULL;
@@ -1550,7 +1553,7 @@ static void InstallTTSAndViewLifecycleHooks(void) {
         }
     }
 
-    Class paraMgrCls = NSClassFromString(@"SSReaderTTSParaEntranceManager");
+    Class paraMgrCls = objc_lookUpClass("SSReaderTTSParaEntranceManager");
     if (paraMgrCls) {
         const char *voidSelectors[] = {
             "applyToHidePlayAnchorViews",
@@ -1817,17 +1820,14 @@ static void InstallSecurityVerificationHooks(void) {
     }
 
     // Probe well-known BDTuring view/controller classes without scanning all 40,000 runtime classes synchronously
-    NSArray<NSString *> *turingViewClasses = @[
-        @"BDTuringVerifyView",
-        @"BDTuringWebView",
-        @"BDTuringPopView",
-        @"BDTuringLoginView",
-        @"BDTuringSMSVerifyView",
-        @"BDTuringQAVerifyView",
-    ];
-    for (NSString *cn in turingViewClasses) {
-        Class tc = NSClassFromString(cn);
+    static const char *const kTuringViewClasses[] = {
+        "BDTuringVerifyView", "BDTuringWebView", "BDTuringPopView",
+        "BDTuringLoginView", "BDTuringSMSVerifyView", "BDTuringQAVerifyView", NULL
+    };
+    for (int i = 0; kTuringViewClasses[i]; ++i) {
+        Class tc = objc_lookUpClass(kTuringViewClasses[i]);
         if (!tc || ![tc isSubclassOfClass:UIView.class]) continue;
+        NSString *cn = [NSString stringWithUTF8String:kTuringViewClasses[i]];
         SEL mw = @selector(didMoveToWindow);
         __block IMP origMW = NULL;
         IMP mwHook = imp_implementationWithBlock(^(UIView *v) {
@@ -1906,9 +1906,9 @@ void FQXDiagnosticsHubInstall(void) {
             FQXDiagRecordEvent(FQXDiagCategorySecurity, @"diagnostics_hub_ready", @{
                 @"enhanced": @(FQXDiagnosticsHubIsEnhanced()),
                 @"accountLoggedIn": @(FQXProbeAccountLoggedIn()),
-                @"hasBDTuringVerifyView": @(NSClassFromString(@"BDTuringVerifyView") != Nil),
-                @"hasTTSParaEntranceManager": @(NSClassFromString(@"SSReaderTTSParaEntranceManager") != Nil),
-                @"hasTTSParaEntranceView": @(NSClassFromString(@"SSReaderTTSParagraphEntranceView") != Nil),
+                @"hasBDTuringVerifyView": @(objc_lookUpClass("BDTuringVerifyView") != Nil),
+                @"hasTTSParaEntranceManager": @(objc_lookUpClass("SSReaderTTSParaEntranceManager") != Nil),
+                @"hasTTSParaEntranceView": @(objc_lookUpClass("SSReaderTTSParagraphEntranceView") != Nil),
                 @"deferredInstall": @YES,
             }, YES);
         });

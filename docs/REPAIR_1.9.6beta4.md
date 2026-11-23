@@ -28,7 +28,7 @@
    - 新增 `FQXSyncScrollFoldDualContainerSV` 与分页吸附代理 Hook（`scrollViewDidScroll:` / `scrollViewWillEndDragging:withVelocity:targetContentOffset:`），同时升级 `FQXSyncMineFlow` 原生帧探测（兼容第 1 页单行 4 项 + 第 2 页双行 8 项的折页布局与纯双行网格）：将第 1 页 4 个按钮按 `cardWidth / 4` 全宽均匀排布，将第 2 页起始横坐标严格推至 `x = cardWidth` 屏外，并收紧折叠态 `FQXMineShortcutViewport` 底部裁剪边界，确保第 1 页只显示 4 个按钮、绝不露出第 5 列或第 2 排残边，滑到第 2 页仍完整显示双行四列功能。
 3. **大幅降低运行时堆内存占用并压缩 Mach-O 二进制体积（`native/FanqieXDiagnosticsHub.m`、`native/FanqieXMotion.m`、`native/FQXContentCleanup.m`）**：
    - **运行时内存与磁盘 I/O 优化**：将 `gFQXHubRing` 常驻内存上限从 `1500 / 3600` 降至 `48 / 160`（释放约 `3–5 MB` 常驻堆对象），改为 `8 KB` 内存缓冲批量落盘并在导出/退后台/内存告警时自动刷盘清空；过滤 `fqnovelpic.com` / `byteimg.com` 等静态图片请求的取消噪音并用 64 位 Tagged Pointer 短请求号替代每次请求分配 `NSUUID`；为各高频布局诊断点补齐 `FQXDiagnosticsHubIsEnabled()` 前置短路，并在退后台与低内存时主动清空单色分享图标缓存及压缩全部弱引用表。
-   - **二进制段体积压缩**：将 `172` 个自引用 `void *` 关联对象键改为零重定位只读常量地址（消除 `__DATA` 段指针占用与冷启动 rebase 开销），合并重复 `FQXShareWeakBox` 到 `FQXWeakBox`，移除 `FanqieXMotion.m` 与 `FQXContentCleanup.m` 中全部 `13` 处 `@try/@catch` 异常表改为直接运行时方法/成员变量访问，并将 `215` 处内联 Hook 注册宏收敛为共用辅助函数 `FQXHookInst`。
+   - **二进制段体积压缩**：将 `172` 个自引用 `void *` 关联对象键改为零重定位只读常量地址（消除 `__DATA` 段指针占用与冷启动 rebase 开销），将 9 个内部私有状态/视图类的 `132` 个 `@property` 改为直接成员变量访问（消除 `264` 个合成 getter/setter 方法与 `__objc_const` / `__objc_selrefs` 元数据），将 `395` 处 ASCII 字面量 `NSClassFromString` / `NSSelectorFromString` 改为直接 C 运行时查找（`objc_lookUpClass` / `sel_registerName`），合并重复 `FQXShareWeakBox` 到 `FQXWeakBox`，移除 `FanqieXMotion.m` 与 `FQXContentCleanup.m` 中全部 `13` 处 `@try/@catch` 异常表，并将 `215` 处内联 Hook 注册宏收敛为共用辅助函数 `FQXHookInst`。
 
 ## 三、待真机复测项
 

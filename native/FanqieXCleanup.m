@@ -246,8 +246,8 @@ static NSArray *ImportMenu(id owner, SEL cmd) {
 }
 
 static BOOL IsMotionComicBanner(id banner) {
-    id video = HostObject(banner, NSSelectorFromString(@"chaseVideoData"));
-    SEL contentType = NSSelectorFromString(@"contentType");
+    id video = HostObject(banner, sel_registerName("chaseVideoData"));
+    SEL contentType = sel_registerName("contentType");
     // This is the host's contentType value used for isMotionComic.
     return HostMethod(object_getClass(video), contentType, "i16@0:8") &&
         ((int (*)(id, SEL))objc_msgSend)(video, contentType) == 1004;
@@ -263,7 +263,7 @@ static BOOL (*NativeHasUnconsumedBanner)(id, SEL);
 static BOOL HasUnconsumedBanner(id owner, SEL cmd) {
     if (!NativeHasUnconsumedBanner(owner, cmd)) return NO;
     if (Option(ShelfComicKey, YES)) return YES;
-    return !IsMotionComicBanner(HostObject(owner, NSSelectorFromString(@"unconsumedVideoBanner")));
+    return !IsMotionComicBanner(HostObject(owner, sel_registerName("unconsumedVideoBanner")));
 }
 
 static __weak UIViewController *LastShelf;
@@ -285,7 +285,7 @@ static void ShelfRefreshVisibleHeaderLayout(UIView *cv) {
     UICollectionView *collection = (UICollectionView *)cv;
     static Class funcCls = Nil;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ funcCls = NSClassFromString(@"SSBookShelfFunctionCell"); });
+    dispatch_once(&once, ^{ funcCls = objc_lookUpClass("SSBookShelfFunctionCell"); });
     for (UIView *sub in collection.subviews) {
         if (![sub isKindOfClass:UICollectionViewCell.class]) continue;
         if (!funcCls || [sub isKindOfClass:funcCls]) {
@@ -302,7 +302,7 @@ static BOOL ShelfViewIsEmptyBookPlaceholder(UIView *view, NSInteger depth) {
     if (depth > 0 && [view isKindOfClass:UICollectionView.class]) return NO;
     static Class funcCls = Nil;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ funcCls = NSClassFromString(@"SSBookShelfFunctionCell"); });
+    dispatch_once(&once, ^{ funcCls = objc_lookUpClass("SSBookShelfFunctionCell"); });
     if (funcCls && [view isKindOfClass:funcCls]) return NO;
     if (depth == 0) {
         id model = HostObject(view, @selector(cellModel)) ?: HostObject(view, @selector(model));
@@ -596,9 +596,9 @@ static FQXShelfUtilityKind ShelfUtilityKindForModel(id model) {
 
 static FQXShelfUtilityKind ShelfUtilityKindForCell(id cell) {
     if (![cell isKindOfClass:UIView.class]) return FQXShelfUtilityNone;
-    Class funcCls = NSClassFromString(@"SSBookShelfFunctionCell");
+    Class funcCls = objc_lookUpClass("SSBookShelfFunctionCell");
     if (funcCls && [cell isKindOfClass:funcCls]) return FQXShelfUtilityNone;
-    id model = HostObject(cell, NSSelectorFromString(@"cellModel")) ?: HostObject(cell, NSSelectorFromString(@"model"));
+    id model = HostObject(cell, sel_registerName("cellModel")) ?: HostObject(cell, sel_registerName("model"));
     if (ShelfModelIsRealBook(model)) return FQXShelfUtilityNone;
     FQXShelfUtilityKind modelKind = ShelfUtilityKindForModel(model);
     if (modelKind != FQXShelfUtilityNone) return modelKind;
@@ -665,8 +665,8 @@ static void ShelfUtilityPrepopulateBookSection(id controller, NSInteger section,
     if (!controller || nativeCount <= 0) return;
     if (Option(ShelfImportKey, YES) && Option(ShelfHistoryCardKey, YES)) return;
     if (ShelfRecSectionType(controller, section) != 4) return;
-    id vm = HostObject(controller, NSSelectorFromString(@"viewModel"));
-    id models = HostObject(vm, NSSelectorFromString(@"showCellModels"));
+    id vm = HostObject(controller, sel_registerName("viewModel"));
+    id models = HostObject(vm, sel_registerName("showCellModels"));
     if (![models isKindOfClass:NSArray.class]) return;
     NSArray *arr = (NSArray *)models;
     if ((NSInteger)arr.count != nativeCount) return;
@@ -905,8 +905,8 @@ static id ShelfRecCellForItem(id self, SEL cmd, id collectionView, NSIndexPath *
     static Class funcCls = Nil;
     static dispatch_once_t cellOnce;
     dispatch_once(&cellOnce, ^{
-        baseBookCls = NSClassFromString(@"SSBookShelfBaseCell");
-        funcCls = NSClassFromString(@"SSBookShelfFunctionCell");
+        baseBookCls = objc_lookUpClass("SSBookShelfBaseCell");
+        funcCls = objc_lookUpClass("SSBookShelfFunctionCell");
     });
     BOOL isBookCell = (baseBookCls && [cell isKindOfClass:baseBookCls]) || stype == 4;
     BOOL isFuncCell = (funcCls && [cell isKindOfClass:funcCls]) || stype == 1;
@@ -1127,11 +1127,11 @@ static void SetNotificationBadge(id owner, SEL cmd, NSInteger count, void (^comp
 }
 
 static id AutoReadUI(id manager) {
-    id ui = HostObject(manager, NSSelectorFromString(@"UIMgr"));
+    id ui = HostObject(manager, sel_registerName("UIMgr"));
     Class cls = object_getClass(ui);
-    if (!HostMethod(cls, NSSelectorFromString(@"isToolViewShow"), "B16@0:8") ||
-        !HostMethod(cls, NSSelectorFromString(@"enterAutoReadMode"), "v16@0:8") ||
-        !HostMethod(cls, NSSelectorFromString(@"exitAutoReadMode:"), "v20@0:8i16")) return nil;
+    if (!HostMethod(cls, sel_registerName("isToolViewShow"), "B16@0:8") ||
+        !HostMethod(cls, sel_registerName("enterAutoReadMode"), "v16@0:8") ||
+        !HostMethod(cls, sel_registerName("exitAutoReadMode:"), "v20@0:8i16")) return nil;
     return ui;
 }
 
@@ -1140,22 +1140,22 @@ static BOOL ShouldRecognize(id manager, SEL cmd) {
     if (NativeShouldRecognize(manager, cmd)) return YES;
     if (!Option(DoubleTapKey, NO)) return NO;
     id ui = AutoReadUI(manager);
-    SEL isToolViewShow = NSSelectorFromString(@"isToolViewShow");
+    SEL isToolViewShow = sel_registerName("isToolViewShow");
     return ui && !((BOOL (*)(id, SEL))objc_msgSend)(ui, isToolViewShow);
 }
 
 static void (*NativeDoubleTap)(id, SEL, id, id);
 static void ToggleAutoRead(id manager, SEL cmd, id view, id event) {
     id ui = Option(DoubleTapKey, NO) ? AutoReadUI(manager) : nil;
-    id config = HostObject(ui, NSSelectorFromString(@"config"));
-    SEL active = NSSelectorFromString(@"isAutoRead");
+    id config = HostObject(ui, sel_registerName("config"));
+    SEL active = sel_registerName("isAutoRead");
     if (!ui || !HostMethod(object_getClass(config), active, "B16@0:8")) {
         NativeDoubleTap(manager, cmd, view, event);
         return;
     }
-    if (((BOOL (*)(id, SEL))objc_msgSend)(ui, NSSelectorFromString(@"isToolViewShow"))) return;
+    if (((BOOL (*)(id, SEL))objc_msgSend)(ui, sel_registerName("isToolViewShow"))) return;
     if (((BOOL (*)(id, SEL))objc_msgSend)(config, active)) {
-        ((void (*)(id, SEL, int))objc_msgSend)(ui, NSSelectorFromString(@"exitAutoReadMode:"), -102);
+        ((void (*)(id, SEL, int))objc_msgSend)(ui, sel_registerName("exitAutoReadMode:"), -102);
     } else {
         // The native entry reads both existing settings views. They may not
         // have been constructed when the gesture starts the first session.
@@ -1165,7 +1165,7 @@ static void ToggleAutoRead(id manager, SEL cmd, id view, id event) {
                 ((void (*)(id, SEL))objc_msgSend)(ui, initialize);
             }
         }
-        ((void (*)(id, SEL))objc_msgSend)(ui, NSSelectorFromString(@"enterAutoReadMode"));
+        ((void (*)(id, SEL))objc_msgSend)(ui, sel_registerName("enterAutoReadMode"));
     }
 }
 
@@ -1223,7 +1223,7 @@ static void RestoreMinePosition(UIViewController *controller) {
     if (!controller || controller.presentedViewController || FQXDiagHasActiveSecurityVerificationInWindows()) {
         return;
     }
-    UIScrollView *list = HostObject(controller, NSSelectorFromString(@"collectionView"));
+    UIScrollView *list = HostObject(controller, sel_registerName("collectionView"));
     if (![list isKindOfClass:UIScrollView.class] || list.dragging || list.decelerating) return;
     if ([list isKindOfClass:UICollectionView.class]) {
         [((UICollectionView *)list).collectionViewLayout invalidateLayout];
@@ -1254,7 +1254,7 @@ static void (*NativeMineWillAppear)(id, SEL, BOOL);
 static void MineWillAppear(id owner, SEL cmd, BOOL animated) {
     if (NativeMineWillAppear) NativeMineWillAppear(owner, cmd, animated);
     LastMine = owner;
-    UIView *bar = HostObject(owner, NSSelectorFromString(@"myUserBar")) ?: CleanupIvarObject(owner, "_myUserBar");
+    UIView *bar = HostObject(owner, sel_registerName("myUserBar")) ?: CleanupIvarObject(owner, "_myUserBar");
     if ([bar isKindOfClass:UIView.class]) {
         [bar setNeedsLayout];
     }
@@ -1285,12 +1285,16 @@ static NSMutableSet<NSString *> *DramaRailHookedContainers;
 
 static BOOL IsDramaRightActionView(UIView *view) {
     if (![view isKindOfClass:UIView.class]) return NO;
-    for (NSString *clsName in @[@"SSShortVideoRightInteractionCollectView",
-                                @"SSShortVideoRightInteractionCommentView",
-                                @"SSShortVideoHostRightInteractionCommentView",
-                                @"SSShortVideoRightInteractionLikeView",
-                                @"SSShortVideoRightInteractionShareView"]) {
-        Class cls = NSClassFromString(clsName);
+    static const char *const kRightActionClasses[] = {
+        "SSShortVideoRightInteractionCollectView",
+        "SSShortVideoRightInteractionCommentView",
+        "SSShortVideoHostRightInteractionCommentView",
+        "SSShortVideoRightInteractionLikeView",
+        "SSShortVideoRightInteractionShareView",
+        NULL
+    };
+    for (int i = 0; kRightActionClasses[i]; ++i) {
+        Class cls = objc_lookUpClass(kRightActionClasses[i]);
         if (cls && [view isKindOfClass:cls]) return YES;
     }
     return NO;
@@ -1452,7 +1456,7 @@ static void ReflowDramaRightInteractionRailForAction(UIView *actionView) {
 static void InstallDramaActionVisibility(NSString *className, NSString *key) {
     Class cls = NSClassFromString(className);
     SEL hidden = @selector(setHidden:);
-    SEL refresh = NSSelectorFromString(@"refreshSubviews");
+    SEL refresh = sel_registerName("refreshSubviews");
     if (!HostMethod(cls, hidden, "v20@0:8B16") || !HostMethod(cls, refresh, "v16@0:8")) return;
     if (!DramaActionOwners) DramaActionOwners = [NSMutableDictionary dictionary];
     NSHashTable<UIView *> *owners = DramaActionOwners[key];
@@ -1509,7 +1513,7 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
 
 static void RefreshMineViewsInSubtree(UIView *view) {
     if (![view isKindOfClass:UIView.class]) return;
-    Class barCls = NSClassFromString(@"SSMyUserBar");
+    Class barCls = objc_lookUpClass("SSMyUserBar");
     if (barCls && [view isKindOfClass:barCls]) {
         [view setNeedsLayout];
         [view layoutIfNeeded];
@@ -1716,8 +1720,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
     });
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL compactSel = NSSelectorFromString(@"compactMemory");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL compactSel = sel_registerName("compactMemory");
         if ([dockMotion respondsToSelector:compactSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, compactSel);
         }
@@ -1819,7 +1823,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SHOW_RULE("SSBookShelfDoubleColumn", "isDoubleColumnAllInBookShelf", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "enable", ShelfRecommendations);
         SHOW_RULE("SSBookShelfDoubleColumnConfig", "recommend_feed_enabled", ShelfRecommendations);
-        HideClassWhen(@"SSBookShelfDoubleColumn", NSSelectorFromString(@"isFeatureEnabled"), ShelfRecommendationsKey, YES);
+        HideClassWhen(@"SSBookShelfDoubleColumn", sel_registerName("isFeatureEnabled"), ShelfRecommendationsKey, YES);
 
         REPLACE(NativeImportCell, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B24@0:8q16", ImportCell);
         REPLACE(NativeImportCellBool, "SSBookShelfViewModel", "shouldShowLocalBookEntryAddCellWithHistoryCard:", "B20@0:8B16", ImportCellBool);
@@ -1857,7 +1861,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         dispatch_async(dispatch_get_main_queue(), ^{
             SHOW_RULE("SSMyUser621BaseViewController", "showShortcut", MineShortcutCard);
             SHOW_RULE("SSMyUser621ViewController", "shouldInsertUnlimited", MineRecommendations);
-            MinePublishButton = class_getInstanceVariable(NSClassFromString(@"SSMyUser621ViewController"), "_publishButton");
+            MinePublishButton = class_getInstanceVariable(objc_lookUpClass("SSMyUser621ViewController"), "_publishButton");
             if (MinePublishButton && strcmp(ivar_getTypeEncoding(MinePublishButton), "@\"SSCommunityPublishButton\"") == 0) {
                 REPLACE(NativeUpdatePublish, "SSMyUser621ViewController", "updatePublishBtnIfNeed", "v16@0:8", UpdatePublish);
                 REPLACE(NativeMineUpdateLayout, "SSMyUser621ViewController", "updateLayout", "v16@0:8", MineUpdateLayout);
@@ -1914,10 +1918,10 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             REPLACE(NativePauseForTime, "SSReaderAutoReadPreSaveManager", "pauseAutoReadIfNeededForNoLeftTime", "v16@0:8", PauseForTime);
             // These switches control the reader's local ad-time interlock. The
             // original reward requests and network accounting are independent.
-            HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
-            HideWhen(@"SSReaderAutoReadInterrupter", NSSelectorFromString(@"autoReadInspireOpen"), DurationLimitKey, NO);
-            HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"inspireAutoReadOpen"), DurationLimitKey, NO);
-            HideWhen(@"SSReaderAutoReadPreSaveManager", NSSelectorFromString(@"shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadInterrupter", sel_registerName("inspireAutoReadOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadInterrupter", sel_registerName("autoReadInspireOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadPreSaveManager", sel_registerName("inspireAutoReadOpen"), DurationLimitKey, NO);
+            HideWhen(@"SSReaderAutoReadPreSaveManager", sel_registerName("shouldExitAutoReadWhenHidePreSaveCard"), DurationLimitKey, NO);
         });
 
 #undef REPLACE
@@ -1949,7 +1953,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
 + (void)refreshForKey:(NSString *)key {
     FQXInvalidateOptionCache();
     if ([key isEqualToString:MinePublishKey]) {
-        SEL selector = NSSelectorFromString(@"updatePublishBtnIfNeed");
+        SEL selector = sel_registerName("updatePublishBtnIfNeed");
         if (NativeUpdatePublish && LastMine) UpdatePublish(LastMine, selector);
     } else if ([key isEqualToString:MineScanButtonKey] || [key isEqualToString:MineSearchBarKey] ||
                [key isEqualToString:MineNightButtonKey] || [key isEqualToString:MineShortcutCardKey]) {
@@ -1960,43 +1964,43 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             }
         }
         UIViewController *mine = LastMine;
-        UIView *bar = HostObject(mine, NSSelectorFromString(@"myUserBar")) ?: CleanupIvarObject(mine, "_myUserBar");
+        UIView *bar = HostObject(mine, sel_registerName("myUserBar")) ?: CleanupIvarObject(mine, "_myUserBar");
         if ([bar isKindOfClass:UIView.class]) {
             [bar setNeedsLayout];
             [bar layoutIfNeeded];
         }
         if ([key isEqualToString:MineShortcutCardKey] && mine) {
-            SEL reload = NSSelectorFromString(@"reloadData:");
+            SEL reload = sel_registerName("reloadData:");
             if (HostMethod(object_getClass(mine), reload, "v24@0:8@16")) {
                 ((void (*)(id, SEL, id))objc_msgSend)(mine, reload, @"FanqieXCleanup");
             } else {
-                id cv = HostObject(mine, NSSelectorFromString(@"collectionView"));
+                id cv = HostObject(mine, sel_registerName("collectionView"));
                 if ([cv isKindOfClass:UICollectionView.class]) [(UICollectionView *)cv reloadData];
             }
             ScheduleMinePositionSettle(mine);
         }
     } else if ([key isEqualToString:AudioControlIconsOnlyKey] || [key isEqualToString:AudioLiquidGlassKey] ||
                [key isEqualToString:AudioButtonBlurKey]) {
-        Class motion = NSClassFromString(@"FQXDockMotion");
-        SEL refresh = NSSelectorFromString(@"refreshAudioGlass");
+        Class motion = objc_lookUpClass("FQXDockMotion");
+        SEL refresh = sel_registerName("refreshAudioGlass");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:AudioRecommendationsKey]) {
         BOOL show = Option(AudioRecommendationsKey, YES);
         for (UIViewController *vc in [AudioPlayControllers() allObjects]) {
             ApplyAudioRecommendVisibility(vc);
             if (show) {
-                if (NativeAudioLoadUnlimited) NativeAudioLoadUnlimited(vc, NSSelectorFromString(@"loadUnlimitedRecommend"));
-                if (NativeAudioLoadRecommendBook) NativeAudioLoadRecommendBook(vc, NSSelectorFromString(@"loadRecommendBook"));
-                if (NativeAudioReloadRecommendForce) NativeAudioReloadRecommendForce(vc, NSSelectorFromString(@"reloadRecommendUIRequestForce:"), YES);
+                if (NativeAudioLoadUnlimited) NativeAudioLoadUnlimited(vc, sel_registerName("loadUnlimitedRecommend"));
+                if (NativeAudioLoadRecommendBook) NativeAudioLoadRecommendBook(vc, sel_registerName("loadRecommendBook"));
+                if (NativeAudioReloadRecommendForce) NativeAudioReloadRecommendForce(vc, sel_registerName("reloadRecommendUIRequestForce:"), YES);
             }
-            SEL layoutSel = NSSelectorFromString(@"layoutContentView");
+            SEL layoutSel = sel_registerName("layoutContentView");
             if (HostMethod(object_getClass(vc), layoutSel, "v16@0:8")) {
                 ((void (*)(id, SEL))objc_msgSend)(vc, layoutSel);
             }
             [vc.view setNeedsLayout];
         }
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshAudioSel = NSSelectorFromString(@"refreshAudioGlass");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshAudioSel = sel_registerName("refreshAudioGlass");
         if ([dockMotion respondsToSelector:refreshAudioSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshAudioSel);
         }
@@ -2012,12 +2016,12 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             ReflowDramaRightInteractionRail(railRoot);
         }
     } else if ([key isEqualToString:DramaOutlineActionsKey]) {
-        Class style = NSClassFromString(@"FQXDramaActionStyle");
-        SEL refresh = NSSelectorFromString(@"refresh");
+        Class style = objc_lookUpClass("FQXDramaActionStyle");
+        SEL refresh = sel_registerName("refresh");
         if ([style respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(style, refresh);
     } else if ([key isEqualToString:DramaPinchPureCleanKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshPinchSel = NSSelectorFromString(@"refreshDramaPinchClean");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshPinchSel = sel_registerName("refreshDramaPinchClean");
         if ([dockMotion respondsToSelector:refreshPinchSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
@@ -2026,24 +2030,24 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:DramaHideTitleBadgeKey] ||
                [key isEqualToString:DramaHideGenreTagsKey] ||
                [key isEqualToString:@"FanqieX.DramaAuthorDeclaration.1"]) {
-        Class motion = NSClassFromString(@"FQXDockMotion");
-        SEL refresh = NSSelectorFromString(@"refreshDramaControls");
+        Class motion = objc_lookUpClass("FQXDockMotion");
+        SEL refresh = sel_registerName("refreshDramaControls");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:DramaHeaderBlurKey] ||
                [key isEqualToString:DramaHeaderButtonScaleKey]) {
-        Class motion = NSClassFromString(@"FQXDockMotion");
-        SEL refresh = NSSelectorFromString(@"refreshDramaHeaderBlur");
+        Class motion = objc_lookUpClass("FQXDockMotion");
+        SEL refresh = sel_registerName("refreshDramaHeaderBlur");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:ShareMaterialStyleKey] ||
                [key isEqualToString:ShareBlurKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshShareSel = NSSelectorFromString(@"refreshShareGlass");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshShareSel = sel_registerName("refreshShareGlass");
         if ([dockMotion respondsToSelector:refreshShareSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
         }
     } else if ([key isEqualToString:CommentBlurKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshBlurSel = NSSelectorFromString(@"refreshCommentBlurStrength");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshBlurSel = sel_registerName("refreshCommentBlurStrength");
         if ([dockMotion respondsToSelector:refreshBlurSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshBlurSel);
         }
@@ -2052,8 +2056,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:CommentComposerStyleKey] ||
                [key isEqualToString:CommentActivityBannerKey] ||
                [key isEqualToString:CommentSearchEntranceKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshCommentSel = NSSelectorFromString(@"refreshCommentGlass");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshCommentSel = sel_registerName("refreshCommentGlass");
         if ([dockMotion respondsToSelector:refreshCommentSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshCommentSel);
         }
@@ -2066,22 +2070,22 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:@"FanqieX.BottomBookshelf.1"] ||
                [key isEqualToString:@"FanqieX.BottomMine.1"] ||
                [key isEqualToString:@"FanqieX.BottomMall.1"]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshDockSel = NSSelectorFromString(@"refreshDockAppearance");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshDockSel = sel_registerName("refreshDockAppearance");
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
     } else if ([key isEqualToString:DockMaterialKey] || [key isEqualToString:DockBlurKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refresh = NSSelectorFromString(@"refreshDockMaterial");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refresh = sel_registerName("refreshDockMaterial");
         if ([dockMotion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refresh);
     } else if ([key isEqualToString:ReaderHotCommentBadgeKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refresh = NSSelectorFromString(@"refreshReaderHotCommentBadge");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refresh = sel_registerName("refreshReaderHotCommentBadge");
         if ([dockMotion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refresh);
     } else if ([key isEqualToString:ShelfEditButtonKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshEditSel = NSSelectorFromString(@"refreshShelfEditButton");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshEditSel = sel_registerName("refreshShelfEditButton");
         if ([dockMotion respondsToSelector:refreshEditSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshEditSel);
         }
@@ -2104,22 +2108,22 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:ShelfHistoryEditBtnKey] ||
                [key isEqualToString:@"FanqieX.ShelfReadingDuration.1"] ||
                [key isEqualToString:@"FanqieX.ShelfFilterButton.1"]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshHeaderSel = NSSelectorFromString(@"refreshShelfHeaderControls");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshHeaderSel = sel_registerName("refreshShelfHeaderControls");
         if ([dockMotion respondsToSelector:refreshHeaderSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshHeaderSel);
         }
     } else if ([key hasPrefix:@"FanqieX.Sidebar"]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshSidebarSel = NSSelectorFromString(@"refreshMineSidebar");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshSidebarSel = sel_registerName("refreshMineSidebar");
         if ([dockMotion respondsToSelector:refreshSidebarSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshSidebarSel);
         }
     } else if ([key isEqualToString:GlassDarkTintKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshDockSel = NSSelectorFromString(@"refreshDockMaterial");
-        SEL refreshTopSel = NSSelectorFromString(@"refreshDramaHeaderBlur");
-        SEL refreshShareSel = NSSelectorFromString(@"refreshShareGlass");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshDockSel = sel_registerName("refreshDockMaterial");
+        SEL refreshTopSel = sel_registerName("refreshDramaHeaderBlur");
+        SEL refreshShareSel = sel_registerName("refreshShareGlass");
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
@@ -2131,8 +2135,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         }
     } else if ([key isEqualToString:AudioDynamicIslandKey] ||
                [key isEqualToString:DramaDynamicIslandKey]) {
-        Class dockMotion = NSClassFromString(@"FQXDockMotion");
-        SEL refreshIslandSel = NSSelectorFromString(@"refreshDynamicIsland");
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshIslandSel = sel_registerName("refreshDynamicIsland");
         if ([dockMotion respondsToSelector:refreshIslandSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshIslandSel);
         }
@@ -2141,15 +2145,15 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         NSNumber *wasHidden = objc_getAssociatedObject(button, &SpeechRequestedHidden);
         if (wasHidden) SpeechHidden(button, @selector(setHidden:), wasHidden.boolValue);
     } else if ([key isEqualToString:BadgeKey] && !Option(BadgeKey, YES) && NativeBadge) {
-        NativeBadge(UIApplication.sharedApplication, NSSelectorFromString(@"setApplicationIconBadgeNumber:"), 0);
+        NativeBadge(UIApplication.sharedApplication, sel_registerName("setApplicationIconBadgeNumber:"), 0);
     } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] ||
                [key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey] ||
                [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfRecommendationsKey]) {
         UIViewController *shelf = LastShelf;
         if ([key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey]) {
             ShelfUtilityResetController(shelf);
-            id vm = HostObject(shelf, NSSelectorFromString(@"viewModel"));
-            SEL rebuild = NSSelectorFromString(@"rebuildShelfPipeline:");
+            id vm = HostObject(shelf, sel_registerName("viewModel"));
+            SEL rebuild = sel_registerName("rebuildShelfPipeline:");
             if (HostMethod(object_getClass(vm), rebuild, "v24@0:8@16")) {
                 ((void (*)(id, SEL, id))objc_msgSend)(vm, rebuild, @"FanqieXCleanup");
             }
@@ -2157,33 +2161,33 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([key isEqualToString:ShelfRecommendationsKey]) {
             BOOL show = Option(ShelfRecommendationsKey, YES);
             if (show) ShelfRecRestoreController(shelf);
-            id vm = HostObject(shelf, NSSelectorFromString(@"viewModel"));
-            id dc = HostObject(vm, NSSelectorFromString(@"doubleColumn"));
+            id vm = HostObject(shelf, sel_registerName("viewModel"));
+            id dc = HostObject(vm, sel_registerName("doubleColumn"));
             if (!show) {
-                SEL setCollapse = NSSelectorFromString(@"setHasCollapseBooks:");
+                SEL setCollapse = sel_registerName("setHasCollapseBooks:");
                 if (HostMethod(object_getClass(dc), setCollapse, "v20@0:8B16")) {
                     ((void (*)(id, SEL, BOOL))objc_msgSend)(dc, setCollapse, NO);
                 }
             } else {
-                SEL updateDC = NSSelectorFromString(@"updateDoubleColumnRecommend");
+                SEL updateDC = sel_registerName("updateDoubleColumnRecommend");
                 if (HostMethod(object_getClass(vm), updateDC, "v16@0:8")) {
                     ((void (*)(id, SEL))objc_msgSend)(vm, updateDC);
                 }
-                SEL reqDC = NSSelectorFromString(@"requestDataIfEnabled");
+                SEL reqDC = sel_registerName("requestDataIfEnabled");
                 if (HostMethod(object_getClass(dc), reqDC, "v16@0:8")) {
                     ((void (*)(id, SEL))objc_msgSend)(dc, reqDC);
                 }
             }
-            SEL rebuild = NSSelectorFromString(@"rebuildShelfPipeline:");
+            SEL rebuild = sel_registerName("rebuildShelfPipeline:");
             if (HostMethod(object_getClass(vm), rebuild, "v24@0:8@16")) {
                 ((void (*)(id, SEL, id))objc_msgSend)(vm, rebuild, @"FanqieXCleanup");
             }
         }
-        SEL reload = NSSelectorFromString(@"reloadData:");
+        SEL reload = sel_registerName("reloadData:");
         if (HostMethod(object_getClass(shelf), reload, "v24@0:8@16")) {
             ((void (*)(id, SEL, id))objc_msgSend)(shelf, reload, @"FanqieXCleanup");
         } else {
-            id cv = HostObject(shelf, NSSelectorFromString(@"collectionView"));
+            id cv = HostObject(shelf, sel_registerName("collectionView"));
             if ([cv isKindOfClass:UICollectionView.class]) [(UICollectionView *)cv reloadData];
         }
     }
