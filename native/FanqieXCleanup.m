@@ -126,6 +126,8 @@ static NSString *const DramaHeaderBlurKey = @"FanqieX.DramaHeaderBlur.1";
 static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
 static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
 static NSString *const ShareBlurKey = @"FanqieX.ShareBlur.1";
+static NSString *const DramaPlaybackOptionsMaterialKey = @"FanqieX.DramaPlaybackOptionsMaterial.1";
+static NSString *const DramaPlaybackOptionsBlurKey = @"FanqieX.DramaPlaybackOptionsBlur.1";
 
 static pthread_mutex_t FQXOptionCacheLock = PTHREAD_MUTEX_INITIALIZER;
 static NSMutableDictionary<NSString *, id> *FQXOptionCache = nil;
@@ -2049,6 +2051,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshShareSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
         }
+    } else if ([key isEqualToString:DramaPlaybackOptionsMaterialKey] ||
+               [key isEqualToString:DramaPlaybackOptionsBlurKey]) {
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshOptsSel = sel_registerName("refreshDramaPlaybackOptions");
+        if ([dockMotion respondsToSelector:refreshOptsSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshOptsSel);
+        }
     } else if ([key isEqualToString:CommentBlurKey]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refreshBlurSel = sel_registerName("refreshCommentBlurStrength");
@@ -2138,6 +2147,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SEL refreshDockSel = sel_registerName("refreshDockMaterial");
         SEL refreshTopSel = sel_registerName("refreshDramaHeaderBlur");
         SEL refreshShareSel = sel_registerName("refreshShareGlass");
+        SEL refreshOptsSel = sel_registerName("refreshDramaPlaybackOptions");
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
@@ -2146,6 +2156,9 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         }
         if ([dockMotion respondsToSelector:refreshShareSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
+        }
+        if ([dockMotion respondsToSelector:refreshOptsSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshOptsSel);
         }
     } else if ([key isEqualToString:SpeechFloatKey]) {
         UIView *button = LastSpeechButton;

@@ -418,17 +418,46 @@ static void AddDiagCategoryFilterRow(FQXSettingsMenu *menu) {
     [menu.catalog addObject:filterRow];
 }
 
-static void AddBlurRow(FQXSettingsMenu *menu, NSString *route, NSString *title, NSString *key) {
+static void AddBlurRowEx(FQXSettingsMenu *menu,
+                         NSString *route,
+                         NSString *title,
+                         NSString *key,
+                         BOOL hiddenFromSearch,
+                         NSString *keywords) {
     FQXSettingRow *blur = [FQXSettingRow new];
     blur.title = title;
     blur.path = route;
-    blur.keywords = @"模糊程度 模糊强度 自定义 玻璃";
+    blur.hiddenFromSearch = hiddenFromSearch;
+    blur.keywords = keywords ?: @"模糊程度 模糊强度 自定义 玻璃";
     blur.blurKey = key;
     blur.sliderMin = 0;
     blur.sliderMax = 100;
     blur.sliderDefault = 0;
     blur.height = 82;
     [menu.catalog addObject:blur];
+}
+
+static void AddBlurRow(FQXSettingsMenu *menu, NSString *route, NSString *title, NSString *key) {
+    AddBlurRowEx(menu, route, title, key, NO, nil);
+}
+
+static void AddPlaybackOptionsStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *playbackOptionsMaterial = [FQXSettingRow new];
+    playbackOptionsMaterial.title = @"长按播放选项面板材质";
+    playbackOptionsMaterial.path = route;
+    playbackOptionsMaterial.hiddenFromSearch = hiddenFromSearch;
+    playbackOptionsMaterial.keywords = @"短剧 漫剧 长按视频 长按面板 更多 播放选项 倍速 清晰度 弹幕设置 液态玻璃 清透玻璃 模糊玻璃 高斯模糊";
+    playbackOptionsMaterial.popoverKey = DramaPlaybackOptionsMaterialKey;
+    playbackOptionsMaterial.popoverOptions = @[@"跟随 Dock", @"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊"];
+    playbackOptionsMaterial.popoverValues = @[@0, @(-1), @1, @4, @2];
+    playbackOptionsMaterial.height = 52;
+    [menu.catalog addObject:playbackOptionsMaterial];
+    AddBlurRowEx(menu,
+                 route,
+                 @"长按播放选项面板额外模糊",
+                 DramaPlaybackOptionsBlurKey,
+                 hiddenFromSearch,
+                 @"短剧 长按面板 播放选项 模糊程度 额外模糊 液态玻璃 模糊玻璃 高斯模糊");
 }
 
 static void AddScaleSliderRow(FQXSettingsMenu *menu,
@@ -622,23 +651,18 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native),
     // standalone Comment Appearance selector (Follow App / Light / Dark), and Composer Style popover.
     AddCommentStyleRows(menu, @"评论区净化", NO);
-    AddCommentStyleRows(menu, @"短剧/播放设置", YES);
-    AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
-    AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
-    AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
-    AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
-    FQXSettingRow *playbackOptionsMaterial = [FQXSettingRow new];
-    playbackOptionsMaterial.title = @"长按播放选项面板材质";
-    playbackOptionsMaterial.path = @"短剧/播放设置";
-    playbackOptionsMaterial.keywords = @"短剧 漫剧 长按视频 长按面板 更多 播放选项 倍速 清晰度 弹幕设置 液态玻璃 清透玻璃 模糊玻璃 高斯模糊";
-    playbackOptionsMaterial.popoverKey = DramaPlaybackOptionsMaterialKey;
-    playbackOptionsMaterial.popoverOptions = @[@"跟随 Dock", @"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊"];
-    playbackOptionsMaterial.popoverValues = @[@0, @(-1), @1, @4, @2];
-    playbackOptionsMaterial.height = 52;
-    [menu.catalog addObject:playbackOptionsMaterial];
-    AddBlurRow(menu, @"短剧/播放设置", @"长按播放选项面板额外模糊", DramaPlaybackOptionsBlurKey);
-    AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
     AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
+    AddCommentStyleRows(menu, @"短剧/播放设置", YES);
+    AddBlurRowEx(menu, @"短剧/播放设置", @"评论区模糊程度", @"FanqieX.CommentBlur.1", YES, nil);
+    AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
+    AddBlurRowEx(menu, @"阅读/阅读设置", @"评论区模糊程度", @"FanqieX.CommentBlur.1", YES, nil);
+    AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
+    AddBlurRowEx(menu, @"外观/玻璃效果", @"评论区模糊程度", @"FanqieX.CommentBlur.1", YES, nil);
+    AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
+    AddPlaybackOptionsStyleRows(menu, @"外观/玻璃效果", YES);
+    AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
+    AddPlaybackOptionsStyleRows(menu, @"短剧/播放设置", NO);
+    AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
     NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
@@ -910,17 +934,20 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 }
 
 - (void)showReleaseNotes:(UIButton *)sender {
+    if (self.presentedViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复短剧左右滑动误点进剧集。\n"
-                  "• 隐藏的书架类别不再参与横滑切页。\n"
-                  "• 历史页的短篇、漫画、话题可分别隐藏。\n"
-                  "• 修复短剧播放选项和分享面板的模糊材质。",
+                  "• 修复短剧顶栏胶囊与文字偏高错位，选中底框四边同心对齐。\n"
+                  "• 修复液态玻璃与模糊玻璃面板调节模糊度无效的问题（支持跟随 Dock 与独立额外模糊实时生效）。\n"
+                  "• 修复书架与历史隐藏标签后筛选栏留白裁切及仍可横滑切入空白页的问题。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;
     notes.textColor = UIColor.labelColor;
-    notes.backgroundColor = UIColor.systemBackgroundColor;
+    notes.backgroundColor = UIColor.clearColor;
     notes.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
     notes.editable = NO;
     notes.selectable = NO;
@@ -928,9 +955,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     UIViewController *page = [UIViewController new];
     page.view = notes;
     page.modalPresentationStyle = UIModalPresentationPopover;
-    CGFloat width = MIN(300.0, CGRectGetWidth(self.view.bounds) - 32.0);
+    CGFloat width = MIN(312.0, CGRectGetWidth(self.view.bounds) - 32.0);
     CGSize contentSize = [notes sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-    page.preferredContentSize = CGSizeMake(width, MIN(240.0, ceil(contentSize.height)));
+    page.preferredContentSize = CGSizeMake(width, MIN(300.0, ceil(contentSize.height)));
     UIPopoverPresentationController *popover = page.popoverPresentationController;
     popover.delegate = self;
     popover.sourceView = sender;
@@ -941,6 +968,13 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 
 - (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller {
     (void)controller;
+    return UIModalPresentationNone;
+}
+
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller
+                                                               traitCollection:(UITraitCollection *)traitCollection {
+    (void)controller;
+    (void)traitCollection;
     return UIModalPresentationNone;
 }
 

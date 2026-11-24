@@ -1,0 +1,103 @@
+#include "../native/FQXLayoutAndSheetPolicy.h"
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+
+static void test_drama_top_capsule_alignment(void) {
+    /* 1. Concentric pill geometry inside outer capsule across scales 70%..130% */
+    for (int scalePct = 70; scalePct <= 130; scalePct += 5) {
+        double scale = (double)scalePct / 100.0;
+        double padX = FQXDramaCapsuleOuterHorizontalPad(scale);
+        double insetY = FQXDramaCapsulePillInsetY(scale);
+        double extraW = FQXDramaCapsulePillExtraWidth(scale);
+        /* First visible item at x=10, width=32 -> outer left = 10 - padX.
+           Item center in outer = padX + 16. Pill width = 32 + extraW.
+           Pill left in outer = (padX + 16) - (16 + extraW * 0.5) = padX - extraW * 0.5.
+           Concentric capsule requires pill left inset == pill top/bottom inset (insetY). */
+        double leftInset = padX - extraW * 0.5;
+        assert(fabs(leftInset - insetY) < 1e-6);
+    }
+
+    /* 2. iPhone 16 Pro vertical safe-area clamp shifts categories container (keeping text & capsule together) */
+    double shiftY = FQXDramaCapsuleCategoriesShiftY(
+        60.38, /* outerMinYInHeader */
+        98.38, /* outerMaxYInHeader */
+        54.0,  /* headerMinY */
+        98.0,  /* headerMaxY */
+        62.0,  /* safeTopInHeader */
+        100    /* scalePct */
+    );
+    /* minAllowedY = max(55.0, 63.0) = 63.0 -> categories shifts down by +2.62pt (rounded to 0.5pt -> +2.5 or +3.0) */
+    assert(shiftY >= 2.5 && shiftY <= 3.0);
+    assert(60.38 + shiftY >= 62.5);
+}
+
+static void test_sheet_blur_policy(void) {
+    /* 1. Follow Dock inherits DockBlur when PlaybackOptionsBlur is 0, while explicit mode stays independent */
+    assert(FQXResolvePlaybackOptionsUserBlur(1, 0, 65) == 65);
+    assert(FQXResolvePlaybackOptionsUserBlur(1, 80, 30) == 80);
+    assert(FQXResolvePlaybackOptionsUserBlur(0, 0, 65) == 0);
+    assert(FQXResolvePlaybackOptionsUserBlur(0, 45, 0) == 45);
+
+    /* 2. Hardware CABackdropLayer filter enabled on iOS 26/27 & attached inside glass contentView */
+    assert(FQXSheetUsesHardwareBackdropFilter(1, 0) == 1);
+    assert(FQXSheetUsesHardwareBackdropFilter(1, 1) == 0);
+    assert(FQXSheetUsesHardwareBackdropFilter(0, 0) == 0);
+    assert(FQXSheetBlurAttachesInsideGlassContent(0) == 1);
+    assert(FQXSheetBlurAttachesInsideGlassContent(1) == 0);
+}
+
+static void test_shelf_and_history_compaction_and_pager(void) {
+    /* Reproduce Screenshot 3: 7 History pills [全部, 阅读, 听书, 短剧, 短篇, 漫画, 话题],
+       previously scrolled to currentOffsetX = 140pt, then hidden down to only 全部(0) and 短剧(3). */
+    FQXCompactStripItem raw[7] = {
+        {  0.0, 2.0, 52.0, 28.0, 0 }, /* 0: 全部 */
+        { 60.0, 2.0, 52.0, 28.0, 0 }, /* 1: 阅读 */
+        {120.0, 2.0, 52.0, 28.0, 0 }, /* 2: 听书 */
+        {180.0, 2.0, 52.0, 28.0, 0 }, /* 3: 短剧 */
+        {240.0, 2.0, 52.0, 28.0, 0 }, /* 4: 短篇 */
+        {300.0, 2.0, 52.0, 28.0, 0 }, /* 5: 漫画 */
+        {360.0, 2.0, 52.0, 28.0, 0 }, /* 6: 话题 */
+    };
+    int vis[7] = { 1, 0, 0, 1, 0, 0, 0 };
+    FQXCompactStripPlan plan = FQXPlanCompactHorizontalStrip(raw, vis, 7, 8.0, 240.0, 140.0);
+    assert(plan.valid == 1);
+    assert(plan.visibleCount == 2 && plan.hiddenCount == 5);
+    /* 全部 starts cleanly at x = 0.0 (never shifted to 140pt!), 短剧 at x = 60.0 (fully inside 240pt!) */
+    assert(fabs(plan.items[0].x - 0.0) < 1e-6 && !plan.items[0].hidden);
+    assert(fabs(plan.items[3].x - 60.0) < 1e-6 && !plan.items[3].hidden);
+    assert(plan.items[1].hidden && plan.items[2].hidden && plan.items[4].hidden);
+    assert(plan.contentWidth <= 120.0);
+    assert(plan.allowStripScroll == 0);
+    assert(plan.resetContentOffset == 1);
+
+    /* Visible pager policy for [0, 3] out of 7 */
+    unsigned int mask = (1u << 0) | (1u << 3);
+    FQXVisiblePagerPolicy pol = FQXEvaluateVisiblePagerPolicy(7, mask, 1, 2);
+    assert(pol.allowNativeScroll == 0);
+    assert(pol.allowVisibleStepPan == 1);
+    assert(pol.redirectIndex == 0); /* Redirects off hidden index 2 to 0 */
+
+    /* Stepping jumps directly 0 <-> 3 and blocks overshooting into hidden 4..6 or <0 */
+    assert(FQXStepVisiblePagerIndex(7, mask, 0, +1) == 3);
+    assert(FQXStepVisiblePagerIndex(7, mask, 3, +1) == -1);
+    assert(FQXStepVisiblePagerIndex(7, mask, 3, -1) == 0);
+    assert(FQXStepVisiblePagerIndex(7, mask, 0, -1) == -1);
+
+    /* Single visible tab locks BOTH native scroll and step pan completely */
+    unsigned int singleMask = (1u << 3);
+    FQXVisiblePagerPolicy singlePol = FQXEvaluateVisiblePagerPolicy(7, singleMask, 1, 3);
+    assert(singlePol.allowNativeScroll == 0);
+    assert(singlePol.allowVisibleStepPan == 0);
+    assert(singlePol.redirectIndex == -1);
+    assert(FQXStepVisiblePagerIndex(7, singleMask, 3, +1) == -1);
+    assert(FQXStepVisiblePagerIndex(7, singleMask, 3, -1) == -1);
+}
+
+int main(void) {
+    test_drama_top_capsule_alignment();
+    test_sheet_blur_policy();
+    test_shelf_and_history_compaction_and_pager();
+    puts("Layout and sheet policy: concentric capsule, hardware sheet blur, strip compaction & visible pager passed.");
+    return 0;
+}

@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '1.9.7beta7'
+        run: test "$(cat VERSION)" = '1.9.7beta8'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -67,9 +67,9 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.9.7beta7
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 1.9.7beta8
       - name: Build FanqieX with integrated export and settings modules
-        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.9.7beta7.dylib --output build/xcode27/integrated
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-1.9.7beta8.dylib --output build/xcode27/integrated
       - name: Exercise export formats and local chapter sources on real Foundation
         run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Exercise settings backup and video container recognition
@@ -84,6 +84,8 @@ jobs:
           build/xcode27/blur-control-smoke | tee build/xcode27/blur-control-run.log
           xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror -I native tests/native_mine_shortcut_geometry_smoke.c -o build/xcode27/mine-shortcut-smoke
           build/xcode27/mine-shortcut-smoke | tee build/xcode27/mine-shortcut-run.log
+          xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror -I native tests/native_layout_sheet_policy_smoke.c -o build/xcode27/layout-sheet-policy-smoke
+          build/xcode27/layout-sheet-policy-smoke | tee build/xcode27/layout-sheet-policy-run.log
       - name: Preserve build and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

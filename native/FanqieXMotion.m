@@ -6,6 +6,7 @@
 #import <objc/runtime.h>
 #import "FQXHookInstaller.h"
 #import "FQXBlurControl.h"
+#import "FQXLayoutAndSheetPolicy.h"
 #import "FQXMineShortcutGeometry.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
@@ -578,7 +579,6 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     BOOL _matteChromeBorder;
     BOOL _commentPureMode;
 }
-- (void)configureSheetBlurPercent:(NSInteger)percent dark:(BOOL)dark;
 - (void)configurePercent:(NSInteger)percent
                     dark:(BOOL)dark
                 baseTint:(CGFloat)baseTint
@@ -1248,15 +1248,6 @@ static BOOL FQXBackdropFilterAvailable(void) {
         [self scheduleBlurUpdate];
     }
 }
-- (void)configureSheetBlurPercent:(NSInteger)percent dark:(BOOL)dark {
-    UIBlurEffectStyle style = dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight;
-    if (self->_blurStyle != style) {
-        [self invalidateBlurAnimator];
-        self->_blurStyle = style;
-    }
-    self->_percent = FQXBlurPercent(percent);
-    [self scheduleBlurUpdate];
-}
 - (void)applyHardwareBlur {
     if (!self->_usingHardwareFilter) return;
     if (!self.window && self->_percent <= 0 && !self->_matteChromeBorder && self->_baseTintAlpha <= 0.0005) {
@@ -1412,48 +1403,79 @@ static BOOL FQXBackdropFilterAvailable(void) {
 
 static FQXBackdropBlurView *FQXNewSheetBlur(void) {
     FQXBackdropBlurView *blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
-    blur->_usingHardwareFilter = NO;
+    blur->_usingHardwareFilter = FQXSheetUsesHardwareBackdropFilter(
+        FQXBackdropFilterAvailable(),
+        UIAccessibilityIsReduceTransparencyEnabled()) != 0;
     blur->_commentPureMode = YES;
     blur.opaque = NO;
+    blur.backgroundColor = UIColor.clearColor;
+    blur.contentView.backgroundColor = UIColor.clearColor;
     blur.userInteractionEnabled = NO;
     blur.accessibilityElementsHidden = YES;
+    blur.isAccessibilityElement = NO;
     blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     return blur;
 }
 
 static void FQXSyncSheetBlur(UIView *host, UIVisualEffectView *surface, BOOL gaussian,
-                            NSInteger strength, BOOL dark, CGFloat radius) {
-    FQXBackdropBlurView *blur;
-    if (gaussian) {
-        blur = (FQXBackdropBlurView *)surface;
-    } else {
-        FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
-        blur = glass->_supplementalBlur;
-        if (strength > 0 && !blur) {
-            blur = FQXNewSheetBlur();
-            glass->_supplementalBlur = blur;
-        } else if (strength == 0 && blur) {
-            [blur invalidateBlurAnimator];
-            [blur removeFromSuperview];
-            glass->_supplementalBlur = nil;
-            blur = nil;
-        }
-    }
-
+                            NSInteger strength, BOOL dark, CGFloat maxGlassTint, CGFloat radius) {
+    if (!host || !surface) return;
     CGRect frame = host.bounds;
-    UIView *back = host.subviews.firstObject;
-    if (surface.superview != host || (back != surface && back != blur)) {
+    if (surface.superview != host || host.subviews.firstObject != surface) {
         [host insertSubview:surface atIndex:0];
     }
     if (!CGRectEqualToRect(surface.frame, frame)) surface.frame = frame;
-    if (blur && surface != blur) {
-        // Sample the content behind the sheet before drawing the liquid-glass rim.
-        if (host.subviews.firstObject != blur) [host insertSubview:blur belowSubview:surface];
-        if (!CGRectEqualToRect(blur.frame, frame)) blur.frame = frame;
-    }
     FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
-    if (surface != blur) FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
-    [blur configureSheetBlurPercent:strength dark:dark];
+
+    if (gaussian) {
+        FQXBackdropBlurView *blur = (FQXBackdropBlurView *)surface;
+        blur->_usingHardwareFilter = FQXSheetUsesHardwareBackdropFilter(
+            FQXBackdropFilterAvailable(),
+            UIAccessibilityIsReduceTransparencyEnabled()) != 0;
+        [blur configurePercent:strength
+                          dark:dark
+                      baseTint:(dark ? 0.34 : 0.38)
+                       maxTint:(dark ? 0.68 : 0.72)
+                  chromeBorder:NO];
+        return;
+    }
+
+    FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
+    glass->_cornerKind = FQXCommentCornerTopSheet;
+    glass->_cornerRadius = radius;
+    FQXBackdropBlurView *blur = glass->_supplementalBlur;
+    if (strength <= 0 || UIAccessibilityIsReduceTransparencyEnabled()) {
+        if (blur) {
+            [blur invalidateBlurAnimator];
+            [blur removeFromSuperview];
+            glass->_supplementalBlur = nil;
+        }
+        for (UIView *child in [surface.contentView.subviews copy]) {
+            if ([child isKindOfClass:FQXBackdropBlurView.class]) {
+                [(FQXBackdropBlurView *)child invalidateBlurAnimator];
+                [child removeFromSuperview];
+            }
+        }
+        return;
+    }
+
+    if (!blur) {
+        blur = FQXNewSheetBlur();
+        glass->_supplementalBlur = blur;
+    } else {
+        blur->_usingHardwareFilter = FQXSheetUsesHardwareBackdropFilter(
+            FQXBackdropFilterAvailable(),
+            UIAccessibilityIsReduceTransparencyEnabled()) != 0;
+    }
+    if (FQXSheetBlurAttachesInsideGlassContent(0)) {
+        if (blur.superview != surface.contentView || surface.contentView.subviews.firstObject != blur) {
+            [surface.contentView insertSubview:blur atIndex:0];
+        }
+        CGRect contentBounds = surface.contentView.bounds;
+        if (!CGRectEqualToRect(blur.frame, contentBounds)) blur.frame = contentBounds;
+    }
+    FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
+    [blur configurePercent:strength dark:dark baseTint:0.0 maxTint:maxGlassTint chromeBorder:NO];
 }
 
 static const char FQXK_FQXDockBackdropBlurViewKey = 0;
@@ -3879,8 +3901,28 @@ static void FQXResetLabelTransformAndFont(UILabel *label, UIFont *lockedFont) {
     if (!CGAffineTransformIsIdentity(label.transform)) {
         label.transform = CGAffineTransformIdentity;
     }
-    if (lockedFont && (!label.font || fabs(label.font.pointSize - lockedFont.pointSize) > 0.25)) {
+    if (lockedFont && (!label.font || ![label.font isEqual:lockedFont])) {
         label.font = lockedFont;
+    }
+    if (label.textAlignment != NSTextAlignmentCenter) {
+        label.textAlignment = NSTextAlignmentCenter;
+    }
+    UIView *host = label.superview;
+    if (host && CGRectGetWidth(host.bounds) >= 12.0 && CGRectGetHeight(host.bounds) >= 12.0 &&
+        label.translatesAutoresizingMaskIntoConstraints) {
+        CGSize fit = [label sizeThatFits:host.bounds.size];
+        CGFloat w = MIN(CGRectGetWidth(host.bounds), ceil(fit.width) + 2.0);
+        CGFloat h = MIN(CGRectGetHeight(host.bounds), ceil(fit.height) + 2.0);
+        if (w > 4.0 && h > 4.0) {
+            CGRect target = CGRectMake(round((CGRectGetWidth(host.bounds) - w) * 0.5 * 2.0) / 2.0,
+                                       round((CGRectGetHeight(host.bounds) - h) * 0.5 * 2.0) / 2.0,
+                                       w, h);
+            if (fabs(CGRectGetMidX(label.frame) - CGRectGetMidX(target)) > 0.5 ||
+                fabs(CGRectGetMidY(label.frame) - CGRectGetMidY(target)) > 0.5 ||
+                CGRectGetWidth(label.frame) + 0.5 < ceil(fit.width)) {
+                label.frame = target;
+            }
+        }
     }
 }
 
@@ -4089,6 +4131,35 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
     return scaled || (hiddenCount > 0) || (removedGap > 1.0);
 }
 
+static const char FQXK_FQXShelfCompactLayoutKindKey = 0;
+#define FQXShelfCompactLayoutKindKey ((const void *)&FQXK_FQXShelfCompactLayoutKindKey)
+static const char FQXK_FQXShelfCompactFallbackGapKey = 0;
+#define FQXShelfCompactFallbackGapKey ((const void *)&FQXK_FQXShelfCompactFallbackGapKey)
+static BOOL FQXComputeShelfCompactedRects(UICollectionViewLayout *layout,
+                                          CGRect outCompacted[24],
+                                          BOOL outHidden[24],
+                                          NSInteger *outCount,
+                                          CGSize *outContentSize);
+
+static BOOL FQXIsLayoutCompactionTagged(UICollectionViewLayout *layout) {
+    return layout && (objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) != nil ||
+                      objc_getAssociatedObject(layout, FQXShelfCompactLayoutKindKey) != nil);
+}
+
+static BOOL FQXComputeAnyCompactedRects(UICollectionViewLayout *layout,
+                                        CGRect outCompacted[24],
+                                        BOOL outHidden[24],
+                                        NSInteger *outCount,
+                                        CGSize *outContentSize) {
+    if (objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) {
+        return FQXComputeDramaCompactedRects(layout, outCompacted, outHidden, outCount, outContentSize);
+    }
+    if (objc_getAssociatedObject(layout, FQXShelfCompactLayoutKindKey)) {
+        return FQXComputeShelfCompactedRects(layout, outCompacted, outHidden, outCount, outContentSize);
+    }
+    return NO;
+}
+
 static NSArray<UICollectionViewLayoutAttributes *> *HookDramaCompactAttrsInRect(UICollectionViewLayout *layout,
                                                                                 SEL cmd,
                                                                                 CGRect rect) {
@@ -4096,14 +4167,14 @@ static NSArray<UICollectionViewLayoutAttributes *> *HookDramaCompactAttrsInRect(
     if (!orig) return nil;
     NSArray<UICollectionViewLayoutAttributes *> *origAttrs =
         ((NSArray<UICollectionViewLayoutAttributes *> *(*)(id, SEL, CGRect))orig)(layout, cmd, rect);
-    if (gFQXDramaCompactComputing || !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) {
+    if (gFQXDramaCompactComputing || !FQXIsLayoutCompactionTagged(layout)) {
         return origAttrs;
     }
     CGRect compacted[24];
     BOOL hidden[24];
     NSInteger count = 0;
     CGSize newSize = CGSizeZero;
-    if (!FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize)) {
+    if (!FQXComputeAnyCompactedRects(layout, compacted, hidden, &count, &newSize)) {
         return origAttrs;
     }
     NSMutableArray<UICollectionViewLayoutAttributes *> *result =
@@ -4154,7 +4225,7 @@ static UICollectionViewLayoutAttributes *HookDramaCompactAttrForItem(UICollectio
     UICollectionViewLayoutAttributes *origAttr =
         ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))orig)(layout, cmd, indexPath);
     if (!origAttr || gFQXDramaCompactComputing ||
-        !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey) ||
+        !FQXIsLayoutCompactionTagged(layout) ||
         indexPath.section != 0 || indexPath.item < 0 || indexPath.item >= 24) {
         return origAttr;
     }
@@ -4162,7 +4233,7 @@ static UICollectionViewLayoutAttributes *HookDramaCompactAttrForItem(UICollectio
     BOOL hidden[24];
     NSInteger count = 0;
     CGSize newSize = CGSizeZero;
-    if (!FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize) ||
+    if (!FQXComputeAnyCompactedRects(layout, compacted, hidden, &count, &newSize) ||
         indexPath.item >= count) {
         return origAttr;
     }
@@ -4179,47 +4250,49 @@ static CGSize HookDramaCompactContentSize(UICollectionViewLayout *layout, SEL cm
     IMP orig = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigSize, object_getClass(layout));
     if (!orig) return CGSizeZero;
     CGSize origSize = ((CGSize (*)(id, SEL))orig)(layout, cmd);
-    if (gFQXDramaCompactComputing || !objc_getAssociatedObject(layout, FQXDramaCompactLayoutActiveKey)) {
+    if (gFQXDramaCompactComputing || !FQXIsLayoutCompactionTagged(layout)) {
         return origSize;
     }
     CGRect compacted[24];
     BOOL hidden[24];
     NSInteger count = 0;
     CGSize newSize = CGSizeZero;
-    if (FQXComputeDramaCompactedRects(layout, compacted, hidden, &count, &newSize)) {
+    if (FQXComputeAnyCompactedRects(layout, compacted, hidden, &count, &newSize)) {
         return newSize;
     }
     return origSize;
+}
+
+static void FQXInstallCompactLayoutHooksOnClass(Class cls) {
+    if (!cls) return;
+    FQXInitDramaCompactOrigMaps();
+    NSString *clsName = NSStringFromClass(cls);
+    if (!clsName.length || gFQXDramaCompactOrigElems[clsName]) return;
+    IMP origElems = NULL;
+    IMP origItem = NULL;
+    IMP origSize = NULL;
+    if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForElementsInRect:), NO,
+                            "@48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16",
+                            (IMP)HookDramaCompactAttrsInRect, &origElems) && origElems) {
+        gFQXDramaCompactOrigElems[clsName] = [NSValue valueWithPointer:(const void *)origElems];
+    }
+    if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForItemAtIndexPath:), NO,
+                            "@24@0:8@16",
+                            (IMP)HookDramaCompactAttrForItem, &origItem) && origItem) {
+        gFQXDramaCompactOrigItem[clsName] = [NSValue valueWithPointer:(const void *)origItem];
+    }
+    if (FQXInstallOwnedHook(cls, @selector(collectionViewContentSize), NO,
+                            "{CGSize=dd}16@0:8",
+                            (IMP)HookDramaCompactContentSize, &origSize) && origSize) {
+        gFQXDramaCompactOrigSize[clsName] = [NSValue valueWithPointer:(const void *)origSize];
+    }
 }
 
 static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, UIView *header) {
     if (![cv isKindOfClass:UICollectionView.class]) return;
     UICollectionViewLayout *layout = cv.collectionViewLayout;
     if (!layout) return;
-    FQXInitDramaCompactOrigMaps();
-
-    Class cls = object_getClass(layout);
-    NSString *clsName = NSStringFromClass(cls);
-    if (cls && clsName.length && !gFQXDramaCompactOrigElems[clsName]) {
-        IMP origElems = NULL;
-        IMP origItem = NULL;
-        IMP origSize = NULL;
-        if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForElementsInRect:), NO,
-                                "@48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16",
-                                (IMP)HookDramaCompactAttrsInRect, &origElems) && origElems) {
-            gFQXDramaCompactOrigElems[clsName] = [NSValue valueWithPointer:(const void *)origElems];
-        }
-        if (FQXInstallOwnedHook(cls, @selector(layoutAttributesForItemAtIndexPath:), NO,
-                                "@24@0:8@16",
-                                (IMP)HookDramaCompactAttrForItem, &origItem) && origItem) {
-            gFQXDramaCompactOrigItem[clsName] = [NSValue valueWithPointer:(const void *)origItem];
-        }
-        if (FQXInstallOwnedHook(cls, @selector(collectionViewContentSize), NO,
-                                "{CGSize=dd}16@0:8",
-                                (IMP)HookDramaCompactContentSize, &origSize) && origSize) {
-            gFQXDramaCompactOrigSize[clsName] = [NSValue valueWithPointer:(const void *)origSize];
-        }
-    }
+    FQXInstallCompactLayoutHooksOnClass(object_getClass(layout));
 
     static const char FQXK_FQXDramaCompactVisMaskKey = 0;
     #define FQXDramaCompactVisMaskKey ((const void *)&FQXK_FQXDramaCompactVisMaskKey)
@@ -4549,11 +4622,11 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
     if (hasPrev) pillW = CGRectGetWidth(prevRect);
     CGFloat scale = (CGFloat)FQXDramaHeaderButtonScalePercent() / 100.0;
-    pillW += round(MAX(8.0, MIN(18.0, 12.0 * scale)) * 2.0) / 2.0;
+    pillW += FQXDramaCapsulePillExtraWidth(scale);
 
     CGPoint inOuter = [cv convertPoint:CGPointMake(anchorX, CGRectGetMidY(cv.bounds)) toView:outer.contentView];
     CGRect ob = outer.contentView.bounds;
-    CGFloat insetY = (scale < 0.85) ? 2.5 : 3.0;
+    CGFloat insetY = FQXDramaCapsulePillInsetY(scale);
     CGFloat pillH = MAX(18.0, CGRectGetHeight(ob) - insetY * 2.0);
     CGFloat minX = insetY;
     CGFloat maxX = MAX(minX, CGRectGetWidth(ob) - pillW - insetY);
@@ -5693,7 +5766,7 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
             firstInCat = [headerCV convertRect:firstVis toView:categories];
             CGRect lastInCat = [headerCV convertRect:lastVis toView:categories];
             hasVisInCat = YES;
-            CGFloat padX = round(MAX(7.0, MIN(16.0, 11.0 * scale)) * 2.0) / 2.0;
+            CGFloat padX = FQXDramaCapsuleOuterHorizontalPad(scale);
             CGFloat desiredLeft = round((CGRectGetMinX(firstInCat) - padX) * 2.0) / 2.0;
             CGFloat desiredRight = round((CGRectGetMaxX(lastInCat) + padX) * 2.0) / 2.0;
             CGFloat desiredW = desiredRight - desiredLeft;
@@ -5713,6 +5786,19 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     }
 
     CGFloat targetMidY = hasVisInCat ? CGRectGetMidY(firstInCat) : CGRectGetMidY(of);
+    if ([headerCV isKindOfClass:UICollectionView.class]) {
+        for (UICollectionViewCell *cell in headerCV.visibleCells) {
+            if (cell.hidden || cell.alpha <= 0.05 || CGRectGetWidth(cell.bounds) < 6.0) continue;
+            UILabel *lbl = FQXObjGet(cell, "titleLabel");
+            if ([lbl isKindOfClass:UILabel.class] && lbl.superview && CGRectGetHeight(lbl.bounds) >= 8.0) {
+                CGPoint lblMid = [lbl.superview convertPoint:lbl.center toView:categories];
+                if (isfinite(lblMid.y)) {
+                    targetMidY = lblMid.y;
+                    break;
+                }
+            }
+        }
+    }
     CGFloat desiredY = round((targetMidY - targetH * 0.5) * 2.0) / 2.0;
     if (fabs(CGRectGetHeight(of) - targetH) > 0.5 || fabs(of.origin.y - desiredY) > 0.5) {
         of.origin.y = desiredY;
@@ -5721,20 +5807,23 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     }
 
     CGRect outerInHeader = [categories convertRect:outer.frame toView:header];
-    CGFloat minAllowedY = MAX(CGRectGetMinY(headerBounds) + 1.0, safeTopInHeader + 1.0);
-    if (scalePct <= 100) {
-        CGFloat maxAllowedY = CGRectGetMaxY(headerBounds) - 1.0;
-        if (CGRectGetMaxY(outerInHeader) > maxAllowedY + 0.5) {
-            CGFloat shift = maxAllowedY - CGRectGetMaxY(outerInHeader);
-            of.origin.y = round(of.origin.y + shift);
-            outer.frame = of;
-            outerInHeader = [categories convertRect:outer.frame toView:header];
-        }
-    }
-    if (CGRectGetMinY(outerInHeader) < minAllowedY - 0.5) {
-        CGFloat shift = minAllowedY - CGRectGetMinY(outerInHeader);
-        of.origin.y = round(of.origin.y + shift);
-        outer.frame = of;
+    CGFloat shiftYInHeader = FQXDramaCapsuleCategoriesShiftY(
+        CGRectGetMinY(outerInHeader),
+        CGRectGetMaxY(outerInHeader),
+        CGRectGetMinY(headerBounds),
+        CGRectGetMaxY(headerBounds),
+        safeTopInHeader,
+        (int)scalePct
+    );
+    if (fabs(shiftYInHeader) > 0.5 && categories.superview) {
+        // Shift categories container as a unit so outer glass, selection pill, and tab labels
+        // always share the exact same vertical centerline.
+        CGPoint p0 = [header convertPoint:CGPointZero toView:categories.superview];
+        CGPoint p1 = [header convertPoint:CGPointMake(0.0, shiftYInHeader) toView:categories.superview];
+        CGFloat deltaYInSuper = p1.y - p0.y;
+        CGRect cf = categories.frame;
+        cf.origin.y = round((cf.origin.y + deltaYInSuper) * 2.0) / 2.0;
+        categories.frame = cf;
         outerInHeader = [categories convertRect:outer.frame toView:header];
     }
 
@@ -6087,6 +6176,7 @@ static void FQXRefreshAllShelfHeaderControls(void);
 static void FQXRefreshShelfRootTabModels(void);
 static void FQXRefreshAllMineSidebars(void);
 static void FQXRefreshReaderHotCommentBadges(void);
+static void FQXRefreshAllDramaPlaybackOptions(void);
 
 #pragma mark - FQXDockMotion
 
@@ -6105,6 +6195,7 @@ static void FQXRefreshReaderHotCommentBadges(void);
 + (void)refreshCommentGlass;
 + (void)refreshCommentBlurStrength;
 + (void)refreshShareGlass;
++ (void)refreshDramaPlaybackOptions;
 + (void)refreshDockAppearance;
 + (void)refreshDockMaterial;
 + (void)refreshReaderHotCommentBadge;
@@ -6356,6 +6447,11 @@ static void FQXRefreshReaderHotCommentBadges(void);
     FQXRefreshAllShareSheets();
 }
 
++ (void)refreshDramaPlaybackOptions {
+    FQXInvalidateHotPrefsCache();
+    FQXRefreshAllDramaPlaybackOptions();
+}
+
 + (void)refreshDockAppearance {
     FQXInvalidateHotPrefsCache();
     FQXRefreshAllDockAppearances();
@@ -6411,6 +6507,7 @@ static void FQXRefreshReaderHotCommentBadges(void);
             FQXAuditVisibleDockGlassLayers(inter->_bar, inter->_proxy, nil, nil);
         }
     }
+    FQXRefreshAllDramaPlaybackOptions();
 }
 
 + (void)refreshReaderHotCommentBadge {
@@ -11034,8 +11131,10 @@ static const char FQXK_FQXShelfHiddenByUsKey = 0;
 #define FQXShelfHiddenByUsKey ((const void *)&FQXK_FQXShelfHiddenByUsKey)
 static const char FQXK_FQXShelfReflowAppliedKey = 0;
 #define FQXShelfReflowAppliedKey ((const void *)&FQXK_FQXShelfReflowAppliedKey)
-static const char FQXK_FQXShelfBaseMinXKey = 0;
-#define FQXShelfBaseMinXKey ((const void *)&FQXK_FQXShelfBaseMinXKey)
+static const char FQXK_FQXShelfCachedItemKeysKey = 0;
+#define FQXShelfCachedItemKeysKey ((const void *)&FQXK_FQXShelfCachedItemKeysKey)
+static const char FQXK_FQXShelfAppliedVisMaskKey = 0;
+#define FQXShelfAppliedVisMaskKey ((const void *)&FQXK_FQXShelfAppliedVisMaskKey)
 static const char FQXK_FQXShelfFilterSectionKey = 0;
 #define FQXShelfFilterSectionKey ((const void *)&FQXK_FQXShelfFilterSectionKey)
 static BOOL FQXShelfOptionEnabled(NSString *key) {
@@ -11216,6 +11315,19 @@ static void HookShelfRootManagerDidClick(id manager, SEL cmd, NSUInteger index) 
     if (sourceIndex != NSNotFound) OrigShelfRootManagerDidClick(manager, cmd, sourceIndex);
 }
 
+static NSString *FQXHistoryFilterKeyForTitle(NSString *title);
+static NSString *FQXHistoryFilterKeyForCell(UIView *cell);
+
+static NSString *FQXShelfFilterKeyForTitle(NSString *title) {
+    if (![title isKindOfClass:NSString.class] || !title.length) return nil;
+    if ([title containsString:@"全部"]) return @"FanqieX.ShelfFilterAll.1";
+    if ([title containsString:@"阅读"]) return @"FanqieX.ShelfFilterRead.1";
+    if ([title containsString:@"听书"]) return @"FanqieX.ShelfFilterListen.1";
+    if ([title containsString:@"漫剧"]) return @"FanqieX.ShelfFilterComic.1";
+    if ([title containsString:@"星标"]) return @"FanqieX.ShelfFilterStar.1";
+    return nil;
+}
+
 static NSString *FQXShelfFilterKeyForCell(UIView *cell) {
     NSString *title = nil;
     UILabel *lbl = FQXObjGet(cell, "textLabel") ?: FQXObjGet(cell, "titleLabel") ?: FQXObjGet(cell, "label");
@@ -11226,90 +11338,234 @@ static NSString *FQXShelfFilterKeyForCell(UIView *cell) {
         if ([mTitle isKindOfClass:NSString.class]) title = mTitle;
     }
     if (!title.length) title = FQXShelfFirstLabelText(cell, 0);
-    if (!title.length) return nil;
-    if ([title containsString:@"全部"]) return @"FanqieX.ShelfFilterAll.1";
-    if ([title containsString:@"阅读"]) return @"FanqieX.ShelfFilterRead.1";
-    if ([title containsString:@"听书"]) return @"FanqieX.ShelfFilterListen.1";
-    if ([title containsString:@"漫剧"]) return @"FanqieX.ShelfFilterComic.1";
-    if ([title containsString:@"星标"]) return @"FanqieX.ShelfFilterStar.1";
+    return FQXShelfFilterKeyForTitle(title);
+}
+
+typedef NS_ENUM(NSInteger, FQXShelfStripKind) {
+    FQXShelfStripKindHistoryFilter = 1,
+    FQXShelfStripKindBookshelfFilter = 2,
+    FQXShelfStripKindBookshelfRootTab = 3,
+};
+
+static FQXShelfStripKind FQXShelfStripKindForCallback(NSString *(*keyForCell)(UIView *)) {
+    if (keyForCell == FQXHistoryFilterKeyForCell) return FQXShelfStripKindHistoryFilter;
+    if (keyForCell == FQXShelfTabKeyForCell) return FQXShelfStripKindBookshelfRootTab;
+    return FQXShelfStripKindBookshelfFilter;
+}
+
+static NSString *FQXShelfStripKeyForTitle(NSString *title, FQXShelfStripKind kind) {
+    switch (kind) {
+        case FQXShelfStripKindHistoryFilter:
+            return FQXHistoryFilterKeyForTitle(title);
+        case FQXShelfStripKindBookshelfRootTab:
+            return FQXShelfTabKeyForTitle(title);
+        case FQXShelfStripKindBookshelfFilter:
+        default:
+            return FQXShelfFilterKeyForTitle(title);
+    }
+}
+
+static NSString *FQXShelfExtractItemTitleFromOwner(id owner, NSInteger index) {
+    if (!owner || index < 0) return nil;
+    NSArray *titles = FQXObjGet(owner, "titles");
+    if ([titles isKindOfClass:NSArray.class] && (NSUInteger)index < titles.count) {
+        id t = titles[(NSUInteger)index];
+        if ([t isKindOfClass:NSString.class] && [t length]) return t;
+    }
+    const char *arrayNames[] = { "dataSource", "filterModels", "optionModels", "models", "dataArray", "itemModels" };
+    for (size_t k = 0; k < sizeof(arrayNames) / sizeof(arrayNames[0]); ++k) {
+        NSArray *arr = FQXObjGet(owner, arrayNames[k]);
+        if (![arr isKindOfClass:NSArray.class] || (NSUInteger)index >= arr.count) continue;
+        id item = arr[(NSUInteger)index];
+        if ([item isKindOfClass:NSString.class] && [item length]) return item;
+        id t = FQXObjGet(item, "title") ?: FQXObjGet(item, "name") ?: FQXObjGet(item, "filterName");
+        if ([t isKindOfClass:NSString.class] && [t length]) return t;
+    }
     return nil;
+}
+
+static NSString *FQXShelfResolveStripItemKey(UICollectionView *cv, NSInteger index, FQXShelfStripKind kind) {
+    if (!cv || index < 0) return nil;
+    id candidates[] = { cv.superview, cv.delegate, cv.dataSource, cv.superview ? cv.superview.superview : nil };
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+        NSString *title = FQXShelfExtractItemTitleFromOwner(candidates[i], index);
+        if (title.length) {
+            NSString *k = FQXShelfStripKeyForTitle(title, kind);
+            if (k) return k;
+        }
+    }
+    NSDictionary<NSNumber *, NSString *> *cached = objc_getAssociatedObject(cv, FQXShelfCachedItemKeysKey);
+    NSString *hit = cached[@(index)];
+    return [hit isKindOfClass:NSString.class] && hit.length ? hit : nil;
+}
+
+static BOOL FQXBuildShelfCompactStripPlan(UICollectionView *cv,
+                                          UICollectionViewLayout *layout,
+                                          FQXShelfStripKind kind,
+                                          CGFloat fallbackGap,
+                                          FQXCompactStripPlan *outPlan,
+                                          CGSize *outOrigSize) {
+    if (!cv || !layout || [cv numberOfSections] < 1) return NO;
+    NSInteger count = [cv numberOfItemsInSection:0];
+    if (count < 1 || count > FQXMaxCompactStripItems) return NO;
+
+    Class cls = object_getClass(layout);
+    IMP itemImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigItem, cls);
+    IMP sizeImp = FQXLookupDramaCompactOrig(gFQXDramaCompactOrigSize, cls);
+
+    FQXCompactStripItem rawItems[FQXMaxCompactStripItems];
+    int visibleFlags[FQXMaxCompactStripItems];
+    BOOL prevGuard = gFQXDramaCompactComputing;
+    gFQXDramaCompactComputing = YES;
+    for (NSInteger i = 0; i < count; ++i) {
+        NSIndexPath *ip = [NSIndexPath indexPathForItem:i inSection:0];
+        UICollectionViewLayoutAttributes *a = itemImp
+            ? ((UICollectionViewLayoutAttributes *(*)(id, SEL, id))itemImp)(layout, @selector(layoutAttributesForItemAtIndexPath:), ip)
+            : [layout layoutAttributesForItemAtIndexPath:ip];
+        CGRect rf = a ? a.frame : CGRectZero;
+        rawItems[i].x = rf.origin.x;
+        rawItems[i].y = rf.origin.y;
+        rawItems[i].width = rf.size.width;
+        rawItems[i].height = rf.size.height;
+        rawItems[i].hidden = 0;
+        NSString *prefKey = FQXShelfResolveStripItemKey(cv, i, kind);
+        visibleFlags[i] = (!prefKey || FQXShelfOptionEnabled(prefKey)) ? 1 : 0;
+    }
+    CGSize origSize = sizeImp
+        ? ((CGSize (*)(id, SEL))sizeImp)(layout, @selector(collectionViewContentSize))
+        : cv.contentSize;
+    gFQXDramaCompactComputing = prevGuard;
+
+    if (outOrigSize) *outOrigSize = origSize;
+    FQXCompactStripPlan plan = FQXPlanCompactHorizontalStrip(rawItems,
+                                                             visibleFlags,
+                                                             (size_t)count,
+                                                             fallbackGap,
+                                                             CGRectGetWidth(cv.bounds),
+                                                             cv.contentOffset.x);
+    if (!plan.valid) return NO;
+    if (outPlan) *outPlan = plan;
+    return YES;
+}
+
+static BOOL FQXComputeShelfCompactedRects(UICollectionViewLayout *layout,
+                                          CGRect outCompacted[24],
+                                          BOOL outHidden[24],
+                                          NSInteger *outCount,
+                                          CGSize *outContentSize) {
+    if (!layout || gFQXDramaCompactComputing) return NO;
+    NSNumber *kindNum = objc_getAssociatedObject(layout, FQXShelfCompactLayoutKindKey);
+    if (!kindNum) return NO;
+    UICollectionView *cv = layout.collectionView;
+    if (!cv) return NO;
+    NSNumber *gapNum = objc_getAssociatedObject(layout, FQXShelfCompactFallbackGapKey);
+    CGFloat gap = gapNum ? gapNum.doubleValue : 8.0;
+    FQXCompactStripPlan plan;
+    CGSize origSize = CGSizeZero;
+    if (!FQXBuildShelfCompactStripPlan(cv, layout, (FQXShelfStripKind)kindNum.integerValue, gap, &plan, &origSize)) {
+        return NO;
+    }
+    if (plan.hiddenCount == 0) return NO;
+    for (size_t i = 0; i < plan.count; ++i) {
+        outCompacted[i] = CGRectMake(plan.items[i].x, plan.items[i].y, plan.items[i].width, plan.items[i].height);
+        outHidden[i] = (plan.items[i].hidden != 0);
+    }
+    if (outCount) *outCount = (NSInteger)plan.count;
+    if (outContentSize) {
+        *outContentSize = CGSizeMake(MAX(1.0, plan.contentWidth), MAX(1.0, origSize.height));
+    }
+    return YES;
 }
 
 static void FQXReflowShelfCollectionCells(UICollectionView *cv,
                                           NSString *(*keyForCell)(UIView *),
                                           CGFloat gap,
                                           CGFloat fallbackStartX) {
+    (void)fallbackStartX;
     if (![cv isKindOfClass:UICollectionView.class] || CGRectGetWidth(cv.bounds) < 44.0) return;
-    NSArray<NSIndexPath *> *ips = [[cv indexPathsForVisibleItems]
-        sortedArrayUsingComparator:^NSComparisonResult(NSIndexPath *a, NSIndexPath *b) {
-            if (a.section != b.section) return a.section < b.section ? NSOrderedAscending : NSOrderedDescending;
-            if (a.item != b.item) return a.item < b.item ? NSOrderedAscending : NSOrderedDescending;
-            return NSOrderedSame;
-        }];
-    if (!ips.count) return;
+    UICollectionViewLayout *layout = cv.collectionViewLayout;
+    if (!layout || [cv numberOfSections] < 1) return;
+    NSInteger count = [cv numberOfItemsInSection:0];
+    if (count < 1 || count > FQXMaxCompactStripItems) return;
 
-    NSMutableArray<UIView *> *visibleCells = [NSMutableArray arrayWithCapacity:ips.count];
-    BOOL anyHidden = NO;
-    BOOL hiddenPrecedesVisible = NO;
-    CGFloat minStockX = CGFLOAT_MAX;
-    CGFloat nativeGap = -1.0;
-    BOOL hasFlowStock = ![objc_getAssociatedObject(cv, FQXShelfReflowAppliedKey) boolValue];
-    CGRect prevRawFrame = CGRectZero;
-    BOOL hasPrevRaw = NO;
-    for (NSIndexPath *ip in ips) {
+    FQXShelfStripKind kind = FQXShelfStripKindForCallback(keyForCell);
+    FQXInstallCompactLayoutHooksOnClass(object_getClass(layout));
+    objc_setAssociatedObject(layout, FQXShelfCompactLayoutKindKey, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(layout, FQXShelfCompactFallbackGapKey, @(gap), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    NSMutableDictionary<NSNumber *, NSString *> *cachedKeys = objc_getAssociatedObject(cv, FQXShelfCachedItemKeysKey);
+    if (!cachedKeys) {
+        cachedKeys = [NSMutableDictionary dictionaryWithCapacity:(NSUInteger)count];
+        objc_setAssociatedObject(cv, FQXShelfCachedItemKeysKey, cachedKeys, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (NSIndexPath *ip in [cv indexPathsForVisibleItems]) {
+        if (ip.section != 0 || ip.item < 0 || ip.item >= count) continue;
         UICollectionViewCell *cell = [cv cellForItemAtIndexPath:ip];
         if (!cell) continue;
-        UICollectionViewLayoutAttributes *attr = [cv layoutAttributesForItemAtIndexPath:ip];
-        CGRect rawFrame = (attr && CGRectGetWidth(attr.frame) > 4.0) ? attr.frame : cell.frame;
-        if (hasFlowStock && CGRectGetMinX(rawFrame) < minStockX) {
-            minStockX = CGRectGetMinX(rawFrame);
-        }
-        if (hasPrevRaw && nativeGap < 0.0) {
-            CGFloat g = CGRectGetMinX(rawFrame) - CGRectGetMaxX(prevRawFrame);
-            if (g >= 4.0 && g <= 36.0) nativeGap = g;
-        }
-        prevRawFrame = rawFrame;
-        hasPrevRaw = YES;
-
-        NSString *prefKey = keyForCell(cell);
-        BOOL show = prefKey ? FQXShelfOptionEnabled(prefKey) : YES;
-        FQXShelfApplyControlHidden(cell, FQXShelfHiddenByUsKey, !show);
-        if (show) {
-            if (anyHidden) hiddenPrecedesVisible = YES;
-            [visibleCells addObject:cell];
-        } else {
-            anyHidden = YES;
-        }
+        NSString *k = keyForCell ? keyForCell(cell) : nil;
+        if (k.length) cachedKeys[@(ip.item)] = k;
     }
 
-    if (hasFlowStock && minStockX < CGFLOAT_MAX) {
-        objc_setAssociatedObject(cv, FQXShelfBaseMinXKey, @(minStockX), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSUInteger visMask = ((NSUInteger)count << 24);
+    for (NSInteger i = 0; i < count; ++i) {
+        NSString *prefKey = FQXShelfResolveStripItemKey(cv, i, kind);
+        if (!prefKey || FQXShelfOptionEnabled(prefKey)) {
+            visMask |= (1UL << (NSUInteger)i);
+        }
+    }
+    NSNumber *prevMask = objc_getAssociatedObject(layout, FQXShelfAppliedVisMaskKey);
+    if (!prevMask || prevMask.unsignedIntegerValue != visMask) {
+        objc_setAssociatedObject(layout, FQXShelfAppliedVisMaskKey, @(visMask), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [layout invalidateLayout];
+    }
+
+    FQXCompactStripPlan plan;
+    CGSize origSize = CGSizeZero;
+    if (!FQXBuildShelfCompactStripPlan(cv, layout, kind, gap, &plan, &origSize)) return;
+
+    BOOL allowScroll = (plan.allowStripScroll != 0);
+    if (cv.scrollEnabled != allowScroll) cv.scrollEnabled = allowScroll;
+    if (cv.alwaysBounceHorizontal != allowScroll) cv.alwaysBounceHorizontal = allowScroll;
+    if (plan.resetContentOffset) {
+        double maxOff = allowScroll ? fmax(0.0, plan.contentWidth - CGRectGetWidth(cv.bounds)) : 0.0;
+        CGFloat clampedX = (CGFloat)fmin(fmax(0.0, cv.contentOffset.x), maxOff);
+        if (!allowScroll) clampedX = 0.0;
+        if (fabs(cv.contentOffset.x - clampedX) > 0.5) {
+            [cv setContentOffset:CGPointMake(clampedX, cv.contentOffset.y) animated:NO];
+        }
     }
 
     BOOL wasReflowed = [objc_getAssociatedObject(cv, FQXShelfReflowAppliedKey) boolValue];
-    // Preserve native UICollectionViewLayout frames whenever no hidden cell sits BEFORE a visible
-    // cell (e.g., 书架/历史 visible while trailing 收藏/圈子 are hidden), so UIKit's
-    // indexPathForItemAtPoint: hit-testing matches the rendered pills with zero dead zone.
-    if (!hiddenPrecedesVisible) {
+    if (plan.hiddenCount == 0) {
+        for (NSInteger i = 0; i < count; ++i) {
+            UICollectionViewCell *cell = [cv cellForItemAtIndexPath:[NSIndexPath indexPathForItem:i inSection:0]];
+            if (cell) FQXShelfApplyControlHidden(cell, FQXShelfHiddenByUsKey, NO);
+        }
         if (wasReflowed) {
             objc_setAssociatedObject(cv, FQXShelfReflowAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            [cv.collectionViewLayout invalidateLayout];
+            [layout invalidateLayout];
             [cv setNeedsLayout];
         }
         return;
     }
 
-    CGFloat effectiveGap = (nativeGap >= 4.0) ? nativeGap : gap;
-    NSNumber *savedStart = objc_getAssociatedObject(cv, FQXShelfBaseMinXKey);
-    CGFloat x = savedStart ? MAX(0.0, savedStart.doubleValue) : fallbackStartX;
     objc_setAssociatedObject(cv, FQXShelfReflowAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    for (UIView *cell in visibleCells) {
-        CGRect f = cell.frame;
-        if (fabs(f.origin.x - x) > 0.5) {
-            f.origin.x = x;
-            cell.frame = f;
+    if (fabs(cv.contentSize.width - plan.contentWidth) > 1.0 && cv.contentSize.height > 1.0) {
+        cv.contentSize = CGSizeMake(plan.contentWidth, cv.contentSize.height);
+    }
+    for (NSInteger i = 0; i < count; ++i) {
+        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:[NSIndexPath indexPathForItem:i inSection:0]];
+        if (!cell) continue;
+        BOOL hideItem = (plan.items[i].hidden != 0);
+        FQXShelfApplyControlHidden(cell, FQXShelfHiddenByUsKey, hideItem);
+        if (!hideItem) {
+            CGRect f = cell.frame;
+            if (fabs(f.origin.x - plan.items[i].x) > 0.5 || fabs(f.size.width - plan.items[i].width) > 0.5) {
+                f.origin.x = plan.items[i].x;
+                f.size.width = plan.items[i].width;
+                cell.frame = f;
+            }
         }
-        x += CGRectGetWidth(f) + effectiveGap;
     }
 }
 
@@ -11820,40 +12076,390 @@ static NSString *FQXHistoryFilterKeyForCell(UIView *cell) {
 }
 
 static const char FQXHistoryPanDisabledByPlugin;
+static const char FQXShelfPagerControllerKey;
+static const char FQXShelfPagerRedirectTsKey;
+static const char FQXHistoryLeftSavedFrameKey;
 
-static void FQXSyncShelfHistoryPager(UIViewController *historyVC, id category, NSArray *titles, NSUInteger firstVisible, BOOL hasHidden) {
-    id container = FQXObjGet(historyVC, "listContainerView");
-    UIScrollView *scroll = FQXObjGet(container, "scrollView");
-    if (![scroll isKindOfClass:UIScrollView.class]) return;
-    UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
-    BOOL disabledByPlugin = objc_getAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin) != nil;
-    if (hasHidden && pan.enabled) {
-        objc_setAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+static void FQXSelectShelfCategoryIndex(UIViewController *ownerVC,
+                                        id categoryView,
+                                        id listContainer,
+                                        UIScrollView *pagerScroll,
+                                        NSInteger target,
+                                        BOOL isRootShelf) {
+    if (target < 0) return;
+    if (categoryView) {
+        SEL selNeedAnim = sel_registerName("selectItemAtIndex:needAnimation:");
+        Method mAnim = class_getInstanceMethod(object_getClass(categoryView), selNeedAnim);
+        if (mAnim && strcmp(method_getTypeEncoding(mAnim), "B28@0:8q16B24") == 0) {
+            ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(categoryView, selNeedAnim, target, NO);
+        } else {
+            SEL selPlain = sel_registerName("selectItemAtIndex:");
+            Method mPlain = class_getInstanceMethod(object_getClass(categoryView), selPlain);
+            if (mPlain && strcmp(method_getTypeEncoding(mPlain), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(categoryView, selPlain, target);
+            }
+        }
+    }
+    if (listContainer) {
+        NSInteger lcCur = FQXIntGet(listContainer, "currentIndex", target);
+        if (lcCur != target) {
+            SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
+            Method cm = class_getInstanceMethod(object_getClass(listContainer), clickSel);
+            if (cm && strcmp(method_getTypeEncoding(cm), "v24@0:8q16") == 0) {
+                ((void (*)(id, SEL, NSInteger))objc_msgSend)(listContainer, clickSel, target);
+            }
+        }
+    }
+    if ([pagerScroll isKindOfClass:UIScrollView.class]) {
+        CGFloat pageW = CGRectGetWidth(pagerScroll.bounds);
+        if (pageW > 100.0 && !FQXBoolGet(pagerScroll, "isScrollAnimating", NO)) {
+            CGFloat targetX = pageW * (CGFloat)target;
+            CGFloat maxContentX = MAX(targetX, pagerScroll.contentSize.width - pageW);
+            if (targetX >= 0.0 && targetX <= maxContentX + 1.0 &&
+                fabs(pagerScroll.contentOffset.x - targetX) > 1.0) {
+                [pagerScroll setContentOffset:CGPointMake(targetX, pagerScroll.contentOffset.y) animated:NO];
+            }
+        }
+    }
+    if (ownerVC && categoryView) {
+        NSInteger ownerCur = isRootShelf
+            ? FQXIntGet(ownerVC, "currentTabIndex", target)
+            : FQXIntGet(ownerVC, "currentVCIndex", target);
+        if (ownerCur != target) {
+            SEL didSel = sel_registerName("categoryView:didSelectedItemAtIndex:");
+            Method om = class_getInstanceMethod(object_getClass(ownerVC), didSel);
+            if (om && strcmp(method_getTypeEncoding(om), "v32@0:8@16q24") == 0) {
+                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(ownerVC, didSel, categoryView, target);
+            }
+        }
+    }
+    if ([categoryView isKindOfClass:UIView.class]) {
+        [(UIView *)categoryView setNeedsLayout];
+        [(UIView *)categoryView layoutIfNeeded];
+    }
+}
+
+static unsigned int FQXShelfPagerMaskAndCount(UIViewController *ownerVC,
+                                              id categoryView,
+                                              BOOL isRootShelf,
+                                              size_t *outCount) {
+    if (outCount) *outCount = 0;
+    if (isRootShelf) {
+        NSArray *models = FQXObjGet(ownerVC, "bookshelfTabModelArray");
+        if (![models isKindOfClass:NSArray.class] || !models.count || models.count > FQXMaxCompactStripItems) {
+            return 0;
+        }
+        unsigned int mask = 0;
+        for (NSUInteger i = 0; i < models.count; ++i) {
+            NSString *key = FQXShelfTabKeyForTitle(FQXObjGet(models[i], "title"));
+            if (!key || FQXShelfOptionEnabled(key)) mask |= (1u << i);
+        }
+        if (outCount) *outCount = models.count;
+        return mask;
+    }
+
+    NSArray *titles = FQXObjGet(categoryView, "titles");
+    NSArray *ds = FQXObjGet(categoryView, "dataSource");
+    NSUInteger count = [titles isKindOfClass:NSArray.class] ? titles.count : 0;
+    if (count == 0 && [ds isKindOfClass:NSArray.class]) count = ds.count;
+    if (count == 0 || count > FQXMaxCompactStripItems) return 0;
+    unsigned int mask = 0;
+    for (NSUInteger i = 0; i < count; ++i) {
+        NSString *title = nil;
+        if ([titles isKindOfClass:NSArray.class] && i < titles.count && [titles[i] isKindOfClass:NSString.class]) {
+            title = titles[i];
+        } else if ([ds isKindOfClass:NSArray.class] && i < ds.count) {
+            id t = FQXObjGet(ds[i], "title") ?: FQXObjGet(ds[i], "name");
+            if ([t isKindOfClass:NSString.class]) title = t;
+        }
+        NSString *key = FQXHistoryFilterKeyForTitle(title);
+        if (!key || FQXShelfOptionEnabled(key)) mask |= (1u << i);
+    }
+    if (outCount) *outCount = count;
+    return mask;
+}
+
+static NSInteger FQXShelfCurrentPagerIndex(UIViewController *ownerVC,
+                                           id categoryView,
+                                           id listContainer,
+                                           UIScrollView *pagerScroll,
+                                           BOOL isRootShelf) {
+    NSInteger sel = FQXIntGet(categoryView, "selectedIndex", -1);
+    if (sel >= 0) return sel;
+    if (listContainer) {
+        NSInteger lc = FQXIntGet(listContainer, "currentIndex", -1);
+        if (lc >= 0) return lc;
+    }
+    NSInteger vcIdx = isRootShelf
+        ? FQXIntGet(ownerVC, "currentTabIndex", -1)
+        : FQXIntGet(ownerVC, "currentVCIndex", -1);
+    if (vcIdx >= 0) return vcIdx;
+    if ([pagerScroll isKindOfClass:UIScrollView.class] && CGRectGetWidth(pagerScroll.bounds) > 100.0) {
+        return (NSInteger)llround(pagerScroll.contentOffset.x / CGRectGetWidth(pagerScroll.bounds));
+    }
+    return -1;
+}
+
+@interface FQXShelfVisiblePagerPanController : NSObject <UIGestureRecognizerDelegate> {
+@public
+    __weak UIViewController *_ownerVC;
+    __weak id _categoryView;
+    __weak id _listContainer;
+    __weak UIView *_gestureHost;
+    __weak UIScrollView *_pagerScroll;
+    UIPanGestureRecognizer *_panGesture;
+    BOOL _visibleStepSwipeActive;
+    BOOL _isRootShelf;
+}
+@end
+
+@implementation FQXShelfVisiblePagerPanController
+
+- (instancetype)initWithHost:(UIView *)host scrollView:(UIScrollView *)scroll {
+    self = [super init];
+    if (self) {
+        _gestureHost = host;
+        _pagerScroll = scroll;
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        pan.maximumNumberOfTouches = 1;
+        pan.cancelsTouchesInView = YES;
+        pan.delaysTouchesBegan = NO;
+        pan.delaysTouchesEnded = YES;
+        pan.delegate = self;
         pan.enabled = NO;
-    } else if (!hasHidden && disabledByPlugin) {
-        objc_setAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (scroll.scrollEnabled) pan.enabled = YES;
+        _panGesture = pan;
+        [host addGestureRecognizer:pan];
     }
-    if (!hasHidden || firstVisible == NSNotFound) return;
-    NSInteger selected = FQXIntGet(historyVC, "currentVCIndex", -1);
-    if (selected < 0 || (NSUInteger)selected >= titles.count) return;
-    NSString *selectedKey = FQXHistoryFilterKeyForTitle(titles[(NSUInteger)selected]);
-    if (!selectedKey || FQXShelfOptionEnabled(selectedKey)) return;
-    SEL selector = sel_registerName("selectItemAtIndex:needAnimation:");
-    Method method = class_getInstanceMethod(object_getClass(category), selector);
-    if (method && strcmp(method_getTypeEncoding(method), "B28@0:8q16B24") == 0) {
-        ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(category, selector, (NSInteger)firstVisible, NO);
+    return self;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    if (gestureRecognizer != self->_panGesture) return YES;
+    if (!self->_visibleStepSwipeActive) return NO;
+    UIView *host = self->_gestureHost;
+    UIScrollView *pager = self->_pagerScroll;
+    if (!host || !host.window || host.hidden || !pager || !pager.window || pager.hidden) return NO;
+
+    CGPoint locInPager = [touch locationInView:pager];
+    if (!CGRectContainsPoint(pager.bounds, locInPager)) return NO;
+
+    if ([self->_categoryView isKindOfClass:UIView.class]) {
+        UIView *catV = (UIView *)self->_categoryView;
+        if (!catV.hidden && catV.window == host.window) {
+            CGPoint locInCat = [touch locationInView:catV];
+            if (CGRectContainsPoint(CGRectInset(catV.bounds, -8.0, -8.0), locInCat)) return NO;
+        }
     }
+
+    for (UIView *view = touch.view; view && view != host; view = view.superview) {
+        if ([view isKindOfClass:UIScrollView.class] && view != pager) {
+            UIScrollView *nested = (UIScrollView *)view;
+            if (nested.scrollEnabled && nested.userInteractionEnabled &&
+                nested.contentSize.width > CGRectGetWidth(nested.bounds) + 2.0) {
+                return NO;
+            }
+        }
+    }
+    return YES;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer != self->_panGesture) return YES;
+    if (!self->_visibleStepSwipeActive) return NO;
+    UIView *host = self->_gestureHost;
+    if (!host || !host.window || host.hidden || !self->_ownerVC) return NO;
+    CGPoint direction = [self->_panGesture translationInView:host];
+    if (fmax(fabs(direction.x), fabs(direction.y)) < 4.0) {
+        direction = [self->_panGesture velocityInView:host];
+    }
+    return fabs(direction.x) > fabs(direction.y) * 1.45;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    (void)gr; (void)other;
+    return NO;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
+    UIView *host = self->_gestureHost;
+    return gestureRecognizer == self->_panGesture && self->_visibleStepSwipeActive && host &&
+           [other isKindOfClass:UITapGestureRecognizer.class] && [other.view isDescendantOfView:host];
+}
+
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    if (pan.state != UIGestureRecognizerStateEnded || !self->_visibleStepSwipeActive) return;
+    UIView *host = self->_gestureHost;
+    UIViewController *owner = self->_ownerVC;
+    if (!host || !owner) return;
+
+    CGPoint trans = [pan translationInView:host];
+    CGPoint vel = [pan velocityInView:host];
+    if (fabs(trans.y) > fabs(trans.x) * 0.9 && fabs(vel.x) < 340.0) return;
+
+    int step = 0;
+    if (trans.x <= -46.0 || vel.x <= -340.0) step = 1;
+    else if (trans.x >= 46.0 || vel.x >= 340.0) step = -1;
+    if (step == 0) return;
+
+    size_t count = 0;
+    unsigned int mask = FQXShelfPagerMaskAndCount(owner, self->_categoryView, self->_isRootShelf, &count);
+    if (count < 2 || mask == 0) return;
+    NSInteger cur = FQXShelfCurrentPagerIndex(owner, self->_categoryView, self->_listContainer, self->_pagerScroll, self->_isRootShelf);
+    int target = FQXStepVisiblePagerIndex(count, mask, (int)cur, step);
+    if (target < 0 || target == (int)cur) return;
+
+    UISelectionFeedbackGenerator *gen = [[UISelectionFeedbackGenerator alloc] init];
+    [gen selectionChanged];
+    FQXSelectShelfCategoryIndex(owner, self->_categoryView, self->_listContainer, self->_pagerScroll, target, self->_isRootShelf);
+    FQXDiagRecordEvent(FQXDiagCategoryUI, @"shelf_pager_visible_swipe", @{
+        @"isRootShelf": @(self->_isRootShelf),
+        @"fromIndex": @(cur),
+        @"toIndex": @(target),
+        @"direction": (step > 0) ? @"left_next" : @"right_prev",
+        @"visibleMask": @(mask),
+    }, NO);
+}
+
+@end
+
+static UIScrollView *FQXFindHorizontalHistoryPagerScroll(UIView *root, UIView *excludedStrip, NSInteger depth) {
+    if (!root || depth > 4 || root == excludedStrip || (excludedStrip && [root isDescendantOfView:excludedStrip])) {
+        return nil;
+    }
+    if ([root isKindOfClass:UIScrollView.class] &&
+        ![root isKindOfClass:UITableView.class] &&
+        ![root isKindOfClass:UICollectionView.class]) {
+        UIScrollView *sv = (UIScrollView *)root;
+        CGFloat w = CGRectGetWidth(sv.bounds);
+        CGFloat h = CGRectGetHeight(sv.bounds);
+        if (w >= 180.0 && h >= 160.0 && (sv.isPagingEnabled || sv.contentSize.width > w * 1.4)) {
+            return sv;
+        }
+    }
+    for (UIView *sub in root.subviews) {
+        UIScrollView *hit = FQXFindHorizontalHistoryPagerScroll(sub, excludedStrip, depth + 1);
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+static void FQXApplyShelfPagerPolicy(UIViewController *ownerVC,
+                                     id categoryView,
+                                     id listContainer,
+                                     UIScrollView *scroll,
+                                     size_t totalCount,
+                                     unsigned int visibleMask,
+                                     BOOL masterVisible,
+                                     BOOL isRootShelf) {
+    if (!ownerVC || ![scroll isKindOfClass:UIScrollView.class] || totalCount == 0) return;
+
+    NSInteger currentIndex = FQXShelfCurrentPagerIndex(ownerVC, categoryView, listContainer, scroll, isRootShelf);
+    FQXVisiblePagerPolicy policy = FQXEvaluateVisiblePagerPolicy(totalCount,
+                                                                 visibleMask,
+                                                                 masterVisible ? 1 : 0,
+                                                                 (int)currentIndex);
+    BOOL allowNative = (policy.allowNativeScroll != 0);
+    BOOL allowStepPan = (policy.allowVisibleStepPan != 0);
+
+    UIPanGestureRecognizer *nativePan = scroll.panGestureRecognizer;
+    BOOL disabledByPlugin = objc_getAssociatedObject(scroll, &FQXHistoryPanDisabledByPlugin) != nil;
+    if (!allowNative) {
+        objc_setAssociatedObject(scroll, &FQXHistoryPanDisabledByPlugin, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (scroll.scrollEnabled) scroll.scrollEnabled = NO;
+        if (nativePan && nativePan.enabled) nativePan.enabled = NO;
+    } else if (disabledByPlugin) {
+        objc_setAssociatedObject(scroll, &FQXHistoryPanDisabledByPlugin, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!scroll.scrollEnabled) scroll.scrollEnabled = YES;
+        if (nativePan && !nativePan.enabled) nativePan.enabled = YES;
+    }
+
+    UIView *gestureHost = ([listContainer isKindOfClass:UIView.class] ? (UIView *)listContainer : nil)
+        ?: scroll.superview
+        ?: ownerVC.view;
+    FQXShelfVisiblePagerPanController *panCtl = gestureHost
+        ? objc_getAssociatedObject(gestureHost, &FQXShelfPagerControllerKey)
+        : nil;
+    if (!panCtl && allowStepPan && gestureHost) {
+        panCtl = [[FQXShelfVisiblePagerPanController alloc] initWithHost:gestureHost scrollView:scroll];
+        objc_setAssociatedObject(gestureHost, &FQXShelfPagerControllerKey, panCtl, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (panCtl) {
+        panCtl->_ownerVC = ownerVC;
+        panCtl->_categoryView = categoryView;
+        panCtl->_listContainer = listContainer;
+        panCtl->_gestureHost = gestureHost;
+        panCtl->_pagerScroll = scroll;
+        panCtl->_isRootShelf = isRootShelf;
+        panCtl->_visibleStepSwipeActive = allowStepPan;
+        if (gestureHost && panCtl->_panGesture.view != gestureHost) {
+            [panCtl->_panGesture.view removeGestureRecognizer:panCtl->_panGesture];
+            [gestureHost addGestureRecognizer:panCtl->_panGesture];
+        }
+        if (panCtl->_panGesture.enabled != allowStepPan) {
+            panCtl->_panGesture.enabled = allowStepPan;
+        }
+    }
+
+    if (policy.redirectIndex >= 0) {
+        NSNumber *lastTs = objc_getAssociatedObject(scroll, &FQXShelfPagerRedirectTsKey);
+        CFTimeInterval now = CACurrentMediaTime();
+        if (!lastTs || (now - lastTs.doubleValue) > 0.20) {
+            objc_setAssociatedObject(scroll, &FQXShelfPagerRedirectTsKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXSelectShelfCategoryIndex(ownerVC, categoryView, listContainer, scroll, policy.redirectIndex, isRootShelf);
+        }
+    } else if (!allowNative && currentIndex >= 0 && (size_t)currentIndex < totalCount &&
+               ((visibleMask >> (unsigned int)currentIndex) & 1u)) {
+        CGFloat pageW = CGRectGetWidth(scroll.bounds);
+        if (pageW > 100.0 && !FQXBoolGet(scroll, "isScrollAnimating", NO)) {
+            CGFloat expectedX = pageW * (CGFloat)currentIndex;
+            if (fabs(scroll.contentOffset.x - expectedX) > 1.0 &&
+                expectedX <= MAX(expectedX, scroll.contentSize.width - pageW + 1.0)) {
+                [scroll setContentOffset:CGPointMake(expectedX, scroll.contentOffset.y) animated:NO];
+            }
+        }
+    }
+}
+
+static void FQXSyncShelfHistoryPager(UIViewController *historyVC, id category, UIView *leftCV, BOOL anyLeft) {
+    size_t count = 0;
+    unsigned int visibleMask = FQXShelfPagerMaskAndCount(historyVC, category, NO, &count);
+    if (count == 0) return;
+
+    id listContainer = FQXObjGet(category, "listContainer")
+        ?: FQXObjGet(historyVC, "listContainerView")
+        ?: FQXObjGet(historyVC, "containerView")
+        ?: FQXObjGet(historyVC, "listContainer");
+    UIScrollView *scroll = nil;
+    id candScrolls[] = {
+        FQXObjGet(category, "contentScrollView"),
+        FQXObjGet(listContainer, "scrollView"),
+        FQXObjGet(historyVC, "contentScrollView"),
+        FQXObjGet(historyVC, "scrollView"),
+    };
+    for (size_t i = 0; i < sizeof(candScrolls) / sizeof(candScrolls[0]); ++i) {
+        if ([candScrolls[i] isKindOfClass:UIScrollView.class] && candScrolls[i] != leftCV) {
+            scroll = candScrolls[i];
+            break;
+        }
+    }
+    if (!scroll && historyVC.isViewLoaded) {
+        scroll = FQXFindHorizontalHistoryPagerScroll(historyVC.view, leftCV, 0);
+    }
+    if (!scroll) return;
+
+    FQXApplyShelfPagerPolicy(historyVC, category, listContainer, scroll, count, visibleMask, anyLeft, NO);
 }
 
 static BOOL (*OrigShelfHistoryCanSelect)(id, SEL, id, NSInteger);
 static BOOL HookShelfHistoryCanSelect(id historyVC, SEL cmd, id category, NSInteger index) {
-    NSArray *titles = FQXObjGet(category, "titles");
-    if ([titles isKindOfClass:NSArray.class] && index >= 0 && (NSUInteger)index < titles.count) {
-        NSString *key = FQXHistoryFilterKeyForTitle(titles[(NSUInteger)index]);
-        if (key && !FQXShelfOptionEnabled(key)) return NO;
+    size_t count = 0;
+    unsigned int mask = FQXShelfPagerMaskAndCount(historyVC, category, NO, &count);
+    if (count > 0 && index >= 0 && (size_t)index < count) {
+        if (((mask >> (unsigned int)index) & 1u) == 0) return NO;
     }
-    return OrigShelfHistoryCanSelect(historyVC, cmd, category, index);
+    return OrigShelfHistoryCanSelect ? OrigShelfHistoryCanSelect(historyVC, cmd, category, index) : YES;
 }
 
 static void FQXCollectHistoryBarMarkers(UIView *view, NSMutableSet<NSString *> *hits, NSInteger depth) {
@@ -12183,28 +12789,24 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     BOOL anyLeft = FQXHistoryAnyLeftPillEnabled();
     BOOL anyHidden = FQXHistoryAnyButtonHidden();
     id category = FQXObjGet(historyVC, "categoryView");
-    NSArray *titles = FQXObjGet(category, "titles");
-    if ([titles isKindOfClass:NSArray.class] && titles.count) {
-        NSUInteger firstVisible = NSNotFound;
-        BOOL hasHidden = NO;
-        for (NSUInteger index = 0; index < titles.count; ++index) {
-            NSString *key = FQXHistoryFilterKeyForTitle(titles[index]);
-            if (key && !FQXShelfOptionEnabled(key)) {
-                hasHidden = YES;
-            } else if (firstVisible == NSNotFound) {
-                firstVisible = index;
-            }
-        }
-        anyLeft = firstVisible != NSNotFound;
-        FQXSyncShelfHistoryPager(historyVC, category, titles, firstVisible, hasHidden);
+    size_t catCount = 0;
+    unsigned int catMask = FQXShelfPagerMaskAndCount(historyVC, category, NO, &catCount);
+    if (catCount > 0) {
+        anyLeft = (catMask != 0);
     }
     BOOL allHidden = !anyLeft && !showFilter && !showEdit;
 
     UIScrollView *mainScroll = FQXFindMainHistoryContentScroll(vcView, nil, 0);
     if (!anyHidden) {
+        FQXSyncShelfHistoryPager(historyVC, category, FQXObjGet(category, "collectionView"), anyLeft);
         for (UIView *bar in FQXTrackedHistoryBarViews().allObjects) {
             if (!bar.superview || ![bar isDescendantOfView:vcView]) continue;
             FQXShelfApplyControlHidden(bar, FQXHistoryBarHiddenByUsKey, NO);
+            NSValue *savedLeftF = objc_getAssociatedObject(bar, &FQXHistoryLeftSavedFrameKey);
+            if (savedLeftF) {
+                bar.frame = savedLeftF.CGRectValue;
+                objc_setAssociatedObject(bar, &FQXHistoryLeftSavedFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
             if ([objc_getAssociatedObject(bar, FQXHistoryFilterShiftedKey) boolValue]) {
                 NSValue *savedF = objc_getAssociatedObject(bar, FQXHistoryFilterSavedFrameKey);
                 if (savedF) bar.frame = savedF.CGRectValue;
@@ -12234,6 +12836,7 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     id categoryCollection = FQXObjGet(category, "collectionView");
     UICollectionView *leftCV = [categoryCollection isKindOfClass:UICollectionView.class] &&
                                [categoryCollection isDescendantOfView:vcView] ? categoryCollection : scan.leftCV;
+    FQXSyncShelfHistoryPager(historyVC, category, leftCV, anyLeft);
     UIView *filterBtn = scan.filterBtn;
     UIView *editBtn = scan.editBtn;
 
@@ -12396,6 +12999,57 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
         NSValue *savedVal = objc_getAssociatedObject(filterBtn, FQXHistoryFilterSavedFrameKey);
         if (savedVal) filterBtn.frame = savedVal.CGRectValue;
         objc_setAssociatedObject(filterBtn, FQXHistoryFilterShiftedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    // Expand leftCV / leftContainer into freed right-button space when 筛选 and/or 编辑 are hidden
+    // so visible pills never clip against the former ~240pt right boundary.
+    if (leftCV && anyLeft) {
+        UIView *outerLeft = (leftContainer && leftContainer != leftCV) ? leftContainer : leftCV;
+        if (!objc_getAssociatedObject(outerLeft, &FQXHistoryLeftSavedFrameKey)) {
+            objc_setAssociatedObject(outerLeft, &FQXHistoryLeftSavedFrameKey,
+                                     [NSValue valueWithCGRect:outerLeft.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (outerLeft != leftCV && !objc_getAssociatedObject(leftCV, &FQXHistoryLeftSavedFrameKey)) {
+            objc_setAssociatedObject(leftCV, &FQXHistoryLeftSavedFrameKey,
+                                     [NSValue valueWithCGRect:leftCV.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        NSValue *savedOuterVal = objc_getAssociatedObject(outerLeft, &FQXHistoryLeftSavedFrameKey);
+        NSValue *savedCVVal = objc_getAssociatedObject(leftCV, &FQXHistoryLeftSavedFrameKey);
+        if (showFilter && showEdit) {
+            if (savedOuterVal && !CGRectEqualToRect(outerLeft.frame, savedOuterVal.CGRectValue)) {
+                outerLeft.frame = savedOuterVal.CGRectValue;
+            }
+            if (outerLeft != leftCV && savedCVVal && !CGRectEqualToRect(leftCV.frame, savedCVVal.CGRectValue)) {
+                leftCV.frame = savedCVVal.CGRectValue;
+            }
+        } else if (outerLeft.superview) {
+            CGFloat rightLimitInVC = vcW - 12.0;
+            if (showFilter && filterBtn && !filterBtn.hidden) {
+                rightLimitInVC = MIN(rightLimitInVC, CGRectGetMinX([filterBtn convertRect:filterBtn.bounds toView:vcView]) - 8.0);
+            }
+            if (showEdit && editBtn && !editBtn.hidden) {
+                rightLimitInVC = MIN(rightLimitInVC, CGRectGetMinX([editBtn convertRect:editBtn.bounds toView:vcView]) - 8.0);
+            }
+            CGRect baseOuter = savedOuterVal ? savedOuterVal.CGRectValue : outerLeft.frame;
+            CGRect outerInVC = [outerLeft.superview convertRect:baseOuter toView:vcView];
+            CGFloat desiredW = rightLimitInVC - CGRectGetMinX(outerInVC);
+            if (desiredW > CGRectGetWidth(baseOuter) + 2.0) {
+                CGRect expandedOuter = baseOuter;
+                expandedOuter.size.width = round(desiredW);
+                if (!CGRectEqualToRect(outerLeft.frame, expandedOuter)) {
+                    outerLeft.frame = expandedOuter;
+                }
+                if (outerLeft != leftCV) {
+                    CGRect baseCV = savedCVVal ? savedCVVal.CGRectValue : leftCV.frame;
+                    CGRect expandedCV = baseCV;
+                    expandedCV.size.width = MAX(CGRectGetWidth(baseCV), round(desiredW - CGRectGetMinX(baseCV)));
+                    if (!CGRectEqualToRect(leftCV.frame, expandedCV)) {
+                        leftCV.frame = expandedCV;
+                    }
+                }
+                FQXReflowShelfCollectionCells(leftCV, FQXHistoryFilterKeyForCell, 8.0, 0.0);
+            }
+        }
     }
 
     // 3. Full-row collapse & book-grid upward shift ONLY when all 6 controls are hidden
@@ -12582,6 +13236,19 @@ static void FQXSyncShelfFavoritesFilters(UIView *header, UIViewController *contr
     UIView *strip = FQXObjGet(header, "filterView");
     BOOL enabled = FQXBoolGet(header, "isFilterEnabled", NO);
     if (enabled) FQXShelfApplyControlHidden(strip, &FQXShelfFavoritesStripHiddenKey, models.count && !choices.count);
+    UICollectionView *stripCV = [strip isKindOfClass:UICollectionView.class]
+        ? (UICollectionView *)strip
+        : FQXFindMineCollectionView(strip, 3);
+    if ([stripCV isKindOfClass:UICollectionView.class] && CGRectGetWidth(stripCV.bounds) > 40.0) {
+        [stripCV layoutIfNeeded];
+        BOOL canScrollStrip = enabled && choices.count > 1 &&
+            (stripCV.contentSize.width > CGRectGetWidth(stripCV.bounds) + 2.0);
+        if (stripCV.scrollEnabled != canScrollStrip) stripCV.scrollEnabled = canScrollStrip;
+        if (stripCV.alwaysBounceHorizontal != canScrollStrip) stripCV.alwaysBounceHorizontal = canScrollStrip;
+        if (!canScrollStrip && fabs(stripCV.contentOffset.x) > 0.5) {
+            [stripCV setContentOffset:CGPointMake(0.0, stripCV.contentOffset.y) animated:NO];
+        }
+    }
     if (!enabled || !choices.count) return;
 
     id selected = FQXObjGet(controller, "selectedFilterModel");
@@ -12772,13 +13439,64 @@ static void FQXRefreshAllShelfHeaderControls(void) {
     FQXRefreshAllShelfEditButtons();
 }
 
+static void FQXSyncShelfRootPager(UIViewController *shelfVC) {
+    if (![shelfVC isKindOfClass:UIViewController.class] || !shelfVC.isViewLoaded) return;
+    id category = FQXObjGet(shelfVC, "categoryTitleView") ?: FQXObjGet(shelfVC, "tabSelectView");
+    id container = FQXObjGet(shelfVC, "containerView") ?: FQXObjGet(category, "listContainer");
+    UIScrollView *scroll = FQXObjGet(container, "scrollView") ?: FQXObjGet(category, "contentScrollView");
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    size_t count = 0;
+    unsigned int visibleMask = FQXShelfPagerMaskAndCount(shelfVC, category, YES, &count);
+    if (count == 0) return;
+    FQXApplyShelfPagerPolicy(shelfVC, category, container, scroll, count, visibleMask, visibleMask != 0, YES);
+}
+
+static BOOL (*OrigShelfRootCanSelect)(id, SEL, id, NSInteger);
+static BOOL HookShelfRootCanSelect(id shelfVC, SEL cmd, id category, NSInteger index) {
+    size_t count = 0;
+    unsigned int mask = FQXShelfPagerMaskAndCount(shelfVC, category, YES, &count);
+    if (count > 0 && index >= 0 && (size_t)index < count) {
+        if (((mask >> (unsigned int)index) & 1u) == 0) return NO;
+    }
+    return OrigShelfRootCanSelect ? OrigShelfRootCanSelect(shelfVC, cmd, category, index) : YES;
+}
+
 static void FQXUpdateShelfRootControllerTabs(UIViewController *controller) {
     if (!OrigShelfRootTabModels || !controller.isViewLoaded) return;
     SEL update = sel_registerName("updateTabDataIfInit:withDefaultSelectTabType:");
     Method method = class_getInstanceMethod(object_getClass(controller), update);
-    if (!method || strcmp(method_getTypeEncoding(method), "v24@0:8B16i20") != 0) return;
+    if (!method || method_getNumberOfArguments(method) != 4) {
+        FQXSyncShelfRootPager(controller);
+        return;
+    }
     NSInteger type = FQXIntGet(controller, "currentBookShelfTabType", -1);
-    if (type >= 0) ((void (*)(id, SEL, BOOL, int))objc_msgSend)(controller, update, NO, (int)type);
+    id manager = FQXObjGet(controller, "tabManager") ?: FQXObjGet(controller, "bookshelfTabManager");
+    NSArray *source = manager ? OrigShelfRootTabModels(manager, sel_registerName("getBookshelfTabModelArray")) : nil;
+    if (![source isKindOfClass:NSArray.class]) source = FQXObjGet(controller, "bookshelfTabModelArray");
+    NSArray *visible = FQXShelfVisibleRootTabModels(source);
+    if ([visible isKindOfClass:NSArray.class] && visible.count > 0) {
+        BOOL currentVisible = NO;
+        NSInteger fallbackType = -1;
+        for (id model in visible) {
+            NSInteger mType = FQXIntGet(model, "tabType", FQXIntGet(model, "type", -1));
+            if (fallbackType < 0 && mType >= 0) fallbackType = mType;
+            if (mType == type && type >= 0) {
+                currentVisible = YES;
+                break;
+            }
+        }
+        if (!currentVisible && fallbackType >= 0) type = fallbackType;
+    }
+    if (type >= 0) {
+        char argType[8] = {0};
+        method_getArgumentType(method, 3, argType, sizeof(argType));
+        if (argType[0] == 'i' || argType[0] == 'I') {
+            ((void (*)(id, SEL, BOOL, int))objc_msgSend)(controller, update, NO, (int)type);
+        } else if (argType[0] == 'q' || argType[0] == 'Q') {
+            ((void (*)(id, SEL, BOOL, NSInteger))objc_msgSend)(controller, update, NO, type);
+        }
+    }
+    FQXSyncShelfRootPager(controller);
 }
 
 static void FQXRefreshShelfRootTabModels(void) {
@@ -12842,6 +13560,7 @@ static void HookShelf525DidLayoutSubviews(UIViewController *self, SEL _cmd) {
     FQXSyncShelfHeaderRightButtons(self);
     UIView *tabSelect = FQXObjGet(self, "categoryTitleView") ?: FQXObjGet(self, "tabSelectView");
     if ([tabSelect isKindOfClass:UIView.class]) FQXReflowShelfTabSelectView(tabSelect);
+    FQXSyncShelfRootPager(self);
     UIViewController *curTab = FQXObjGet(self, "currentTabVC");
     Class histCls = objc_lookUpClass("SSBookHistorySubViewController");
     if (histCls && [curTab isKindOfClass:histCls]) FQXSyncShelfHistoryFilterBar(curTab);
@@ -18823,9 +19542,11 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     }
 
     BOOL wantsGaussian = (effStyle == FQXShareMaterialGaussianBlur);
-    NSInteger minimumBlur = wantsGaussian ? FQXSheetGaussianBlurMinimum :
-        (effStyle == FQXShareMaterialRegularGlass ? FQXSheetFrostedBlurMinimum : 0);
+    NSInteger minimumBlur = wantsGaussian ? 35 : 0;
     NSInteger effectiveBlur = reduceTrans ? (wantsGaussian ? 100 : 0) : FQXSheetBlurPercent(blurPct, (int)minimumBlur);
+    CGFloat maxGlassTint = (effStyle == FQXShareMaterialRegularGlass)
+        ? (isDark ? 0.34 : 0.30)
+        : (isDark ? 0.22 : 0.18);
     UIVisualEffectView *surface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
     BOOL isBlurView = [surface isKindOfClass:FQXBackdropBlurView.class];
     BOOL isGlassView = [surface isKindOfClass:FQXCommentGlassSurfaceView.class];
@@ -18868,7 +19589,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     FQXSetShareSheetHostClipping(sheet, YES);
     if (sheet.overrideUserInterfaceStyle != hostUIStyle) sheet.overrideUserInterfaceStyle = hostUIStyle;
     if (surface.overrideUserInterfaceStyle != surfaceUIStyle) surface.overrideUserInterfaceStyle = surfaceUIStyle;
-    FQXSyncSheetBlur(sheet, surface, wantsGaussian, effectiveBlur, isDark, cornerR);
+    FQXSyncSheetBlur(sheet, surface, wantsGaussian, effectiveBlur, isDark, maxGlassTint, cornerR);
     FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
     [CATransaction commit];
 
@@ -19334,7 +20055,7 @@ static void FQXSetPlaybackOptionsNativeBackdrop(UIVisualEffectView *backdrop, BO
     }
 }
 
-static void FQXSyncPlaybackOptionsReadability(UIVisualEffectView *surface, BOOL dark, CGFloat radius) {
+static void FQXSyncPlaybackOptionsReadability(UIVisualEffectView *surface, BOOL dark, BOOL clearGlass, CGFloat radius) {
     UIView *fill = objc_getAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey);
     if (!fill) {
         fill = [[UIView alloc] initWithFrame:surface.contentView.bounds];
@@ -19345,13 +20066,14 @@ static void FQXSyncPlaybackOptionsReadability(UIVisualEffectView *surface, BOOL 
         fill.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
         objc_setAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey, fill, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (fill.superview != surface.contentView) {
+    if (fill.superview != surface.contentView || surface.contentView.subviews.lastObject != fill) {
         fill.frame = surface.contentView.bounds;
         [surface.contentView addSubview:fill];
+    } else if (!CGRectEqualToRect(fill.frame, surface.contentView.bounds)) {
+        fill.frame = surface.contentView.bounds;
     }
-    // Keep high-contrast subtitles in the video from competing with the settings.
-    // This only tints the glass content, leaving the selected blur strength intact.
-    UIColor *color = [UIColor colorWithWhite:dark ? 0.0 : 1.0 alpha:dark ? 0.56 : 0.52];
+    CGFloat fillAlpha = clearGlass ? (dark ? 0.20 : 0.14) : (dark ? 0.26 : 0.20);
+    UIColor *color = [UIColor colorWithWhite:dark ? 0.0 : 1.0 alpha:fillAlpha];
     if (![fill.backgroundColor isEqual:color]) fill.backgroundColor = color;
     if (fabs(fill.layer.cornerRadius - radius) > 0.25) fill.layer.cornerRadius = radius;
 }
@@ -19402,7 +20124,19 @@ static void FQXSyncPlaybackOptionsCoveredControls(UIViewController *controller, 
     }
 }
 
+static NSHashTable<UIViewController *> *FQXTrackedDramaPlaybackOptionsVCs(void) {
+    static NSHashTable<UIViewController *> *table = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        table = [NSHashTable weakObjectsHashTable];
+    });
+    return table;
+}
+
 static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
+    if ([controller isKindOfClass:UIViewController.class]) {
+        [FQXTrackedDramaPlaybackOptionsVCs() addObject:controller];
+    }
     UIView *root = controller.viewIfLoaded;
     if (!root || CGRectIsEmpty(root.bounds)) {
         FQXSyncPlaybackOptionsCoveredControls(controller, NO);
@@ -19475,10 +20209,14 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
             objc_setAssociatedObject(surface, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        int minimumBlur = gaussian ? FQXSheetGaussianBlurMinimum :
-            (nativeGlass && !clearGlass ? FQXSheetFrostedBlurMinimum : 0);
-        NSInteger strength = reduce ? 0 : FQXSheetBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey], minimumBlur);
-        FQXSyncSheetBlur(root, surface, gaussian, strength, dark, radius);
+        int userBlur = FQXResolvePlaybackOptionsUserBlur(
+            followDock ? 1 : 0,
+            FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]),
+            FQXBlurPercent([prefs doubleForKey:DockBlurPrefKey]));
+        int minimumBlur = gaussian ? 35 : 0;
+        NSInteger strength = reduce ? (gaussian ? 100 : 0) : FQXSheetBlurPercent(userBlur, minimumBlur);
+        CGFloat maxGlassTint = clearGlass ? (dark ? 0.22 : 0.18) : (dark ? 0.34 : 0.30);
+        FQXSyncSheetBlur(root, surface, gaussian, strength, dark, maxGlassTint, radius);
         if (!gaussian) {
             UIUserInterfaceStyle style = clearGlass ? UIUserInterfaceStyleUnspecified
                 : (dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
@@ -19498,14 +20236,15 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
-        if (nativeGlass) FQXSyncPlaybackOptionsReadability(surface, dark, radius);
+        if (nativeGlass) FQXSyncPlaybackOptionsReadability(surface, dark, clearGlass, radius);
         else [objc_getAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey) removeFromSuperview];
         if (OrigDramaPlaybackOptionsDisappeared) {
             FQXSyncPlaybackOptionsCoveredControls(controller, nativeGlass && !controller.isBeingDismissed);
         }
         if (FQXDiagnosticsHubIsEnabled()) {
             NSDictionary *materialState = @{@"material": @(material), @"dockMaterial": @(dockMode),
-                @"gaussian": @(gaussian), @"effectiveBlurPercent": @(strength), @"reduceTransparency": @(reduce)};
+                @"gaussian": @(gaussian), @"userBlurPercent": @(userBlur),
+                @"effectiveBlurPercent": @(strength), @"reduceTransparency": @(reduce)};
             if (![materialState isEqualToDictionary:objc_getAssociatedObject(surface, &DramaPlaybackOptionsLoggedMaterialKey)]) {
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsLoggedMaterialKey, materialState, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_playback_options_material", materialState, NO);
@@ -19525,6 +20264,22 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         for (UICollectionViewCell *cell in pinned.visibleCells) {
             FQXSetPlaybackOptionsBackground(cell.contentView, active, DramaPlaybackOptionsGroupAlpha);
         }
+    }
+}
+
+static void FQXRefreshAllDramaPlaybackOptions(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllDramaPlaybackOptions(); });
+        return;
+    }
+    for (UIViewController *vc in FQXTrackedDramaPlaybackOptionsVCs().allObjects) {
+        UIView *root = vc.viewIfLoaded;
+        if (!root || !root.window) continue;
+        UIVisualEffectView *surface = objc_getAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey);
+        if (surface) {
+            objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        FQXStyleDramaPlaybackOptions(vc);
     }
 }
 
@@ -21140,6 +21895,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelf525ViewController", "viewLayout", "v16@0:8", OrigShelf525ViewLayout, HookShelf525ViewLayout);
         POST_HOOK("SSBookShelf525ViewController", "tryAddSelectRightView", "v16@0:8", OrigShelf525TryAddRightView, HookShelf525TryAddRightView);
         POST_HOOK("SSBookShelf525ViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelf525DidLayoutSubviews, HookShelf525DidLayoutSubviews);
+        POST_HOOK("SSBookShelf525ViewController", "categoryView:canClickItemAtIndex:", "B32@0:8@16q24", OrigShelfRootCanSelect, HookShelfRootCanSelect);
         POST_HOOK("SSBookShelf525ViewController", "buildTabVCWithModel:", "@24@0:8@16", OrigShelfBuildFavoritesController, HookShelfBuildFavoritesController);
         POST_HOOK("SSVideoCollectViewController", "displayItemCountWithExtraCell:", "q20@0:8B16", OrigShelfFavoritesDisplayCount, HookShelfFavoritesDisplayCount);
         POST_HOOK("SSVideoCollectViewController", "collectionView:numberOfItemsInSection:", "q32@0:8@16q24", OrigShelfFavoritesNumberOfItems, HookShelfFavoritesNumberOfItems);
