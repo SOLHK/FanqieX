@@ -764,26 +764,6 @@ static Obj BookshelfHistoryAtIndex(Obj owner,I index) {
     Obj tab=(U)index<count ? At(controllers,(U)index) : (Obj)0;
     return Kind(tab,"SSBookHistorySubViewController") ? tab : (Obj)0;
 }
-static B BookshelfSelectTitle(Obj self,Sel cmd,I index,U selectionType,B animated) {
-    // The host moves its pager before committing the title. A direct History
-    // tap settles in that same turn so a previous cached page cannot flash.
-    if (animated && selectionType==1 && Enabled()) {
-        Obj owner=Get(self,"delegate");
-        if (Kind(owner,"SSBookShelf525ViewController") && BookshelfHistoryAtIndex(owner,index))
-            animated=0;
-    }
-    return ((B(*)(Obj,Sel,I,U,B))Original("SSBookShelfTabSelectView",
-        "fqx_originalShelfSelectTitle:type:animation:"))(self,cmd,index,selectionType,animated);
-}
-static void BookshelfInstallTitleSelection(void) {
-    Obj cls=Lookup("SSBookShelfTabSelectView");
-    const char *selector="executeSelectCellAtIndex:selectedType:needAnimation:",*type="B36@0:8q16Q24B32";
-    Sel entry=sel_registerName(selector),alias=sel_registerName("fqx_originalShelfSelectTitle:type:animation:");
-    if (!ClassABI(cls,selector,type) || class_getInstanceMethod(cls,alias)) return;
-    Method original=class_getInstanceMethod(cls,entry);
-    if (class_addMethod(cls,alias,method_getImplementation(original),type))
-        class_addMethod(cls,entry,(Imp)BookshelfSelectTitle,type);
-}
 static void BookshelfTabCommitted(Obj self,Sel cmd,Obj category,I index) {
     ((void(*)(Obj,Sel,Obj,I))Original("SSBookShelf525ViewController",
         "fqx_originalShelfCommitted:index:"))(self,cmd,category,index);
@@ -6189,6 +6169,17 @@ static void ProfileShortcutCardMove(Obj self,Sel cmd,Obj parent) {
     if (!parent) ProfileShortcutCardGlass(self,0);
     ((void(*)(Obj,Sel,Obj))Original("SSMyUserShortcutCell","fqx179r1_originalShortcutCardMove:"))(self,cmd,parent);
 }
+static void ProfileShortcutFoldLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSScrollFoldFuncView","fqx196_originalShortcutFoldLayout"))(self,cmd);
+    if (!Enabled() || !FQHGlassAvailable()) return;
+    Obj row=ProfileRowAncestor(self);
+    if (!row) return;
+    Obj dots=Get(self,"pageControl");
+    if (!Kind(dots,"FQReaderSaaSBookStoreSelectView") || Get(dots,"superview")!=self) return;
+    Obj content=Get(row,"contentView");
+    Obj host=(Kind(content,"UIView") && Get(content,"superview")==row) ? content : row;
+    ProfileCardTrackClear(host,dots);
+}
 static void ProfileCard1Layout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSMyUserCollectionView1Cell","fqx179r1_originalCard1Layout"))(self,cmd);
     ProfileShortcutCardGlass(self,1);
@@ -6269,13 +6260,13 @@ static void RefreshMineList(const char *reason) {
     Obj context=Text(reason);
     for (U i=0;i<count;++i) V1(At(controllers,i),"reloadData:",context);
 }
-static B MineBenefitsRow(Obj model) {
+static B MineBenefitsRow(Obj model,Obj walletModel) {
     if (!Kind(model,"SSMyUserCell2Model") || !InstanceABI(model,"businessStyle","q16@0:8")) return 0;
     I style=((I(*)(Obj,Sel))Message)(model,sel_registerName("businessStyle"));
-    // The personalized bar is the legacy benefits strip and takes precedence
-    // over the separate friend entry when both flags are set.
+    // The native wallet model may still have only its friend flag set at cold load.
     return style==4 || style==5 || (style==0 &&
-           (BoolProp(model,"isShowPersonalizedBar") || !BoolProp(model,"isShowFriendView")));
+           (model==walletModel || BoolProp(model,"hasWithdrawEntranceData") ||
+            BoolProp(model,"isShowPersonalizedBar") || !BoolProp(model,"isShowFriendView")));
 }
 static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     Obj rows=((Obj(*)(Obj,Sel,Obj))Original("SSMyUser621ViewController","fqx176_originalMineListObjects:"))(self,cmd,adapter);
@@ -6290,6 +6281,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     Obj filtered=0;
     B hideBenefits=!MineBenefitsEnabled(),hideRecommendations=!MineRecommendationsEnabled();
     B hideShortcut=!DefaultEnabled(Text("FanqieX.MineShortcutCard.1")),removedGame=0;
+    Obj walletModel=hideBenefits ? Get(self,"cell2Model") : 0;
     U count=((U(*)(Obj,Sel))Message)(rows,sel_registerName("count"));
     for (U i=count;i>0;--i) {
         Obj row=At(rows,i-1);
@@ -6297,7 +6289,7 @@ static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
         // The entire recommendation waterfall is one native list section.
         B recommendation=hideRecommendations && Kind(row,"SSMyUserUnlimitedCellModel");
         B shortcut=hideShortcut && Kind(row,"SSMyUserShortcutCellModel");
-        if (!game && !recommendation && !shortcut && !(hideBenefits && MineBenefitsRow(row))) continue;
+        if (!game && !recommendation && !shortcut && !(hideBenefits && MineBenefitsRow(row,walletModel))) continue;
         removedGame|=game;
         if (!filtered) filtered=O0(O0(rows,"mutableCopy"),"autorelease");
         Q1(filtered,"removeObjectAtIndex:",i-1);
@@ -7948,6 +7940,7 @@ void FQHPageInstall(void) {
     Hook("SSMyUserCollectionViewOrderFunCell","layoutSubviews","fqx178_originalProfileOrder","v16@0:8",(Imp)PageProfileOrderLayout);
     Hook("SSMyUserShortcutCell","layoutSubviews","fqx179r1_originalShortcutCardLayout","v16@0:8",(Imp)ProfileShortcutCardLayout);
     Hook("SSMyUserShortcutCell","willMoveToSuperview:","fqx179r1_originalShortcutCardMove:","v24@0:8@16",(Imp)ProfileShortcutCardMove);
+    Hook("SSScrollFoldFuncView","layoutSubviews","fqx196_originalShortcutFoldLayout","v16@0:8",(Imp)ProfileShortcutFoldLayout);
     Hook("SSMyUserCollectionView1Cell","layoutSubviews","fqx179r1_originalCard1Layout","v16@0:8",(Imp)ProfileCard1Layout);
     Hook("SSMyUserCollectionView1Cell","willMoveToSuperview:","fqx179r1_originalCard1Move:","v24@0:8@16",(Imp)ProfileCard1Move);
     if (Signature("SSAudioPlayIndicatorView","contentView","@16@0:8") &&
@@ -8011,7 +8004,6 @@ void FQHInstall(void) {
         Signature("FQRJXCategoryListContainerView","listWillAppear:","v24@0:8q16") &&
         Signature("FQRJXCategoryListContainerView","listDidAppear:","v24@0:8q16") &&
         Signature("FQRJXCategoryListContainerView","clampScrollViewToCurrentIndexIfNeeded","v16@0:8")) {
-        BookshelfInstallTitleSelection();
         Hook("FQRJXCategoryListContainerView","layoutSubviews","fqx_originalHistoryPagerLayout",
              "v16@0:8",(Imp)BookshelfHistoryPagerLayout);
         Hook("FQRJXCategoryListContainerView","scrollDidStop","fqx_originalHistoryPagerStopped",

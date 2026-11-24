@@ -10,7 +10,7 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.6beta4";
+static NSString *const kFQXHubPluginVersion = @"1.9.6beta5";
 static const NSUInteger kFQXHubMaxDiskBytesPerFile = 256 * 1024; // 256 KB x 2 rotating files max
 static const NSUInteger kFQXHubWriteFlushBytes = 8 * 1024;       // Batch JSONL disk writes in 8 KB chunks
 static const NSUInteger kFQXHubRingNormalLimit = 48;             // Disk JSONL stores history; keep tiny RAM tail

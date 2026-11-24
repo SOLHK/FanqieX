@@ -11167,6 +11167,7 @@ static const char FQXK_FQXShelfTabTapBridgeKey = 0;
         if (!sTab || !sCV || !sTab.window) return;
         id sOwner = FQXObjGet(sTab, "delegate");
         UIView *container = FQXObjGet(sOwner, "containerView");
+        UIScrollView *pagerScroll = FQXObjGet(container, "scrollView");
         NSInteger nowTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
         NSInteger nowOwnerIdx = FQXIntGet(sOwner, "currentTabIndex", -1);
         NSInteger nowPagerIdx = FQXIntGet(container, "currentIndex", -1);
@@ -11180,12 +11181,13 @@ static const char FQXK_FQXShelfTabTapBridgeKey = 0;
             SEL selectSel = sel_registerName("selectItemAtIndex:needAnimation:");
             Method sm = class_getInstanceMethod(object_getClass(sTab), selectSel);
             if (sm && strcmp(method_getTypeEncoding(sm), "B28@0:8q16B24") == 0) {
-                ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(sTab, selectSel, tappedIdx, NO);
+                BOOL animated = !UIAccessibilityIsReduceMotionEnabled();
+                ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(sTab, selectSel, tappedIdx, animated);
                 attempted = YES;
             }
         }
         NSInteger afterTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
-        if (afterTabIdx == tappedIdx) {
+        if (afterTabIdx == tappedIdx && !FQXBoolGet(pagerScroll, "isScrollAnimating", NO)) {
             NSInteger pagerIndex = FQXIntGet(container, "currentIndex", -1);
             if (pagerIndex >= 0 && pagerIndex != tappedIdx) {
                 SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
@@ -18904,12 +18906,14 @@ static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gau
     } else {
         FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
         blur = glass->_supplementalBlur;
-        if (reduce) {
+        if (reduce || extraBlur == 0) {
             [blur invalidateBlurAnimator];
             [blur removeFromSuperview];
             glass->_supplementalBlur = nil;
             return;
         }
+        glass->_cornerKind = FQXCommentCornerTopSheet;
+        glass->_cornerRadius = radius;
         if (!blur) {
             blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
             blur->_commentPureMode = YES;
@@ -18919,16 +18923,13 @@ static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gau
             blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
             glass->_supplementalBlur = blur;
         }
-        UIView *host = surface.superview;
-        if (host.subviews.firstObject != blur) [host insertSubview:blur belowSubview:surface];
-        if (!CGRectEqualToRect(blur.frame, surface.frame)) blur.frame = surface.frame;
+        if (blur.superview != surface.contentView) [surface.contentView insertSubview:blur atIndex:0];
+        if (!CGRectEqualToRect(blur.frame, surface.contentView.bounds)) blur.frame = surface.contentView.bounds;
         FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
     }
 
-    // Diffuse the video controls beneath the optical surface. The host's row groups provide the ink backing.
-    NSInteger minimumBlur = gaussian ? 60 : 34;
-    NSInteger strength = minimumBlur + (extraBlur * (100 - minimumBlur) + 50) / 100;
-    CGFloat tintAlpha = gaussian ? (dark ? 0.68 : 0.70) : (dark ? 0.12 : 0.16);
+    NSInteger strength = gaussian ? 60 + (extraBlur * 40 + 50) / 100 : extraBlur;
+    CGFloat tintAlpha = gaussian ? (dark ? 0.68 : 0.70) : 0.0;
     [blur configurePercent:strength dark:dark baseTint:tintAlpha maxTint:tintAlpha chromeBorder:NO];
     // The UIKit blur fallback has no hardware tint overlay.
     UIColor *fill = blur->_usingHardwareFilter ? UIColor.clearColor
@@ -18962,6 +18963,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     if (!active) {
         FQXReleaseCommentSurface(surface);
         objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        FQXSetShareSheetHostClipping(root, NO);
     } else {
         BOOL followDock = material != FQXCommentMaterialClearGlass && material != FQXCommentMaterialRegularGlass &&
                           material != FQXCommentMaterialGaussianBlur;
@@ -18976,7 +18978,12 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         UIColor *panelColor = FQXObjGet(controller, "panelSolidBackgroundColor");
         if (FQXColorLuminance(panelColor, root.traitCollection, &luma)) dark = luma < 0.45;
         BOOL darkTint = FQXGlassDarkTintEnabled();
+        BOOL nativeGlass = !gaussian && !reduce;
+        if (!nativeGlass) FQXSetShareSheetHostClipping(root, NO);
+        CGFloat savedRadius = [objc_getAssociatedObject(root, FQXShareSavedCornerRKey) doubleValue];
         CGFloat radius = FQXReadHostSheetCornerRadius(root, nil);
+        if (savedRadius >= 8.0) radius = savedRadius <= 20.0 ? savedRadius : 16.0;
+        if (nativeGlass) FQXSetShareSheetHostClipping(root, YES);
 
         if (surface && [surface isKindOfClass:FQXBackdropBlurView.class] != gaussian) {
             FQXReleaseCommentSurface(surface);
@@ -18989,7 +18996,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 surface = blur;
             } else {
                 FQXCommentGlassSurfaceView *glass = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
-                glass->_isSheetBackdrop = YES;
+                glass->_flexSourceView = root;
                 surface = glass;
             }
             surface.userInteractionEnabled = NO;
@@ -19000,15 +19007,10 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
             objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         if (!CGRectEqualToRect(surface.frame, root.bounds)) surface.frame = root.bounds;
-        UIView *underlay = gaussian ? nil : ((FQXCommentGlassSurfaceView *)surface)->_supplementalBlur;
-        UIView *first = root.subviews.firstObject;
-        if (surface.superview != root || (first != surface && first != underlay)) {
-            [root insertSubview:surface atIndex:0];
-        }
-        FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
+        if (root.subviews.firstObject != surface) [root insertSubview:surface atIndex:0];
         if (!gaussian) {
-            // Match the comments' colorless Clear optics while leaving the host's foreground appearance alone.
-            UIUserInterfaceStyle style = (clearGlass || dark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+            UIUserInterfaceStyle style = clearGlass ? UIUserInterfaceStyleUnspecified
+                : (dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
             if (surface.overrideUserInterfaceStyle != style) surface.overrideUserInterfaceStyle = style;
             NSInteger stamp = ((followDock ? 10 + dockMode : material) << 3) | (dark << 2) | (darkTint << 1) | reduce;
             NSNumber *previous = objc_getAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey);
@@ -19017,14 +19019,15 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 if (reduce) {
                     effect = [UIBlurEffect effectWithStyle:dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight];
                 } else if (followDock) {
-                    effect = FQXMakeDockEffectForMode(dockMode, dark, NO, NO);
+                    effect = FQXMakeDockEffectForMode(dockMode, dark, YES, NO);
                 } else {
-                    effect = FQXBuildCommentGlassEffect((FQXCommentMaterialStyle)material, dark && darkTint, NO, NO);
+                    effect = FQXBuildCommentGlassEffect((FQXCommentMaterialStyle)material, dark && darkTint, NO, YES);
                 }
                 surface.effect = effect;
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
+        FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
         NSInteger extraBlur = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
         FQXSyncPlaybackOptionsBackdrop(surface, gaussian, reduce, dark, radius, extraBlur);
     }
