@@ -14,6 +14,13 @@ static inline double FQXBlurFraction(int percent) {
     return (percent <= 0 ? 0 : (percent >= 100 ? 100 : percent)) / 100.0;
 }
 
+enum { FQXSheetFrostedBlurMinimum = 40, FQXSheetGaussianBlurMinimum = 70 };
+
+static inline int FQXSheetBlurPercent(double value, int minimum) {
+    int percent = FQXBlurPercent(value);
+    return minimum + ((100 - minimum) * percent + 50) / 100;
+}
+
 /* Smooth 100-step Gaussian radius curve: 0 at 0%, barely perceptible 0.25pt at 1%, 30pt at 100%. */
 static inline double FQXBlurGaussianRadius(int percent) {
     int p = percent <= 0 ? 0 : (percent >= 100 ? 100 : percent);

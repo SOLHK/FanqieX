@@ -458,7 +458,7 @@ static void AddShareStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hidde
     shareRow.title = @"分享页面材质";
     shareRow.path = route;
     shareRow.hiddenFromSearch = hiddenFromSearch;
-    shareRow.keywords = @"分享页面材质 分享页面 分享 分享弹窗 短剧分享 小说分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 毛玻璃 磨砂 原版默认 材质 玻璃 透明";
+    shareRow.keywords = @"分享页面材质 分享面板 分享页面 分享 分享弹窗 短剧分享 小说分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 毛玻璃 磨砂 原版默认 材质 玻璃 透明";
     shareRow.popoverKey = ShareMaterialStyleKey;
     shareRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"模糊玻璃", @"高斯模糊"];
     shareRow.popoverValues = @[@0, @1, @4, @2];
@@ -468,7 +468,7 @@ static void AddShareStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hidde
 
     if (includeBlur) {
         FQXSettingRow *blur = [FQXSettingRow new];
-        blur.title = @"分享页面模糊程度";
+        blur.title = @"分享页面额外模糊";
         blur.path = route;
         blur.hiddenFromSearch = hiddenFromSearch;
         blur.keywords = @"分享页面模糊程度 分享 模糊程度 模糊强度 液态玻璃 高斯模糊 短剧 小说";
@@ -626,18 +626,18 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     AddCommentStyleRows(menu, @"阅读/阅读设置", YES);
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
     AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
-    AddShareStyleRows(menu, @"短剧/播放设置", YES, NO);
     AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
     FQXSettingRow *playbackOptionsMaterial = [FQXSettingRow new];
-    playbackOptionsMaterial.title = @"播放选项面板材质";
+    playbackOptionsMaterial.title = @"长按播放选项面板材质";
     playbackOptionsMaterial.path = @"短剧/播放设置";
-    playbackOptionsMaterial.keywords = @"短剧 漫剧 更多 播放选项 倍速 清晰度 弹幕设置 液态玻璃 清透玻璃 模糊玻璃 高斯模糊";
+    playbackOptionsMaterial.keywords = @"短剧 漫剧 长按视频 长按面板 更多 播放选项 倍速 清晰度 弹幕设置 液态玻璃 清透玻璃 模糊玻璃 高斯模糊";
     playbackOptionsMaterial.popoverKey = DramaPlaybackOptionsMaterialKey;
     playbackOptionsMaterial.popoverOptions = @[@"跟随 Dock", @"原版默认", @"清透玻璃", @"模糊玻璃", @"高斯模糊"];
     playbackOptionsMaterial.popoverValues = @[@0, @(-1), @1, @4, @2];
     playbackOptionsMaterial.height = 52;
     [menu.catalog addObject:playbackOptionsMaterial];
-    AddBlurRow(menu, @"短剧/播放设置", @"播放选项面板额外模糊", DramaPlaybackOptionsBlurKey);
+    AddBlurRow(menu, @"短剧/播放设置", @"长按播放选项面板额外模糊", DramaPlaybackOptionsBlurKey);
+    AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
     AddBlurRow(menu, @"评论区净化", @"评论区模糊程度", @"FanqieX.CommentBlur.1");
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
@@ -681,6 +681,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             row.path = @"书架净化/顶部导航栏";
         if ([@[@"FanqieX.ShelfFilterAll.1", @"FanqieX.ShelfFilterRead.1", @"FanqieX.ShelfFilterListen.1", @"FanqieX.ShelfFilterComic.1", @"FanqieX.ShelfFilterStar.1",
                @"FanqieX.ShelfHistoryFilterAll.1", @"FanqieX.ShelfHistoryFilterRead.1", @"FanqieX.ShelfHistoryFilterListen.1", @"FanqieX.ShelfHistoryFilterDrama.1",
+               @"FanqieX.ShelfHistoryFilterShortStory.1", @"FanqieX.ShelfHistoryFilterComic.1", @"FanqieX.ShelfHistoryFilterTopic.1",
                @"FanqieX.ShelfHistoryFilterBtn.1", @"FanqieX.ShelfHistoryEditBtn.1"] containsObject:option[@"key"]])
             row.path = @"书架净化/筛选栏标签";
         if ([option[@"key"] hasPrefix:@"FanqieX.ShelfFavorites"])
@@ -911,10 +912,10 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 - (void)showReleaseNotes:(UIButton *)sender {
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 设置页随宿主窗口切换浅色和深色。\n"
-                  "• 移除听书奖励本地测试和模拟领取。\n"
-                  "• 移除插件的听书和短剧灵动岛。\n"
-                  "• 设置首页新增版本更新入口，并调整收起按钮。",
+                  "• 修复短剧左右滑动误点进剧集。\n"
+                  "• 隐藏的书架类别不再参与横滑切页。\n"
+                  "• 历史页的短篇、漫画、话题可分别隐藏。\n"
+                  "• 修复短剧播放选项和分享面板的模糊材质。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;

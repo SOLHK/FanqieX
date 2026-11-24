@@ -578,7 +578,7 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     BOOL _matteChromeBorder;
     BOOL _commentPureMode;
 }
-- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style;
+- (void)configureSheetBlurPercent:(NSInteger)percent dark:(BOOL)dark;
 - (void)configurePercent:(NSInteger)percent
                     dark:(BOOL)dark
                 baseTint:(CGFloat)baseTint
@@ -1248,20 +1248,14 @@ static BOOL FQXBackdropFilterAvailable(void) {
         [self scheduleBlurUpdate];
     }
 }
-- (void)configurePercent:(NSInteger)percent style:(UIBlurEffectStyle)style {
-    BOOL dark = (style == UIBlurEffectStyleDark ||
-                 style == UIBlurEffectStyleSystemMaterialDark ||
-                 style == UIBlurEffectStyleSystemThinMaterialDark ||
-                 style == UIBlurEffectStyleSystemChromeMaterialDark ||
-                 style == UIBlurEffectStyleSystemUltraThinMaterialDark ||
-                 style == UIBlurEffectStyleSystemThickMaterialDark);
-    BOOL chrome = (style == UIBlurEffectStyleSystemChromeMaterialDark ||
-                   style == UIBlurEffectStyleSystemChromeMaterialLight);
-    if (self->_blurStyle != style && !self->_usingHardwareFilter) {
+- (void)configureSheetBlurPercent:(NSInteger)percent dark:(BOOL)dark {
+    UIBlurEffectStyle style = dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight;
+    if (self->_blurStyle != style) {
         [self invalidateBlurAnimator];
+        self->_blurStyle = style;
     }
-    self->_blurStyle = style;
-    [self configurePercent:percent dark:dark baseTint:0.0 maxTint:(chrome ? 0.48 : 0.36) chromeBorder:NO];
+    self->_percent = FQXBlurPercent(percent);
+    [self scheduleBlurUpdate];
 }
 - (void)applyHardwareBlur {
     if (!self->_usingHardwareFilter) return;
@@ -1415,6 +1409,52 @@ static BOOL FQXBackdropFilterAvailable(void) {
     });
 }
 @end
+
+static FQXBackdropBlurView *FQXNewSheetBlur(void) {
+    FQXBackdropBlurView *blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
+    blur->_usingHardwareFilter = NO;
+    blur->_commentPureMode = YES;
+    blur.opaque = NO;
+    blur.userInteractionEnabled = NO;
+    blur.accessibilityElementsHidden = YES;
+    blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    return blur;
+}
+
+static void FQXSyncSheetBlur(UIView *host, UIVisualEffectView *surface, BOOL gaussian,
+                            NSInteger strength, BOOL dark, CGFloat radius) {
+    FQXBackdropBlurView *blur;
+    if (gaussian) {
+        blur = (FQXBackdropBlurView *)surface;
+    } else {
+        FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
+        blur = glass->_supplementalBlur;
+        if (strength > 0 && !blur) {
+            blur = FQXNewSheetBlur();
+            glass->_supplementalBlur = blur;
+        } else if (strength == 0 && blur) {
+            [blur invalidateBlurAnimator];
+            [blur removeFromSuperview];
+            glass->_supplementalBlur = nil;
+            blur = nil;
+        }
+    }
+
+    CGRect frame = host.bounds;
+    UIView *back = host.subviews.firstObject;
+    if (surface.superview != host || (back != surface && back != blur)) {
+        [host insertSubview:surface atIndex:0];
+    }
+    if (!CGRectEqualToRect(surface.frame, frame)) surface.frame = frame;
+    if (blur && surface != blur) {
+        // Sample the content behind the sheet before drawing the liquid-glass rim.
+        if (host.subviews.firstObject != blur) [host insertSubview:blur belowSubview:surface];
+        if (!CGRectEqualToRect(blur.frame, frame)) blur.frame = frame;
+    }
+    FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
+    if (surface != blur) FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
+    [blur configureSheetBlurPercent:strength dark:dark];
+}
 
 static const char FQXK_FQXDockBackdropBlurViewKey = 0;
 #define FQXDockBackdropBlurViewKey ((const void *)&FQXK_FQXDockBackdropBlurViewKey)
@@ -5351,6 +5391,15 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex) {
     return NO;
 }
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
+    UIView *container = self->_listContainer;
+    // Cancelling view touches does not order a separate host card tap recognizer.
+    // Hold taps until the same touch fails horizontal swipe recognition.
+    return gestureRecognizer == self->_panGesture && self->_visibleStepSwipeActive && container &&
+           [other isKindOfClass:UITapGestureRecognizer.class] && [other.view isDescendantOfView:container];
+}
+
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     if (pan.state != UIGestureRecognizerStateEnded) return;
     if (!self->_visibleStepSwipeActive) return;
@@ -5401,6 +5450,8 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex) {
         @"toIndex": @(target),
         @"direction": (step > 0) ? @"left_next" : @"right_prev",
         @"visibleIndices": visible,
+        @"hostIndex": @(FQXIntGet(feed, "curTabIndex", -1)),
+        @"pagerIndex": @(FQXIntGet(container, "currentIndex", -1)),
     }, NO);
 }
 
@@ -6033,6 +6084,7 @@ static void FQXRefreshAllShareSheets(void);
 static void FQXCompactRuntimeMemory(void);
 static void FQXRefreshAllShelfEditButtons(void);
 static void FQXRefreshAllShelfHeaderControls(void);
+static void FQXRefreshShelfRootTabModels(void);
 static void FQXRefreshAllMineSidebars(void);
 static void FQXRefreshReaderHotCommentBadges(void);
 
@@ -6058,6 +6110,7 @@ static void FQXRefreshReaderHotCommentBadges(void);
 + (void)refreshReaderHotCommentBadge;
 + (void)refreshShelfEditButton;
 + (void)refreshShelfHeaderControls;
++ (void)refreshShelfRootTabs;
 + (void)refreshMineSidebar;
 + (void)compactMemory;
 + (UIImage *)roundedDramaIconNamed:(NSString *)name size:(CGFloat)size;
@@ -6374,6 +6427,10 @@ static void FQXRefreshReaderHotCommentBadges(void);
 + (void)refreshShelfHeaderControls {
     FQXInvalidateHotPrefsCache();
     FQXRefreshAllShelfHeaderControls();
+}
+
++ (void)refreshShelfRootTabs {
+    FQXRefreshShelfRootTabModels();
 }
 
 + (void)refreshMineSidebar {
@@ -11086,6 +11143,15 @@ static NSString *FQXShelfFirstLabelText(UIView *view, NSInteger depth) {
     return nil;
 }
 
+static NSString *FQXShelfTabKeyForTitle(NSString *title) {
+    if (![title isKindOfClass:NSString.class]) return nil;
+    if ([title containsString:@"书架"]) return @"FanqieX.ShelfTabBookshelf.1";
+    if ([title containsString:@"历史"]) return @"FanqieX.ShelfTabHistory.1";
+    if ([title containsString:@"收藏"]) return @"FanqieX.ShelfTabCollect.1";
+    if ([title containsString:@"圈子"]) return @"FanqieX.ShelfTabCircle.1";
+    return nil;
+}
+
 static NSString *FQXShelfTabKeyForCell(UIView *cell) {
     id model = FQXObjGet(cell, "cellModel") ?: FQXObjGet(cell, "model");
     NSString *title = nil;
@@ -11096,12 +11162,58 @@ static NSString *FQXShelfTabKeyForCell(UIView *cell) {
         if ([lbl isKindOfClass:UILabel.class]) title = lbl.text;
     }
     if (!title.length) title = FQXShelfFirstLabelText(cell, 0);
-    if (!title.length) return nil;
-    if ([title containsString:@"书架"]) return @"FanqieX.ShelfTabBookshelf.1";
-    if ([title containsString:@"历史"]) return @"FanqieX.ShelfTabHistory.1";
-    if ([title containsString:@"收藏"]) return @"FanqieX.ShelfTabCollect.1";
-    if ([title containsString:@"圈子"]) return @"FanqieX.ShelfTabCircle.1";
-    return nil;
+    return FQXShelfTabKeyForTitle(title);
+}
+
+static NSArray *FQXShelfVisibleRootTabModels(NSArray *models) {
+    if (![models isKindOfClass:NSArray.class] || models.count < 2) return models;
+    NSMutableArray *visible = [NSMutableArray arrayWithCapacity:models.count];
+    for (id model in models) {
+        NSString *key = FQXShelfTabKeyForTitle(FQXObjGet(model, "title"));
+        if (!key || FQXShelfOptionEnabled(key)) [visible addObject:model];
+    }
+    if (visible.count == models.count) return models;
+    // The host's selected index assumes at least one controller.
+    return visible.count ? [visible copy] : @[models.firstObject];
+}
+
+static NSArray *(*OrigShelfRootTabModels)(id, SEL);
+static NSArray *HookShelfRootTabModels(id manager, SEL cmd) {
+    return FQXShelfVisibleRootTabModels(OrigShelfRootTabModels(manager, cmd));
+}
+
+static NSUInteger FQXShelfRootSourceIndex(id manager, NSUInteger visibleIndex) {
+    if (!OrigShelfRootTabModels) return visibleIndex;
+    SEL getter = sel_registerName("getBookshelfTabModelArray");
+    NSArray *source = OrigShelfRootTabModels(manager, getter);
+    NSArray *visible = FQXShelfVisibleRootTabModels(source);
+    if (source == visible) return visibleIndex;
+    if (visibleIndex >= visible.count) return NSNotFound;
+    return [source indexOfObjectIdenticalTo:visible[visibleIndex]];
+}
+
+static BOOL (*OrigShelfRootHasAdornment)(id, SEL, NSUInteger);
+static BOOL HookShelfRootHasAdornment(id manager, SEL cmd, NSUInteger index) {
+    NSUInteger sourceIndex = FQXShelfRootSourceIndex(manager, index);
+    return sourceIndex != NSNotFound && OrigShelfRootHasAdornment(manager, cmd, sourceIndex);
+}
+
+static id (*OrigShelfRootAdornment)(id, SEL, NSUInteger);
+static id HookShelfRootAdornment(id manager, SEL cmd, NSUInteger index) {
+    NSUInteger sourceIndex = FQXShelfRootSourceIndex(manager, index);
+    return sourceIndex == NSNotFound ? nil : OrigShelfRootAdornment(manager, cmd, sourceIndex);
+}
+
+static CGSize (*OrigShelfRootAdornmentSize)(id, SEL, NSUInteger);
+static CGSize HookShelfRootAdornmentSize(id manager, SEL cmd, NSUInteger index) {
+    NSUInteger sourceIndex = FQXShelfRootSourceIndex(manager, index);
+    return sourceIndex == NSNotFound ? CGSizeZero : OrigShelfRootAdornmentSize(manager, cmd, sourceIndex);
+}
+
+static void (*OrigShelfRootManagerDidClick)(id, SEL, NSUInteger);
+static void HookShelfRootManagerDidClick(id manager, SEL cmd, NSUInteger index) {
+    NSUInteger sourceIndex = FQXShelfRootSourceIndex(manager, index);
+    if (sourceIndex != NSNotFound) OrigShelfRootManagerDidClick(manager, cmd, sourceIndex);
 }
 
 static NSString *FQXShelfFilterKeyForCell(UIView *cell) {
@@ -11618,6 +11730,15 @@ static BOOL FQXHistoryDramaEnabled(void) {
     FQXMigrateLegacyHistoryFilterBarPrefIfNeeded();
     return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterDrama.1");
 }
+static BOOL FQXHistoryShortStoryEnabled(void) {
+    return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterShortStory.1");
+}
+static BOOL FQXHistoryComicEnabled(void) {
+    return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterComic.1");
+}
+static BOOL FQXHistoryTopicEnabled(void) {
+    return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterTopic.1");
+}
 static BOOL FQXHistoryFilterBtnEnabled(void) {
     FQXMigrateLegacyHistoryFilterBarPrefIfNeeded();
     return FQXShelfOptionEnabled(@"FanqieX.ShelfHistoryFilterBtn.1");
@@ -11628,11 +11749,13 @@ static BOOL FQXHistoryEditBtnEnabled(void) {
 }
 static BOOL FQXHistoryAnyLeftPillEnabled(void) {
     return FQXHistoryAllEnabled() || FQXHistoryReadEnabled() ||
-           FQXHistoryListenEnabled() || FQXHistoryDramaEnabled();
+           FQXHistoryListenEnabled() || FQXHistoryDramaEnabled() ||
+           FQXHistoryShortStoryEnabled() || FQXHistoryComicEnabled() || FQXHistoryTopicEnabled();
 }
 static BOOL FQXHistoryAnyButtonHidden(void) {
     return !FQXHistoryAllEnabled() || !FQXHistoryReadEnabled() || !FQXHistoryListenEnabled() ||
-           !FQXHistoryDramaEnabled() || !FQXHistoryFilterBtnEnabled() || !FQXHistoryEditBtnEnabled();
+           !FQXHistoryDramaEnabled() || !FQXHistoryFilterBtnEnabled() || !FQXHistoryEditBtnEnabled() ||
+           !FQXHistoryShortStoryEnabled() || !FQXHistoryComicEnabled() || !FQXHistoryTopicEnabled();
 }
 
 static NSHashTable<UIViewController *> *FQXTrackedShelfHistoryVCs(void) {
@@ -11666,6 +11789,18 @@ static NSString *FQXHistoryDirectTextOfView(UIView *view) {
     return nil;
 }
 
+static NSString *FQXHistoryFilterKeyForTitle(NSString *title) {
+    if (![title isKindOfClass:NSString.class] || !title.length || title.length > 8) return nil;
+    if ([title containsString:@"全部"]) return @"FanqieX.ShelfHistoryFilterAll.1";
+    if ([title containsString:@"短篇"]) return @"FanqieX.ShelfHistoryFilterShortStory.1";
+    if ([title containsString:@"漫画"]) return @"FanqieX.ShelfHistoryFilterComic.1";
+    if ([title containsString:@"话题"]) return @"FanqieX.ShelfHistoryFilterTopic.1";
+    if ([title containsString:@"阅读"] || [title containsString:@"小说"]) return @"FanqieX.ShelfHistoryFilterRead.1";
+    if ([title containsString:@"听书"]) return @"FanqieX.ShelfHistoryFilterListen.1";
+    if ([title containsString:@"短剧"] || [title containsString:@"漫剧"]) return @"FanqieX.ShelfHistoryFilterDrama.1";
+    return nil;
+}
+
 static NSString *FQXHistoryFilterKeyForCell(UIView *cell) {
     if (![cell isKindOfClass:UIView.class]) return nil;
     NSString *title = FQXHistoryDirectTextOfView(cell);
@@ -11681,13 +11816,44 @@ static NSString *FQXHistoryFilterKeyForCell(UIView *cell) {
         if ([mTitle isKindOfClass:NSString.class]) title = mTitle;
     }
     if (!title.length) title = FQXShelfFirstLabelText(cell, 0);
-    if (!title.length || title.length > 8) return nil;
-    if ([title containsString:@"筛选"] || [title containsString:@"编辑"]) return nil;
-    if ([title containsString:@"全部"]) return @"FanqieX.ShelfHistoryFilterAll.1";
-    if ([title containsString:@"阅读"]) return @"FanqieX.ShelfHistoryFilterRead.1";
-    if ([title containsString:@"听书"]) return @"FanqieX.ShelfHistoryFilterListen.1";
-    if ([title containsString:@"短剧"] || [title containsString:@"漫剧"]) return @"FanqieX.ShelfHistoryFilterDrama.1";
-    return nil;
+    return FQXHistoryFilterKeyForTitle(title);
+}
+
+static const char FQXHistoryPanDisabledByPlugin;
+
+static void FQXSyncShelfHistoryPager(UIViewController *historyVC, id category, NSArray *titles, NSUInteger firstVisible, BOOL hasHidden) {
+    id container = FQXObjGet(historyVC, "listContainerView");
+    UIScrollView *scroll = FQXObjGet(container, "scrollView");
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
+    BOOL disabledByPlugin = objc_getAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin) != nil;
+    if (hasHidden && pan.enabled) {
+        objc_setAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        pan.enabled = NO;
+    } else if (!hasHidden && disabledByPlugin) {
+        objc_setAssociatedObject(pan, &FQXHistoryPanDisabledByPlugin, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (scroll.scrollEnabled) pan.enabled = YES;
+    }
+    if (!hasHidden || firstVisible == NSNotFound) return;
+    NSInteger selected = FQXIntGet(historyVC, "currentVCIndex", -1);
+    if (selected < 0 || (NSUInteger)selected >= titles.count) return;
+    NSString *selectedKey = FQXHistoryFilterKeyForTitle(titles[(NSUInteger)selected]);
+    if (!selectedKey || FQXShelfOptionEnabled(selectedKey)) return;
+    SEL selector = sel_registerName("selectItemAtIndex:needAnimation:");
+    Method method = class_getInstanceMethod(object_getClass(category), selector);
+    if (method && strcmp(method_getTypeEncoding(method), "B28@0:8q16B24") == 0) {
+        ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(category, selector, (NSInteger)firstVisible, NO);
+    }
+}
+
+static BOOL (*OrigShelfHistoryCanSelect)(id, SEL, id, NSInteger);
+static BOOL HookShelfHistoryCanSelect(id historyVC, SEL cmd, id category, NSInteger index) {
+    NSArray *titles = FQXObjGet(category, "titles");
+    if ([titles isKindOfClass:NSArray.class] && index >= 0 && (NSUInteger)index < titles.count) {
+        NSString *key = FQXHistoryFilterKeyForTitle(titles[(NSUInteger)index]);
+        if (key && !FQXShelfOptionEnabled(key)) return NO;
+    }
+    return OrigShelfHistoryCanSelect(historyVC, cmd, category, index);
 }
 
 static void FQXCollectHistoryBarMarkers(UIView *view, NSMutableSet<NSString *> *hits, NSInteger depth) {
@@ -11696,7 +11862,7 @@ static void FQXCollectHistoryBarMarkers(UIView *view, NSMutableSet<NSString *> *
     if (t.length > 0 && t.length <= 8) {
         static NSArray<NSString *> *tokens = nil;
         static dispatch_once_t once;
-        dispatch_once(&once, ^{ tokens = @[@"全部", @"阅读", @"听书", @"短剧", @"漫剧", @"筛选", @"编辑"]; });
+        dispatch_once(&once, ^{ tokens = @[@"全部", @"阅读", @"小说", @"听书", @"短剧", @"漫剧", @"短篇", @"漫画", @"话题", @"筛选", @"编辑"]; });
         for (NSString *tok in tokens) {
             if ([t containsString:tok]) {
                 [hits addObject:tok];
@@ -11885,9 +12051,11 @@ static void FQXScanHistoryTopBarDepth(UIView *node,
         if (!matched) {
             NSMutableSet<NSString *> *hits = [NSMutableSet set];
             FQXCollectHistoryBarMarkers(cv, hits, 0);
-            if ([hits containsObject:@"全部"] || [hits containsObject:@"阅读"] ||
-                [hits containsObject:@"听书"] || [hits containsObject:@"短剧"]) {
-                matched = YES;
+            for (NSString *title in hits) {
+                if (FQXHistoryFilterKeyForTitle(title)) {
+                    matched = YES;
+                    break;
+                }
             }
         }
         if (matched && !scan->leftCV) {
@@ -11900,17 +12068,15 @@ static void FQXScanHistoryTopBarDepth(UIView *node,
         NSString *t = FQXHistoryDirectTextOfView(node);
         if (t.length > 0 && t.length <= 8) {
             if ([t containsString:@"筛选"] && ![t containsString:@"编辑"] && !scan->filterBtn) {
-                scan->filterBtn = FQXClimbTightHistoryButton(node, vcView, @[@"编辑", @"全部", @"阅读", @"听书", @"短剧", @"漫剧"]);
+                scan->filterBtn = FQXClimbTightHistoryButton(node, vcView, @[@"编辑", @"全部", @"阅读", @"小说", @"听书", @"短剧", @"漫剧", @"短篇", @"漫画", @"话题"]);
                 return;
             }
             if ([t containsString:@"编辑"] && ![t containsString:@"筛选"] &&
                 ![t containsString:@"完成"] && ![t containsString:@"取消"] && !scan->editBtn) {
-                scan->editBtn = FQXClimbTightHistoryButton(node, vcView, @[@"筛选", @"全部", @"阅读", @"听书", @"短剧", @"漫剧"]);
+                scan->editBtn = FQXClimbTightHistoryButton(node, vcView, @[@"筛选", @"全部", @"阅读", @"小说", @"听书", @"短剧", @"漫剧", @"短篇", @"漫画", @"话题"]);
                 return;
             }
-            if (!scan->leftCV &&
-                ([t containsString:@"全部"] || [t containsString:@"阅读"] ||
-                 [t containsString:@"听书"] || [t containsString:@"短剧"] || [t containsString:@"漫剧"])) {
+            if (!scan->leftCV && FQXHistoryFilterKeyForTitle(t)) {
                 UIView *pill = FQXClimbTightHistoryButton(node, vcView, @[@"筛选", @"编辑"]);
                 if (pill && pill != vcView && CGRectGetWidth(pill.bounds) <= 120.0) {
                     NSMutableSet<NSString *> *subHits = [NSMutableSet set];
@@ -12014,9 +12180,25 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     BOOL showDrama = FQXHistoryDramaEnabled();
     BOOL showFilter = FQXHistoryFilterBtnEnabled();
     BOOL showEdit = FQXHistoryEditBtnEnabled();
-    BOOL anyLeft = showAll || showRead || showListen || showDrama;
-    BOOL allSixHidden = !anyLeft && !showFilter && !showEdit;
+    BOOL anyLeft = FQXHistoryAnyLeftPillEnabled();
     BOOL anyHidden = FQXHistoryAnyButtonHidden();
+    id category = FQXObjGet(historyVC, "categoryView");
+    NSArray *titles = FQXObjGet(category, "titles");
+    if ([titles isKindOfClass:NSArray.class] && titles.count) {
+        NSUInteger firstVisible = NSNotFound;
+        BOOL hasHidden = NO;
+        for (NSUInteger index = 0; index < titles.count; ++index) {
+            NSString *key = FQXHistoryFilterKeyForTitle(titles[index]);
+            if (key && !FQXShelfOptionEnabled(key)) {
+                hasHidden = YES;
+            } else if (firstVisible == NSNotFound) {
+                firstVisible = index;
+            }
+        }
+        anyLeft = firstVisible != NSNotFound;
+        FQXSyncShelfHistoryPager(historyVC, category, titles, firstVisible, hasHidden);
+    }
+    BOOL allHidden = !anyLeft && !showFilter && !showEdit;
 
     UIScrollView *mainScroll = FQXFindMainHistoryContentScroll(vcView, nil, 0);
     if (!anyHidden) {
@@ -12049,7 +12231,9 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     NSMutableArray<UIView *> *leftPills = [NSMutableArray array];
     FQXScanHistoryTopBarDepth(vcView, vcView, mainScroll, vcW, &scan, leftPills, 0);
 
-    UICollectionView *leftCV = scan.leftCV;
+    id categoryCollection = FQXObjGet(category, "collectionView");
+    UICollectionView *leftCV = [categoryCollection isKindOfClass:UICollectionView.class] &&
+                               [categoryCollection isDescendantOfView:vcView] ? categoryCollection : scan.leftCV;
     UIView *filterBtn = scan.filterBtn;
     UIView *editBtn = scan.editBtn;
 
@@ -12217,7 +12401,7 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     // 3. Full-row collapse & book-grid upward shift ONLY when all 6 controls are hidden
     if (fullRowWrapper) {
         [FQXTrackedHistoryBarViews() addObject:fullRowWrapper];
-        FQXShelfApplyControlHidden(fullRowWrapper, FQXHistoryBarHiddenByUsKey, allSixHidden);
+        FQXShelfApplyControlHidden(fullRowWrapper, FQXHistoryBarHiddenByUsKey, allHidden);
     }
     CGFloat minY = CGFLOAT_MAX, maxY = -CGFLOAT_MAX;
     NSMutableArray<UIView *> *rowBoundsViews = [NSMutableArray array];
@@ -12235,7 +12419,7 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     CGFloat barH = (maxY > minY) ? (maxY - minY) : 0.0;
 
     NSString *layoutMode = @"partial_visible";
-    if (!allSixHidden) {
+    if (!allHidden) {
         FQXRestoreHistoryScrollGeometry(mainScroll);
     } else if (mainScroll && barH >= 16.0 && barH <= 84.0) {
         layoutMode = @"hide_only";
@@ -12274,9 +12458,11 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
 
     if (FQXDiagnosticsHubIsEnabled()) {
         NSInteger visibleMask = (showAll ? 1 : 0) | (showRead ? 2 : 0) | (showListen ? 4 : 0) |
-                                (showDrama ? 8 : 0) | (showFilter ? 16 : 0) | (showEdit ? 32 : 0);
+                                (showDrama ? 8 : 0) | (showFilter ? 16 : 0) | (showEdit ? 32 : 0) |
+                                (FQXHistoryShortStoryEnabled() ? 64 : 0) |
+                                (FQXHistoryComicEnabled() ? 128 : 0) | (FQXHistoryTopicEnabled() ? 256 : 0);
         NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%@|%@|%@|%lu",
-                             (long)visibleMask, allSixHidden ? 1 : 0, layoutMode,
+                             (long)visibleMask, allHidden ? 1 : 0, layoutMode,
                              filterBtn ? NSStringFromClass(filterBtn.class) : @"nil",
                              editBtn ? NSStringFromClass(editBtn.class) : @"nil",
                              (unsigned long)dividers.count];
@@ -12292,7 +12478,7 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
                 @"barHeight": @(round(barH * 10.0) / 10.0),
                 @"scrollClass": mainScroll ? (NSStringFromClass(mainScroll.class) ?: @"") : @"",
                 @"layoutMode": layoutMode,
-                @"allSixHidden": @(allSixHidden),
+                @"allSixHidden": @(allHidden),
                 @"visibleMask": @(visibleMask),
             }, NO);
         }
@@ -12586,6 +12772,25 @@ static void FQXRefreshAllShelfHeaderControls(void) {
     FQXRefreshAllShelfEditButtons();
 }
 
+static void FQXUpdateShelfRootControllerTabs(UIViewController *controller) {
+    if (!OrigShelfRootTabModels || !controller.isViewLoaded) return;
+    SEL update = sel_registerName("updateTabDataIfInit:withDefaultSelectTabType:");
+    Method method = class_getInstanceMethod(object_getClass(controller), update);
+    if (!method || strcmp(method_getTypeEncoding(method), "v24@0:8B16i20") != 0) return;
+    NSInteger type = FQXIntGet(controller, "currentBookShelfTabType", -1);
+    if (type >= 0) ((void (*)(id, SEL, BOOL, int))objc_msgSend)(controller, update, NO, (int)type);
+}
+
+static void FQXRefreshShelfRootTabModels(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshShelfRootTabModels(); });
+        return;
+    }
+    for (UIViewController *controller in FQXTrackedShelf525VCs().allObjects) {
+        FQXUpdateShelfRootControllerTabs(controller);
+    }
+}
+
 static void (*OrigShelfSubHeaderLayoutForEdit)(id, SEL);
 static void HookShelfSubHeaderLayoutForEdit(UIView *self, SEL _cmd) {
     if (OrigShelfSubHeaderLayoutForEdit) OrigShelfSubHeaderLayoutForEdit(self, _cmd);
@@ -12631,6 +12836,9 @@ static void HookShelf525TryAddRightView(UIViewController *self, SEL _cmd) {
 static void (*OrigShelf525DidLayoutSubviews)(id, SEL);
 static void HookShelf525DidLayoutSubviews(UIViewController *self, SEL _cmd) {
     if (OrigShelf525DidLayoutSubviews) OrigShelf525DidLayoutSubviews(self, _cmd);
+    NSArray *models = FQXObjGet(self, "bookshelfTabModelArray");
+    // The startup tab may have built its pages before the deferred hooks were installed.
+    if (FQXShelfVisibleRootTabModels(models) != models) FQXUpdateShelfRootControllerTabs(self);
     FQXSyncShelfHeaderRightButtons(self);
     UIView *tabSelect = FQXObjGet(self, "categoryTitleView") ?: FQXObjGet(self, "tabSelectView");
     if ([tabSelect isKindOfClass:UIView.class]) FQXReflowShelfTabSelectView(tabSelect);
@@ -18615,6 +18823,9 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     }
 
     BOOL wantsGaussian = (effStyle == FQXShareMaterialGaussianBlur);
+    NSInteger minimumBlur = wantsGaussian ? FQXSheetGaussianBlurMinimum :
+        (effStyle == FQXShareMaterialRegularGlass ? FQXSheetFrostedBlurMinimum : 0);
+    NSInteger effectiveBlur = reduceTrans ? (wantsGaussian ? 100 : 0) : FQXSheetBlurPercent(blurPct, (int)minimumBlur);
     UIVisualEffectView *surface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
     BOOL isBlurView = [surface isKindOfClass:FQXBackdropBlurView.class];
     BOOL isGlassView = [surface isKindOfClass:FQXCommentGlassSurfaceView.class];
@@ -18625,12 +18836,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     }
     if (!surface) {
         if (wantsGaussian) {
-            FQXBackdropBlurView *bv = [[FQXBackdropBlurView alloc] initWithEffect:nil];
-            bv->_commentPureMode = YES;
-            bv.opaque = NO;
-            bv.backgroundColor = UIColor.clearColor;
-            bv.contentView.backgroundColor = UIColor.clearColor;
-            surface = bv;
+            surface = FQXNewSheetBlur();
         } else {
             FQXCommentGlassSurfaceView *gv = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
             gv->_flexSourceView = sheet;
@@ -18660,23 +18866,15 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     // Remove host layer.mask / clipsToBounds so Core Animation never offscreen-rasterizes
     // UIGlassEffect or clips its specular top rim highlight.
     FQXSetShareSheetHostClipping(sheet, YES);
-    if (!CGRectEqualToRect(surface.frame, sb)) surface.frame = sb;
-    if (sheet.subviews.firstObject != surface) [sheet insertSubview:surface atIndex:0];
     if (sheet.overrideUserInterfaceStyle != hostUIStyle) sheet.overrideUserInterfaceStyle = hostUIStyle;
     if (surface.overrideUserInterfaceStyle != surfaceUIStyle) surface.overrideUserInterfaceStyle = surfaceUIStyle;
-    FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, cornerR);
+    FQXSyncSheetBlur(sheet, surface, wantsGaussian, effectiveBlur, isDark, cornerR);
     FQXApplyShareSubtreeCleanup(sheet, sheet, YES, YES, YES, isDark, 0, &stats);
     [CATransaction commit];
 
-    if (wantsGaussian) {
-        FQXBackdropBlurView *bv = (FQXBackdropBlurView *)surface;
-        NSInteger effectivePct = reduceTrans ? 100 : (blurPct > 0 ? blurPct : 55);
-        [bv configurePercent:effectivePct dark:isDark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
-    } else {
+    if (!wantsGaussian) {
         FQXCommentGlassSurfaceView *gv = (FQXCommentGlassSurfaceView *)surface;
         gv->_flexSourceView = sheet;
-        gv->_cornerKind = FQXCommentCornerTopSheet;
-        gv->_cornerRadius = cornerR;
         NSInteger desiredStamp = ((NSInteger)effStyle * 100) + (isDark ? 10 : 0) + (darkTint ? 2 : 0) + (reduceTrans ? 1 : 0);
         NSNumber *appliedStamp = objc_getAssociatedObject(gv, FQXShareStyledStampKey);
         if (!gv.effect || !appliedStamp || appliedStamp.integerValue != desiredStamp) {
@@ -18689,30 +18887,6 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
                 gv.effect = glassEffect;
             }];
             objc_setAssociatedObject(gv, FQXShareStyledStampKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        // Supplemental blur on top of Liquid Glass ONLY when user sets ShareBlur > 0 (0 = none).
-        if (blurPct > 0 && !reduceTrans) {
-            FQXBackdropBlurView *sub = gv->_supplementalBlur;
-            if (!sub) {
-                sub = [[FQXBackdropBlurView alloc] initWithEffect:nil];
-                sub->_commentPureMode = YES;
-                sub.userInteractionEnabled = NO;
-                sub.accessibilityElementsHidden = YES;
-                sub.isAccessibilityElement = NO;
-                sub.opaque = NO;
-                sub.backgroundColor = UIColor.clearColor;
-                sub.contentView.backgroundColor = UIColor.clearColor;
-                sub.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                gv->_supplementalBlur = sub;
-            }
-            if (sub.superview != gv.contentView) [gv.contentView insertSubview:sub atIndex:0];
-            sub.frame = gv.contentView.bounds;
-            FQXApplyCommentCornerConfig(sub, FQXCommentCornerTopSheet, cornerR);
-            [sub configurePercent:blurPct dark:isDark baseTint:0.0 maxTint:0.0 chromeBorder:NO];
-        } else if (gv->_supplementalBlur) {
-            [gv->_supplementalBlur invalidateBlurAnimator];
-            [gv->_supplementalBlur removeFromSuperview];
-            gv->_supplementalBlur = nil;
         }
     }
 
@@ -18727,6 +18901,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
                 @"rootClass": root ? (NSStringFromClass(root.class) ?: @"") : @"",
                 @"materialStyle": @((NSInteger)effStyle),
                 @"blurPercent": @(blurPct),
+                @"effectiveBlurPercent": @(effectiveBlur),
                 @"fromReader": @(fromReader),
                 @"isDark": @(isDark),
                 @"darkTint": @(darkTint),
@@ -19128,6 +19303,7 @@ static const char DramaPlaybackOptionsSavedColorKey;
 static const char DramaPlaybackOptionsSavedEffectKey;
 static const char DramaPlaybackOptionsReadabilityKey;
 static const char DramaPlaybackOptionsCoveredControlsKey;
+static const char DramaPlaybackOptionsLoggedMaterialKey;
 static void (*OrigDramaPlaybackOptionsDisappeared)(id, SEL, BOOL);
 
 static void FQXSetPlaybackOptionsBackground(UIView *view, BOOL active, CGFloat alpha) {
@@ -19156,45 +19332,6 @@ static void FQXSetPlaybackOptionsNativeBackdrop(UIVisualEffectView *backdrop, BO
         if (saved && !nativeEffect) backdrop.effect = saved;
         if (saved) objc_setAssociatedObject(backdrop, &DramaPlaybackOptionsSavedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-}
-
-static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gaussian, BOOL reduce,
-                                           BOOL dark, CGFloat radius, NSInteger extraBlur) {
-    FQXBackdropBlurView *blur;
-    if (gaussian) {
-        blur = (FQXBackdropBlurView *)surface;
-    } else {
-        FQXCommentGlassSurfaceView *glass = (FQXCommentGlassSurfaceView *)surface;
-        blur = glass->_supplementalBlur;
-        if (reduce || extraBlur == 0) {
-            [blur invalidateBlurAnimator];
-            [blur removeFromSuperview];
-            glass->_supplementalBlur = nil;
-            return;
-        }
-        glass->_cornerKind = FQXCommentCornerTopSheet;
-        glass->_cornerRadius = radius;
-        if (!blur) {
-            blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
-            blur->_commentPureMode = YES;
-            blur.userInteractionEnabled = NO;
-            blur.accessibilityElementsHidden = YES;
-            blur.opaque = NO;
-            blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            glass->_supplementalBlur = blur;
-        }
-        if (blur.superview != surface.contentView) [surface.contentView insertSubview:blur atIndex:0];
-        if (!CGRectEqualToRect(blur.frame, surface.contentView.bounds)) blur.frame = surface.contentView.bounds;
-        FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
-    }
-
-    NSInteger strength = gaussian ? 60 + (extraBlur * 40 + 50) / 100 : extraBlur;
-    CGFloat tintAlpha = gaussian ? (dark ? 0.68 : 0.70) : 0.0;
-    [blur configurePercent:strength dark:dark baseTint:tintAlpha maxTint:tintAlpha chromeBorder:NO];
-    // The UIKit blur fallback has no hardware tint overlay.
-    UIColor *fill = blur->_usingHardwareFilter ? UIColor.clearColor
-        : [UIColor colorWithWhite:(dark ? 0.10 : 0.97) alpha:tintAlpha];
-    if (![blur.contentView.backgroundColor isEqual:fill]) blur.contentView.backgroundColor = fill;
 }
 
 static void FQXSyncPlaybackOptionsReadability(UIVisualEffectView *surface, BOOL dark, CGFloat radius) {
@@ -19273,11 +19410,10 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     }
     UIVisualEffectView *surface = objc_getAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey);
     id config = FQXObjGet(controller, "config");
-    NSArray *items = FQXObjGet(controller, "settingItems");
     NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
     NSInteger material = [prefs integerForKey:DramaPlaybackOptionsMaterialPrefKey];
     BOOL active = !FQXHotPrefsSnapshot().glassDisabled && material != -1 &&
-        !FQXBoolGet(config, "isLandscapeMode", NO) && [items isKindOfClass:NSArray.class] && items.count > 0;
+        !FQXBoolGet(config, "isLandscapeMode", NO);
     if (!active && !surface) return;
     UITableView *table = FQXObjGet(controller, "tableView");
     if (![table isKindOfClass:UITableView.class] || ![table isDescendantOfView:root]) {
@@ -19326,9 +19462,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         }
         if (!surface) {
             if (gaussian) {
-                FQXBackdropBlurView *blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
-                blur->_commentPureMode = YES;
-                surface = blur;
+                surface = FQXNewSheetBlur();
             } else {
                 FQXCommentGlassSurfaceView *glass = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
                 glass->_isSheetBackdrop = YES;
@@ -19341,8 +19475,10 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
             objc_setAssociatedObject(surface, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        if (!CGRectEqualToRect(surface.frame, root.bounds)) surface.frame = root.bounds;
-        if (root.subviews.firstObject != surface) [root insertSubview:surface atIndex:0];
+        int minimumBlur = gaussian ? FQXSheetGaussianBlurMinimum :
+            (nativeGlass && !clearGlass ? FQXSheetFrostedBlurMinimum : 0);
+        NSInteger strength = reduce ? 0 : FQXSheetBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey], minimumBlur);
+        FQXSyncSheetBlur(root, surface, gaussian, strength, dark, radius);
         if (!gaussian) {
             UIUserInterfaceStyle style = clearGlass ? UIUserInterfaceStyleUnspecified
                 : (dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
@@ -19362,13 +19498,18 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
-        FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
-        NSInteger extraBlur = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
-        FQXSyncPlaybackOptionsBackdrop(surface, gaussian, reduce, dark, radius, extraBlur);
         if (nativeGlass) FQXSyncPlaybackOptionsReadability(surface, dark, radius);
         else [objc_getAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey) removeFromSuperview];
         if (OrigDramaPlaybackOptionsDisappeared) {
             FQXSyncPlaybackOptionsCoveredControls(controller, nativeGlass && !controller.isBeingDismissed);
+        }
+        if (FQXDiagnosticsHubIsEnabled()) {
+            NSDictionary *materialState = @{@"material": @(material), @"dockMaterial": @(dockMode),
+                @"gaussian": @(gaussian), @"effectiveBlurPercent": @(strength), @"reduceTransparency": @(reduce)};
+            if (![materialState isEqualToDictionary:objc_getAssociatedObject(surface, &DramaPlaybackOptionsLoggedMaterialKey)]) {
+                objc_setAssociatedObject(surface, &DramaPlaybackOptionsLoggedMaterialKey, materialState, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                FQXDiagRecordEvent(FQXDiagCategoryUI, @"drama_playback_options_material", materialState, NO);
+            }
         }
     }
 
@@ -20989,6 +21130,11 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSMyUser621FunctionEntryItemCell", "applyLayoutAttributes:", "v24@0:8@16", OrigMineEntryItemApplyAttrs, HookMineEntryItemApplyAttrs);
 
         // Bookshelf header 14-toggle visibility & reflow (runs after AlignedGlass)
+        POST_HOOK("SSBookShelfTabManager", "getBookshelfTabModelArray", "@16@0:8", OrigShelfRootTabModels, HookShelfRootTabModels);
+        POST_HOOK("SSBookShelfTabManager", "hasAppendedViewAtTabIndex:", "B24@0:8Q16", OrigShelfRootHasAdornment, HookShelfRootHasAdornment);
+        POST_HOOK("SSBookShelfTabManager", "appendedViewAtTabIndex:", "@24@0:8Q16", OrigShelfRootAdornment, HookShelfRootAdornment);
+        POST_HOOK("SSBookShelfTabManager", "appendedViewSizeAtTabIndex:", "{CGSize=dd}24@0:8Q16", OrigShelfRootAdornmentSize, HookShelfRootAdornmentSize);
+        POST_HOOK("SSBookShelfTabManager", "didClickTabAtIndex:", "v24@0:8Q16", OrigShelfRootManagerDidClick, HookShelfRootManagerDidClick);
         POST_HOOK("SSBookShelfTabSelectView", "layoutSubviews", "v16@0:8", OrigShelfTabSelectLayout, HookShelfTabSelectLayout);
         POST_HOOK("SSBookShelfTabSelectViewTitleCell", "layoutSubviews", "v16@0:8", OrigShelfTabTitleCellLayout, HookShelfTabTitleCellLayout);
         POST_HOOK("SSBookShelf525ViewController", "viewLayout", "v16@0:8", OrigShelf525ViewLayout, HookShelf525ViewLayout);
@@ -21027,6 +21173,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookHistorySubViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelfHistoryVCDidLayout, HookShelfHistoryVCDidLayout);
         POST_HOOK("SSBookHistorySubViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfHistoryVCWillAppear, HookShelfHistoryVCWillAppear);
         POST_HOOK("SSBookHistorySubViewController", "viewDidAppear:", "v20@0:8B16", OrigShelfHistoryVCDidAppear, HookShelfHistoryVCDidAppear);
+        POST_HOOK("SSBookHistorySubViewController", "categoryView:canClickItemAtIndex:", "B32@0:8@16q24", OrigShelfHistoryCanSelect, HookShelfHistoryCanSelect);
         POST_HOOK("FQVShortVideoVPlayerControlView", "layoutSubviews", "v16@0:8", OrigVPlayerLayoutForSeriesPill, HookVPlayerLayoutForSeriesPill);
         POST_HOOK("SSShortVideoBelowLeftContainerViewManager", "shouldAddAiUsageView", "B16@0:8", OrigBelowLeftShouldAddAiUsage, HookBelowLeftShouldAddAiUsage);
 

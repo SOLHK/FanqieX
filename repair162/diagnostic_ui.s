@@ -1114,7 +1114,9 @@ LSglass_class: .asciz "UIGlassEffect"
 LStint: .asciz "tintColor"
 LSinteractive: .asciz "isInteractive"
 LSversion:
-    .if FQ_VERSION == 0x15706
+    .if FQ_VERSION == 0x15707
+    .asciz "1.9.7beta7"
+    .elseif FQ_VERSION == 0x15706
     .asciz "1.9.7beta6"
     .elseif FQ_VERSION == 0x15705
     .asciz "1.9.7beta5"

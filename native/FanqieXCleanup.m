@@ -69,6 +69,9 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ShelfHistoryFilterRead, "ShelfHistoryFilterRead", "显示历史「阅读」标签", "shelf", YES) \
     X(ShelfHistoryFilterListen, "ShelfHistoryFilterListen", "显示历史「听书」标签", "shelf", YES) \
     X(ShelfHistoryFilterDrama, "ShelfHistoryFilterDrama", "显示历史「短剧」标签", "shelf", YES) \
+    X(ShelfHistoryFilterShortStory, "ShelfHistoryFilterShortStory", "显示历史「短篇」标签", "shelf", YES) \
+    X(ShelfHistoryFilterComic, "ShelfHistoryFilterComic", "显示历史「漫画」标签", "shelf", YES) \
+    X(ShelfHistoryFilterTopic, "ShelfHistoryFilterTopic", "显示历史「话题」标签", "shelf", YES) \
     X(ShelfHistoryFilterBtn, "ShelfHistoryFilterBtn", "显示历史「筛选」按钮", "shelf", YES) \
     X(ShelfHistoryEditBtn, "ShelfHistoryEditBtn", "显示历史「编辑」按钮", "shelf", YES) \
     X(ShelfFavoritesFilterAll, "ShelfFavoritesFilterAll", "显示「全部」标签", "shelf", YES) \
@@ -2105,12 +2108,21 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:ShelfHistoryFilterReadKey] ||
                [key isEqualToString:ShelfHistoryFilterListenKey] ||
                [key isEqualToString:ShelfHistoryFilterDramaKey] ||
+               [key isEqualToString:ShelfHistoryFilterShortStoryKey] ||
+               [key isEqualToString:ShelfHistoryFilterComicKey] ||
+               [key isEqualToString:ShelfHistoryFilterTopicKey] ||
                [key isEqualToString:ShelfHistoryFilterBtnKey] ||
                [key isEqualToString:ShelfHistoryEditBtnKey] ||
                [key hasPrefix:@"FanqieX.ShelfFavorites"] ||
                [key isEqualToString:@"FanqieX.ShelfReadingDuration.1"] ||
                [key isEqualToString:@"FanqieX.ShelfFilterButton.1"]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        if ([key hasPrefix:@"FanqieX.ShelfTab"]) {
+            SEL refreshTabs = sel_registerName("refreshShelfRootTabs");
+            if ([dockMotion respondsToSelector:refreshTabs]) {
+                ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshTabs);
+            }
+        }
         SEL refreshHeaderSel = sel_registerName("refreshShelfHeaderControls");
         if ([dockMotion respondsToSelector:refreshHeaderSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshHeaderSel);

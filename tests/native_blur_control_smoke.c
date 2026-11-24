@@ -24,11 +24,21 @@ int main(void) {
     assert(FQXBlurGaussianRadius(0) == 0.0);
     assert(FQXBlurGaussianRadius(1) > 0.0 && FQXBlurGaussianRadius(1) < 0.35);
     assert(fabs(FQXBlurGaussianRadius(100) - 30.0) < 1e-9);
+    assert(FQXSheetBlurPercent(0, 0) == 0);
+    assert(FQXSheetBlurPercent(0, FQXSheetFrostedBlurMinimum) == 40);
+    assert(FQXSheetBlurPercent(0, FQXSheetGaussianBlurMinimum) == 70);
+    assert(FQXSheetBlurPercent(50, FQXSheetFrostedBlurMinimum) == 70);
+    assert(FQXSheetBlurPercent(50, FQXSheetGaussianBlurMinimum) == 85);
+    assert(FQXSheetBlurPercent(100, FQXSheetFrostedBlurMinimum) == 100);
+    assert(FQXSheetBlurPercent(100, FQXSheetGaussianBlurMinimum) == 100);
     assert(FQXBlurSaturation(0) == 1.0 && fabs(FQXBlurSaturation(100) - 1.8) < 1e-9);
     assert(fabs(FQXBlurTintAlpha(0, 0.0, 0.64)) < 1e-12);
     assert(FQXBlurTintAlpha(1, 0.0, 0.64) > 0.0 && FQXBlurTintAlpha(1, 0.0, 0.64) < 0.02 * 0.64);
     assert(fabs(FQXBlurTintAlpha(100, 0.0, 0.64) - 0.64) < 1e-9);
     for (int p = 1; p <= 100; ++p) {
+        assert(FQXSheetBlurPercent(p, 0) == p);
+        assert(FQXSheetBlurPercent(p, FQXSheetFrostedBlurMinimum) >= FQXSheetBlurPercent(p - 1, FQXSheetFrostedBlurMinimum));
+        assert(FQXSheetBlurPercent(p, FQXSheetGaussianBlurMinimum) >= FQXSheetBlurPercent(p - 1, FQXSheetGaussianBlurMinimum));
         assert(FQXBlurGaussianRadius(p) > FQXBlurGaussianRadius(p - 1));
         assert(FQXBlurTintAlpha(p, 0.0, 0.64) > FQXBlurTintAlpha(p - 1, 0.0, 0.64));
         assert(FQXBlurSaturation(p) > FQXBlurSaturation(p - 1));

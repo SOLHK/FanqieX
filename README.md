@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.7beta6 测试版
+## FanqieX 1.9.7beta7 测试版
 
-修复插件设置页浅色模式下的黑底闪现。首页左上角可点按版本号展开更新内容，右上角最小化按钮与版本按钮等大，并使用了新图标。
+修复短剧横滑误触、书架和历史类别隐藏，以及播放选项与分享面板的模糊材质。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.7beta6.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.7beta7.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名为 `FanqieX-1.9.7beta6.dylib`，诊断日志版本为 1.9.7beta6，Mach-O 构建标识为 `0x15706`。
+插件文件名为 `FanqieX-1.9.7beta7.dylib`，诊断日志版本为 1.9.7beta7，Mach-O 构建标识为 `0x15707`。
 
 ## FanqieX 1.76
 
