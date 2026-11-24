@@ -1774,9 +1774,9 @@ static UIVisualEffectView *FQXFindDockBackgroundEffect(UITabBar *tabBar) {
 
 static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
     static Class platterCls = Nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView"); });
     if (!tabBar) return nil;
+    // UIKit may load its floating provider only after the bar first becomes visible.
+    if (!platterCls) platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
     UIView *first = FQXFindViewOfClassRecursive(tabBar, platterCls);
     if (!first) return FQXFindDockBackgroundEffect(tabBar);
     UIView *best = nil;
@@ -1790,7 +1790,7 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
             bestW = w;
         }
     }
-    return best ?: first;
+    return best ?: FQXFindDockBackgroundEffect(tabBar);
 }
 
 // Swap only the platter material. UIKit still drives selection and the interactive lens.
@@ -2311,6 +2311,7 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     NSArray<UIButton *> *_buttons;
     NSHashTable<UIControl *> *_wiredControls;
     UITabBar *_nativeDockBar;
+    UIStackView *_dockTitleOverlay;
     UITapGestureRecognizer *_dockTapRescueGesture;
     FQXDetachedDockButtonView *_detachedButton;
     NSArray<NSNumber *> *_capsuleHostIndices;
@@ -2330,7 +2331,6 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     CGRect _dockRenderedPlatterRectInBar;
     CGFloat _lastDockLiftY;
     CFTimeInterval _lastNativeTabSelectTime;
-    NSUInteger _lastNativeTabSelectHostIndex;
     NSUInteger _dockLastItemCount;
     BOOL _nativeDockActive;
 }
@@ -2385,6 +2385,13 @@ static BOOL FQXPointIsInDockBottomEdgeStrip(FQXTabBarInteraction *inter, CGPoint
     return pointInBar.y > maxInteractiveY;
 }
 
+static UITabBar *FQXNativeDockAtPoint(FQXTabBarInteraction *interaction, UIView *bar, CGPoint point) {
+    UITabBar *dock = interaction ? interaction->_nativeDockBar : nil;
+    if (!dock || !bar.window || bar.hidden || bar.alpha <= 0.01 || !bar.userInteractionEnabled ||
+        dock.superview != bar || dock.hidden || dock.alpha <= 0.01 || !dock.userInteractionEnabled) return nil;
+    return CGRectContainsPoint(interaction->_dockRenderedPlatterRectInBar, point) ? dock : nil;
+}
+
 static BOOL (*OrigSSTabBarPointInside)(id, SEL, CGPoint, id);
 static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent *event) {
     FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
@@ -2398,6 +2405,7 @@ static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent
                 }
             }
         }
+        if (FQXNativeDockAtPoint(inter, bar, point)) return YES;
         // Prevent UITabBar's invisible bottom overhang below the rendered platter from claiming
         // touches inside the iOS Home Indicator edge strip.
         if (FQXPointIsInDockBottomEdgeStrip(inter, point)) {
@@ -2437,6 +2445,11 @@ static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent 
         }
         if (FQXPointIsInDockBottomEdgeStrip(inter, point)) {
             return nil;
+        }
+        UITabBar *dock = FQXNativeDockAtPoint(inter, bar, point);
+        if (dock) {
+            UIView *hit = [dock hitTest:[dock convertPoint:point fromView:bar] withEvent:event];
+            if (hit) return hit;
         }
     }
     return OrigSSTabBarHitTest ? OrigSSTabBarHitTest(bar, cmd, point, event) : nil;
@@ -2498,7 +2511,6 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         _dockAppliedInkState = -1;
         _dockPlatterHeight = 62.0;
         _dockPlatterInset = 21.0;
-        _lastNativeTabSelectHostIndex = NSNotFound;
     }
     return self;
 }
@@ -2595,6 +2607,24 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
                 [bar insertSubview:tabBar aboveSubview:anchor];
             }
         }
+        UIStackView *titles = self->_dockTitleOverlay;
+        CGRect platter = self->_dockRenderedPlatterRectInBar;
+        if (titles && self->_nativeDockActive && !CGRectIsEmpty(platter)) {
+            CGFloat scale = tabBar.transform.a;
+            CGFloat fontSize = 15.5 * scale;
+            CGRect frame = CGRectInset(platter, 4.0 * scale, 0.0);
+            if (!CGRectEqualToRect(titles.frame, frame)) titles.frame = frame;
+            if (titles.semanticContentAttribute != tabBar.semanticContentAttribute)
+                titles.semanticContentAttribute = tabBar.semanticContentAttribute;
+            for (UILabel *label in titles.arrangedSubviews) {
+                if (fabs(label.font.pointSize - fontSize) > 0.05)
+                    label.font = [UIFont systemFontOfSize:fontSize weight:label.highlighted ? UIFontWeightSemibold : UIFontWeightMedium];
+            }
+            NSArray<UIView *> *siblings = bar.subviews;
+            NSUInteger index = [siblings indexOfObjectIdenticalTo:titles];
+            if (index == NSNotFound || index < [siblings indexOfObjectIdenticalTo:tabBar])
+                [bar insertSubview:titles aboveSubview:tabBar];
+        }
     }
 
     if (showDetached) {
@@ -2638,44 +2668,55 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         : ([fallbackBtn isKindOfClass:UIButton.class] ? fallbackBtn : nil);
     NSString *methodUsed = @"none";
     BOOL triggered = NO;
-
-    if (hostBtn && [hostBtn allTargets].count > 0) {
+    UIView *bar = self->_bar;
+    NSArray *barItems = FQXObjGet(bar, "items");
+    BOOL hasItem = [barItems isKindOfClass:NSArray.class] && hostIdx < barItems.count;
+    SEL select = sel_registerName("setSelectIndex:");
+    Method selectMethod = class_getInstanceMethod(object_getClass(bar), select);
+    if (hasItem && selectMethod && strcmp(method_getTypeEncoding(selectMethod), "v24@0:8q16") == 0) {
+        // The host's own button tap uses this entry point, including native interception.
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(bar, select, (NSInteger)hostIdx);
+        methodUsed = @"host_bar_select_index";
+        triggered = YES;
+    } else if (hostBtn && (hostBtn.allControlEvents & UIControlEventTouchUpInside)) {
         [hostBtn sendActionsForControlEvents:UIControlEventTouchUpInside];
         methodUsed = @"host_button_touch_up_inside";
         triggered = YES;
     }
 
-    NSUInteger afterBtnSel = [self currentSelectedIndex];
-    // Fallback 1: invoke SSTabBar's real host delegate tabBar:didSelectItem: using the host item.
-    if ((!triggered || afterBtnSel != hostIdx) && self->_bar) {
-        id barDelegate = FQXObjGet(self->_bar, "delegate");
-        NSArray *barItems = FQXObjGet(self->_bar, "items");
+    if (!triggered && hasItem) {
+        id barDelegate = FQXObjGet(bar, "delegate");
+        SEL indexedSelect = sel_registerName("tabBar:didSelectItem:selectIndex:");
+        Method indexedMethod = class_getInstanceMethod(object_getClass(barDelegate), indexedSelect);
+        if (indexedMethod && strcmp(method_getTypeEncoding(indexedMethod), "v40@0:8@16@24q32") == 0) {
+            ((void (*)(id, SEL, id, id, NSInteger))objc_msgSend)(barDelegate, indexedSelect, bar,
+                                                               barItems[hostIdx], (NSInteger)hostIdx);
+            methodUsed = @"bar_delegate_did_select_index";
+            triggered = YES;
+        }
         SEL didSel = @selector(tabBar:didSelectItem:);
-        if (barDelegate && [barDelegate respondsToSelector:didSel] &&
-            [barItems isKindOfClass:NSArray.class] && hostIdx < barItems.count) {
+        if (!triggered && [barDelegate respondsToSelector:didSel]) {
             Method m = class_getInstanceMethod(object_getClass(barDelegate), didSel);
             if (m && strcmp(method_getTypeEncoding(m), "v32@0:8@16@24") == 0) {
                 id item = barItems[hostIdx];
-                if ([self->_bar respondsToSelector:@selector(setSelectedItem:)]) {
-                    Method sm = class_getInstanceMethod(object_getClass(self->_bar), @selector(setSelectedItem:));
+                if ([bar respondsToSelector:@selector(setSelectedItem:)]) {
+                    Method sm = class_getInstanceMethod(object_getClass(bar), @selector(setSelectedItem:));
                     if (sm && strcmp(method_getTypeEncoding(sm), "v24@0:8@16") == 0) {
-                        ((void (*)(id, SEL, id))objc_msgSend)(self->_bar, @selector(setSelectedItem:), item);
+                        ((void (*)(id, SEL, id))objc_msgSend)(bar, @selector(setSelectedItem:), item);
                     }
                 }
-                ((void (*)(id, SEL, id, id))objc_msgSend)(barDelegate, didSel, self->_bar, item);
-                methodUsed = triggered ? @"host_button_plus_bar_delegate" : @"bar_delegate_did_select_item";
+                ((void (*)(id, SEL, id, id))objc_msgSend)(barDelegate, didSel, bar, item);
+                methodUsed = @"bar_delegate_did_select_item";
                 triggered = YES;
             }
         }
     }
 
-    // Fallback 2: directly set selectedIndex on SSTabBarController / UITabBarController.
-    NSUInteger afterDelegateSel = [self currentSelectedIndex];
-    if ((!triggered || afterDelegateSel != hostIdx) && self->_bar) {
-        id owner = FQXObjGet(self->_bar, "delegate");
+    if (!triggered && bar) {
+        id owner = FQXObjGet(bar, "delegate");
         UITabBarController *tbc = [owner isKindOfClass:UITabBarController.class] ? (UITabBarController *)owner : nil;
         if (!tbc) {
-            UIResponder *resp = self->_bar.nextResponder;
+            UIResponder *resp = bar.nextResponder;
             NSInteger hops = 0;
             while (resp && hops < 12) {
                 if ([resp isKindOfClass:UITabBarController.class]) {
@@ -2688,7 +2729,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
         if (tbc && hostIdx < tbc.viewControllers.count) {
             tbc.selectedIndex = hostIdx;
-            methodUsed = triggered ? @"fallback_tabbar_controller" : @"tabbar_controller_selected_index";
+            methodUsed = @"tabbar_controller_selected_index";
             triggered = YES;
         }
     }
@@ -2711,7 +2752,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             @"triggered": @(triggered),
         }, NO);
     } else if ([source isEqualToString:@"dock_tap_rescue"] ||
-               ![methodUsed isEqualToString:@"host_button_touch_up_inside"] ||
+               (![methodUsed isEqualToString:@"host_bar_select_index"] &&
+                ![methodUsed isEqualToString:@"host_button_touch_up_inside"]) ||
                finalSel != hostIdx) {
         FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_tab_navigation", @{
             @"source": source ?: @"native_tabbar",
@@ -2761,6 +2803,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     UIColor *selectedInk = [UIColor colorWithWhite:white alpha:1.0];
     UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
     NSInteger displayMode = [self dockDisplayMode];
+    BOOL textOnly = displayMode == 2;
+    for (UILabel *label in self->_dockTitleOverlay.arrangedSubviews) {
+        label.textColor = normalInk;
+        label.highlightedTextColor = selectedInk;
+    }
     CGFloat ptSize = [self dockIconPointSize];
     NSArray<NSString *> *titles = self->_dockTitles;
     NSArray<UIButton *> *buttons = self->_buttons;
@@ -2770,8 +2817,18 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         NSString *title = (i < titles.count) ? titles[i] : (item.accessibilityLabel ?: @"");
         NSUInteger hostIdx = (i < hostIndices.count) ? hostIndices[i].unsignedIntegerValue : i;
         UIButton *btn = (hostIdx < buttons.count && [buttons[hostIdx] isKindOfClass:UIButton.class]) ? buttons[hostIdx] : nil;
-        item.image = FQXDockItemImage(title, btn, displayMode, ptSize, NO, normalInk);
-        item.selectedImage = FQXDockItemImage(title, btn, displayMode, ptSize, YES, selectedInk);
+        // Preserve UIKit's item footprint for hit testing and selection, with the
+        // actual text above the lens so its moving highlight cannot obscure it.
+        if (textOnly) {
+            if (!item.image) {
+                UIImage *placeholder = FQXDockTitleImage(title, UIColor.clearColor, YES);
+                item.image = placeholder;
+                item.selectedImage = placeholder;
+            }
+        } else {
+            item.image = FQXDockItemImage(title, btn, displayMode, ptSize, NO, normalInk);
+            item.selectedImage = FQXDockItemImage(title, btn, displayMode, ptSize, YES, selectedInk);
+        }
     }
     if (self->_detachedHostIndex != NSNotFound &&
         (NSUInteger)self->_detachedHostIndex < buttons.count &&
@@ -2814,6 +2871,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     UITabBar *tabBar = self->_nativeDockBar;
     if (!tabBar || !tabBar.items.count) return;
     NSUInteger hostSel = [self currentSelectedIndex];
+    NSUInteger capPos = self->_capsuleHostIndices.count
+        ? [self->_capsuleHostIndices indexOfObject:@(hostSel)]
+        : hostSel;
+    NSUInteger slot = 0;
+    for (UILabel *label in self->_dockTitleOverlay.arrangedSubviews) {
+        BOOL selected = slot++ == capPos;
+        if (label.highlighted != selected) {
+            label.highlighted = selected;
+            label.font = [UIFont systemFontOfSize:label.font.pointSize weight:selected ? UIFontWeightSemibold : UIFontWeightMedium];
+        }
+    }
     if (self->_detachedHostIndex != NSNotFound &&
         self->_detachedButton &&
         hostSel == (NSUInteger)self->_detachedHostIndex) {
@@ -2828,9 +2896,6 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (self->_detachedButton) {
         [self->_detachedButton setModuleSelected:NO animated:animated];
     }
-    NSUInteger capPos = self->_capsuleHostIndices.count
-        ? [self->_capsuleHostIndices indexOfObject:@(hostSel)]
-        : hostSel;
     if (capPos != NSNotFound && capPos < tabBar.items.count) {
         UITabBarItem *desiredItem = tabBar.items[capPos];
         if (tabBar.selectedItem != desiredItem) {
@@ -2878,6 +2943,27 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         self->_capsuleHostIndices = [capsuleIndices copy];
         self->_dockTitles = [capsuleTitles copy];
         self->_dockSignature = [sig copy];
+        [self->_dockTitleOverlay removeFromSuperview];
+        self->_dockTitleOverlay = nil;
+        if (displayMode == 2) {
+            UIStackView *titles = [[UIStackView alloc] initWithFrame:CGRectZero];
+            titles.hidden = !self->_nativeDockActive;
+            titles.userInteractionEnabled = NO;
+            titles.accessibilityElementsHidden = YES;
+            titles.axis = UILayoutConstraintAxisHorizontal;
+            titles.distribution = UIStackViewDistributionFillEqually;
+            titles.alignment = UIStackViewAlignmentCenter;
+            for (NSString *title in capsuleTitles) {
+                UILabel *label = [UILabel new];
+                label.text = title;
+                label.textAlignment = NSTextAlignmentCenter;
+                label.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightMedium];
+                label.adjustsFontSizeToFitWidth = YES;
+                label.minimumScaleFactor = 0.7;
+                [titles addArrangedSubview:label];
+            }
+            self->_dockTitleOverlay = titles;
+        }
 
         if (detIdx != NSNotFound && (NSUInteger)detIdx < self->_buttons.count) {
             if (!self->_detachedButton) {
@@ -2915,6 +3001,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         // image views. A settings transition can otherwise capture empty items.
         [self applyDockItemImagesToItems:items];
         [UIView performWithoutAnimation:^{
+            UITabBarItemPositioning positioning = displayMode == 2 ? UITabBarItemPositioningFill : UITabBarItemPositioningAutomatic;
+            if (tabBar.itemPositioning != positioning) tabBar.itemPositioning = positioning;
             [tabBar setItems:items animated:NO];
             [self syncSelectionExclusivityAnimated:NO];
         }];
@@ -3198,6 +3286,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
         if (self->_nativeDockBar && self->_nativeDockBar.hidden == visible)
             self->_nativeDockBar.hidden = !visible;
+        if (self->_dockTitleOverlay && self->_dockTitleOverlay.hidden == visible)
+            self->_dockTitleOverlay.hidden = !visible;
         if (self->_detachedButton && self->_detachedButton.hidden == showDetached)
             self->_detachedButton.hidden = !showDetached;
         if (visible) [self ensureDockZOrderInBar:self->_bar];
@@ -3210,6 +3300,16 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
 #pragma mark - UITabBarDelegate & Tap Rescue
 
+static const char FQXDockTouchBeganKey = 0;
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldReceiveTouch:(UITouch *)touch {
+    (void)touch;
+    if (gr == self->_dockTapRescueGesture) {
+        objc_setAssociatedObject(gr, &FQXDockTouchBeganKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return YES;
+}
+
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
     (void)gr; (void)other;
     return YES;
@@ -3217,79 +3317,67 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
 - (void)handleDockTapRescue:(UITapGestureRecognizer *)gr {
     if (gr.state != UIGestureRecognizerStateEnded) return;
-    if (!self->_nativeDockActive || !self->_nativeDockBar || !self->_bar) return;
-    UIViewController *rootVC = self->_bar.window.rootViewController;
-    if (rootVC && rootVC.presentedViewController) return;
+    if (!self->_nativeDockActive || gr != self->_dockTapRescueGesture) return;
+    UIView *bar = self->_bar;
+    UITabBar *tabBar = self->_nativeDockBar;
+    UIWindow *window = bar.window;
+    NSNumber *touchBegan = objc_getAssociatedObject(gr, &FQXDockTouchBeganKey);
+    if (!window || !touchBegan || gr.view != tabBar || tabBar.superview != bar) return;
 
     CGRect platterRect = self->_dockRenderedPlatterRectInBar;
     if (CGRectGetWidth(platterRect) < 40.0 || CGRectGetHeight(platterRect) < 20.0) return;
-    CGPoint ptInBar = [gr locationInView:self->_bar];
-    if (!CGRectContainsPoint(CGRectInset(platterRect, -4.0, -4.0), ptInBar)) return;
+    CGPoint ptInBar = [gr locationInView:bar];
+    if (FQXNativeDockAtPoint(self, bar, ptInBar) != tabBar) return;
 
-    NSUInteger count = self->_capsuleHostIndices.count;
-    if (count == 0) count = self->_nativeDockBar.items.count;
+    NSArray<UITabBarItem *> *items = tabBar.items;
+    NSUInteger count = items.count;
     if (count == 0) return;
 
     CGFloat relX = (ptInBar.x - CGRectGetMinX(platterRect)) / MAX(1.0, CGRectGetWidth(platterRect));
     relX = MIN(0.9999, MAX(0.0, relX));
     NSUInteger slotIdx = (NSUInteger)floor(relX * (CGFloat)count);
     if (slotIdx >= count) slotIdx = count - 1;
-    if ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:self->_nativeDockBar.semanticContentAttribute] == UIUserInterfaceLayoutDirectionRightToLeft) {
+    if ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:tabBar.semanticContentAttribute] == UIUserInterfaceLayoutDirectionRightToLeft) {
         slotIdx = (count - 1) - slotIdx;
     }
     NSUInteger tappedHostIdx = (slotIdx < self->_capsuleHostIndices.count)
         ? self->_capsuleHostIndices[slotIdx].unsignedIntegerValue : slotIdx;
     if (tappedHostIdx >= self->_buttons.count) return;
 
-    CFTimeInterval tapTime = CACurrentMediaTime();
+    UITabBarItem *tappedItem = items[slotIdx];
+    CGPoint pointInWindow = [bar convertPoint:ptInBar toView:window];
     __weak FQXTabBarInteraction *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.035 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         FQXTabBarInteraction *s = weakSelf;
-        if (!s || !s->_nativeDockActive || !s->_nativeDockBar) return;
-        UIViewController *curRoot = s->_bar.window.rootViewController;
-        if (curRoot && curRoot.presentedViewController) return;
-        // If UIKit's native tabBar:didSelectItem: already fired for this tap, do nothing.
-        if (fabs(s->_lastNativeTabSelectTime - tapTime) < 0.25 &&
-            s->_lastNativeTabSelectHostIndex == tappedHostIdx) {
-            return;
-        }
-        if ([s currentSelectedIndex] == tappedHostIdx) {
-            [s syncSelectionExclusivityAnimated:NO];
-            return;
-        }
-        if (s->_detachedButton) {
-            [s->_detachedButton setModuleSelected:NO animated:YES];
-        }
-        if (slotIdx < s->_nativeDockBar.items.count) {
-            s->_nativeDockBar.selectedItem = s->_nativeDockBar.items[slotIdx];
-        }
-        FQXSetNativeTabSelectionLensVisible(s->_nativeDockBar, YES, 0);
+        if (!s || !s->_nativeDockActive || s->_bar != bar || s->_nativeDockBar != tabBar ||
+            bar.window != window || tabBar.superview != bar ||
+            objc_getAssociatedObject(gr, &FQXDockTouchBeganKey) != touchBegan ||
+            s->_lastNativeTabSelectTime >= touchBegan.doubleValue) return;
+        NSArray<UITabBarItem *> *currentItems = tabBar.items;
+        if (slotIdx >= currentItems.count || currentItems[slotIdx] != tappedItem) return;
+        NSUInteger currentHostIdx = (slotIdx < s->_capsuleHostIndices.count)
+            ? s->_capsuleHostIndices[slotIdx].unsignedIntegerValue : slotIdx;
+        if (currentHostIdx != tappedHostIdx) return;
+        // A newly presented overlay can win hit testing after the touch ended.
+        UIView *hit = [window hitTest:pointInWindow withEvent:nil];
+        if (hit != tabBar && ![hit isDescendantOfView:tabBar]) return;
         s->_lastNativeTabSelectTime = CACurrentMediaTime();
-        s->_lastNativeTabSelectHostIndex = tappedHostIdx;
-        UIButton *fallbackBtn = (tappedHostIdx < s->_buttons.count) ? s->_buttons[tappedHostIdx] : nil;
-        [s triggerHostNavigationForHostIndex:tappedHostIdx
-                              fallbackButton:fallbackBtn
-                                      source:@"dock_tap_rescue"];
+        [s triggerHostNavigationForHostIndex:tappedHostIdx fallbackButton:nil source:@"dock_tap_rescue"];
     });
 }
 
 - (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
+    if (!self->_nativeDockActive || tabBar != self->_nativeDockBar || tabBar.superview != self->_bar || !tabBar.window) return;
     NSUInteger idx = [tabBar.items indexOfObjectIdenticalTo:item];
     if (idx == NSNotFound) return;
     NSUInteger hostIdx = (idx < self->_capsuleHostIndices.count)
         ? self->_capsuleHostIndices[idx].unsignedIntegerValue : idx;
     if (hostIdx >= self->_buttons.count) return;
-    UIButton *btn = self->_buttons[hostIdx];
-    if (![btn isKindOfClass:UIButton.class]) return;
-    self->_lastNativeTabSelectTime = CACurrentMediaTime();
-    self->_lastNativeTabSelectHostIndex = hostIdx;
-    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
-    if (self->_detachedButton) {
-        [self->_detachedButton setModuleSelected:NO animated:YES];
-    }
-    [self triggerHostNavigationForHostIndex:hostIdx
-                           fallbackButton:btn
-                                   source:@"native_tabbar_did_select"];
+    CFTimeInterval now = CACurrentMediaTime();
+    NSNumber *touchBegan = objc_getAssociatedObject(self->_dockTapRescueGesture, &FQXDockTouchBeganKey);
+    if (touchBegan && self->_lastNativeTabSelectTime >= touchBegan.doubleValue && now - self->_lastNativeTabSelectTime < 0.25) return;
+    self->_lastNativeTabSelectTime = now;
+    [self triggerHostNavigationForHostIndex:hostIdx fallbackButton:nil source:@"native_tabbar_did_select"];
 }
 
 - (void)onNativeValueChanged:(UIControl *)sender {
@@ -3328,6 +3416,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         [self->_nativeDockBar removeFromSuperview];
         self->_nativeDockBar.delegate = nil;
         self->_nativeDockBar = nil;
+        [self->_dockTitleOverlay removeFromSuperview];
+        self->_dockTitleOverlay = nil;
         [self->_detachedButton removeFromSuperview];
         self->_detachedButton = nil;
         self->_capsuleHostIndices = nil;
@@ -3338,7 +3428,6 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         self->_dockRenderedPlatterRectInBar = CGRectZero;
         self->_lastDockLiftY = 0.0;
         self->_lastNativeTabSelectTime = 0.0;
-        self->_lastNativeTabSelectHostIndex = NSNotFound;
         self->_dockAppliedStyle = UIUserInterfaceStyleUnspecified;
         self->_dockAppliedInkState = -1;
     }
@@ -3445,12 +3534,15 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     // material owner. Proxy switches to FQXDockMaterialOwnerProxy cleanly on collapse/fallback.
     if (self->_nativeDockActive) {
         [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
+        [self setNativeDockVisible:YES restoreProxy:NO];
     } else {
         [UIView performWithoutAnimation:^{
-            [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
+            // Measure the live UIKit provider before handing off from the proxy.
+            self->_nativeDockBar.hidden = NO;
+            [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:YES];
+            [self setNativeDockVisible:YES restoreProxy:NO];
         }];
     }
-    [self setNativeDockVisible:YES restoreProxy:NO];
 }
 
 - (void)teardown {
@@ -3463,6 +3555,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     self->_nativeDockBar.delegate = nil;
     [self->_nativeDockBar removeFromSuperview];
     self->_nativeDockBar = nil;
+    [self->_dockTitleOverlay removeFromSuperview];
+    self->_dockTitleOverlay = nil;
     [self->_detachedButton removeFromSuperview];
     self->_detachedButton = nil;
     self->_capsuleHostIndices = nil;
@@ -3474,7 +3568,6 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     self->_dockRenderedPlatterRectInBar = CGRectZero;
     self->_lastDockLiftY = 0.0;
     self->_lastNativeTabSelectTime = 0.0;
-    self->_lastNativeTabSelectHostIndex = NSNotFound;
     self->_dockAppliedStyle = UIUserInterfaceStyleUnspecified;
     self->_dockAppliedInkState = -1;
 }
