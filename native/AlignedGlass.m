@@ -1415,7 +1415,43 @@ static void ReaderShareHitParents(Obj owner,Obj share) {
     }
     if (!same || (!share && previous)) objc_setAssociatedObject(owner,ReaderShareHitParentsKey,current,1);
 }
+static void ReaderPresentationReadyKey(void) {}
+
+static const void *ReaderPendingKey(void) {
+    return sel_registerName("fqxOriginalNovelReaderPending");
+}
+
+static B ReaderOriginalOpening(void) {
+    Obj cls=Lookup("BDReaderViewController");
+    return objc_getAssociatedObject(cls,sel_registerName("fqxOriginalNovelReaderOpening")) &&
+           Original("BDReaderViewController","fqx198_originalReaderDidLoad") &&
+           Original("BDReaderViewController","fqx192_originalReaderDidAppear:");
+}
+
+static Obj ReaderPendingSurfaces(Obj reader) {
+    Obj surfaces=objc_getAssociatedObject(reader,ReaderPendingKey());
+    if (!surfaces && !objc_getAssociatedObject(reader,ReaderPresentationReadyKey) && ReaderOriginalOpening()) {
+        surfaces=O0(Lookup("NSHashTable"),"weakObjectsHashTable");
+        objc_setAssociatedObject(reader,ReaderPendingKey(),surfaces,1);
+    }
+    return surfaces;
+}
+
+B FQHReaderDefer(Obj view) {
+    Obj responder=view;
+    for (int depth=0;responder && depth<24;depth++,responder=Get(responder,"nextResponder")) {
+        if (!Kind(responder,"BDReaderViewController")) continue;
+        Obj surfaces=ReaderPendingSurfaces(responder);
+        if (!surfaces) return 0;
+        V1(surfaces,"addObject:",view);
+        return 1;
+    }
+    // The native route may lay out an unmounted view before loading its reader.
+    return ReaderOriginalOpening() && !Get(view,"window");
+}
+
 void FQHReader(Obj owner) {
+    if (FQHReaderDefer(owner)) return;
     if (objc_getAssociatedObject(owner,OwnerBusyKey)) return;
     objc_setAssociatedObject(owner,OwnerBusyKey,owner,0);
     Rect area=Bounds(owner);
@@ -1502,12 +1538,19 @@ static void ApplyReaderGlassStyle(Obj controller,Obj theme) {
     Q1(controller,"setOverrideUserInterfaceStyle:",wanted);
 }
 
-static void ReaderPresentationReadyKey(void) {}
+static void ReaderGlassDidLoad(Obj self,Sel cmd) {
+    ReaderPendingSurfaces(self);
+    ((void(*)(Obj,Sel))Original("BDReaderViewController","fqx198_originalReaderDidLoad"))(self,cmd);
+}
 
 static void ReaderGlassDidAppear(Obj self,Sel cmd,B animated) {
     ((void(*)(Obj,Sel,B))Original("BDReaderViewController","fqx192_originalReaderDidAppear:"))(self,cmd,animated);
     objc_setAssociatedObject(self,ReaderPresentationReadyKey,self,0);
+    Obj surfaces=O0(objc_getAssociatedObject(self,ReaderPendingKey()),"allObjects");
+    objc_setAssociatedObject(self,ReaderPendingKey(),0,1);
     ApplyReaderGlassStyle(self,Get(Get(Get(self,"readerModel"),"config"),"themeConfig"));
+    U count=((U(*)(Obj,Sel))Message)(surfaces,sel_registerName("count"));
+    for (U i=0;i<count;++i) V0(At(surfaces,i),"setNeedsLayout");
 }
 
 static void ReaderGlassThemeChanged(Obj self,Sel cmd,Obj theme) {
@@ -1522,11 +1565,13 @@ static void ReaderGlassStyleInstall(void) {
         !Signature(reader,"setOverrideUserInterfaceStyle:","v24@0:8q16") ||
         !Signature(reader,"viewDidAppear:","v20@0:8B16")) return;
     Hook(reader,"viewDidAppear:","fqx192_originalReaderDidAppear:","v20@0:8B16",(Imp)ReaderGlassDidAppear);
+    Hook(reader,"viewDidLoad","fqx198_originalReaderDidLoad","v16@0:8",(Imp)ReaderGlassDidLoad);
     Hook(reader,"onConfigThemeChange:","fqx192_originalReaderTheme:","v24@0:8@16",(Imp)ReaderGlassThemeChanged);
 }
 
 static void ReaderShelfWrapperLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderFanClubEntryContainerView","fqx184_originalShelfWrapper"))(self,cmd);
+    if (FQHReaderDefer(self)) return;
     Obj label=Get(self,"contentView");
     // The same wrapper can display the fan-club entry instead of the shelf label.
     if (!Kind(O0(self,"superview"),"FQReaderSaasNavigationView") || !Kind(label,"UILabel") || O0(label,"superview")!=self)
@@ -1688,6 +1733,7 @@ static Obj ListenCaption(Obj view,int depth) {
     return 0;
 }
 void FQHListen(Obj view) {
+    if (FQHReaderDefer(view)) return;
     if (!Kind(view,"SSReaderFloatingCommonButton")) return;
     Obj label=ListenCaption(view,2),saved=objc_getAssociatedObject(view,ListenLabelKey);
     if (!Enabled() || !label || !FQHGlassAvailable()) {
@@ -1719,6 +1765,7 @@ static void SetSpeechImage(Obj button,Obj image) {
     ((void(*)(Obj,Sel,Obj,U))Message)(button,sel_registerName("setImage:forState:"),image,0);
 }
 static void SpeechGlass(Obj view) {
+    if (FQHReaderDefer(view)) return;
     Obj button=Get(view,"speechBtn");
     if (!Kind(button,"UIButton") || !Belongs(button,view)) return;
     Obj imageView=Get(button,"imageView");
@@ -1846,6 +1893,7 @@ static void ReaderBackdrop(Obj view,B visible) {
     }
 }
 static B ReaderCommunityGlass(Obj item) {
+    if (FQHReaderDefer(item)) return 0;
     Obj title=Get(Get(item,"titleLabel"),"text");
     B matched=Equal(title,"发讨论") || Equal(title,"圈子");
     if (matched) FQHApply(item);
@@ -2073,6 +2121,7 @@ B FQHReaderOwnsControl(Obj view) {
     return 0;
 }
 static void ReaderToolbarGlass(Obj toolbar) {
+    if (FQHReaderDefer(toolbar)) return;
     Obj children=O0(toolbar,"subviews");
     U count=((U(*)(Obj,Sel))Message)(children,sel_registerName("count"));
     Rect area=Bounds(toolbar);
@@ -2092,6 +2141,7 @@ static void ReaderToolbarGlass(Obj toolbar) {
 }
 static void PageBottomLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSBottomToolView","fqx175_originalBottom"))(self,cmd);
+    if (FQHReaderDefer(self)) return;
     ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     ReaderToolbarGlass(self);
 }
@@ -2137,16 +2187,19 @@ static void ReaderProgressGlass(Obj owner) {
 }
 static void PageProgressLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQReaderSaaSNewProgressView","fqx174_originalProgress"))(self,cmd);
+    if (FQHReaderDefer(self)) return;
     ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     ReaderProgressGlass(self);
 }
 static void PageProgressTheme(Obj self,Sel cmd,Obj config) {
     ((void(*)(Obj,Sel,Obj))Original("FQReaderSaaSNewProgressView","fqx176_originalProgressTheme:"))(self,cmd,config);
+    if (FQHReaderDefer(self)) return;
     ReaderBackdrop(self,ReaderBottomBackgroundEnabled());
     ReaderProgressGlass(self);
 }
 static void PageDivertLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSReaderBottomToolDivertView","fqx175_originalDivert"))(self,cmd);
+    if (FQHReaderDefer(self)) return;
     Obj toolbar=O0(self,"superview");
     if (Kind(toolbar,"FQReaderSaaSBottomToolView")) ReaderToolbarGlass(toolbar);
     else ReaderBottomGlass(self,HasAncestor(self,"FQReaderSaaSBottomToolView") ? ReaderToolWidth : 0);

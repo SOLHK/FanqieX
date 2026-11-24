@@ -6465,6 +6465,25 @@ static void FQXRecordDramaOriginalNovelStage(NSString *stage, BOOL returning) {
         @{@"stage": stage, @"mainThread": @(NSThread.isMainThread)});
 }
 
+static const void *FQXDramaOriginalNovelReaderOpeningKey(void) {
+    return (const void *)sel_registerName("fqxOriginalNovelReaderOpening");
+}
+
+static Class FQXBeginDramaOriginalNovelReaderOpening(id __strong *previous) {
+    Class reader = NSThread.isMainThread ? objc_lookUpClass("BDReaderViewController") : Nil;
+    if (reader) {
+        const void *key = FQXDramaOriginalNovelReaderOpeningKey();
+        *previous = objc_getAssociatedObject(reader, key);
+        objc_setAssociatedObject(reader, key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return reader;
+}
+
+static void FQXEndDramaOriginalNovelReaderOpening(Class reader, id previous) {
+    if (reader) objc_setAssociatedObject(reader, FQXDramaOriginalNovelReaderOpeningKey(), previous,
+                                         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static void (*OrigDramaDistributionTap)(id, SEL);
 static void HookDramaDistributionTap(id self, SEL cmd) {
     // In the native distribution tap handler, type 3 is the original-book branch.
@@ -6479,7 +6498,13 @@ static void (*OrigDramaOriginalNovelSchemaTap)(id, SEL, id);
 static void HookDramaOriginalNovelSchemaTap(id self, SEL cmd, id bottomBar) {
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", NO);
-    OrigDramaOriginalNovelSchemaTap(self, cmd, bottomBar);
+    id previous = nil;
+    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
+    @try {
+        OrigDramaOriginalNovelSchemaTap(self, cmd, bottomBar);
+    } @finally {
+        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
+    }
     if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", YES);
 }
 
@@ -6487,8 +6512,47 @@ static void (*OrigDramaOriginalNovelReaderOpen)(id, SEL, id, id, BOOL);
 static void HookDramaOriginalNovelReaderOpen(id self, SEL cmd, id bookInfo, id chapter, BOOL showToast) {
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", NO);
-    OrigDramaOriginalNovelReaderOpen(self, cmd, bookInfo, chapter, showToast);
+    id previous = nil;
+    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
+    @try {
+        OrigDramaOriginalNovelReaderOpen(self, cmd, bookInfo, chapter, showToast);
+    } @finally {
+        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
+    }
     if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", YES);
+}
+
+static void (*OrigDramaOriginalNovelEntranceTap)(id, SEL);
+static void HookDramaOriginalNovelEntranceTap(id self, SEL cmd) {
+    BOOL trace = FQXDiagnosticsHubIsEnabled();
+    if (trace) FQXRecordDramaOriginalNovelStage(@"entrance", NO);
+    id previous = nil;
+    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
+    @try {
+        OrigDramaOriginalNovelEntranceTap(self, cmd);
+    } @finally {
+        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
+    }
+    if (trace) FQXRecordDramaOriginalNovelStage(@"entrance", YES);
+}
+
+static void (*OrigDramaReasonNavigate)(id, SEL, id, id);
+static void HookDramaReasonNavigate(id self, SEL cmd, id schema, id reason) {
+    // The host's isRelateNovelReason identifies the original-novel pill by recType 25.
+    if (FQXIntGet(reason, "recType", -1) != 25) {
+        OrigDramaReasonNavigate(self, cmd, schema, reason);
+        return;
+    }
+    BOOL trace = FQXDiagnosticsHubIsEnabled();
+    if (trace) FQXRecordDramaOriginalNovelStage(@"reason_schema", NO);
+    id previous = nil;
+    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
+    @try {
+        OrigDramaReasonNavigate(self, cmd, schema, reason);
+    } @finally {
+        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
+    }
+    if (trace) FQXRecordDramaOriginalNovelStage(@"reason_schema", YES);
 }
 
 #pragma mark - Highest available drama resolution
@@ -8508,9 +8572,19 @@ static void HookUpdateReaderHotCommentBubble(id self, SEL cmd, BOOL show) {
     FQXSyncReaderHotCommentBadge(self);
 }
 
+static UIViewController *FQXEnclosingReaderController(UIView *view);
+
 static void (*OrigReaderNavLayoutMotion)(id, SEL);
 static void HookReaderNavLayoutMotion(UIView *self, SEL cmd) {
     OrigReaderNavLayoutMotion(self, cmd);
+    UIViewController *reader = FQXEnclosingReaderController(self);
+    if (reader) {
+        const void *pendingKey = (const void *)sel_registerName("fqxOriginalNovelReaderPending");
+        if (objc_getAssociatedObject(reader, pendingKey)) return;
+    } else if (!self.window && NSThread.isMainThread &&
+               objc_getAssociatedObject(objc_lookUpClass("BDReaderViewController"), FQXDramaOriginalNovelReaderOpeningKey())) {
+        return;
+    }
     FQXSyncReaderHotCommentBadge(self);
     UIButton *button = FQXObjGet(self, "backBtn");
     if ([button isKindOfClass:UIButton.class]) FQXCenterReaderBackButton(button);
@@ -22120,6 +22194,9 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSShortVideoAboveProgressViewManager", "handleOriginalNovelBottomBarClick:", "v24@0:8@16", OrigDramaOriginalNovelSchemaTap, HookDramaOriginalNovelSchemaTap);
         HOOK_INST("SSShortVideoAboveProgressViewManager", "openOriginalBookReaderWithBookInfo:chapterId:showReturnOriginProgressToast:",
                   "v36@0:8@16@24B32", OrigDramaOriginalNovelReaderOpen, HookDramaOriginalNovelReaderOpen);
+        HOOK_INST("SSShortVideoOriginalNovelEntranceView", "handleTap", "v16@0:8", OrigDramaOriginalNovelEntranceTap, HookDramaOriginalNovelEntranceTap);
+        HOOK_INST("SSShortVideoRcmdReasonViewManager", "navigateToSchema:withRecommendReasonModel:",
+                  "v32@0:8@16@24", OrigDramaReasonNavigate, HookDramaReasonNavigate);
         HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
         HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
