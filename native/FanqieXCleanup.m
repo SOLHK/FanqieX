@@ -26,7 +26,6 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ChapterEndDrama, "ReaderChapterEndDrama", "显示阅读底栏改编剧场", "reader", YES) \
     X(AudioRecommendations, "AudioRecommendations", "显示听书页推荐内容", "reader", YES) \
     X(AudioLiquidGlass, "AudioLiquidGlass", "听书界面液态玻璃", "audio", NO) \
-    X(AudioDynamicIsland, "AudioDynamicIsland", "听书灵动岛", "audio", NO) \
     X(AudioControlIconsOnly, "AudioControlIconsOnly", "朗读按钮仅显示图标", "audio", NO) \
     X(MineScanButton, "MineScanButton", "显示我的顶部扫一扫", "mine", YES) \
     X(MineSearchBar, "MineSearchBar", "显示我的顶部搜索框", "mine", YES) \
@@ -86,7 +85,6 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaPinchHaptic, "DramaPinchHaptic", "双指缩放清屏震动反馈", "drama", YES) \
     X(DramaDoubleTapComment, "DramaDoubleTapComment", "双击打开评论区（关闭双击点赞）", "drama", NO) \
     X(DramaCommentNoVideoShift, "DramaCommentNoVideoShift", "打开评论区短剧画面不上移", "drama", NO) \
-    X(DramaDynamicIsland, "DramaDynamicIsland", "短剧灵动岛", "drama", NO) \
     X(DramaExitCollectAlert, "DramaExitCollectAlert", "隐藏短剧退出收藏弹窗", "drama", NO) \
     X(DramaHideSeriesTag, "DramaHideSeriesTag", "隐藏短剧系列剧追剧标签", "drama", NO) \
     X(DramaHideTitleBadge, "DramaHideTitleBadge", "隐藏短剧标题角标（上新/爆款）", "drama", NO) \
@@ -1630,13 +1628,10 @@ static void AudioLayoutContent(id self, SEL cmd) {
     ApplyAudioRecommendVisibility(self);
 }
 
-extern void FQXNotifyAudioIslandStateChanged(void);
-
 static void (*NativeAudioWillAppear)(id, SEL, BOOL);
 static void AudioWillAppear(id self, SEL cmd, BOOL animated) {
     NativeAudioWillAppear(self, cmd, animated);
     ApplyAudioRecommendVisibility(self);
-    FQXNotifyAudioIslandStateChanged();
 }
 
 static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
@@ -2139,13 +2134,6 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         }
         if ([dockMotion respondsToSelector:refreshShareSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshShareSel);
-        }
-    } else if ([key isEqualToString:AudioDynamicIslandKey] ||
-               [key isEqualToString:DramaDynamicIslandKey]) {
-        Class dockMotion = objc_lookUpClass("FQXDockMotion");
-        SEL refreshIslandSel = sel_registerName("refreshDynamicIsland");
-        if ([dockMotion respondsToSelector:refreshIslandSel]) {
-            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshIslandSel);
         }
     } else if ([key isEqualToString:SpeechFloatKey]) {
         UIView *button = LastSpeechButton;

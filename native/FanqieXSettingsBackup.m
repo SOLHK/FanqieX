@@ -72,8 +72,6 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.CommentAppearanceMode.1": @0,
         @"FanqieX.CommentComposerStyle.1": @1,
         @"FanqieX.AudioLiquidGlass.1": @NO,
-        @"FanqieX.AudioDynamicIsland.1": @NO,
-        @"FanqieX.DramaDynamicIsland.1": @NO,
         @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.CommentSearchEntrance.1": @YES,
         @"FanqieX.DramaFollowBottomWidth.1": @NO,

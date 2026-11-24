@@ -82,11 +82,13 @@ class Runtime(MenuRuntime):
                 if name == "setActive:" and obj["class"] == "UISearchController":
                     obj["isActive"] = argument
                     return self.finish(cpu)
-                if name == "dismissViewControllerAnimated:completion:" and obj["class"] == "UISearchController":
+                if name == "dismissViewControllerAnimated:completion:":
                     self.dismissals += 1
-                    if obj["isActive"]:
-                        obj["isActive"] = 0
-                        obj["presentingViewController"] = 0
+                    parent = self.objects.get(obj.get("presentingViewController", 0), {}) if obj["class"] == "UISearchController" else obj
+                    child = self.objects.get(parent.get("presentedViewController", 0), {})
+                    if child.get("class") == "UISearchController":
+                        parent["presentedViewController"] = 0
+                        child.update(isActive=0, presentingViewController=0)
                         self.invoke_block(cpu, args[3], 0, 0)
                     # An inactive search with a retained presentation owner is
                     # not an active modal transition. The dispatcher must not
@@ -195,8 +197,10 @@ def run_case(data, active, presenter, selector):
                                      "selector": rt.obj("NSString", selector)})
     for key, value in {"_content": button, "_actions": rt.obj("NSArray", [action])}.items():
         cpu.write(row + rt.classes["FQXSettingRow"]["ivars"][key], 8, value)
-    search = rt.obj("UISearchController", isActive=int(active),
-                    presentingViewController=rt.obj("UIViewController") if presenter else 0)
+    parent = rt.obj("UIViewController", presentedViewController=0) if presenter else 0
+    search = rt.obj("UISearchController", isActive=int(active), presentingViewController=parent)
+    if active and parent:
+        rt.objects[parent]["presentedViewController"] = search
     for key, value in {"_catalog": rt.obj("NSArray", [row]), "_search": search, "_router": router}.items():
         cpu.write(menu + rt.classes["FQXSettingsMenu"]["ivars"][key], 8, value)
     sel, imp = rt.classes["FQXSettingsMenu"]["methods"]["performStoredAction:"]
@@ -244,7 +248,10 @@ def main():
             result["cases"] = run_dock_switches(data)
         else:
             result["original_target_capture"] = "fixture seeded from saved target-selector pairs"
-            for selector in ("fqx178_export:", "fqx178_testListenReward:"):
+            core = next(segment for segment in macho.segments(data) if segment["name"] == "__FQCORETEXT")
+            build, = struct.unpack_from("<I", data, core["fileoff"] + 0x818)
+            secondary_selector = "fqx178_testListenReward:" if build < 0x15706 else "fqx_openBackup:"
+            for selector in ("fqx178_export:", secondary_selector):
                 for active, presenter in ((False, True), (False, False), (True, True), (True, False)):
                     result["cases"].append(run_case(data, active, presenter, selector))
             for weak, connected in ((True, True), (False, True), (True, False)):

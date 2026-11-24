@@ -105,13 +105,8 @@ static void CaptureSource(UIView *player, id engine) {
     if (!RecentSource) RecentUnavailableReason = @"请重新播放这条视频，再尝试导出可读取的视频来源。";
 }
 
-extern void FQXNotifyDramaPlayerStateChanged(UIView *player, id engine, NSInteger state);
-
 static void PlaybackChanged(id self, SEL cmd, id engine, NSInteger state) {
     NativePlaybackChanged(self, cmd, engine, state);
-    if ([self isKindOfClass:UIView.class]) {
-        FQXNotifyDramaPlayerStateChanged((UIView *)self, engine, state);
-    }
     if (state != PlaybackPlaying || !engine || ![self isKindOfClass:UIView.class]) return;
     UIView *player = self;
     void (^capture)(void) = ^{

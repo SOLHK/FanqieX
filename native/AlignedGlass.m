@@ -8120,7 +8120,6 @@ static Obj BottomPreference178(I tag) {
         case 32: return Text("FanqieX.DramaHighestQuality.1");
         case 33: return Text("FanqieX.DramaPureClean.1");
         case 34: return Text("FanqieX.MineQuickIconsOnly.1");
-        case 35: return Text("FanqieX.LocalRewardTest.1");
         case 36: return Text("FanqieX.ReaderScreenshotQuickShare.1");
         case 37: return Text("FanqieX.DramaFollowBottomWidth.1");
         case BottomHapticTag: return Text("FanqieX.BottomHaptics.1");
@@ -9723,21 +9722,6 @@ static void SettingsOpenBackup(Obj router,Sel cmd,Obj sender) {
     V1(Lookup("FQXSettingsBackup"),"presentFromController:",owner);
 }
 
-static void SettingsLocalReward178R13(Obj router,Sel cmd,Obj sender) {
-    (void)cmd; (void)sender;
-    Obj owner=SettingsVisibleController(BottomWeakValue178(router,BottomOptionsOwner178Key));
-    if (!owner || Get(owner,"presentedViewController")) return;
-    B enabled=BottomFlag178(35);
-    Obj alert=((Obj(*)(Obj,Sel,Obj,Obj,I))Message)(Lookup("UIAlertController"),
-        sel_registerName("alertControllerWithTitle:message:preferredStyle:"),Text("听书奖励本地测试"),
-        Text(enabled ? "模拟领取成功。等待 0 秒，未发送请求，账号余额不变。" :
-                       "请先打开「听书奖励本地测试」。"),1);
-    Obj okay=((Obj(*)(Obj,Sel,Obj,I,Obj))Message)(Lookup("UIAlertAction"),
-        sel_registerName("actionWithTitle:style:handler:"),Text("完成"),0,0);
-    V1(alert,"addAction:",okay);
-    ((void(*)(Obj,Sel,Obj,B,Obj))Message)(owner,sel_registerName("presentViewController:animated:completion:"),alert,1,0);
-}
-
 static void SettingsJump178R13(Obj router,Sel cmd,Obj sender) {
     (void)cmd;
     Obj owner=BottomWeakValue178(router,BottomOptionsOwner178Key),table=Get(owner,"tableView");
@@ -9805,7 +9789,6 @@ static void SettingsInstall178R13(Obj controller) {
         class_addMethod(cls,sel_registerName("fqx_openStartup:"),(Imp)SettingsOpenStartup,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx_openBookstoreCategories:"),(Imp)SettingsOpenBookstoreCategories,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx_openBackup:"),(Imp)SettingsOpenBackup,"v24@0:8@16");
-        class_addMethod(cls,sel_registerName("fqx178_testListenReward:"),(Imp)SettingsLocalReward178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx178_jump:"),(Imp)SettingsJump178R13,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx_openAds:"),(Imp)SettingsOpenAds,"v24@0:8@16");
         class_addMethod(cls,sel_registerName("fqx_openCompactPosition:"),(Imp)SettingsOpenCompactPosition,"v24@0:8@16");
@@ -9923,18 +9906,18 @@ static void SettingsInstall178R13(Obj controller) {
     V1(ads,"setAccessibilityIdentifier:",Text("广告 福利 拦截 开屏 阅读底栏 插屏 弹窗 自动签到 金币 福利标签"));
     Obj diagnostic=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"诊断与日志  ›","诊断与日志","fqx178_jump:");
     Q1(diagnostic,"setTag:",1);
-    V1(diagnostic,"setAccessibilityIdentifier:",Text("开启诊断 增强诊断 导出日志 听书奖励本地测试 模拟立即领取"));
+    V1(diagnostic,"setAccessibilityIdentifier:",Text("开启诊断 增强诊断 导出日志"));
     Obj telegram=OptionsEntry178(group,router,(Rect){0,0,rowWidth,48},"Telegram 频道  ›","Telegram 频道","fqx178_openTelegram:");
     V1(telegram,"setAccessibilityIdentifier:",Text("Telegram 更新频道"));
     SettingsSearchChanged178R13(router,0,0,Text(""));
     V0(header,"release");
 
     Obj footer=O0(Lookup("UIView"),"new");
-    SetFrame(footer,(Rect){0,0,width,280});
+    SetFrame(footer,(Rect){0,0,width,176});
     VB(footer,"setAutoresizesSubviews:",0);
-    Obj card=SettingsPanel178R13(footer,(Rect){20,8,width-40,256},1);
+    Obj card=SettingsPanel178R13(footer,(Rect){20,8,width-40,156},1);
     double cardWidth=Bounds(card).width;
-    BottomSettingsLabel178(card,(Rect){16,10,cardWidth-32,26},"诊断与测试",14,1);
+    BottomSettingsLabel178(card,(Rect){16,10,cardWidth-32,26},"诊断与日志",14,1);
     BottomSettingsLabel178(card,(Rect){20,48,cardWidth-100,32},"开启诊断",16,0);
     Obj toggle=O0(Lookup("UISwitch"),"new");
     SettingsPlaceSwitch178R14(toggle,cardWidth,64);
@@ -9947,8 +9930,6 @@ static void SettingsInstall178R13(Obj controller) {
     V0(toggle,"release");
     BottomSettingsLabel178(card,(Rect){20,81,cardWidth-40,34},"开启后记录完整诊断，关闭后停止记录。",12,1);
     OptionsEntry178(card,router,(Rect){0,112,cardWidth,41},"导出日志","导出日志","fqx178_export:");
-    BottomSettingsSwitch178(controller,card,158,35,"听书奖励本地测试",0);
-    OptionsEntry178(card,router,(Rect){0,193,cardWidth,48},"模拟立即领取","模拟立即领取","fqx178_testListenReward:");
     V1(table,"setTableFooterView:",footer);
     SettingsInstallLayout178R14(controller);
     SettingsContentWidth178R14(controller);

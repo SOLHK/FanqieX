@@ -5,8 +5,6 @@
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
 
-extern UIUserInterfaceStyle FQXHostAppInterfaceStyle(UIWindow *window);
-
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
@@ -135,7 +133,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @implementation FQXSettingRow
 @end
 
-@interface FQXSettingsMenu : UITableViewController <UISearchResultsUpdating>
+@interface FQXSettingsMenu : UITableViewController <UISearchResultsUpdating, UIPopoverPresentationControllerDelegate>
 @property(nonatomic, strong) NSMutableArray<FQXSettingRow *> *catalog;
 @property(nonatomic, copy) NSArray<FQXSettingRow *> *visibleRows;
 @property(nonatomic, copy) NSArray<NSString *> *folders;
@@ -147,8 +145,6 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL diagnosticExportPending;
 @property(nonatomic, strong) NSURL *diagnosticFile;
 @property(nonatomic, copy) NSString *diagnosticError;
-@property(nonatomic, weak) UIWindow *appearanceWindow;
-@property(nonatomic, strong) id appearanceRegistration;
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads;
 + (UIViewController *)controllerForController:(UIViewController *)owner;
 + (UIViewController *)visibleControllerForController:(UIViewController *)owner;
@@ -158,6 +154,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 - (BOOL)updateRows;
 - (void)beginDiagnosticExport;
 - (void)shareDiagnosticFile;
+- (void)showReleaseNotes:(UIButton *)sender;
 - (void)dismissSettings:(id)sender;
 - (void)fqab_156_presentDiagnostics:(NSDictionary *)result;
 @end
@@ -535,6 +532,46 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [menu.catalog addObject:composerRow];
 }
 
+static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id target, SEL action) {
+    CGRect frame = CGRectMake(0, 0, 80, 44);
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.frame = frame;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    button.tintColor = UIColor.labelColor;
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setImage:image forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    button.titleLabel.adjustsFontForContentSizeCategory = YES;
+    button.titleLabel.adjustsFontSizeToFitWidth = YES;
+    button.titleLabel.minimumScaleFactor = 0.75;
+    [button addTarget:target action:action forControlEvents:UIControlEventPrimaryActionTriggered];
+
+    UIVisualEffectView *surface;
+    Class glassClass = NSClassFromString(@"UIGlassEffect");
+    if (glassClass) {
+        const NSInteger regularGlassStyle = 0;
+        SEL effectSelector = sel_registerName("effectWithStyle:");
+        UIVisualEffect *effect = ((id (*)(Class, SEL, NSInteger))objc_msgSend)(glassClass, effectSelector, regularGlassStyle);
+        surface = [[UIVisualEffectView alloc] initWithEffect:effect];
+        id corners = Invoke(NSClassFromString(@"UICornerConfiguration"), @"capsuleConfiguration");
+        ((void (*)(id, SEL, id))objc_msgSend)(surface, sel_registerName("setCornerConfiguration:"), corners);
+    } else {
+        surface = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
+        surface.layer.cornerRadius = CGRectGetHeight(frame) * 0.5;
+        surface.clipsToBounds = YES;
+    }
+    surface.frame = frame;
+    surface.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    surface.userInteractionEnabled = NO;
+    [button insertSubview:surface atIndex:0];
+
+    [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:CGRectGetWidth(frame)],
+                                              [button.heightAnchor constraintEqualToConstant:CGRectGetHeight(frame)]]];
+    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithCustomView:button];
+    if (glassClass) ((void (*)(id, SEL, BOOL))objc_msgSend)(item, sel_registerName("setHidesSharedBackground:"), YES);
+    return item;
+}
+
 @implementation FQXSettingsMenu
 
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads {
@@ -676,8 +713,6 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
             @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
             @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
             @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原版默认 玻璃 外观",
-            @"FanqieX.AudioDynamicIsland.1":@"听书 灵动岛 听书灵动岛 朗读灵动岛 退出听书 上一章 下一章 暂停 播放 后台 胶囊",
-            @"FanqieX.DramaDynamicIsland.1":@"短剧 灵动岛 短剧灵动岛 漫剧灵动岛 后台听剧 退出短剧 主页 桌面 上一集 下一集 暂停 播放 胶囊",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 纯图标 语速 下载 章评 目录 定时",
             @"FanqieX.ReaderSpeechFloat.1":@"听书 朗读 悬浮 悬浮球 按钮",
@@ -838,58 +873,16 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [menu configureSearch];
     [menu updateRows];
     menu.title = owner.title ?: @"FanqieX";
-    UIColor *headerInk = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
-        return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
-    }];
-    CGSize capsuleSize = CGSizeMake(72.0, 44.0);
-    SEL glassConfiguration = sel_registerName("glassButtonConfiguration");
-    BOOL usesGlass = [UIButtonConfiguration respondsToSelector:glassConfiguration];
-    UIButtonConfiguration *capsule = usesGlass
-        ? ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, glassConfiguration)
-        : [UIButtonConfiguration grayButtonConfiguration];
-    capsule.baseForegroundColor = headerInk;
-    capsule.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-    capsule.contentInsets = NSDirectionalEdgeInsetsZero;
-
-    UIButton *version = [UIButton buttonWithConfiguration:capsule primaryAction:nil];
-    version.userInteractionEnabled = NO;
-    version.isAccessibilityElement = YES;
-    version.accessibilityTraits = UIAccessibilityTraitStaticText;
-    UILabel *versionLabel = [UILabel new];
-    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    versionLabel.text = FQXPluginVersion();
-    versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-    versionLabel.textColor = headerInk;
-    versionLabel.textAlignment = NSTextAlignmentCenter;
-    versionLabel.adjustsFontForContentSizeCategory = YES;
-    versionLabel.adjustsFontSizeToFitWidth = YES;
-    versionLabel.minimumScaleFactor = 0.5;
-    versionLabel.isAccessibilityElement = NO;
-    [version addSubview:versionLabel];
-    [NSLayoutConstraint activateConstraints:@[[versionLabel.leadingAnchor constraintEqualToAnchor:version.leadingAnchor constant:6.0],
-                                              [versionLabel.trailingAnchor constraintEqualToAnchor:version.trailingAnchor constant:-6.0],
-                                              [versionLabel.topAnchor constraintEqualToAnchor:version.topAnchor],
-                                              [versionLabel.bottomAnchor constraintEqualToAnchor:version.bottomAnchor]]];
-    version.accessibilityLabel = [@"插件版本 " stringByAppendingString:versionLabel.text];
-
-    UIButtonConfiguration *minimizeConfiguration = [capsule copy];
-    minimizeConfiguration.image = [UIImage systemImageNamed:@"minus"];
-    UIButton *minimize = [UIButton buttonWithConfiguration:minimizeConfiguration primaryAction:nil];
-    [minimize addTarget:menu action:@selector(dismissSettings:) forControlEvents:UIControlEventTouchUpInside];
-    minimize.accessibilityLabel = @"收起设置";
-
-    for (UIButton *button in @[version, minimize]) {
-        button.translatesAutoresizingMaskIntoConstraints = NO;
-        [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:capsuleSize.width],
-                                                  [button.heightAnchor constraintEqualToConstant:capsuleSize.height]]];
-        UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithCustomView:button];
-        if (usesGlass) {
-            // Each control already supplies its own glass.
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(item, sel_registerName("setHidesSharedBackground:"), YES);
-        }
-        if (button == version) menu.navigationItem.leftBarButtonItem = item;
-        else menu.navigationItem.rightBarButtonItem = item;
-    }
+    NSString *version = FQXPluginVersion();
+    UIBarButtonItem *releaseNotes = SettingsHeaderItem(version, nil, menu, @selector(showReleaseNotes:));
+    releaseNotes.customView.accessibilityLabel = [@"插件版本 " stringByAppendingString:version];
+    releaseNotes.customView.accessibilityHint = @"展开本版更新";
+    UIImageSymbolConfiguration *symbol = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevron = [UIImage systemImageNamed:@"chevron.down" withConfiguration:symbol];
+    UIBarButtonItem *minimize = SettingsHeaderItem(nil, chevron, menu, @selector(dismissSettings:));
+    minimize.customView.accessibilityLabel = @"收起设置";
+    menu.navigationItem.leftBarButtonItem = releaseNotes;
+    menu.navigationItem.rightBarButtonItem = minimize;
     // Keep the result alive until the audited presentation boundary adopts it.
     objc_setAssociatedObject(owner, MenuKey, menu, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -913,6 +906,41 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
 + (UIViewController *)visibleControllerForController:(UIViewController *)owner {
     FQXSettingsMenu *menu = MenuForController(owner);
     return menu.navigationController.topViewController ?: menu;
+}
+
+- (void)showReleaseNotes:(UIButton *)sender {
+    UITextView *notes = [UITextView new];
+    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
+                  "• 设置页随宿主窗口切换浅色和深色。\n"
+                  "• 移除听书奖励本地测试和模拟领取。\n"
+                  "• 移除插件的听书和短剧灵动岛。\n"
+                  "• 设置首页新增版本更新入口，并调整收起按钮。",
+                  FQXPluginVersion()];
+    notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    notes.adjustsFontForContentSizeCategory = YES;
+    notes.textColor = UIColor.labelColor;
+    notes.backgroundColor = UIColor.systemBackgroundColor;
+    notes.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
+    notes.editable = NO;
+    notes.selectable = NO;
+
+    UIViewController *page = [UIViewController new];
+    page.view = notes;
+    page.modalPresentationStyle = UIModalPresentationPopover;
+    CGFloat width = MIN(300.0, CGRectGetWidth(self.view.bounds) - 32.0);
+    CGSize contentSize = [notes sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    page.preferredContentSize = CGSizeMake(width, MIN(240.0, ceil(contentSize.height)));
+    UIPopoverPresentationController *popover = page.popoverPresentationController;
+    popover.delegate = self;
+    popover.sourceView = sender;
+    popover.sourceRect = sender.bounds;
+    popover.permittedArrowDirections = UIPopoverArrowDirectionUp;
+    [self presentViewController:page animated:YES completion:nil];
+}
+
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller {
+    (void)controller;
+    return UIModalPresentationNone;
 }
 
 - (void)dismissSettings:(id)sender {
@@ -962,48 +990,9 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     self.definesPresentationContext = YES;
 }
 
-- (void)syncHostAppearance {
-    UINavigationController *navigation = self.navigationController;
-    UIWindow *window = navigation.presentingViewController.viewIfLoaded.window ?: self.viewIfLoaded.window;
-    UIUserInterfaceStyle style = FQXHostAppInterfaceStyle(window);
-    // Let UIKit inherit live window changes whenever the host already uses
-    // the desired style. An explicit override belongs only to the settings stack.
-    if (window.traitCollection.userInterfaceStyle == style) style = UIUserInterfaceStyleUnspecified;
-    if (navigation.overrideUserInterfaceStyle != style) navigation.overrideUserInterfaceStyle = style;
-    if (window == self.appearanceWindow) return;
-    [self stopObservingHostAppearance];
-    self.appearanceWindow = window;
-    Class styleTrait = NSClassFromString(@"UITraitUserInterfaceStyle");
-    SEL observeTraits = sel_registerName("registerForTraitChanges:withHandler:");
-    if (!styleTrait || ![window respondsToSelector:observeTraits]) return;
-    __weak FQXSettingsMenu *weakMenu = self;
-    void (^handler)(id<UITraitEnvironment>, UITraitCollection *) =
-        ^(__unused id<UITraitEnvironment> environment, __unused UITraitCollection *previous) {
-            [weakMenu syncHostAppearance];
-        };
-    self.appearanceRegistration = ((id (*)(id, SEL, NSArray *, id))objc_msgSend)(window, observeTraits, @[styleTrait], handler);
-}
-
-- (void)stopObservingHostAppearance {
-    if (!_appearanceRegistration) return;
-    SEL unregisterTraits = sel_registerName("unregisterForTraitChanges:");
-    ((void (*)(id, SEL, id))objc_msgSend)(_appearanceWindow, unregisterTraits, _appearanceRegistration);
-    _appearanceRegistration = nil;
-}
-
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    if (self.path.length == 0) [self syncHostAppearance];
     [self rebuild];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    if (self.path.length == 0 && !self.appearanceWindow) [self syncHostAppearance];
-}
-
-- (void)dealloc {
-    [self stopObservingHostAppearance];
 }
 
 - (BOOL)updateRows {
