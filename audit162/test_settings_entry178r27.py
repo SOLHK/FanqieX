@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the real settings opener and its owned-root handoff in candidate ARM64.
+"""Execute the host settings entry and opener's owned-root handoff in candidate ARM64.
 
 The separately linked menu implementation is represented by an explicit boundary:
 its registered class methods build/return a distinct menu. This test exercises the
@@ -136,6 +136,81 @@ def exercise(data, labels, available=True, returns_root=True):
             "balanced_root_handoff": True, "caller_registers_preserved": True}
 
 
+class HostEntryRuntime(Runtime):
+    def __init__(self, data, glass):
+        super().__init__(data)
+        self._add(self.classes["SSSettingViewController"], "fqab_originalViewDidLoad",
+                  self.VIEW_LOAD_IMP, "v16@0:8")
+        self.objects[self.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = int(not glass)
+
+    def handle(self, cpu, pc):
+        receiver, selector = cpu.x[:2]
+        name = self.selector_names.get(selector)
+        if pc - self.slide == 0x4f64:
+            # The legacy width calculation uses an FMADD on integer-valued geometry.
+            require(cpu.read(pc, 4) == 0x1f40214c, "Expected FMADD d12, d10, d0, d8")
+            cpu.wf(12, cpu.fp(10) * cpu.fp(0) + cpu.fp(8))
+            cpu.pc += 4
+            return True
+        if pc - self.slide == 0xa5d4:
+            if receiver == self.classes["UIButtonConfiguration"] and name == "glassButtonConfiguration":
+                return self.finish(cpu, self.obj("UIButtonConfiguration", "host entry glass configuration"))
+            if receiver in self.objects:
+                state = self.objects[receiver].state
+                if name == "initWithFrame:" and self.objects[receiver].cls == self.classes["UIView"]:
+                    frame = tuple(cpu.fp(i) for i in range(4))
+                    state.update(frame=frame, bounds=(0, 0, frame[2], frame[3]))
+                    return self.finish(cpu, receiver)
+                if name == "setTableHeaderView:":
+                    if state["tableHeaderView"]:
+                        self.reparent(state["tableHeaderView"], 0)
+                    state["tableHeaderView"] = cpu.x[2]
+                    if cpu.x[2]:
+                        self.reparent(cpu.x[2], receiver)
+                    return self.finish(cpu)
+                if name == "addTarget:action:forControlEvents:":
+                    state["control_targets"].append(tuple(cpu.x[2:5]))
+                    return self.finish(cpu)
+                if name in ("setTitle:", "setConfiguration:", "setAutoresizingMask:"):
+                    state[name] = cpu.x[2]
+                    return self.finish(cpu)
+        return super().handle(cpu, pc)
+
+
+def host_entry(data, labels, glass, existing_header):
+    runtime = HostEntryRuntime(data, glass)
+    runtime.labels = labels
+    cpu = CPU(data, runtime, 0, ranges=[(0x4338, 0x43fc), (0x47dc, 0x4878), (0x4d78, 0x5204)])
+    cpu.pointers.update(runtime.rebase_pointers)
+    table = runtime.view("UITableView", "native settings table", (0, 0, 390, 844), tableHeaderView=0)
+    stock_height = 28 if existing_header else 0
+    stock = runtime.view("UIView", "existing table header", (0, 0, 390, stock_height), table) if existing_header else 0
+    runtime.objects[table].state["tableHeaderView"] = stock
+    host = runtime.obj("SSSettingViewController", "host settings controller", tableView=table)
+
+    cpu.run(0x4d78, host, runtime.sel("viewDidLoad"))
+    header = runtime.objects[runtime.objects[table].state["tableHeaderView"]].state
+    require(len(header["subviews"]) == 1 + existing_header, "The real table header contains the entry and any native header")
+    if existing_header:
+        require(header["subviews"][0] == stock and runtime.objects[stock].state["frame"] == (0, 0, 390, stock_height),
+                "Existing native table header keeps its identity, dimensions, and stacking order")
+    button = runtime.objects[header["subviews"][-1]].state
+    require(runtime.string_value(button["titles"][0]) == "FanqieX", "Normal button title is FanqieX")
+    configuration = button.get("setConfiguration:", 0)
+    require(bool(configuration) == glass, "The host entry keeps its original glass preference")
+    if glass:
+        require(runtime.string_value(runtime.objects[configuration].state["setTitle:"]) == "FanqieX",
+                "The installed glass configuration also uses the FanqieX title")
+    require(button["control_targets"] == [(host, runtime.sel("fqab_openMenu"), 64)],
+            "Exactly one native touch-up-inside handler opens FanqieX")
+    expected_frame = (16, stock_height + 4, 358, 44) if glass else (0, stock_height, 390, 52)
+    require(button["frame"] == expected_frame and button["setAutoresizingMask:"] == 2,
+            "Entry tap dimensions and horizontal sizing are preserved")
+    bottom_gap = header["frame"][3] - button["frame"][1] - button["frame"][3]
+    require(bottom_gap == (12 if glass else 8), "Table header reserves breathing room below the button")
+    return {"glass": glass, "existing_header": existing_header, "bottom_gap": bottom_gap}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
@@ -147,6 +222,9 @@ def main():
               "cases": [exercise(data, labels), exercise(data, labels, available=False),
                         exercise(data, labels, returns_root=False)],
               "native_menu_body_executed": False, "device_tested": False}
+    if struct.unpack_from("<I", data, 0x818)[0] >= 0x15705:
+        report["host_entry_cases"] = [host_entry(data, labels, glass, existing) for glass in (False, True)
+                                      for existing in (False, True)]
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 

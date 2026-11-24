@@ -841,38 +841,55 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     UIColor *headerInk = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
         return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
     }];
+    CGSize capsuleSize = CGSizeMake(72.0, 44.0);
+    SEL glassConfiguration = sel_registerName("glassButtonConfiguration");
+    BOOL usesGlass = [UIButtonConfiguration respondsToSelector:glassConfiguration];
+    UIButtonConfiguration *capsule = usesGlass
+        ? ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, glassConfiguration)
+        : [UIButtonConfiguration grayButtonConfiguration];
+    capsule.baseForegroundColor = headerInk;
+    capsule.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    capsule.contentInsets = NSDirectionalEdgeInsetsZero;
+
+    UIButton *version = [UIButton buttonWithConfiguration:capsule primaryAction:nil];
+    version.userInteractionEnabled = NO;
+    version.isAccessibilityElement = YES;
+    version.accessibilityTraits = UIAccessibilityTraitStaticText;
     UILabel *versionLabel = [UILabel new];
+    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
     versionLabel.text = FQXPluginVersion();
     versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
     versionLabel.textColor = headerInk;
+    versionLabel.textAlignment = NSTextAlignmentCenter;
     versionLabel.adjustsFontForContentSizeCategory = YES;
-    versionLabel.accessibilityLabel = [@"插件版本 " stringByAppendingString:versionLabel.text];
-    [versionLabel sizeToFit];
-    menu.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:versionLabel];
-    UIImage *minimizeImage = [UIImage systemImageNamed:@"minus"];
-    UIBarButtonItem *minimize;
-    SEL glassConfiguration = sel_registerName("glassButtonConfiguration");
-    if ([UIButtonConfiguration respondsToSelector:glassConfiguration]) {
-        UIButtonConfiguration *configuration = ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, glassConfiguration);
-        configuration.image = minimizeImage;
-        configuration.baseForegroundColor = headerInk;
-        configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-        UIButton *button = [UIButton buttonWithConfiguration:configuration primaryAction:nil];
+    versionLabel.adjustsFontSizeToFitWidth = YES;
+    versionLabel.minimumScaleFactor = 0.5;
+    versionLabel.isAccessibilityElement = NO;
+    [version addSubview:versionLabel];
+    [NSLayoutConstraint activateConstraints:@[[versionLabel.leadingAnchor constraintEqualToAnchor:version.leadingAnchor constant:6.0],
+                                              [versionLabel.trailingAnchor constraintEqualToAnchor:version.trailingAnchor constant:-6.0],
+                                              [versionLabel.topAnchor constraintEqualToAnchor:version.topAnchor],
+                                              [versionLabel.bottomAnchor constraintEqualToAnchor:version.bottomAnchor]]];
+    version.accessibilityLabel = [@"插件版本 " stringByAppendingString:versionLabel.text];
+
+    UIButtonConfiguration *minimizeConfiguration = [capsule copy];
+    minimizeConfiguration.image = [UIImage systemImageNamed:@"minus"];
+    UIButton *minimize = [UIButton buttonWithConfiguration:minimizeConfiguration primaryAction:nil];
+    [minimize addTarget:menu action:@selector(dismissSettings:) forControlEvents:UIControlEventTouchUpInside];
+    minimize.accessibilityLabel = @"收起设置";
+
+    for (UIButton *button in @[version, minimize]) {
         button.translatesAutoresizingMaskIntoConstraints = NO;
-        [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:44.0],
-                                                  [button.heightAnchor constraintEqualToConstant:44.0]]];
-        [button addTarget:menu action:@selector(dismissSettings:) forControlEvents:UIControlEventTouchUpInside];
-        button.accessibilityLabel = @"收起设置";
-        minimize = [[UIBarButtonItem alloc] initWithCustomView:button];
-        // The configured button supplies its own glass.
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(minimize, sel_registerName("setHidesSharedBackground:"), YES);
-    } else {
-        minimize = [[UIBarButtonItem alloc] initWithImage:minimizeImage style:UIBarButtonItemStylePlain
-                                                   target:menu action:@selector(dismissSettings:)];
-        minimize.tintColor = headerInk;
-        minimize.accessibilityLabel = @"收起设置";
+        [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:capsuleSize.width],
+                                                  [button.heightAnchor constraintEqualToConstant:capsuleSize.height]]];
+        UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithCustomView:button];
+        if (usesGlass) {
+            // Each control already supplies its own glass.
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(item, sel_registerName("setHidesSharedBackground:"), YES);
+        }
+        if (button == version) menu.navigationItem.leftBarButtonItem = item;
+        else menu.navigationItem.rightBarButtonItem = item;
     }
-    menu.navigationItem.rightBarButtonItem = minimize;
     // Keep the result alive until the audited presentation boundary adopts it.
     objc_setAssociatedObject(owner, MenuKey, menu, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
