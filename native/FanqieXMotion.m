@@ -12220,6 +12220,212 @@ static void HookShelfHistoryVCDidAppear(UIViewController *self, SEL _cmd, BOOL a
     }
 }
 
+static const char FQXShelfFavoritesStripHiddenKey;
+static const char FQXShelfFavoritesSelectionPendingKey;
+
+static BOOL FQXIsShelfFavoritesController(id controller);
+
+static NSMapTable<UIView *, UIViewController *> *FQXTrackedShelfFavoritesHeaders(void) {
+    static NSMapTable<UIView *, UIViewController *> *headers;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ headers = [NSMapTable weakToWeakObjectsMapTable]; });
+    return headers;
+}
+
+static NSString *FQXShelfFavoritesFilterKey(id model) {
+    NSString *title = FQXObjGet(model, "title");
+    if (![title isKindOfClass:NSString.class]) return nil;
+    if ([title isEqualToString:@"全部"]) return @"FanqieX.ShelfFavoritesFilterAll.1";
+    if ([title isEqualToString:@"短剧"]) return @"FanqieX.ShelfFavoritesFilterDrama.1";
+    if ([title isEqualToString:@"漫剧"]) return @"FanqieX.ShelfFavoritesFilterComic.1";
+    if ([title isEqualToString:@"其他视频"]) return @"FanqieX.ShelfFavoritesFilterOther.1";
+    return nil;
+}
+
+static void FQXSelectVisibleShelfFavoritesFilter(UIView *header) {
+    if (objc_getAssociatedObject(header, &FQXShelfFavoritesSelectionPendingKey)) return;
+    objc_setAssociatedObject(header, &FQXShelfFavoritesSelectionPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak UIView *weakHeader = header;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *currentHeader = weakHeader;
+        if (!currentHeader) return;
+        objc_setAssociatedObject(currentHeader, &FQXShelfFavoritesSelectionPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!currentHeader.window || !FQXBoolGet(currentHeader, "isFilterEnabled", NO)) return;
+        NSArray *choices = FQXObjGet(currentHeader, "filterModels");
+        id next = choices.firstObject;
+        if (!next) return;
+        NSString *nextKey = FQXShelfFavoritesFilterKey(next);
+        if (nextKey && !FQXShelfOptionEnabled(nextKey)) return;
+        UIViewController *owner = [FQXTrackedShelfFavoritesHeaders() objectForKey:currentHeader];
+        if (!FQXIsShelfFavoritesController(owner) || FQXObjGet(currentHeader, "delegate") != owner) return;
+        NSString *current = FQXShelfFavoritesFilterKey(FQXObjGet(owner, "selectedFilterModel"));
+        if (!current || FQXShelfOptionEnabled(current)) return;
+        SEL action = sel_registerName("headerCell:didSelectFilterModel:");
+        Method method = class_getInstanceMethod(object_getClass(owner), action);
+        if (!method || strcmp(method_getTypeEncoding(method), "v32@0:8@16@24") != 0) return;
+        FQXSafeSetObjProp(currentHeader, NULL, "updateSelectedFilterModel:", next);
+        ((void (*)(id, SEL, id, id))objc_msgSend)(owner, action, currentHeader, next);
+    });
+}
+
+static void FQXSyncShelfFavoritesFilters(UIView *header, UIViewController *controller) {
+    if (!FQXIsShelfFavoritesController(controller) ||
+        ![header isKindOfClass:objc_lookUpClass("SSVideoCollectHeaderCell")]) return;
+    NSArray *models = FQXObjGet(controller, "filterModels");
+    if (![models isKindOfClass:NSArray.class]) return;
+    [FQXTrackedShelfFavoritesHeaders() setObject:controller forKey:header];
+    NSMutableArray *choices = [NSMutableArray arrayWithCapacity:models.count];
+    for (id model in models) {
+        NSString *key = FQXShelfFavoritesFilterKey(model);
+        if (!key || FQXShelfOptionEnabled(key)) [choices addObject:model];
+    }
+    NSArray *previous = FQXObjGet(header, "filterModels");
+    BOOL changed = ![choices isEqualToArray:previous];
+    if (changed) {
+        FQXSafeSetObjProp(header, NULL, "setFilterModels:", choices.count == models.count ? models : [choices copy]);
+    }
+
+    // The header and its stock collection receive the same compact array. Touches resolve against that array.
+    UIView *strip = FQXObjGet(header, "filterView");
+    BOOL enabled = FQXBoolGet(header, "isFilterEnabled", NO);
+    if (enabled) FQXShelfApplyControlHidden(strip, &FQXShelfFavoritesStripHiddenKey, models.count && !choices.count);
+    if (!enabled || !choices.count) return;
+
+    id selected = FQXObjGet(controller, "selectedFilterModel");
+    NSString *selectedKey = FQXShelfFavoritesFilterKey(selected);
+    if (selectedKey && !FQXShelfOptionEnabled(selectedKey)) {
+        FQXSelectVisibleShelfFavoritesFilter(header);
+    } else if (changed && selected) {
+        FQXSafeSetObjProp(header, NULL, "updateSelectedFilterModel:", selected);
+    }
+}
+
+static void FQXRefreshShelfFavoritesFilters(void) {
+    NSMapTable<UIView *, UIViewController *> *headers = FQXTrackedShelfFavoritesHeaders();
+    for (UIView *header in headers.keyEnumerator.allObjects) {
+        if (header.window) FQXSyncShelfFavoritesFilters(header, [headers objectForKey:header]);
+    }
+}
+
+static NSString *const ShelfFavoritesEditButtonPrefKey = @"FanqieX.ShelfFavoritesEditButton.1";
+static NSString *const ShelfFavoritesHistoryCardPrefKey = @"FanqieX.ShelfFavoritesHistoryCard.1";
+static const char ShelfFavoritesControllerKey;
+static const char ShelfFavoritesRowsPolicyKey;
+
+static NSUInteger FQXShelfFavoritesRowsPolicy(void) {
+    BOOL hideHeader = !FQXShelfOptionEnabled(ShelfFavoritesEditButtonPrefKey) &&
+        !FQXShelfOptionEnabled(@"FanqieX.ShelfFavoritesFilterAll.1") &&
+        !FQXShelfOptionEnabled(@"FanqieX.ShelfFavoritesFilterDrama.1") &&
+        !FQXShelfOptionEnabled(@"FanqieX.ShelfFavoritesFilterComic.1") &&
+        !FQXShelfOptionEnabled(@"FanqieX.ShelfFavoritesFilterOther.1");
+    return (hideHeader ? 1u : 0u) | (!FQXShelfOptionEnabled(ShelfFavoritesHistoryCardPrefKey) ? 2u : 0u);
+}
+
+static NSHashTable<UIViewController *> *FQXTrackedShelfFavoritesControllers(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static void FQXTrackShelfFavoritesController(UIViewController *controller) {
+    if (objc_getAssociatedObject(controller, &ShelfFavoritesControllerKey)) return;
+    objc_setAssociatedObject(controller, &ShelfFavoritesControllerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(controller, &ShelfFavoritesRowsPolicyKey, @(FQXShelfFavoritesRowsPolicy()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [FQXTrackedShelfFavoritesControllers() addObject:controller];
+}
+
+static BOOL FQXIsShelfFavoritesController(id controller) {
+    if (![controller isKindOfClass:objc_lookUpClass("SSVideoCollectViewController")]) return NO;
+    if (objc_getAssociatedObject(controller, &ShelfFavoritesControllerKey)) return YES;
+    Class shelfClass = objc_lookUpClass("SSBookShelf525ViewController");
+    if (![FQXObjGet(controller, "delegate") isKindOfClass:shelfClass]) {
+        UIViewController *parent = [controller parentViewController];
+        while (parent && ![parent isKindOfClass:shelfClass]) parent = parent.parentViewController;
+        if (!parent) return NO;
+    }
+    FQXTrackShelfFavoritesController(controller);
+    return YES;
+}
+
+static NSUInteger FQXShelfFavoritesAppliedRowsPolicy(UIViewController *controller) {
+    NSNumber *policy = objc_getAssociatedObject(controller, &ShelfFavoritesRowsPolicyKey);
+    return policy.unsignedIntegerValue;
+}
+
+static void FQXSyncShelfFavoritesEdit(UIView *header) {
+    if (![header isKindOfClass:objc_lookUpClass("SSVideoCollectHeaderCell")]) return;
+    UIView *button = FQXObjGet(header, "editButton");
+    FQXAudioSetHiddenTracked(button, !FQXShelfOptionEnabled(ShelfFavoritesEditButtonPrefKey));
+}
+
+static id (*OrigShelfBuildFavoritesController)(id, SEL, id);
+static id HookShelfBuildFavoritesController(UIViewController *shelf, SEL cmd, id model) {
+    id controller = OrigShelfBuildFavoritesController(shelf, cmd, model);
+    if ([controller isKindOfClass:objc_lookUpClass("SSVideoCollectViewController")]) {
+        FQXTrackShelfFavoritesController(controller);
+    }
+    return controller;
+}
+
+static NSInteger (*OrigShelfFavoritesDisplayCount)(id, SEL, BOOL);
+static NSInteger HookShelfFavoritesDisplayCount(UIViewController *controller, SEL cmd, BOOL includeExtra) {
+    if (includeExtra && FQXIsShelfFavoritesController(controller) && (FQXShelfFavoritesAppliedRowsPolicy(controller) & 2u)) {
+        id model = FQXObjGet(controller, "viewModel");
+        // The native extra cell style 1 opens bookshelf_video_history; style 0 opens the store category.
+        if (FQXIntGet(model, "videoCollectAddCellStyle", -1) == 1) includeExtra = NO;
+    }
+    return OrigShelfFavoritesDisplayCount(controller, cmd, includeExtra);
+}
+
+static NSInteger (*OrigShelfFavoritesNumberOfItems)(id, SEL, UICollectionView *, NSInteger);
+static NSInteger HookShelfFavoritesNumberOfItems(UIViewController *controller, SEL cmd, UICollectionView *collection, NSInteger section) {
+    if (section == 0 && FQXIsShelfFavoritesController(controller) && (FQXShelfFavoritesAppliedRowsPolicy(controller) & 1u) &&
+        FQXBoolGet(controller, "isFilterEnabled", NO) && FQXIntGet(controller, "videoContentSection", 0) > 0) {
+        NSArray *models = FQXObjGet(controller, "filterModels");
+        if ([models isKindOfClass:NSArray.class]) {
+            for (id model in models) {
+                if (!FQXShelfFavoritesFilterKey(model)) return OrigShelfFavoritesNumberOfItems(controller, cmd, collection, section);
+            }
+            return 0;
+        }
+    }
+    return OrigShelfFavoritesNumberOfItems(controller, cmd, collection, section);
+}
+
+static UICollectionViewCell *(*OrigShelfFavoritesCell)(id, SEL, UICollectionView *, NSIndexPath *);
+static UICollectionViewCell *HookShelfFavoritesCell(UIViewController *controller, SEL cmd, UICollectionView *collection, NSIndexPath *index) {
+    UICollectionViewCell *cell = OrigShelfFavoritesCell(controller, cmd, collection, index);
+    if ([cell isKindOfClass:objc_lookUpClass("SSVideoCollectHeaderCell")] && FQXIsShelfFavoritesController(controller)) {
+        FQXSyncShelfFavoritesEdit(cell);
+        FQXSyncShelfFavoritesFilters(cell, controller);
+    }
+    return cell;
+}
+
+static void (*OrigShelfFavoritesWillDisplay)(id, SEL, UICollectionView *, UICollectionViewCell *, NSIndexPath *);
+static void HookShelfFavoritesWillDisplay(UIViewController *controller, SEL cmd, UICollectionView *collection,
+                                         UICollectionViewCell *cell, NSIndexPath *index) {
+    OrigShelfFavoritesWillDisplay(controller, cmd, collection, cell, index);
+    if ([cell isKindOfClass:objc_lookUpClass("SSVideoCollectHeaderCell")] && FQXIsShelfFavoritesController(controller)) {
+        FQXSyncShelfFavoritesEdit(cell);
+        FQXSyncShelfFavoritesFilters(cell, controller);
+    }
+}
+
+static void FQXRefreshShelfFavoritesItems(void) {
+    NSUInteger policy = FQXShelfFavoritesRowsPolicy();
+    for (UIViewController *controller in FQXTrackedShelfFavoritesControllers().allObjects) {
+        BOOL reload = FQXShelfFavoritesAppliedRowsPolicy(controller) != policy;
+        if (reload) objc_setAssociatedObject(controller, &ShelfFavoritesRowsPolicyKey, @(policy), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!controller.isViewLoaded) continue;
+        UICollectionView *collection = FQXObjGet(controller, "collectionView");
+        if (![collection isKindOfClass:UICollectionView.class]) continue;
+        if (reload) [collection reloadData];
+        for (UICollectionViewCell *cell in collection.visibleCells) FQXSyncShelfFavoritesEdit(cell);
+    }
+}
+
 static void FQXRefreshAllShelfHeaderControls(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllShelfHeaderControls(); });
@@ -12268,6 +12474,8 @@ static void FQXRefreshAllShelfHeaderControls(void) {
         FQXReflowShelfFilterCollectionView(cv, nil);
         [cv setNeedsLayout];
     }
+    FQXRefreshShelfFavoritesItems();
+    FQXRefreshShelfFavoritesFilters();
     FQXRefreshAllShelfEditButtons();
 }
 
@@ -22269,6 +22477,11 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelf525ViewController", "viewLayout", "v16@0:8", OrigShelf525ViewLayout, HookShelf525ViewLayout);
         POST_HOOK("SSBookShelf525ViewController", "tryAddSelectRightView", "v16@0:8", OrigShelf525TryAddRightView, HookShelf525TryAddRightView);
         POST_HOOK("SSBookShelf525ViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelf525DidLayoutSubviews, HookShelf525DidLayoutSubviews);
+        POST_HOOK("SSBookShelf525ViewController", "buildTabVCWithModel:", "@24@0:8@16", OrigShelfBuildFavoritesController, HookShelfBuildFavoritesController);
+        POST_HOOK("SSVideoCollectViewController", "displayItemCountWithExtraCell:", "q20@0:8B16", OrigShelfFavoritesDisplayCount, HookShelfFavoritesDisplayCount);
+        POST_HOOK("SSVideoCollectViewController", "collectionView:numberOfItemsInSection:", "q32@0:8@16q24", OrigShelfFavoritesNumberOfItems, HookShelfFavoritesNumberOfItems);
+        POST_HOOK("SSVideoCollectViewController", "collectionView:cellForItemAtIndexPath:", "@32@0:8@16@24", OrigShelfFavoritesCell, HookShelfFavoritesCell);
+        POST_HOOK("SSVideoCollectViewController", "collectionView:willDisplayCell:forItemAtIndexPath:", "v40@0:8@16@24@32", OrigShelfFavoritesWillDisplay, HookShelfFavoritesWillDisplay);
         {
             Class _c525 = objc_lookUpClass("SSBookShelf525ViewController");
             if (_c525) {

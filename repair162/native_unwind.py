@@ -144,7 +144,7 @@ def regular_unwind(entries: list[tuple[int, int]], limit: int, capacity: int) ->
 
 
 def compressed_unwind(entries: list[tuple[int, int]], limit: int, capacity: int) -> bytes:
-    """Encode every record in one bounded, deterministic local-encoding page."""
+    """Encode every record in one bounded, deterministic compressed page."""
     need(0 < len(entries) <= 1021 and
          all(0 <= start < limit <= 0xFFFFFFFF and start % 4 == 0 and
              (encoding == 0 or encoding_supported(encoding)) for start, encoding in entries) and
@@ -158,20 +158,25 @@ def compressed_unwind(entries: list[tuple[int, int]], limit: int, capacity: int)
     encoding_indices = {encoding: index for index, encoding in enumerate(encodings)}
     entries_offset = 12
     encodings_offset = entries_offset + 4 * len(entries)
-    need(encodings_offset + 4 * len(encodings) <= 4096,
-         'Merged unwind exceeds one compressed page')
-    page_offset = 28 + 24
+    # Keep the sorted index order. Move only the encodings that exceed the page
+    # to the first-level common table, using the remaining fixed section bytes.
+    common_count = max(0, (encodings_offset + 4 * len(encodings) - 4096) // 4)
+    common_offset = 28
+    index_offset = common_offset + 4 * common_count
+    page_offset = index_offset + 24
     need(page_offset + 4096 <= capacity, 'Existing unwind slot is too small')
     blob = bytearray(capacity)
-    struct.pack_into('<7I', blob, 0, 1, 28, 0, 28, 0, 28, 2)
-    struct.pack_into('<III', blob, 28, base, page_offset, page_offset)
-    struct.pack_into('<III', blob, 40, limit, 0, page_offset)
+    struct.pack_into('<7I', blob, 0, 1, common_offset, common_count, index_offset, 0, index_offset, 2)
+    for index, encoding in enumerate(encodings[:common_count]):
+        struct.pack_into('<I', blob, common_offset + index * 4, encoding)
+    struct.pack_into('<III', blob, index_offset, base, page_offset, page_offset)
+    struct.pack_into('<III', blob, index_offset + 12, limit, 0, page_offset)
     struct.pack_into('<IHHHH', blob, page_offset, 3, entries_offset, len(entries),
-                     encodings_offset, len(encodings))
+                     encodings_offset, len(encodings) - common_count)
     for index, (start, encoding) in enumerate(entries):
         packed = encoding_indices[encoding] << 24 | (start - base)
         struct.pack_into('<I', blob, page_offset + entries_offset + 4 * index, packed)
-    for index, encoding in enumerate(encodings):
+    for index, encoding in enumerate(encodings[common_count:]):
         struct.pack_into('<I', blob, page_offset + encodings_offset + 4 * index, encoding)
     need(decode_unwind(bytes(blob)) == (entries, limit), 'Compressed unwind round trip failed')
     return bytes(blob)

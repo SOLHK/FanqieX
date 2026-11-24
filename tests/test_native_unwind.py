@@ -132,7 +132,7 @@ class NativeUnwindTests(unittest.TestCase):
         invalid = [
             ([], 8, 4216),
             ([(4 * i, 0x02000000) for i in range(1022)], 4096, 4216),
-            ([(4 * i, 0x02000000 if i % 2 else 0) for i in range(1020)], 4096, 4216),
+            ([(4 * i, 0x02000000 | (i % 19) << 12) for i in range(1020)], 4096, 4216),
             ([(0, 0x02000000), (0x1000000, 0x02000000)], 0x1000004, 4216),
             ([(4 * i, 0x02000000 | i << 12) for i in range(257)], 4096, 4216),
             (good, 8, 4096),
@@ -147,6 +147,7 @@ class NativeUnwindTests(unittest.TestCase):
         far = [(0, 0x02000000), (0xfffffc, 0x02000000)]
         self.assertEqual(decode_unwind(compressed_unwind(far, 0x1000000, 4216)), (far, 0x1000000))
         valid = compressed_unwind(good, 8, 4216)
+        self.assertEqual(struct.unpack_from('<7I', valid), (1, 28, 0, 28, 0, 28, 2))
         page = 52
         for offset, fmt, value in ((page + 12, '<I', 0xff000000),
                                    (page + 8, '<H', 12),
@@ -156,6 +157,16 @@ class NativeUnwindTests(unittest.TestCase):
             struct.pack_into(fmt, corrupt, offset, value)
             with self.subTest(offset=offset, value=value), self.assertRaises(ValueError):
                 decode_unwind(bytes(corrupt))
+
+    def test_compressed_spill_keeps_one_page_and_every_boundary(self):
+        sys.path.insert(0, str(ROOT / 'audit162'))
+        from unwind_audit import decode
+        entries = [(4 * i, 0x02000000 if i % 2 else 0) for i in range(1020)]
+        encoded = compressed_unwind(entries, 4096, 4216)
+        self.assertEqual(struct.unpack_from('<7I', encoded), (1, 28, 1, 32, 0, 32, 2))
+        self.assertEqual(len(encoded), 4216)
+        self.assertEqual(decode_unwind(encoded), (entries, 4096))
+        self.assertEqual(decode(encoded), (entries, 4096, [3]))
 
 
 if __name__ == '__main__':

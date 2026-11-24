@@ -6260,13 +6260,33 @@ static void RefreshMineList(const char *reason) {
     Obj context=Text(reason);
     for (U i=0;i<count;++i) V1(At(controllers,i),"reloadData:",context);
 }
+static void MineRenderedWalletModelKey(void) {}
 static B MineBenefitsRow(Obj model,Obj walletModel) {
     if (!Kind(model,"SSMyUserCell2Model") || !InstanceABI(model,"businessStyle","q16@0:8")) return 0;
     I style=((I(*)(Obj,Sel))Message)(model,sel_registerName("businessStyle"));
     // The native wallet model may still have only its friend flag set at cold load.
     return style==4 || style==5 || (style==0 &&
-           (model==walletModel || BoolProp(model,"hasWithdrawEntranceData") ||
+           (model==walletModel || objc_getAssociatedObject(model,MineRenderedWalletModelKey) ||
+            BoolProp(model,"hasWithdrawEntranceData") ||
             BoolProp(model,"isShowPersonalizedBar") || !BoolProp(model,"isShowFriendView")));
+}
+static void MineBenefitsCellLayout(Obj self,Sel cmd) {
+    ((void(*)(Obj,Sel))Original("SSMyUserCollectionView2Cell","fqx196_originalBenefitsCellLayout"))(self,cmd);
+    if (MineBenefitsEnabled()) {
+        DramaVisibilitySet(self,1);
+        return;
+    }
+    Obj model=Get(self,"model");
+    B wallet=MineBenefitsRow(model,0);
+    if (!wallet && Kind(model,"SSMyUserCell2Model") && InstanceABI(model,"businessStyle","q16@0:8") &&
+        ((I(*)(Obj,Sel))Message)(model,sel_registerName("businessStyle"))==0) {
+        // The cached legacy card can render its balance before withdraw metadata or the canonical model arrives.
+        Obj balance=Get(self,"balanceView");
+        wallet=Kind(balance,"SSMyUserViewBalanceView") && !Flag(balance,"isHidden") &&
+            VisibleRect(Frame(balance)) && HasAncestor(balance,"SSMyUserCollectionView2Cell");
+        if (wallet) objc_setAssociatedObject(model,MineRenderedWalletModelKey,BoolBox(1),1);
+    }
+    DramaVisibilitySet(self,!wallet);
 }
 static Obj MineListObjects(Obj self,Sel cmd,Obj adapter) {
     Obj rows=((Obj(*)(Obj,Sel,Obj))Original("SSMyUser621ViewController","fqx176_originalMineListObjects:"))(self,cmd,adapter);
@@ -7954,6 +7974,7 @@ void FQHPageInstall(void) {
     Hook("SSMyUser621BaseViewController","setupCellMiniGameEntranceData","fqx174_originalMiniGameSetup","v16@0:8",(Imp)MiniGameSetup);
     Hook("SSMyUserCell2Model","applyConfiguredMineEcomEntranceData:mineMonetizationStyle:","fqx176_originalMineEntrances:style:","v32@0:8@16q24",(Imp)MineConfiguredEntrances);
     Hook("SSMyUser621ViewController","objectsForListAdapter:","fqx176_originalMineListObjects:","@24@0:8@16",(Imp)MineListObjects);
+    Hook("SSMyUserCollectionView2Cell","layoutSubviews","fqx196_originalBenefitsCellLayout","v16@0:8",(Imp)MineBenefitsCellLayout);
     Hook("SS525BookShelfSubHeaderView","setShowReadTimeView:","fqx177_originalDurationVisible:","v20@0:8B16",(Imp)ShelfDurationVisible);
     Hook("SS525BookShelfSubHeaderView","layoutSubviews","fqx177_originalDurationLayout","v16@0:8",(Imp)ShelfDurationLayout);
     Hook("SS525BookShelfSubHeaderView","updateFilterShow:","fqx191_originalShelfFilterShow:","v20@0:8B16",(Imp)ShelfLegacyFilterShow);

@@ -72,6 +72,12 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(ShelfHistoryFilterDrama, "ShelfHistoryFilterDrama", "显示历史「短剧」标签", "shelf", YES) \
     X(ShelfHistoryFilterBtn, "ShelfHistoryFilterBtn", "显示历史「筛选」按钮", "shelf", YES) \
     X(ShelfHistoryEditBtn, "ShelfHistoryEditBtn", "显示历史「编辑」按钮", "shelf", YES) \
+    X(ShelfFavoritesFilterAll, "ShelfFavoritesFilterAll", "显示「全部」标签", "shelf", YES) \
+    X(ShelfFavoritesFilterDrama, "ShelfFavoritesFilterDrama", "显示「短剧」标签", "shelf", YES) \
+    X(ShelfFavoritesFilterComic, "ShelfFavoritesFilterComic", "显示「漫剧」标签", "shelf", YES) \
+    X(ShelfFavoritesFilterOther, "ShelfFavoritesFilterOther", "显示「其他视频」标签", "shelf", YES) \
+    X(ShelfFavoritesEditButton, "ShelfFavoritesEditButton", "显示「编辑」按钮", "shelf", YES) \
+    X(ShelfFavoritesHistoryCard, "ShelfFavoritesHistoryCard", "显示「查看短剧浏览历史」卡片", "shelf", YES) \
     X(Foreground, "NotificationsForeground", "显示前台通知提醒", "notifications", YES) \
     X(Badge, "NotificationsBadge", "显示 App 图标角标", "notifications", YES) \
     X(DoubleTap, "ReaderDoubleTapAutoread", "双击正文切换自动阅读", "gestures", NO) \
@@ -2106,6 +2112,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:ShelfHistoryFilterDramaKey] ||
                [key isEqualToString:ShelfHistoryFilterBtnKey] ||
                [key isEqualToString:ShelfHistoryEditBtnKey] ||
+               [key hasPrefix:@"FanqieX.ShelfFavorites"] ||
                [key isEqualToString:@"FanqieX.ShelfReadingDuration.1"] ||
                [key isEqualToString:@"FanqieX.ShelfFilterButton.1"]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");

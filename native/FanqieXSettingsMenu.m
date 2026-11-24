@@ -640,6 +640,8 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                @"FanqieX.ShelfHistoryFilterAll.1", @"FanqieX.ShelfHistoryFilterRead.1", @"FanqieX.ShelfHistoryFilterListen.1", @"FanqieX.ShelfHistoryFilterDrama.1",
                @"FanqieX.ShelfHistoryFilterBtn.1", @"FanqieX.ShelfHistoryEditBtn.1"] containsObject:option[@"key"]])
             row.path = @"书架净化/筛选栏标签";
+        if ([option[@"key"] hasPrefix:@"FanqieX.ShelfFavorites"])
+            row.path = @"书架净化/收藏页";
         if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1"] containsObject:option[@"key"]])
             row.path = @"短剧/页面内容";
         if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"])
