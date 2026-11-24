@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.7beta1 测试版
+## FanqieX 1.9.7beta2 测试版
 
-本版修复底部 Dock 点按无响应，以及退出插件设置后「仅文字」模式的标题消失问题。
+插件设置左上角新增版本号。底栏入口和点击震动开关在刷新前保存设置。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.7beta1.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.7beta2.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名和诊断日志版本为 1.9.7beta1，Mach-O 构建标识为 `0x15701`。
+插件文件名为 `FanqieX-1.9.7beta2.dylib`，诊断日志版本为 1.9.7beta2，Mach-O 构建标识为 `0x15702`。
 
 ## FanqieX 1.76
 

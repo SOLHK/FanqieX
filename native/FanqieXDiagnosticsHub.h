@@ -14,6 +14,7 @@ typedef NS_ENUM(NSInteger, FQXDiagCategory) {
 
 FOUNDATION_EXPORT NSString *const FQXDiagCategoryFilterPrefKey;
 
+NSString *FQXPluginVersion(void);
 void FQXDiagnosticsHubInstall(void);
 BOOL FQXDiagnosticsHubIsEnabled(void);
 BOOL FQXDiagnosticsHubIsEnhanced(void);

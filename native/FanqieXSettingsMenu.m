@@ -833,6 +833,14 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [menu configureSearch];
     [menu updateRows];
     menu.title = owner.title ?: @"FanqieX";
+    UILabel *versionLabel = [UILabel new];
+    versionLabel.text = FQXPluginVersion();
+    versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    versionLabel.textColor = UIColor.secondaryLabelColor;
+    versionLabel.adjustsFontForContentSizeCategory = YES;
+    versionLabel.accessibilityLabel = [@"插件版本 " stringByAppendingString:versionLabel.text];
+    [versionLabel sizeToFit];
+    menu.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:versionLabel];
     menu.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
         target:menu action:@selector(dismissSettings:)];
     // Keep the result alive until the audited presentation boundary adopts it.
