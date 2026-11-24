@@ -10,8 +10,9 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"1.9.6beta6";
+static NSString *const kFQXHubPluginVersion = @"1.9.6beta7";
 static const NSUInteger kFQXHubMaxDiskBytesPerFile = 256 * 1024; // 256 KB x 2 rotating files max
+static const NSUInteger kFQXHubLastSessionBytes = 2 * 256 * 1024 + 4096;
 static const NSUInteger kFQXHubWriteFlushBytes = 8 * 1024;       // Batch JSONL disk writes in 8 KB chunks
 static const NSUInteger kFQXHubRingNormalLimit = 48;             // Disk JSONL stores history; keep tiny RAM tail
 static const NSUInteger kFQXHubRingEnhancedLimit = 160;
@@ -42,12 +43,15 @@ static NSUInteger gFQXSnssdkFailureCount = 0;
 static NSUInteger gFQXSnssdkCancelledCount = 0;
 static NSUInteger gFQXSnssdkUnobservedCount = 0;
 
+static char gFQXHubQueueKey;
+
 static dispatch_queue_t FQXHubQueue(void) {
     static dispatch_queue_t q = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0);
         q = dispatch_queue_create("com.fanqiex.diagnostics.hub", attr);
+        dispatch_queue_set_specific(q, &gFQXHubQueueKey, &gFQXHubQueueKey, NULL);
     });
     return q;
 }
@@ -280,6 +284,10 @@ static NSURL *FQXHubPreviousFileURL(void) {
     return [FQXHubDirectoryURL() URLByAppendingPathComponent:@"hub-prev.jsonl" isDirectory:NO];
 }
 
+static NSURL *FQXHubLastSessionURL(void) {
+    return [FQXHubDirectoryURL() URLByAppendingPathComponent:@"hub-last-session.json" isDirectory:NO];
+}
+
 static NSMutableData *gFQXWriteBuffer = nil;
 static unsigned long long gFQXActiveFileBytes = 0;
 static BOOL gFQXActiveBytesInitialized = NO;
@@ -301,7 +309,7 @@ static void FQXFlushWriteBufferOnHubQueue(void) {
         gFQXActiveFileBytes = attrs ? [attrs fileSize] : 0;
         gFQXActiveBytesInitialized = YES;
     }
-    if (gFQXActiveFileBytes + gFQXWriteBuffer.length > kFQXHubMaxDiskBytesPerFile) {
+    if (gFQXActiveFileBytes && gFQXActiveFileBytes + 1 + gFQXWriteBuffer.length > kFQXHubMaxDiskBytesPerFile) {
         [fm removeItemAtURL:prev error:NULL];
         [fm moveItemAtURL:active toURL:prev error:NULL];
         gFQXActiveFileBytes = 0;
@@ -314,9 +322,13 @@ static void FQXFlushWriteBufferOnHubQueue(void) {
     } else {
         NSFileHandle *fh = [NSFileHandle fileHandleForWritingToURL:active error:NULL];
         if (fh) {
-            [fh seekToEndReturningOffset:NULL error:NULL];
-            if ([fh writeData:gFQXWriteBuffer error:NULL]) {
-                gFQXActiveFileBytes += gFQXWriteBuffer.length;
+            // Separate the next batch even if a killed process left a partial final line.
+            if ([fh seekToEndReturningOffset:NULL error:NULL] &&
+                [fh writeData:[NSData dataWithBytes:"\n" length:1] error:NULL] &&
+                [fh writeData:gFQXWriteBuffer error:NULL]) {
+                gFQXActiveFileBytes += gFQXWriteBuffer.length + 1;
+            } else {
+                gFQXActiveBytesInitialized = NO;
             }
             [fh closeAndReturnError:NULL];
         }
@@ -335,6 +347,8 @@ void FQXDiagnosticsHubPurgeFiles(void) {
         NSURL *prev = FQXHubPreviousFileURL();
         if (active) [fm removeItemAtURL:active error:NULL];
         if (prev) [fm removeItemAtURL:prev error:NULL];
+        NSURL *session = FQXHubLastSessionURL();
+        if (session) [fm removeItemAtURL:session error:NULL];
     });
 }
 
@@ -376,7 +390,11 @@ static void FQXAppendJSONLineOnHubQueue(NSDictionary<NSString *, id> *entry) {
     if (![NSJSONSerialization isValidJSONObject:entry]) return;
     NSError *jsonErr = nil;
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:entry options:0 error:&jsonErr];
-    if (!jsonData.length || jsonErr) return;
+    if (!jsonData.length || jsonErr || jsonData.length + 1 > kFQXHubMaxDiskBytesPerFile) return;
+
+    if (gFQXWriteBuffer.length + jsonData.length + 1 > kFQXHubMaxDiskBytesPerFile) {
+        FQXFlushWriteBufferOnHubQueue();
+    }
 
     if (!gFQXWriteBuffer) {
         gFQXWriteBuffer = [NSMutableData dataWithCapacity:kFQXHubWriteFlushBytes + 1024];
@@ -389,11 +407,21 @@ static void FQXAppendJSONLineOnHubQueue(NSDictionary<NSString *, id> *entry) {
         FQXFlushWriteBufferOnHubQueue();
     } else if (!gFQXFlushTimerArmed) {
         gFQXFlushTimerArmed = YES;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1500 * NSEC_PER_MSEC)), FQXHubQueue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), FQXHubQueue(), ^{
             gFQXFlushTimerArmed = NO;
             FQXFlushWriteBufferOnHubQueue();
         });
     }
+}
+
+static NSDictionary<NSString *, id> *FQXMakeHubEntry(FQXDiagCategory category,
+                                                     NSString *eventName,
+                                                     NSDictionary<NSString *, id> *data) {
+    FQXEnsureSessionSalt();
+    uint64_t seq = atomic_fetch_add_explicit(&gFQXHubSequence, 1, memory_order_relaxed) + 1;
+    return @{@"hubSeq": @(seq), @"timestamp": @(NSDate.date.timeIntervalSince1970),
+             @"sessionId": gFQXHubSessionId, @"pluginVersion": kFQXHubPluginVersion,
+             @"category": FQXDiagCategoryKey(category), @"event": eventName, @"data": [data copy] ?: @{}};
 }
 
 void FQXDiagRecordEvent(FQXDiagCategory category,
@@ -402,26 +430,23 @@ void FQXDiagRecordEvent(FQXDiagCategory category,
                         BOOL highPriority) {
     if (!FQXDiagnosticsHubIsEnabled() || !eventName.length) return;
     if (!FQXAllowByRateLimiter(category, highPriority)) return;
-
-    FQXEnsureSessionSalt();
-    uint64_t seq = atomic_fetch_add_explicit(&gFQXHubSequence, 1, memory_order_relaxed) + 1;
-    NSTimeInterval ts = [NSDate date].timeIntervalSince1970;
-    NSString *catKey = FQXDiagCategoryKey(category);
-    NSDictionary<NSString *, id> *safeData = [data copy] ?: @{};
-    NSString *sessionId = gFQXHubSessionId ?: @"session";
-
+    NSDictionary *entry = FQXMakeHubEntry(category, eventName, data);
     dispatch_async(FQXHubQueue(), ^{
-        NSDictionary<NSString *, id> *entry = @{
-            @"hubSeq": @(seq),
-            @"timestamp": @(ts),
-            @"sessionId": sessionId,
-            @"pluginVersion": kFQXHubPluginVersion,
-            @"category": catKey,
-            @"event": eventName,
-            @"data": safeData,
-        };
         FQXAppendJSONLineOnHubQueue(entry);
     });
+}
+
+void FQXDiagRecordCriticalEvent(FQXDiagCategory category,
+                               NSString *eventName,
+                               NSDictionary<NSString *, id> *data) {
+    if (!FQXDiagnosticsHubIsEnabled() || !eventName.length) return;
+    NSDictionary *entry = FQXMakeHubEntry(category, eventName, data);
+    dispatch_block_t record = ^{
+        FQXAppendJSONLineOnHubQueue(entry);
+        FQXFlushWriteBufferOnHubQueue();
+    };
+    if (dispatch_get_specific(&gFQXHubQueueKey)) record();
+    else dispatch_sync(FQXHubQueue(), record);
 }
 
 #pragma mark - URL Sanitizer & Network Failure Classification (2.1)
@@ -1856,25 +1881,40 @@ static void InstallSecurityVerificationHooks(void) {
 
 #pragma mark - Hub Install & Export Category Merger
 
+static void FQXArchiveLastSessionOnHubQueue(void);
+
 void FQXDiagnosticsHubInstall(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         FQXEnsureSessionSalt();
         FQXRefreshDiagPrefsFromDefaults();
+        dispatch_async(FQXHubQueue(), ^{
+            FQXArchiveLastSessionOnHubQueue();
+            FQXDiagRecordCriticalEvent(FQXDiagCategorySecurity, @"diagnostic_session_start", @{});
+        });
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                         object:nil
                                                          queue:nil
                                                     usingBlock:^(__unused NSNotification *note) {
             FQXRefreshDiagPrefsFromDefaults();
         }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
+                                                        object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
+            FQXDiagRecordCriticalEvent(FQXDiagCategorySecurity, @"diagnostic_session_inactive", @{});
+        }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
                                                         object:nil
                                                          queue:nil
                                                     usingBlock:^(__unused NSNotification *note) {
+            FQXDiagRecordCriticalEvent(FQXDiagCategorySecurity, @"diagnostic_session_background", @{});
             dispatch_async(FQXHubQueue(), ^{
                 FQXFlushWriteBufferOnHubQueue();
                 [gFQXHubRing removeAllObjects];
             });
+        }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillTerminateNotification
+                                                        object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
+            FQXDiagRecordCriticalEvent(FQXDiagCategorySecurity, @"diagnostic_session_end", @{});
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                                                         object:nil
@@ -1943,29 +1983,82 @@ static NSString *FQXClassifyCoreEntryCategory(NSDictionary<NSString *, id> *entr
     return @"ui";
 }
 
+static NSString *FQXHubEntryIdentity(NSDictionary *entry) {
+    id session = entry[@"sessionId"], sequence = entry[@"hubSeq"];
+    if (![session isKindOfClass:NSString.class] || ![sequence isKindOfClass:NSNumber.class]) return nil;
+    return [NSString stringWithFormat:@"%@/%@", session, sequence];
+}
+
+static void FQXAddHubEntry(id value, NSMutableArray *dest, NSMutableSet *seen, NSTimeInterval minTimestamp) {
+    if (![value isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *entry = value;
+    NSString *identity = FQXHubEntryIdentity(entry);
+    if (!identity || [seen containsObject:identity] || ![entry[@"timestamp"] isKindOfClass:NSNumber.class]) return;
+    if ([entry[@"timestamp"] doubleValue] < minTimestamp) return;
+    [seen addObject:identity];
+    [dest addObject:entry];
+}
+
 static void FQXReadJSONLinesFileInto(NSURL *fileURL,
-                                     NSMutableArray<NSDictionary<NSString *, id> *> *dest,
-                                     NSMutableSet<NSNumber *> *seenSeqs,
-                                     NSTimeInterval minTimestamp) {
+                                    NSMutableArray *dest, NSMutableSet *seen,
+                                    NSTimeInterval minTimestamp) {
     if (!fileURL) return;
+    unsigned long long size = [NSFileManager.defaultManager attributesOfItemAtPath:fileURL.path error:NULL].fileSize;
+    if (!size || size > kFQXHubMaxDiskBytesPerFile) return;
     NSData *raw = [NSData dataWithContentsOfURL:fileURL options:0 error:NULL];
-    if (!raw.length) return;
-    NSString *text = [[NSString alloc] initWithData:raw encoding:NSUTF8StringEncoding];
-    if (!text.length) return;
-    [text enumerateLinesUsingBlock:^(NSString *line, __unused BOOL *stop) {
-        if (!line.length) return;
-        NSData *ld = [line dataUsingEncoding:NSUTF8StringEncoding];
-        if (!ld.length) return;
-        id parsed = [NSJSONSerialization JSONObjectWithData:ld options:0 error:NULL];
-        if (![parsed isKindOfClass:NSDictionary.class]) return;
-        NSDictionary<NSString *, id> *dict = (NSDictionary<NSString *, id> *)parsed;
-        NSNumber *seq = dict[@"hubSeq"];
-        if (seq && [seenSeqs containsObject:seq]) return;
-        double ts = [dict[@"timestamp"] doubleValue];
-        if (minTimestamp > 0.0 && ts > 0.0 && ts < minTimestamp) return;
-        if (seq) [seenSeqs addObject:seq];
-        [dest addObject:dict];
-    }];
+    const uint8_t *cursor = raw.bytes;
+    if (!raw.length || raw.length > kFQXHubMaxDiskBytesPerFile) return;
+    const uint8_t *end = cursor + raw.length;
+    while (cursor < end) {
+        const uint8_t *newline = memchr(cursor, '\n', (size_t)(end - cursor));
+        if (!newline) break;
+        if (newline != cursor) @autoreleasepool {
+            NSData *line = [NSData dataWithBytes:cursor length:(NSUInteger)(newline - cursor)];
+            id parsed = [NSJSONSerialization JSONObjectWithData:line options:0 error:NULL];
+            FQXAddHubEntry(parsed, dest, seen, minTimestamp);
+        }
+        cursor = newline + 1;
+    }
+}
+
+static void FQXArchiveLastSessionOnHubQueue(void) {
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
+    NSMutableSet *seen = [NSMutableSet set];
+    FQXReadJSONLinesFileInto(FQXHubPreviousFileURL(), entries, seen, 0);
+    FQXReadJSONLinesFileInto(FQXHubActiveFileURL(), entries, seen, 0);
+    NSDictionary *last = entries.lastObject;
+    NSString *previousID = last[@"sessionId"];
+    if (!previousID || [previousID isEqual:gFQXHubSessionId]) return;
+
+    NSMutableArray *previousEntries = [NSMutableArray array];
+    BOOL observedEnd = NO;
+    for (NSDictionary *entry in entries) {
+        if (![entry[@"sessionId"] isEqual:previousID]) continue;
+        [previousEntries addObject:entry];
+        observedEnd |= [entry[@"event"] isEqual:@"diagnostic_session_end"];
+    }
+    NSDictionary *metadata = @{@"sessionId": previousID,
+        @"pluginVersion": last[@"pluginVersion"] ?: @"unknown",
+        @"lastRecordedAt": last[@"timestamp"], @"lastEvent": last[@"event"] ?: @"unknown",
+        @"recordCount": @(previousEntries.count),
+        @"endState": observedEnd ? @"termination_observed" : @"termination_unknown"};
+    NSData *archive = [NSJSONSerialization dataWithJSONObject:@{@"session": metadata, @"entries": previousEntries}
+                                                      options:0 error:NULL];
+    NSURL *url = FQXHubLastSessionURL();
+    if (url && archive.length && archive.length <= kFQXHubLastSessionBytes) {
+        [archive writeToURL:url options:NSDataWritingAtomic error:NULL];
+    }
+}
+
+static NSDictionary *FQXReadLastSessionOnHubQueue(void) {
+    NSURL *url = FQXHubLastSessionURL();
+    if (!url) return nil;
+    unsigned long long size = [NSFileManager.defaultManager attributesOfItemAtPath:url.path error:NULL].fileSize;
+    if (!size || size > kFQXHubLastSessionBytes) return nil;
+    NSData *data = [NSData dataWithContentsOfURL:url];
+    if (!data.length || data.length > kFQXHubLastSessionBytes) return nil;
+    id result = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+    return [result isKindOfClass:NSDictionary.class] ? result : nil;
 }
 
 void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
@@ -2004,14 +2097,16 @@ void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
         if (windowStart > 0.0) windowStart -= 60.0; // Allow startup events just before windowStart
 
         NSMutableArray<NSDictionary<NSString *, id> *> *hubItems = [NSMutableArray array];
-        NSMutableSet<NSNumber *> *seenSeqs = [NSMutableSet set];
-        FQXReadJSONLinesFileInto(FQXHubPreviousFileURL(), hubItems, seenSeqs, windowStart);
-        FQXReadJSONLinesFileInto(FQXHubActiveFileURL(), hubItems, seenSeqs, windowStart);
+        NSMutableSet<NSString *> *seen = [NSMutableSet set];
+        NSDictionary *lastSession = FQXReadLastSessionOnHubQueue();
+        NSArray *lastEntries = lastSession[@"entries"];
+        if ([lastEntries isKindOfClass:NSArray.class]) {
+            for (id entry in lastEntries) FQXAddHubEntry(entry, hubItems, seen, 0);
+        }
+        FQXReadJSONLinesFileInto(FQXHubPreviousFileURL(), hubItems, seen, windowStart);
+        FQXReadJSONLinesFileInto(FQXHubActiveFileURL(), hubItems, seen, windowStart);
         for (NSDictionary<NSString *, id> *memItem in gFQXHubRing) {
-            NSNumber *seq = memItem[@"hubSeq"];
-            if (seq && [seenSeqs containsObject:seq]) continue;
-            if (seq) [seenSeqs addObject:seq];
-            [hubItems addObject:memItem];
+            FQXAddHubEntry(memItem, hubItems, seen, windowStart);
         }
 
         NSArray *coreEntries = [root[@"entries"] isKindOfClass:NSArray.class] ? root[@"entries"] : @[];
@@ -2065,7 +2160,7 @@ void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
         root[@"recordCount"] = @(combined.count);
         root[@"categoryFilter"] = desiredCatKey;
         root[@"categoryFilterDisplayName"] = FQXDiagCategoryDisplayName(clampedFilter);
-        root[@"diagnosticsHub"] = @{
+        NSMutableDictionary *hubSummary = [@{
             @"hubVersion": kFQXHubPluginVersion,
             @"enhancedMode": @(FQXDiagnosticsHubIsEnhanced()),
             @"categoryFilter": desiredCatKey,
@@ -2078,7 +2173,9 @@ void FQXDiagnosticsHubFinalizeExport(NSURL *coreExportURL,
                 @"entranceViewsHiddenByHost": @(atomic_load_explicit(&gFQXParaViewHiddenByHostCount, memory_order_relaxed)),
                 @"entranceViewsRemoved": @(atomic_load_explicit(&gFQXParaViewRemovedCount, memory_order_relaxed)),
             },
-        };
+        } mutableCopy];
+        if ([lastSession[@"session"] isKindOfClass:NSDictionary.class]) hubSummary[@"previousSession"] = lastSession[@"session"];
+        root[@"diagnosticsHub"] = hubSummary;
 
         NSError *writeErr = nil;
         NSData *finalData = [NSJSONSerialization dataWithJSONObject:root

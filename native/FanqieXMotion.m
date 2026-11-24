@@ -6459,6 +6459,38 @@ static void HookDistCrossfade(UIView *self, SEL _cmd, dispatch_block_t renderBlo
     if (control) FQXTriggerDramaSpacingForControl(control, NO);
 }
 
+static void FQXRecordDramaOriginalNovelStage(NSString *stage, BOOL returning) {
+    FQXDiagRecordCriticalEvent(FQXDiagCategoryUI,
+        returning ? @"drama_original_novel_return" : @"drama_original_novel_tap",
+        @{@"stage": stage, @"mainThread": @(NSThread.isMainThread)});
+}
+
+static void (*OrigDramaDistributionTap)(id, SEL);
+static void HookDramaDistributionTap(id self, SEL cmd) {
+    // In the native distribution tap handler, type 3 is the original-book branch.
+    BOOL trace = FQXDiagnosticsHubIsEnabled() &&
+        FQXIntGet(self, "distributionType", -1) == 3;
+    if (trace) FQXRecordDramaOriginalNovelStage(@"distribution", NO);
+    OrigDramaDistributionTap(self, cmd);
+    if (trace) FQXRecordDramaOriginalNovelStage(@"distribution", YES);
+}
+
+static void (*OrigDramaOriginalNovelSchemaTap)(id, SEL, id);
+static void HookDramaOriginalNovelSchemaTap(id self, SEL cmd, id bottomBar) {
+    BOOL trace = FQXDiagnosticsHubIsEnabled();
+    if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", NO);
+    OrigDramaOriginalNovelSchemaTap(self, cmd, bottomBar);
+    if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", YES);
+}
+
+static void (*OrigDramaOriginalNovelReaderOpen)(id, SEL, id, id, BOOL);
+static void HookDramaOriginalNovelReaderOpen(id self, SEL cmd, id bookInfo, id chapter, BOOL showToast) {
+    BOOL trace = FQXDiagnosticsHubIsEnabled();
+    if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", NO);
+    OrigDramaOriginalNovelReaderOpen(self, cmd, bookInfo, chapter, showToast);
+    if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", YES);
+}
+
 #pragma mark - Highest available drama resolution
 
 static BOOL FQXHighestQualityEnabled(void) {
@@ -22084,6 +22116,10 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSVideoFeedContainerViewController", "viewWillAppear:", "v20@0:8B16", OrigFeedContainerWillAppear, HookFeedContainerWillAppear);
         HOOK_INST("SSVideoFeedContainerViewController", "viewDidAppear:", "v20@0:8B16", OrigFeedContainerDidAppear, HookFeedContainerDidAppear);
         HOOK_INST("SSShortVideoBottomDistributionView", "performForegroundCrossfadeWithRenderBlock:", "v24@0:8@?16", OrigDistCrossfade, HookDistCrossfade);
+        HOOK_INST("SSShortVideoAboveProgressViewManager", "distributionViewDidClick", "v16@0:8", OrigDramaDistributionTap, HookDramaDistributionTap);
+        HOOK_INST("SSShortVideoAboveProgressViewManager", "handleOriginalNovelBottomBarClick:", "v24@0:8@16", OrigDramaOriginalNovelSchemaTap, HookDramaOriginalNovelSchemaTap);
+        HOOK_INST("SSShortVideoAboveProgressViewManager", "openOriginalBookReaderWithBookInfo:chapterId:showReturnOriginProgressToast:",
+                  "v36@0:8@16@24B32", OrigDramaOriginalNovelReaderOpen, HookDramaOriginalNovelReaderOpen);
         HOOK_INST("SSBookShelfFunctionCell", "layoutSubviews", "v16@0:8", OrigShelfFunctionCellLayout, HookShelfFunctionCellLayout);
         HOOK_INST("SSBookShelf525ViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfWillAppearAudioDedup, HookShelfWillAppearAudioDedup);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);

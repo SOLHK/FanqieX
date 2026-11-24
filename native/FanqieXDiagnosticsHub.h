@@ -32,6 +32,11 @@ void FQXDiagRecordEvent(FQXDiagCategory category,
                         NSDictionary<NSString *, id> *data,
                         BOOL highPriority);
 
+// For infrequent lifecycle and navigation checkpoints that must reach disk before returning.
+void FQXDiagRecordCriticalEvent(FQXDiagCategory category,
+                               NSString *eventName,
+                               NSDictionary<NSString *, id> *data);
+
 void FQXDiagRecordHook(const char *hostClass,
                        const char *selector,
                        const char *ruleName,
