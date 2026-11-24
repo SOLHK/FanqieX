@@ -12,7 +12,8 @@ from pathlib import Path
 import struct
 
 from independent159 import (
-    Image, audit, direct_instruction, read_signature, read_tables, require, unpack,
+    HOST_SETTINGS_ENTRY_VERSION, Image, audit, direct_instruction, read_signature, read_tables,
+    require, unpack, version_word,
 )
 
 
@@ -78,6 +79,15 @@ def main():
     case("unsigned_instruction_corruption", flip(0x14081), "code_signature", resign=False)
     case("wrong_macho_magic", flip(0), "parse")
     case("unreviewed_original_text_edit", flip(0x4010), "original_sections")
+    if version_word(args.expected_version) >= HOST_SETTINGS_ENTRY_VERSION:
+        case("host_settings_wrapper_branch_reverted", u32(0x4FA8, 0x37000C48), "original_sections")
+        case("host_settings_spacing_reverted", u32(0x4FE4, 0xD2E80948), "original_sections")
+        case("host_settings_entry_title_changed", flip(0xEBCA), "original_sections")
+        case("host_settings_entry_encoding_reverted", u64(0x113C0, 0x7D0), "original_sections")
+        case("host_settings_entry_length_reverted", u64(0x113D0, 5), "original_sections")
+        case("unreviewed_host_settings_adjacent_edit", flip(0x4FAC), "original_sections")
+    elif args.expected_version == "1.9.7beta4":
+        case("host_settings_wrapper_branch_patched_early", u32(0x4FA8, 0xD503201F), "original_sections")
     case("initial_material_reverted_to_clear", u32(0x649C, 0x52800022), "instruction_addresses")
     case("changed_dylib_dependency", flip(dependency_string + 10), "load_commands")
     case("extension_initial_writable_executable", u32(patch + 60, 7), "layout")

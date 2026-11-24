@@ -173,6 +173,16 @@ ALLOWED_SECTION_BYTES = {
     address for start in [item[0] for item in PATCH_SITES] + [0x5D50, 0x5DA0, 0x5DEC, 0x5E38, 0x649C, 0x7848, 0x7AC4]
     for address in range(start, start + 4)
 } | set(range(0xEC84, 0xEC8E))
+HOST_SETTINGS_ENTRY_VERSION = 0x15705
+HOST_SETTINGS_ENTRY_CODE = (
+    (0x4FA8, struct.pack("<I", 0x37000C48), struct.pack("<I", 0xD503201F)),
+    (0x4FE4, struct.pack("<I", 0xD2E80948), struct.pack("<I", 0xD2E809C8)),
+)
+HOST_SETTINGS_ENTRY_CONSTANTS = (
+    (0xEBCA, "去广告设置\0".encode("utf-16le"), b"FanqieX".ljust(12, b"\0")),
+    (0x113C0, struct.pack("<Q", 0x7D0), struct.pack("<Q", 0x7C8)),
+    (0x113D0, struct.pack("<Q", 5), struct.pack("<Q", 7)),
+)
 LINK_DATA_COMMANDS = (0x1D, 0x26, 0x29, 0x80000033, 0x80000034)
 ACCEPTED_COMMANDS = {0x19, 0x2, 0xB, 0xD, 0xC, 0x1B, 0x2C, 0x32, *LINK_DATA_COMMANDS}
 
@@ -350,6 +360,14 @@ def check_layout(old: Image, new: Image, version: str) -> dict:
 def check_sections(old: Image, new: Image, version: str) -> dict:
     extra_sites = [pc for pc, _, _ in EXTENSION_PATCH_SITES.get(version, ())]
     allowed = ALLOWED_SECTION_BYTES | {byte for pc in extra_sites for byte in range(pc, pc + 4)}
+    if version_word(version) >= HOST_SETTINGS_ENTRY_VERSION:
+        for offset, before, after in HOST_SETTINGS_ENTRY_CODE + HOST_SETTINGS_ENTRY_CONSTANTS:
+            end = offset + len(before)
+            require(old.data[offset:end] == before, f"Unexpected baseline host settings entry bytes at {offset:#x}")
+            require(new.data[offset:end] == after, f"Unexpected candidate host settings entry bytes at {offset:#x}")
+            allowed.update(offset + i for i, (previous, expected) in enumerate(zip(before, after))
+                           if previous != expected)
+        extra_sites.extend(pc for pc, _, _ in HOST_SETTINGS_ENTRY_CODE)
     settings_end = 0xECBC if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5") else 0xEC8E
     if version in ("1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5"):
         allowed |= set(range(0xEC8E, settings_end)) | set(range(0x114B0, 0x114B8))
@@ -968,11 +986,14 @@ def check_versions(image: Image, version: str, tables: dict, instructions: dict,
                                    "dictionary_register": (words[3] >> 16) & 31})
     require(len(field_refs) >= 2 and len({item["dictionary_register"] for item in field_refs}) >= 2,
             "Cannot establish distinct event/export writes of the shared version")
-    # The two audited patch code regions contain only ARM64 instructions.
-    # Their encoded immediates can incidentally look like dotted ASCII text.
+    # Encoded instructions and validated SHA256 page digests can incidentally
+    # look like dotted ASCII text. Keep scanning the signature identifier.
+    hash_array_start = signature["directory_offset"] + signature["hash_offset"]
+    hash_array_end = signature["directory_offset"] + signature["directory_size"]
+    binary_ranges = [*tables["code_ranges"], (hash_array_start, hash_array_end)]
     dotted = [{"address": match.start(), "value": match.group().decode("ascii")}
               for match in re.finditer(version_pattern, data)
-              if not any(start <= match.start() and match.end() <= end for start, end in tables["code_ranges"])]
+              if not any(start <= match.start() and match.end() <= end for start, end in binary_ranges)]
     if version in ("1.6.5", "1.6.6", "1.6.7", "1.7.1", "1.7.2", "1.7.3", "1.7.4", "1.74", "1.75", "1.76", "1.78", "1.78R2", "1.78R3", "1.78R4", "1.78R5", "1.78R6", "1.78R7", "1.78R8", "1.78R9", "1.78R10", "1.78R11", "1.78R12", "1.78R13", "1.78R14", "1.78R15", "1.78R16", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12"):
         host=[item for item in dotted if data[item["address"]:item["address"]+9]==b"7.4.3.33\0"]
         require(len(host)==1,"Exactly one pinned host build identifier")
