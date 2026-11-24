@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Execute the linked menu action dispatcher against search-presentation states.
+"""Execute the linked settings actions for search and Dock switches.
 
-The callback block, row lookup, selector resolution and forwarding are the actual
-ARM64 instructions in the merged dylib. UIKit search dismissal and original
-router action effects are explicit boundaries; no device behavior is claimed.
+The callback blocks, row lookup, selector resolution and forwarding execute in
+the merged dylib. UIKit, lifetime and legacy action effects are fixture boundaries.
 """
 import argparse
 import hashlib
@@ -96,6 +95,88 @@ class Runtime(MenuRuntime):
         return super().handle(cpu, pc)
 
 
+DOCK_SWITCHES = {
+    1: ("底栏显示：书城", "FanqieX.BottomBookstore.1"),
+    2: ("底栏显示：短剧", "FanqieX.BottomDrama.1"),
+    3: ("底栏显示：书架", "FanqieX.BottomBookshelf.1"),
+    4: ("底栏显示：我的", "FanqieX.BottomMine.1"),
+    5: ("底栏显示：商城", "FanqieX.BottomMall.1"),
+    38: ("底栏点击震动", "FanqieX.BottomHaptics.1"),
+}
+
+
+class DockSwitchRuntime(Runtime):
+    def __init__(self, data):
+        super().__init__(data)
+        self.preferences = {key: True for _, key in DOCK_SWITCHES.values()}
+        self.pending = []
+        self.rebuilds = []
+        self.motion = self.obj("Router", selectors={"refreshDockAppearance"})
+
+    def handle(self, cpu, pc):
+        symbol = self.symbols.get(pc)
+        receiver, selector, argument = cpu.x[:3]
+        if symbol == "_sel_registerName":
+            address = 0x60000000 + len(self.dynamic_selectors) * 0x100
+            self.dynamic_selectors[address] = self.string(receiver)
+            return self.finish(cpu, address)
+        if symbol == "_objc_loadWeakRetained":
+            return self.finish(cpu, cpu.read(receiver, 8))
+        if symbol == "_dispatch_async":
+            self.pending.append(selector)
+            return self.finish(cpu)
+        if symbol == "_objc_lookUpClass" and self.string(receiver) == "FQXDockMotion":
+            return self.finish(cpu, self.motion)
+        if symbol == "_objc_msgSend" and receiver:
+            name = self.string(selector)
+            target = self.objects.get(receiver, {})
+            if receiver == self.motion and name == "refreshDockAppearance":
+                self.actions.append((name, 0))
+                return self.finish(cpu)
+            if target.get("class") == "Router" and name in target["selectors"]:
+                switch = self.objects[argument]
+                key = DOCK_SWITCHES[switch["tag"]][1]
+                self.preferences[key] = switch["isOn"]
+            elif target.get("class") == "FQXSettingsMenu" and name == "rebuild":
+                self.rebuilds.append(self.preferences.copy())
+                return self.finish(cpu)
+        return super().handle(cpu, pc)
+
+
+def run_dock_switches(data):
+    rt = DockSwitchRuntime(data)
+    cpu = HeapCPU(data, rt, ranges=rt.ranges)
+    cpu.pointers.update(rt.pointers)
+    menu = rt.obj("FQXSettingsMenu")
+    entry_action = "fqx176_toggle:"
+    haptic_action = "fqx178_bottomOptionChanged:"
+    for field, action in (("_router", entry_action), ("_settingsOwner", haptic_action)):
+        target = rt.obj("Router", selectors={action})
+        cpu.write(menu + rt.classes["FQXSettingsMenu"]["ivars"][field], 8, target)
+    sel, imp = rt.classes["FQXSettingsMenu"]["methods"]["bottomTabToggleChanged:"]
+    cases = []
+    for tag, (title, key) in DOCK_SWITCHES.items():
+        sender = rt.obj("UISwitch", tag=tag, accessibilityLabel=rt.obj("NSString", title), isOn=True)
+        is_entry = tag != 38
+        action = entry_action if is_entry else haptic_action
+        for on in (False, True):
+            expected = {**rt.preferences, key: on}
+            rt.objects[sender]["isOn"] = on
+            rt.actions.clear()
+            rt.rebuilds.clear()
+            cpu.run(imp, menu, sel, sender)
+            require(rt.actions == [(action, sender)] and rt.preferences == expected,
+                    f"{key} forwards once and persists {on} before the callback returns")
+            require(len(rt.pending) == int(is_entry) and not rt.rebuilds,
+                    "Only a bottom entry schedules an asynchronous refresh and rebuild")
+            if is_entry:
+                rt.invoke_block(cpu, rt.pending.pop(), 0, 0)
+                require(rt.actions == [(action, sender), ("refreshDockAppearance", 0)] and rt.rebuilds == [expected],
+                        "Dock refresh and menu rebuild follow persistence and see the saved value")
+        cases.append({"key": key, "legacy_selector": action, "off_then_on": True, "rebuilds_menu": is_entry})
+    return cases
+
+
 def run_case(data, active, presenter, selector):
     rt = Runtime(data)
     cpu = HeapCPU(data, rt, ranges=rt.ranges)
@@ -151,17 +232,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--dock-switches", action="store_true", help="Exercise the six Dock toggles instead")
     args = parser.parse_args()
     data = args.candidate.read_bytes()
     result = {"candidate_sha256": hashlib.sha256(data).hexdigest(), "passed": False,
-              "actual_linked_dispatcher_executed": True, "uikit_device_tested": False,
-              "original_target_capture": "fixture seeded from saved target-selector pairs", "cases": [], "presenter_cases": []}
+              "actual_linked_dispatcher_executed": True, "uikit_device_tested": False, "cases": [], "presenter_cases": []}
     try:
-        for selector in ("fqx178_export:", "fqx178_testListenReward:"):
-            for active, presenter in ((False, True), (False, False), (True, True), (True, False)):
-                result["cases"].append(run_case(data, active, presenter, selector))
-        for weak, connected in ((True, True), (False, True), (True, False)):
-            result["presenter_cases"].append(run_presenter_case(data, weak, connected))
+        if args.dock_switches:
+            result["limits"] = ("Executes the linked menu switch callback and scheduled block. Legacy targets, defaults, "
+                                "weak reference lifetime, UI dispatch, refresh and rebuild effects are fixture boundaries.")
+            result["cases"] = run_dock_switches(data)
+        else:
+            result["original_target_capture"] = "fixture seeded from saved target-selector pairs"
+            for selector in ("fqx178_export:", "fqx178_testListenReward:"):
+                for active, presenter in ((False, True), (False, False), (True, True), (True, False)):
+                    result["cases"].append(run_case(data, active, presenter, selector))
+            for weak, connected in ((True, True), (False, True), (True, False)):
+                result["presenter_cases"].append(run_presenter_case(data, weak, connected))
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
