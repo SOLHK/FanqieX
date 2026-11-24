@@ -9898,43 +9898,98 @@ static IMP FQXLookupMineOrigItemIMP(UICollectionViewLayout *layout) {
     return NULL;
 }
 
-static CGRect (*OrigMineFoldItemFrame)(id, SEL, NSIndexPath *);
-static CGRect HookMineFoldItemFrame(UICollectionViewLayout *layout, SEL cmd, NSIndexPath *indexPath) {
-    CGRect native = OrigMineFoldItemFrame(layout, cmd, indexPath);
-    if (indexPath.section != 0 || indexPath.item >= 4 || !FQXGlassEnabled()) return native;
+static const char FQXMineFoldFirstPageBandKey = 0;
 
-    UICollectionView *collection = layout.collectionView;
-    UIView *fold = FQXMineShortcutFold(collection);
-    UIView *row = fold ? FQXMineOuterRowForView(fold) : nil;
-    if (!row) return native;
-    UIView *host = FQXObjGet(row, "contentView");
-    if (host.superview != row) host = row;
-    // The card glass is inserted below the native shortcut content.
-    UIVisualEffectView *glass = (UIVisualEffectView *)host.subviews.firstObject;
-    if (![glass isKindOfClass:UIVisualEffectView.class] || glass.hidden ||
-        ![glass.effect isKindOfClass:objc_lookUpClass("UIGlassEffect")]) return native;
-
-    // Convert to the zero-offset content coordinates of the native first page.
-    CGPoint offset = collection.bounds.origin;
-    CGRect card = CGRectOffset([glass convertRect:glass.bounds toView:collection], -offset.x, -offset.y);
-    NSInteger columns = MIN(4, [collection numberOfItemsInSection:0]);
-    if (indexPath.item >= columns) return native;
-    CGFloat slotWidth = CGRectGetWidth(card) / columns;
-    CGFloat clearance = MAX(27.0, CGRectGetHeight(native) * 0.5);
-    if (slotWidth < CGRectGetWidth(native) || CGRectGetHeight(card) < 2.0 * clearance) return native;
-
-    CGFloat centerX = CGRectGetMinX(card) + (indexPath.item + 0.5) * slotWidth;
-    CGFloat centerY = CGRectGetMidY(card);
-    UIView *indicator = FQXMinePageControl(fold, row);
-    if (indicator && !indicator.hidden && indicator.alpha > 0.05) {
-        CGRect dots = [indicator convertRect:indicator.bounds toView:collection];
-        CGFloat lastCenterY = CGRectGetMinY(dots) - offset.y - clearance - 2.0;
-        if (lastCenterY < CGRectGetMinY(card) + clearance) return native;
-        centerY = MIN(centerY, lastCenterY);
+static UICollectionViewLayoutAttributes *FQXCenterMineFoldItem(
+    UICollectionViewLayoutAttributes *attributes, CGRect band, NSInteger columns) {
+    if (!attributes || CGRectIsNull(band) || attributes.indexPath.section != 0 ||
+        attributes.indexPath.item >= columns) return attributes;
+    CGRect frame = attributes.frame;
+    CGFloat slotWidth = CGRectGetWidth(band) / columns;
+    if (slotWidth < CGRectGetWidth(frame)) return attributes;
+    CGFloat centerX = CGRectGetMinX(band) + (attributes.indexPath.item + 0.5) * slotWidth;
+    frame.origin.x = centerX - CGRectGetWidth(frame) * 0.5;
+    if (CGRectGetHeight(band) >= CGRectGetHeight(frame)) {
+        frame.origin.y = CGRectGetMidY(band) - CGRectGetHeight(frame) * 0.5;
     }
-    native.origin = CGPointMake(centerX - CGRectGetWidth(native) * 0.5,
-                                centerY - CGRectGetHeight(native) * 0.5);
-    return native;
+    if (CGRectEqualToRect(frame, attributes.frame)) return attributes;
+    UICollectionViewLayoutAttributes *effective = [attributes copy];
+    effective.frame = frame;
+    return effective;
+}
+
+static UICollectionViewLayoutAttributes *(*OrigMineFoldItemAttributes)(id, SEL, NSIndexPath *);
+static UICollectionViewLayoutAttributes *HookMineFoldItemAttributes(
+    UICollectionViewLayout *layout, SEL cmd, NSIndexPath *indexPath) {
+    UICollectionViewLayoutAttributes *native = OrigMineFoldItemAttributes(layout, cmd, indexPath);
+    UICollectionView *collection = layout.collectionView;
+    NSValue *band = objc_getAssociatedObject(collection, &FQXMineFoldFirstPageBandKey);
+    if (!native || !band || indexPath.section != 0) return native;
+    return FQXCenterMineFoldItem(native, band.CGRectValue, MIN(4, [collection numberOfItemsInSection:0]));
+}
+
+static NSArray<UICollectionViewLayoutAttributes *> *(*OrigMineFoldRectAttributes)(id, SEL, CGRect);
+static NSArray<UICollectionViewLayoutAttributes *> *HookMineFoldRectAttributes(
+    UICollectionViewLayout *layout, SEL cmd, CGRect rect) {
+    NSArray<UICollectionViewLayoutAttributes *> *native = OrigMineFoldRectAttributes(layout, cmd, rect);
+    UICollectionView *collection = layout.collectionView;
+    NSValue *bandValue = objc_getAssociatedObject(collection, &FQXMineFoldFirstPageBandKey);
+    if (!bandValue || collection.numberOfSections == 0) return native;
+    CGRect band = bandValue.CGRectValue;
+    NSInteger columns = MIN(4, [collection numberOfItemsInSection:0]);
+    NSMutableArray<UICollectionViewLayoutAttributes *> *attributes = [NSMutableArray arrayWithCapacity:native.count];
+    for (UICollectionViewLayoutAttributes *item in native) {
+        if (item.representedElementCategory != UICollectionElementCategoryCell ||
+            item.indexPath.section != 0 || item.indexPath.item >= columns) [attributes addObject:item];
+    }
+    for (NSInteger column = 0; column < columns; ++column) {
+        NSIndexPath *index = [NSIndexPath indexPathForItem:column inSection:0];
+        UICollectionViewLayoutAttributes *item = [layout layoutAttributesForItemAtIndexPath:index];
+        item = FQXCenterMineFoldItem(item, band, columns);
+        if (item && CGRectIntersectsRect(item.frame, rect)) [attributes addObject:item];
+    }
+    return attributes;
+}
+
+static BOOL FQXUpdateMineFoldFirstPageBand(UICollectionView *collection, UIView *fold) {
+    NSValue *previous = objc_getAssociatedObject(collection, &FQXMineFoldFirstPageBandKey);
+    CGRect oldBand = previous ? previous.CGRectValue : CGRectNull;
+    CGRect band = CGRectNull;
+    if (FQXGlassEnabled()) {
+        // The fold has its native size before the card's material is mounted.
+        CGPoint offset = collection.bounds.origin;
+        CGRect card = CGRectOffset([fold convertRect:fold.bounds toView:collection], -offset.x, -offset.y);
+        CGFloat radius = 27.0;
+        CGFloat centerY = CGRectGetMidY(card);
+        UIView *indicator = FQXMinePageControl(fold, fold);
+        if (indicator && !indicator.hidden && indicator.alpha > 0.05) {
+            CGRect dots = [indicator convertRect:indicator.bounds toView:collection];
+            centerY = MIN(centerY, CGRectGetMinY(dots) - offset.y - radius - 2.0);
+        }
+        if (CGRectGetWidth(card) > 0.0) {
+            band = CGRectMake(CGRectGetMinX(card), CGRectGetMinY(card), CGRectGetWidth(card), 0.0);
+            if (centerY >= CGRectGetMinY(card) + radius) {
+                band.origin.y = centerY - radius;
+                band.size.height = radius * 2.0;
+            }
+            // The fold grows on the second page; keep the first row at its folded height while swiping.
+            if (previous && offset.x > 0.5 && fabs(oldBand.size.width - band.size.width) < 0.25) {
+                band.origin.y = oldBand.origin.y;
+                band.size.height = oldBand.size.height;
+            }
+        }
+    }
+    if (CGRectIsNull(band)) {
+        if (!previous) return NO;
+        objc_setAssociatedObject(collection, &FQXMineFoldFirstPageBandKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        if (previous && fabs(oldBand.origin.x - band.origin.x) < 0.25 &&
+            fabs(oldBand.origin.y - band.origin.y) < 0.25 && fabs(oldBand.size.width - band.size.width) < 0.25 &&
+            oldBand.size.height == band.size.height) return NO;
+        objc_setAssociatedObject(collection, &FQXMineFoldFirstPageBandKey, [NSValue valueWithCGRect:band],
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return YES;
 }
 
 static void FQXSyncMineFlow(UICollectionView *collection) {
@@ -9943,16 +9998,20 @@ static void FQXSyncMineFlow(UICollectionView *collection) {
     UICollectionViewLayout *layout = collection.collectionViewLayout;
     UIView *fold = FQXMineShortcutFold(collection);
     Class foldLayoutClass = objc_lookUpClass("SSFuncLayout");
-    if (fold && [layout isKindOfClass:foldLayoutClass]) {
+    if ([layout isKindOfClass:foldLayoutClass]) {
+        if (!fold) return;
         // Its content-size pass sets the page rectangles used to open and size the second page.
         FQXRestoreMineFlow(collection);
         FQXSafeSetUIntProp(fold, "colCountInFirstPage", "setColCountInFirstPage:", 4);
-        static dispatch_once_t nativeFrameHookOnce;
-        __block BOOL needsLayoutInvalidation = NO;
-        dispatch_once(&nativeFrameHookOnce, ^{
-            needsLayoutInvalidation = FQXInstallOwnedHook(foldLayoutClass, sel_registerName("frameForItemAtIndexPath:"), NO,
-                "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", (IMP)HookMineFoldItemFrame, (IMP *)&OrigMineFoldItemFrame);
+        static dispatch_once_t nativeAttributesHookOnce;
+        dispatch_once(&nativeAttributesHookOnce, ^{
+            FQXInstallOwnedHook(foldLayoutClass, @selector(layoutAttributesForItemAtIndexPath:), NO, "@24@0:8@16",
+                (IMP)HookMineFoldItemAttributes, (IMP *)&OrigMineFoldItemAttributes);
+            FQXInstallOwnedHook(foldLayoutClass, @selector(layoutAttributesForElementsInRect:), NO,
+                "@48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", (IMP)HookMineFoldRectAttributes,
+                (IMP *)&OrigMineFoldRectAttributes);
         });
+        BOOL needsLayoutInvalidation = FQXUpdateMineFoldFirstPageBand(collection, fold);
         SEL gapSelector = sel_registerName("externShowGap");
         Method gapMethod = class_getInstanceMethod(object_getClass(layout), gapSelector);
         if (gapMethod && strcmp(method_getTypeEncoding(gapMethod), "d16@0:8") == 0 &&
@@ -11107,44 +11166,47 @@ static const char FQXK_FQXShelfTabTapBridgeKey = 0;
         UICollectionView *sCV = weakCV;
         if (!sTab || !sCV || !sTab.window) return;
         id sOwner = FQXObjGet(sTab, "delegate");
+        UIView *container = FQXObjGet(sOwner, "containerView");
         NSInteger nowTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
-        NSInteger nowOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
-        BOOL alreadySelected = (nowTabIdx == tappedIdx && (nowOwnerIdx < 0 || nowOwnerIdx == tappedIdx));
+        NSInteger nowOwnerIdx = FQXIntGet(sOwner, "currentTabIndex", -1);
+        NSInteger nowPagerIdx = FQXIntGet(container, "currentIndex", -1);
+        BOOL alreadySelected = nowTabIdx == tappedIdx && (nowOwnerIdx < 0 || nowOwnerIdx == tappedIdx) &&
+            (nowPagerIdx < 0 || nowPagerIdx == tappedIdx);
         if (alreadySelected) return;
 
-        BOOL recovered = NO;
-        SEL didSel = @selector(collectionView:didSelectItemAtIndexPath:);
-        if (nowTabIdx != tappedIdx && [sTab respondsToSelector:didSel]) {
-            ((void (*)(id, SEL, id, id))objc_msgSend)(sTab, didSel, sCV, hitIP);
-            recovered = YES;
+        BOOL attempted = NO;
+        if (nowTabIdx != tappedIdx) {
+            // The host's programmatic selection commits the title, pager and owner together.
+            SEL selectSel = sel_registerName("selectItemAtIndex:needAnimation:");
+            Method sm = class_getInstanceMethod(object_getClass(sTab), selectSel);
+            if (sm && strcmp(method_getTypeEncoding(sm), "B28@0:8q16B24") == 0) {
+                ((BOOL (*)(id, SEL, NSInteger, BOOL))objc_msgSend)(sTab, selectSel, tappedIdx, NO);
+                attempted = YES;
+            }
         }
         NSInteger afterTabIdx = FQXIntGet(sTab, "selectedIndex", -1);
-        NSInteger afterOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
-        if (afterTabIdx != tappedIdx) {
-            SEL selectSel = sel_registerName("selectItemAtIndex:");
-            Method sm = class_getInstanceMethod(object_getClass(sTab), selectSel);
-            if (sm && strcmp(method_getTypeEncoding(sm), "v24@0:8q16") == 0) {
-                ((void (*)(id, SEL, NSInteger))objc_msgSend)(sTab, selectSel, tappedIdx);
-                recovered = YES;
+        if (afterTabIdx == tappedIdx) {
+            NSInteger pagerIndex = FQXIntGet(container, "currentIndex", -1);
+            if (pagerIndex >= 0 && pagerIndex != tappedIdx) {
+                SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
+                Method cm = class_getInstanceMethod(object_getClass(container), clickSel);
+                if (cm && strcmp(method_getTypeEncoding(cm), "v24@0:8q16") == 0) {
+                    ((void (*)(id, SEL, NSInteger))objc_msgSend)(container, clickSel, tappedIdx);
+                    pagerIndex = FQXIntGet(container, "currentIndex", -1);
+                    attempted = YES;
+                }
             }
-            afterOwnerIdx = sOwner ? FQXIntGet(sOwner, "currentTabIndex", -1) : -1;
-        }
-        if (sOwner && afterOwnerIdx >= 0 && afterOwnerIdx != tappedIdx) {
-            SEL ownerSel = sel_registerName("categoryView:didSelectedItemAtIndex:");
-            Method om = class_getInstanceMethod(object_getClass(sOwner), ownerSel);
-            if (om && strcmp(method_getTypeEncoding(om), "v32@0:8@16q24") == 0) {
-                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(sOwner, ownerSel, sTab, tappedIdx);
-                recovered = YES;
-            }
-            UIView *container = FQXObjGet(sOwner, "containerView");
-            SEL clickSel = sel_registerName("didClickSelectedItemAtIndex:");
-            Method cm = container ? class_getInstanceMethod(object_getClass(container), clickSel) : NULL;
-            if (cm && strcmp(method_getTypeEncoding(cm), "v24@0:8q16") == 0) {
-                ((void (*)(id, SEL, NSInteger))objc_msgSend)(container, clickSel, tappedIdx);
-                recovered = YES;
+            NSInteger ownerIndex = FQXIntGet(sOwner, "currentTabIndex", -1);
+            if (pagerIndex == tappedIdx && ownerIndex >= 0 && ownerIndex != tappedIdx) {
+                SEL ownerSel = sel_registerName("categoryView:didSelectedItemAtIndex:");
+                Method om = class_getInstanceMethod(object_getClass(sOwner), ownerSel);
+                if (om && strcmp(method_getTypeEncoding(om), "v32@0:8@16q24") == 0) {
+                    ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(sOwner, ownerSel, sTab, tappedIdx);
+                    attempted = YES;
+                }
             }
         }
-        if (recovered) {
+        if (attempted) {
             FQXDiagRecordEvent(FQXDiagCategoryUI, @"shelf_tab_tap_recovery", @{
                 @"tappedTitle": tappedTitle,
                 @"tappedIndex": @(tappedIdx),
@@ -11152,6 +11214,10 @@ static const char FQXK_FQXShelfTabTapBridgeKey = 0;
                 @"prevOwnerIdx": @(prevOwnerIdx),
                 @"nowTabIdx": @(nowTabIdx),
                 @"nowOwnerIdx": @(nowOwnerIdx),
+                @"nowPagerIdx": @(nowPagerIdx),
+                @"afterTabIdx": @(FQXIntGet(sTab, "selectedIndex", -1)),
+                @"afterOwnerIdx": @(FQXIntGet(sOwner, "currentTabIndex", -1)),
+                @"afterPagerIdx": @(FQXIntGet(container, "currentIndex", -1)),
                 @"cellFrame": FQXDockRectArray(cellFrame),
                 @"layoutFrame": FQXDockRectArray(layoutFrame),
             }, NO);
@@ -18796,7 +18862,7 @@ static void HookKMPShareLayout(UIViewController *controller, SEL cmd) {
 
 static NSString *const DramaPlaybackOptionsMaterialPrefKey = @"FanqieX.DramaPlaybackOptionsMaterial.1";
 static NSString *const DramaPlaybackOptionsBlurPrefKey = @"FanqieX.DramaPlaybackOptionsBlur.1";
-static const CGFloat DramaPlaybackOptionsGroupAlpha = 0.18;
+static const CGFloat DramaPlaybackOptionsGroupAlpha = 0.48;
 static const char DramaPlaybackOptionsSurfaceKey;
 static const char DramaPlaybackOptionsMaterialStampKey;
 static const char DramaPlaybackOptionsSavedColorKey;
@@ -18844,8 +18910,6 @@ static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gau
             glass->_supplementalBlur = nil;
             return;
         }
-        glass->_cornerKind = FQXCommentCornerTopSheet;
-        glass->_cornerRadius = radius;
         if (!blur) {
             blur = [[FQXBackdropBlurView alloc] initWithEffect:nil];
             blur->_commentPureMode = YES;
@@ -18855,14 +18919,16 @@ static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gau
             blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
             glass->_supplementalBlur = blur;
         }
-        if (blur.superview != surface.contentView) [surface.contentView insertSubview:blur atIndex:0];
-        if (!CGRectEqualToRect(blur.frame, surface.contentView.bounds)) blur.frame = surface.contentView.bounds;
+        UIView *host = surface.superview;
+        if (host.subviews.firstObject != blur) [host insertSubview:blur belowSubview:surface];
+        if (!CGRectEqualToRect(blur.frame, surface.frame)) blur.frame = surface.frame;
         FQXApplyCommentCornerConfig(blur, FQXCommentCornerTopSheet, radius);
     }
 
-    // Keep the video colors behind the glass, but diffuse the player controls before drawing native text.
-    NSInteger strength = 60 + (extraBlur * 40 + 50) / 100;
-    CGFloat tintAlpha = dark ? 0.68 : 0.70;
+    // Diffuse the video controls beneath the optical surface. The host's row groups provide the ink backing.
+    NSInteger minimumBlur = gaussian ? 60 : 34;
+    NSInteger strength = minimumBlur + (extraBlur * (100 - minimumBlur) + 50) / 100;
+    CGFloat tintAlpha = gaussian ? (dark ? 0.68 : 0.70) : (dark ? 0.12 : 0.16);
     [blur configurePercent:strength dark:dark baseTint:tintAlpha maxTint:tintAlpha chromeBorder:NO];
     // The UIKit blur fallback has no hardware tint overlay.
     UIColor *fill = blur->_usingHardwareFilter ? UIColor.clearColor
@@ -18903,6 +18969,8 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
         BOOL gaussian = !reduce && (!FQXGlassEnabled() || (followDock && dockMode == FQXDockMaterialIOS18Gaussian) ||
                                      material == FQXCommentMaterialGaussianBlur);
+        BOOL clearGlass = !gaussian && !reduce && (followDock ? dockMode != FQXDockMaterialFrostedGlass
+                                                              : material == FQXCommentMaterialClearGlass);
         BOOL dark = FQXAppIsInNightMode();
         CGFloat luma;
         UIColor *panelColor = FQXObjGet(controller, "panelSolidBackgroundColor");
@@ -18932,9 +19000,16 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
             objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, surface, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         if (!CGRectEqualToRect(surface.frame, root.bounds)) surface.frame = root.bounds;
-        if (root.subviews.firstObject != surface) [root insertSubview:surface atIndex:0];
+        UIView *underlay = gaussian ? nil : ((FQXCommentGlassSurfaceView *)surface)->_supplementalBlur;
+        UIView *first = root.subviews.firstObject;
+        if (surface.superview != root || (first != surface && first != underlay)) {
+            [root insertSubview:surface atIndex:0];
+        }
         FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
         if (!gaussian) {
+            // Match the comments' colorless Clear optics while leaving the host's foreground appearance alone.
+            UIUserInterfaceStyle style = (clearGlass || dark) ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+            if (surface.overrideUserInterfaceStyle != style) surface.overrideUserInterfaceStyle = style;
             NSInteger stamp = ((followDock ? 10 + dockMode : material) << 3) | (dark << 2) | (darkTint << 1) | reduce;
             NSNumber *previous = objc_getAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey);
             if (!previous || previous.integerValue != stamp) {
