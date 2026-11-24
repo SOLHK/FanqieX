@@ -2136,7 +2136,7 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     return @"";
 }
 
-static const char FQXLegacyDockOpacityKey = 0;
+static const char FQXBackdropContentOpacityKey = 0;
 static const char FQXK_FQXProxySuppressDiagLoggedKey = 0;
 #define FQXProxySuppressDiagLoggedKey ((const void *)&FQXK_FQXProxySuppressDiagLoggedKey)
 static const char FQXK_FQXDockVisibleLayersSigKey = 0;
@@ -2152,18 +2152,17 @@ static NSArray<NSNumber *> *FQXDockRectArray(CGRect r) {
     ];
 }
 
-// Remove the legacy content from the glass backdrop without changing the
-// proxy's visibility or the content's hidden flag used for compact mode.
-static void FQXSetLegacyDockContentHidden(UIView *view, BOOL hidden) {
+// Remove content from glass sampling while leaving UIView visibility and layout intact.
+static void FQXSetBackdropContentHidden(UIView *view, BOOL hidden) {
     if (!view) return;
-    NSNumber *original = objc_getAssociatedObject(view, &FQXLegacyDockOpacityKey);
+    NSNumber *original = objc_getAssociatedObject(view, &FQXBackdropContentOpacityKey);
     if (!hidden && !original) return;
     CALayer *layer = view.layer;
     if (hidden && !original) {
         if (layer.opacity == 0.0f) return;
-        objc_setAssociatedObject(view, &FQXLegacyDockOpacityKey, @(layer.opacity), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &FQXBackdropContentOpacityKey, @(layer.opacity), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else if (!hidden) {
-        objc_setAssociatedObject(view, &FQXLegacyDockOpacityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &FQXBackdropContentOpacityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (layer.opacity != 0.0f) return;
     }
     float opacity = hidden ? 0.0f : original.floatValue;
@@ -2193,7 +2192,7 @@ static void FQXEnforceNativeProxyNeutralized(UIVisualEffectView *proxy) {
     if (proxy.userInteractionEnabled) {
         proxy.userInteractionEnabled = NO;
     }
-    FQXSetLegacyDockContentHidden(proxy.contentView, YES);
+    FQXSetBackdropContentHidden(proxy.contentView, YES);
 }
 
 static void FQXSetDockMaterialOwner(UIView *bar,
@@ -2226,7 +2225,7 @@ static void FQXSetDockMaterialOwner(UIView *bar,
         if (!proxy.userInteractionEnabled) {
             proxy.userInteractionEnabled = YES;
         }
-        FQXSetLegacyDockContentHidden(proxy.contentView, NO);
+        FQXSetBackdropContentHidden(proxy.contentView, NO);
         objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (prevOwner != FQXDockMaterialOwnerProxy) {
             objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2234,7 +2233,7 @@ static void FQXSetDockMaterialOwner(UIView *bar,
         }
     } else {
         if (!proxy.userInteractionEnabled) proxy.userInteractionEnabled = YES;
-        FQXSetLegacyDockContentHidden(proxy.contentView, NO);
+        FQXSetBackdropContentHidden(proxy.contentView, NO);
         objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
@@ -2500,7 +2499,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     NSString *clsName = NSStringFromClass(root.class);
     if ([clsName containsString:@"TabSelectionView"] || [clsName containsString:@"SelectionPlatter"]) {
         // Only override UIKit's lens while the detached module owns selection.
-        FQXSetLegacyDockContentHidden(root, !visible);
+        FQXSetBackdropContentHidden(root, !visible);
         return;
     }
     for (UIView *sub in root.subviews) {
@@ -3274,7 +3273,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     UIView *previous = self->_overlay;
     if (previous == overlay) return;
     if (self->_nativeDockActive && previous.superview != self->_bar) {
-        FQXSetLegacyDockContentHidden(previous, NO);
+        FQXSetBackdropContentHidden(previous, NO);
         previous.userInteractionEnabled = YES;
     }
     self->_overlay = overlay;
@@ -3288,7 +3287,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         if (visible || restoreProxy) {
             FQXDockMaterialOwner owner = visible ? FQXDockMaterialOwnerNative : FQXDockMaterialOwnerProxy;
             FQXSetDockMaterialOwner(self->_bar, self->_proxy, owner, showDetached);
-            FQXSetLegacyDockContentHidden(self->_overlay, visible);
+            FQXSetBackdropContentHidden(self->_overlay, visible);
             if (self->_overlay && self->_overlay.userInteractionEnabled == visible)
                 self->_overlay.userInteractionEnabled = !visible;
         }
@@ -5289,23 +5288,6 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex) {
     }
 }
 
-static BOOL FQXViewHasHorizontalScrollableDescendantAtPoint(UIView *view,
-                                                           CGPoint ptInView,
-                                                           UIScrollView *excludedScroll) {
-    if (!view || view.hidden || view.alpha <= 0.01) return NO;
-    UIView *hit = [view hitTest:ptInView withEvent:nil];
-    for (UIView *cur = hit; cur && cur != view; cur = cur.superview) {
-        if ([cur isKindOfClass:UIScrollView.class] && cur != excludedScroll) {
-            UIScrollView *sv = (UIScrollView *)cur;
-            if (sv.scrollEnabled && sv.userInteractionEnabled &&
-                sv.contentSize.width > CGRectGetWidth(sv.bounds) + 2.0) {
-                return YES;
-            }
-        }
-    }
-    return NO;
-}
-
 @interface FQXDramaVisiblePagerPanController : NSObject <UIGestureRecognizerDelegate> {
 @public
     __weak id _feedVC;
@@ -5327,9 +5309,10 @@ static BOOL FQXViewHasHorizontalScrollableDescendantAtPoint(UIView *view,
         _pagerScroll = scroll;
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         pan.maximumNumberOfTouches = 1;
-        pan.cancelsTouchesInView = NO;
+        // A recognized page drag must cancel the underlying card or control's touch.
+        pan.cancelsTouchesInView = YES;
         pan.delaysTouchesBegan = NO;
-        pan.delaysTouchesEnded = NO;
+        pan.delaysTouchesEnded = YES;
         pan.delegate = self;
         pan.enabled = NO;
         _panGesture = pan;
@@ -5338,26 +5321,40 @@ static BOOL FQXViewHasHorizontalScrollableDescendantAtPoint(UIView *view,
     return self;
 }
 
-- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     if (gestureRecognizer != self->_panGesture) return YES;
     if (!self->_visibleStepSwipeActive) return NO;
     UIView *container = self->_listContainer;
     id feed = self->_feedVC;
     if (!container || !container.window || container.hidden || !feed) return NO;
 
-    CGPoint v = [self->_panGesture velocityInView:container];
-    if (fabs(v.x) <= fabs(v.y) * 1.45 || fabs(v.x) < 75.0) return NO;
-
-    CGPoint loc = [self->_panGesture locationInView:container];
     UIView *header = FQXObjGet(feed, "headerView");
     if ([header isKindOfClass:UIView.class] && !header.hidden && header.window == container.window) {
-        CGPoint locInHeader = [container convertPoint:loc toView:header];
+        CGPoint locInHeader = [touch locationInView:header];
         if (CGRectContainsPoint(CGRectInset(header.bounds, 0.0, -8.0), locInHeader)) return NO;
     }
-    if (FQXViewHasHorizontalScrollableDescendantAtPoint(container, loc, self->_pagerScroll)) {
-        return NO;
+    // Keep the original touch owner even after the finger leaves a nested carousel.
+    for (UIView *view = touch.view; view && view != container; view = view.superview) {
+        if ([view isKindOfClass:UIScrollView.class] && view != self->_pagerScroll) {
+            UIScrollView *scroll = (UIScrollView *)view;
+            if (scroll.scrollEnabled && scroll.userInteractionEnabled &&
+                scroll.contentSize.width > CGRectGetWidth(scroll.bounds) + 2.0) return NO;
+        }
     }
     return YES;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer != self->_panGesture) return YES;
+    if (!self->_visibleStepSwipeActive) return NO;
+    UIView *container = self->_listContainer;
+    if (!container.window || container.hidden || !self->_feedVC) return NO;
+
+    CGPoint direction = [self->_panGesture translationInView:container];
+    if (fmax(fabs(direction.x), fabs(direction.y)) < 4.0) {
+        direction = [self->_panGesture velocityInView:container];
+    }
+    return fabs(direction.x) > fabs(direction.y) * 1.45;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gr shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
@@ -19222,6 +19219,9 @@ static const char DramaPlaybackOptionsSurfaceKey;
 static const char DramaPlaybackOptionsMaterialStampKey;
 static const char DramaPlaybackOptionsSavedColorKey;
 static const char DramaPlaybackOptionsSavedEffectKey;
+static const char DramaPlaybackOptionsReadabilityKey;
+static const char DramaPlaybackOptionsCoveredControlsKey;
+static void (*OrigDramaPlaybackOptionsDisappeared)(id, SEL, BOOL);
 
 static void FQXSetPlaybackOptionsBackground(UIView *view, BOOL active, CGFloat alpha) {
     if (!view) return;
@@ -19290,9 +19290,80 @@ static void FQXSyncPlaybackOptionsBackdrop(UIVisualEffectView *surface, BOOL gau
     if (![blur.contentView.backgroundColor isEqual:fill]) blur.contentView.backgroundColor = fill;
 }
 
+static void FQXSyncPlaybackOptionsReadability(UIVisualEffectView *surface, BOOL dark, CGFloat radius) {
+    UIView *fill = objc_getAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey);
+    if (!fill) {
+        fill = [[UIView alloc] initWithFrame:surface.contentView.bounds];
+        fill.userInteractionEnabled = NO;
+        fill.opaque = NO;
+        fill.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        fill.layer.cornerCurve = kCACornerCurveContinuous;
+        fill.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+        objc_setAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey, fill, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (fill.superview != surface.contentView) {
+        fill.frame = surface.contentView.bounds;
+        [surface.contentView addSubview:fill];
+    }
+    // Keep high-contrast subtitles in the video from competing with the settings.
+    // This only tints the glass content, leaving the selected blur strength intact.
+    UIColor *color = [UIColor colorWithWhite:dark ? 0.0 : 1.0 alpha:dark ? 0.56 : 0.52];
+    if (![fill.backgroundColor isEqual:color]) fill.backgroundColor = color;
+    if (fabs(fill.layer.cornerRadius - radius) > 0.25) fill.layer.cornerRadius = radius;
+}
+
+static void FQXSyncPlaybackOptionsCoveredControls(UIViewController *controller, BOOL covered) {
+    UIView *root = controller.viewIfLoaded;
+    UIWindow *window = root.window;
+    NSHashTable<UIView *> *hidden = objc_getAssociatedObject(root, &DramaPlaybackOptionsCoveredControlsKey);
+    NSMutableSet<UIView *> *wanted = nil;
+    if (covered && window) {
+        id context = FQXObjGet(controller, "listVCContext");
+        UIView *cell = FQXObjGet(FQXObjGet(context, "currentVideoDataModel"), "cellView");
+        if ([cell isKindOfClass:UIView.class] && cell.window == window) {
+            UIView *control = FQXObjGet(cell, "vPlayerControlView");
+            UIView *decoration = FQXObjGet(cell, "decorationContentView");
+            UIView *rail = [decoration isKindOfClass:UIView.class]
+                ? FQXFindViewOfClassRecursive(decoration, objc_lookUpClass("SSShortVideoRightInteractionView")) : nil;
+            UIView *candidates[] = { FQXObjGet(control, "baseInfoView"), FQXObjGet(control, "bottomView"),
+                                     FQXObjGet(control, "progressContainer"), FQXObjGet(control, "insertAboveProgressView"), rail };
+            CGRect sheet = [root convertRect:root.bounds toView:window];
+            wanted = [NSMutableSet set];
+            for (NSUInteger i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+                UIView *view = candidates[i];
+                if ([view isKindOfClass:UIView.class] && view.window == window &&
+                    [view isDescendantOfView:cell] && ![view isDescendantOfView:root] &&
+                    CGRectIntersectsRect(sheet, [view convertRect:view.bounds toView:window])) {
+                    [wanted addObject:view];
+                }
+            }
+        }
+    }
+    for (UIView *view in hidden.allObjects) {
+        if ([wanted containsObject:view]) continue;
+        FQXSetBackdropContentHidden(view, NO);
+        [hidden removeObject:view];
+    }
+    if (!wanted.count) {
+        if (hidden) objc_setAssociatedObject(root, &DramaPlaybackOptionsCoveredControlsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (!hidden) {
+        hidden = [NSHashTable weakObjectsHashTable];
+        objc_setAssociatedObject(root, &DramaPlaybackOptionsCoveredControlsKey, hidden, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (UIView *view in wanted) {
+        FQXSetBackdropContentHidden(view, YES);
+        [hidden addObject:view];
+    }
+}
+
 static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     UIView *root = controller.viewIfLoaded;
-    if (!root || CGRectIsEmpty(root.bounds)) return;
+    if (!root || CGRectIsEmpty(root.bounds)) {
+        FQXSyncPlaybackOptionsCoveredControls(controller, NO);
+        return;
+    }
     UIVisualEffectView *surface = objc_getAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey);
     id config = FQXObjGet(controller, "config");
     NSArray *items = FQXObjGet(controller, "settingItems");
@@ -19302,7 +19373,10 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         !FQXBoolGet(config, "isLandscapeMode", NO) && [items isKindOfClass:NSArray.class] && items.count > 0;
     if (!active && !surface) return;
     UITableView *table = FQXObjGet(controller, "tableView");
-    if (![table isKindOfClass:UITableView.class] || ![table isDescendantOfView:root]) return;
+    if (![table isKindOfClass:UITableView.class] || ![table isDescendantOfView:root]) {
+        FQXSyncPlaybackOptionsCoveredControls(controller, NO);
+        return;
+    }
     UIVisualEffectView *nativeBackdrop = nil;
     UIView *nativeTint = nil;
     if (FQXBoolGet(controller, "useBlurBackground", NO)) {
@@ -19317,6 +19391,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         FQXReleaseCommentSurface(surface);
         objc_setAssociatedObject(root, &DramaPlaybackOptionsSurfaceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         FQXSetShareSheetHostClipping(root, NO);
+        FQXSyncPlaybackOptionsCoveredControls(controller, NO);
     } else {
         BOOL followDock = material != FQXCommentMaterialClearGlass && material != FQXCommentMaterialRegularGlass &&
                           material != FQXCommentMaterialGaussianBlur;
@@ -19349,7 +19424,7 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 surface = blur;
             } else {
                 FQXCommentGlassSurfaceView *glass = [[FQXCommentGlassSurfaceView alloc] initWithEffect:nil];
-                glass->_flexSourceView = root;
+                glass->_isSheetBackdrop = YES;
                 surface = glass;
             }
             surface.userInteractionEnabled = NO;
@@ -19372,9 +19447,9 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
                 if (reduce) {
                     effect = [UIBlurEffect effectWithStyle:dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight];
                 } else if (followDock) {
-                    effect = FQXMakeDockEffectForMode(dockMode, dark, YES, NO);
+                    effect = FQXMakeDockEffectForMode(dockMode, dark, NO, NO);
                 } else {
-                    effect = FQXBuildCommentGlassEffect((FQXCommentMaterialStyle)material, dark && darkTint, NO, YES);
+                    effect = FQXBuildCommentGlassEffect((FQXCommentMaterialStyle)material, dark && darkTint, NO, NO);
                 }
                 surface.effect = effect;
                 objc_setAssociatedObject(surface, &DramaPlaybackOptionsMaterialStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -19383,6 +19458,11 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         FQXApplyCommentCornerConfig(surface, FQXCommentCornerTopSheet, radius);
         NSInteger extraBlur = FQXBlurPercent([prefs doubleForKey:DramaPlaybackOptionsBlurPrefKey]);
         FQXSyncPlaybackOptionsBackdrop(surface, gaussian, reduce, dark, radius, extraBlur);
+        if (nativeGlass) FQXSyncPlaybackOptionsReadability(surface, dark, radius);
+        else [objc_getAssociatedObject(surface, &DramaPlaybackOptionsReadabilityKey) removeFromSuperview];
+        if (OrigDramaPlaybackOptionsDisappeared) {
+            FQXSyncPlaybackOptionsCoveredControls(controller, nativeGlass && !controller.isBeingDismissed);
+        }
     }
 
     FQXSetPlaybackOptionsBackground(root, active, 0.0);
@@ -19392,12 +19472,29 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
     for (UITableViewCell *cell in table.visibleCells) {
         FQXSetPlaybackOptionsBackground(cell, active, DramaPlaybackOptionsGroupAlpha);
     }
+    UICollectionView *pinned = FQXObjGet(FQXObjGet(controller, "pinnedItemsView"), "collectionView");
+    if ([pinned isKindOfClass:UICollectionView.class] && [pinned isDescendantOfView:root]) {
+        for (UICollectionViewCell *cell in pinned.visibleCells) {
+            FQXSetPlaybackOptionsBackground(cell.contentView, active, DramaPlaybackOptionsGroupAlpha);
+        }
+    }
 }
 
 static void (*OrigDramaPlaybackOptionsLayout)(id, SEL);
 static void HookDramaPlaybackOptionsLayout(UIViewController *controller, SEL cmd) {
     OrigDramaPlaybackOptionsLayout(controller, cmd);
     FQXStyleDramaPlaybackOptions(controller);
+}
+
+static void (*OrigDramaPlaybackOptionsAppeared)(id, SEL, BOOL);
+static void HookDramaPlaybackOptionsAppeared(UIViewController *controller, SEL cmd, BOOL animated) {
+    OrigDramaPlaybackOptionsAppeared(controller, cmd, animated);
+    FQXStyleDramaPlaybackOptions(controller);
+}
+
+static void HookDramaPlaybackOptionsDisappeared(UIViewController *controller, SEL cmd, BOOL animated) {
+    OrigDramaPlaybackOptionsDisappeared(controller, cmd, animated);
+    FQXSyncPlaybackOptionsCoveredControls(controller, NO);
 }
 
 static id (*OrigDramaPlaybackOptionsCell)(id, SEL, UITableView *, NSIndexPath *);
@@ -22260,6 +22357,8 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("SSShortVideoHostRightInteractionCommentView", "layoutSubviews", "v16@0:8", OrigHostDramaCommentLayout, HookHostDramaCommentLayout);
 
             HOOK_INST("FQVShortVideoSettingsViewController", "viewDidLayoutSubviews", "v16@0:8", OrigDramaPlaybackOptionsLayout, HookDramaPlaybackOptionsLayout);
+            HOOK_INST("FQVShortVideoSettingsViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaPlaybackOptionsAppeared, HookDramaPlaybackOptionsAppeared);
+            HOOK_INST("FQVShortVideoSettingsViewController", "viewDidDisappear:", "v20@0:8B16", OrigDramaPlaybackOptionsDisappeared, HookDramaPlaybackOptionsDisappeared);
             HOOK_INST("FQVShortVideoSettingsViewController", "tableView:cellForRowAtIndexPath:", "@32@0:8@16@24", OrigDramaPlaybackOptionsCell, HookDramaPlaybackOptionsCell);
 
             // Highest available drama resolution
