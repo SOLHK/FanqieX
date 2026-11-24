@@ -10,6 +10,7 @@ static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 static NSString *const CompactPositionKey = @"FanqieX.BottomDramaCompactPosition.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
+static NSString *const BottomEntryTitlePrefix = @"底栏显示：";
 static NSString *const StartupTabKey = @"FanqieX.StartupTab.1";
 static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.1";
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
@@ -1205,12 +1206,18 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
                 sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             } else if ([row.path isEqualToString:@"页面与导航/底栏入口"]) {
                 NSString *lbl = sw.accessibilityLabel ?: @"";
-                if ([lbl hasPrefix:@"底栏显示："]) {
-                    NSString *modName = [lbl substringFromIndex:[@"底栏显示：" length]];
+                BOOL entry = [lbl hasPrefix:BottomEntryTitlePrefix];
+                if (!entry && ![lbl isEqualToString:@"底栏点击震动"]) continue;
+                if (entry) {
+                    NSString *modName = [lbl substringFromIndex:BottomEntryTitlePrefix.length];
                     BOOL allowed = FQXDockIsModuleAllowedByBottomPrefs(modName);
                     if (sw.on != allowed) sw.on = allowed;
                 }
+                SEL original = sel_registerName(entry ? "fqx176_toggle:" : "fqx178_bottomOptionChanged:");
+                // The visible menu owns one event route. Forward the native
+                // persistence action before re-reading the switches from defaults.
                 for (id target in sw.allTargets.allObjects) {
+                    [sw removeTarget:target action:original forControlEvents:UIControlEventValueChanged];
                     [sw removeTarget:target action:@selector(bottomTabToggleChanged:) forControlEvents:UIControlEventValueChanged];
                 }
                 [sw addTarget:self action:@selector(bottomTabToggleChanged:) forControlEvents:UIControlEventValueChanged];
@@ -1290,7 +1297,12 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
 }
 
 - (void)bottomTabToggleChanged:(UISwitch *)toggle {
-    (void)toggle;
+    BOOL entry = [toggle.accessibilityLabel hasPrefix:BottomEntryTitlePrefix];
+    id target = entry ? self.router : self.settingsOwner;
+    SEL action = sel_registerName(entry ? "fqx176_toggle:" : "fqx178_bottomOptionChanged:");
+    if (![target respondsToSelector:action]) return;
+    ((void (*)(id, SEL, id))objc_msgSend)(target, action, toggle);
+    if (!entry) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refreshSel = sel_registerName("refreshDockAppearance");
