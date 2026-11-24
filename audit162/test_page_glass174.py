@@ -745,6 +745,8 @@ class Runtime(SettingsBoundary178R13, TopChromeRuntime, GlassRuntime):
                     return self.finish(cpu)
                 if name in ("typeArray", "tableView", "tableHeaderView", "keyWindow", "rootViewController"):
                     return self.finish(cpu, state.get(name, 0))
+                if name in ("childViewControllers", "window") and name in state:
+                    return self.finish(cpu, state[name])
                 if name == "showReadTimeView":
                     return self.finish(cpu, int(state["showReadTimeView"]))
                 if name in ("customTabBar", "delegate", "state", "view", "myUserBar", "sidebarAdapter",
@@ -2688,6 +2690,36 @@ def exercise(data, labels):
     send(cpu, runtime, tab_owner, "viewDidAppear:", 0)
     require(not gestures, "recovery is removed when Mine becomes available again")
 
+    if version == "1.9.6beta9":
+        # A registered video tab uses its server-provided title and can sit inside a root container.
+        registered_types = (0, 9, 3, 4, 5)
+        registered_boxed_types = [runtime.box(value) for value in registered_types]
+        tab_state.update(host_types=runtime.obj("NSArray", "registered native types", items=registered_boxed_types),
+                         host_indexes=runtime.obj("NSDictionary", "registered native indexes",
+                                                  items={value: runtime.box(i) for i, value in enumerate(registered_types)}),
+                         titles={5: runtime.text_object("商城"), 9: runtime.text_object("视频")})
+        children = runtime.obj("NSArray", "controller children", items=[tab_owner])
+        container = runtime.obj("UIViewController", "root container", childViewControllers=children)
+        runtime.objects[window].state["rootViewController"] = container
+        runtime.objects[runtime.tab_app].state["keyWindow"] = 0
+        prefs.update({key: True for key in keys})
+        switch = switches[1]
+        state = runtime.objects[switch].state
+        state["window"] = window
+        observer, action, _ = state["control_targets"][0]
+        for on in (False, True):
+            state["isOn"] = on
+            refreshes = runtime.tab_refreshes
+            send(cpu, runtime, observer, runtime.selector_names[action], switch)
+            require(prefs[keys[1]] is on and runtime.tab_refreshes == refreshes + 1,
+                    "the drama switch finds the nested tab controller in its own window and refreshes it")
+            result = send(cpu, runtime, tab_owner, "tabbarVCAndAttributeInit")["result"]
+            expected = models if on else models[:1] + models[2:]
+            remaining_types = registered_boxed_types if on else registered_boxed_types[:1] + registered_boxed_types[2:]
+            require(runtime.objects[result].state["items"] == expected and
+                    runtime.objects[tab_state["typeArray"]].state["items"] == remaining_types,
+                    "the drama switch hides and restores only the registered video entry")
+
     return {
         "reader_controls": ["FQReaderSaaSBottomToolView", "SSReaderBottomToolDivertView",
                             "FQReaderSaaSReaderSpeechButton", "BDReaderNewSlider"],
@@ -2710,6 +2742,7 @@ def exercise(data, labels):
         "late_game_filtered_before_list_diff": True,
         "bottom_entries_default_on": True,
         "bottom_entries_restored": True,
+        **({"nested_registered_video_visibility": True} if version == "1.9.6beta9" else {}),
         "shelf_duration_toggle": True,
         "shelf_filter_visibility_toggle": True,
         "landscape_fill_toggle_and_engine_restore": True,

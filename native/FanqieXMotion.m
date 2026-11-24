@@ -1743,8 +1743,6 @@ static const char FQXK_FQXPlatterAppliedStyleKey = 0;
 #define FQXPlatterAppliedStyleKey ((const void *)&FQXK_FQXPlatterAppliedStyleKey)
 static const char FQXK_FQXPlatterAppliedEffectKey = 0;
 #define FQXPlatterAppliedEffectKey ((const void *)&FQXK_FQXPlatterAppliedEffectKey)
-static BOOL gFQXPlatterGlassProbed = NO;
-static BOOL gFQXPlatterGlassSupported = NO;
 
 static UIView *FQXFindViewOfClassRecursive(UIView *root, Class cls) {
     if (!root || !cls) return nil;
@@ -1796,10 +1794,9 @@ static UIView *FQXFindDockPlatter(UITabBar *tabBar) {
 }
 
 // Swap only the platter material. UIKit still drives selection and the interactive lens.
-static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, id appliedEffect, FQXDockMaterialMode mode) {
-    if (mode == FQXDockMaterialIOS18Gaussian) return (effectObj != nil);
+static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, id appliedEffect, BOOL expectsEmptyEffect) {
+    if (expectsEmptyEffect) return effectObj != nil;
     if (!effectObj) return YES;
-    if ([effectObj isKindOfClass:UIBlurEffect.class]) return YES;
     // Compare against the exact UIVisualEffect instance we previously installed so iOS 27.2
     // compatibility platters (_UITabBarItemPlatterView) never enter a false hostReset loop
     // when UIGlassEffect doesn't expose a readable Clear style property.
@@ -1807,7 +1804,7 @@ static BOOL FQXGlassEffectNeedsStyleReapply(id effectObj, id appliedEffect, FQXD
         if (effectObj == appliedEffect || [effectObj isEqual:appliedEffect]) return NO;
         return YES;
     }
-    return NO;
+    return [effectObj isKindOfClass:UIBlurEffect.class];
 }
 
 static id FQXGetPlatterGlassEffect(UIView *platter, BOOL *outSupported) {
@@ -1860,7 +1857,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             return;
         }
         BOOL wantsClear = (mode == FQXDockMaterialIOS18Gaussian);
-        BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, mode);
+        BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, wantsClear);
         if (!original || (!wantsClear && hostReset && current)) {
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -1898,16 +1895,13 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
         [platter setNeedsLayout];
         return;
     }
-    if (gFQXPlatterGlassProbed && !gFQXPlatterGlassSupported) return;
-
     BOOL supported = NO;
     id current = FQXGetPlatterGlassEffect(platter, &supported);
-    gFQXPlatterGlassProbed = YES;
-    gFQXPlatterGlassSupported = supported;
     if (!supported) return;
 
     NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
-    BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, mode);
+    // Gaussian still uses the private platter's native interactive glass for selection.
+    BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, NO);
     if (applied && applied.integerValue == desiredStamp && !hostReset) return;
 
     if (!objc_getAssociatedObject(platter, FQXPlatterOriginalGlassKey)) {
@@ -1925,10 +1919,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     }
     UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, isDark, interactive, NO);
     if (!effect) return;
-    if (!FQXSetPlatterGlassEffect(platter, effect)) {
-        gFQXPlatterGlassSupported = NO;
-        return;
-    }
+    if (!FQXSetPlatterGlassEffect(platter, effect)) return;
     id persisted = FQXGetPlatterGlassEffect(platter, NULL) ?: effect;
     objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(platter, FQXPlatterAppliedEffectKey, persisted, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2137,8 +2128,7 @@ static NSString *FQXDockButtonTitle(UIButton *button, UIView *bar, NSUInteger in
     return @"";
 }
 
-static const char FQXK_FQXZeroMaskLayerKey = 0;
-#define FQXZeroMaskLayerKey ((const void *)&FQXK_FQXZeroMaskLayerKey)
+static const char FQXLegacyDockOpacityKey = 0;
 static const char FQXK_FQXProxySuppressDiagLoggedKey = 0;
 #define FQXProxySuppressDiagLoggedKey ((const void *)&FQXK_FQXProxySuppressDiagLoggedKey)
 static const char FQXK_FQXDockVisibleLayersSigKey = 0;
@@ -2154,29 +2144,26 @@ static NSArray<NSNumber *> *FQXDockRectArray(CGRect r) {
     ];
 }
 
-// Visually hide a view without modifying hidden/alpha/layer.opacity, so Lvisible_to() in
-// native_surface.s still sees alpha == 1.0 and NEVER enters a reset/layout death spiral.
-static void FQXSetZeroMaskHidden(UIView *view, BOOL hidden) {
+// Remove the legacy content from the glass backdrop without changing the
+// proxy's visibility or the content's hidden flag used for compact mode.
+static void FQXSetLegacyDockContentHidden(UIView *view, BOOL hidden) {
     if (!view) return;
-    CALayer *ownedMask = objc_getAssociatedObject(view, FQXZeroMaskLayerKey);
-    if (hidden) {
-        if (!ownedMask) {
-            ownedMask = [CALayer layer];
-            ownedMask.frame = CGRectZero;
-            objc_setAssociatedObject(view, FQXZeroMaskLayerKey, ownedMask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        if (view.layer.mask != ownedMask) {
-            view.layer.mask = ownedMask;
-        }
-        if (view.layer.opacity != 1.0f) {
-            view.layer.opacity = 1.0f;
-        }
-    } else if (ownedMask) {
-        if (view.layer.mask == ownedMask) {
-            view.layer.mask = nil;
-        }
-        objc_setAssociatedObject(view, FQXZeroMaskLayerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSNumber *original = objc_getAssociatedObject(view, &FQXLegacyDockOpacityKey);
+    if (!hidden && !original) return;
+    CALayer *layer = view.layer;
+    if (hidden && !original) {
+        if (layer.opacity == 0.0f) return;
+        objc_setAssociatedObject(view, &FQXLegacyDockOpacityKey, @(layer.opacity), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!hidden) {
+        objc_setAssociatedObject(view, &FQXLegacyDockOpacityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (layer.opacity != 0.0f) return;
     }
+    float opacity = hidden ? 0.0f : original.floatValue;
+    if (layer.opacity == opacity) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    layer.opacity = opacity;
+    [CATransaction commit];
 }
 
 // Keep proxy completely effect-free and non-interactive while nativeDockBar owns the expanded Dock.
@@ -2198,10 +2185,7 @@ static void FQXEnforceNativeProxyNeutralized(UIVisualEffectView *proxy) {
     if (proxy.userInteractionEnabled) {
         proxy.userInteractionEnabled = NO;
     }
-    FQXSetZeroMaskHidden(proxy, NO);
-    if (proxy.contentView) {
-        FQXSetZeroMaskHidden(proxy.contentView, YES);
-    }
+    FQXSetLegacyDockContentHidden(proxy.contentView, YES);
 }
 
 static void FQXSetDockMaterialOwner(UIView *bar,
@@ -2234,10 +2218,7 @@ static void FQXSetDockMaterialOwner(UIView *bar,
         if (!proxy.userInteractionEnabled) {
             proxy.userInteractionEnabled = YES;
         }
-        FQXSetZeroMaskHidden(proxy, NO);
-        if (proxy.contentView) {
-            FQXSetZeroMaskHidden(proxy.contentView, NO);
-        }
+        FQXSetLegacyDockContentHidden(proxy.contentView, NO);
         objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (prevOwner != FQXDockMaterialOwnerProxy) {
             objc_setAssociatedObject(proxy, FQXUnifiedClearDockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2245,8 +2226,7 @@ static void FQXSetDockMaterialOwner(UIView *bar,
         }
     } else {
         if (!proxy.userInteractionEnabled) proxy.userInteractionEnabled = YES;
-        FQXSetZeroMaskHidden(proxy, NO);
-        if (proxy.contentView) FQXSetZeroMaskHidden(proxy.contentView, NO);
+        FQXSetLegacyDockContentHidden(proxy.contentView, NO);
         objc_setAssociatedObject(proxy, FQXProxySuppressDiagLoggedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
@@ -2365,7 +2345,7 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
                            fallbackButton:(UIButton *)fallbackBtn
                                    source:(NSString *)source;
 - (BOOL)syncDockItems;
-- (void)applyDockItemImages;
+- (void)applyDockItemImagesToItems:(NSArray<UITabBarItem *> *)items;
 - (void)syncDetachedDockMaterial:(BOOL)glassDark;
 - (void)syncSelectionExclusivityAnimated:(BOOL)animated;
 - (void)layoutNativeDockInBar:(UIView *)bar proxy:(UIVisualEffectView *)proxy forceMeasure:(BOOL)forceMeasure;
@@ -2498,10 +2478,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (!root || depth > 5) return;
     NSString *clsName = NSStringFromClass(root.class);
     if ([clsName containsString:@"TabSelectionView"] || [clsName containsString:@"SelectionPlatter"]) {
-        CGFloat desired = visible ? 1.0 : 0.0;
-        if (fabs(root.alpha - desired) > 0.01) {
-            root.alpha = desired;
-        }
+        // Only override UIKit's lens while the detached module owns selection.
+        FQXSetLegacyDockContentHidden(root, !visible);
         return;
     }
     for (UIView *sub in root.subviews) {
@@ -2775,9 +2753,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     return 27.0;
 }
 
-- (void)applyDockItemImages {
-    UITabBar *tabBar = self->_nativeDockBar;
-    if (!tabBar || tabBar.items.count == 0) return;
+- (void)applyDockItemImagesToItems:(NSArray<UITabBarItem *> *)items {
+    if (items.count == 0) return;
     BOOL isDark = [self isDarkDock];
     self->_dockAppliedInkState = isDark ? 1 : 0;
     CGFloat white = isDark ? 1.0 : 0.0;
@@ -2785,7 +2762,6 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
     NSInteger displayMode = [self dockDisplayMode];
     CGFloat ptSize = [self dockIconPointSize];
-    NSArray<UITabBarItem *> *items = tabBar.items;
     NSArray<NSString *> *titles = self->_dockTitles;
     NSArray<UIButton *> *buttons = self->_buttons;
     NSArray<NSNumber *> *hostIndices = self->_capsuleHostIndices;
@@ -2841,15 +2817,14 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (self->_detachedHostIndex != NSNotFound &&
         self->_detachedButton &&
         hostSel == (NSUInteger)self->_detachedHostIndex) {
+        FQXSetNativeTabSelectionLensVisible(tabBar, NO, 0);
         if (tabBar.selectedItem != nil) {
             tabBar.selectedItem = nil;
         }
-        FQXSetNativeTabSelectionLensVisible(tabBar, NO, 0);
         [self->_detachedButton setModuleSelected:YES animated:animated];
         return;
     }
 
-    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
     if (self->_detachedButton) {
         [self->_detachedButton setModuleSelected:NO animated:animated];
     }
@@ -2862,6 +2837,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             tabBar.selectedItem = desiredItem;
         }
     }
+    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
 }
 
 - (BOOL)syncDockItems {
@@ -2902,11 +2878,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         self->_capsuleHostIndices = [capsuleIndices copy];
         self->_dockTitles = [capsuleTitles copy];
         self->_dockSignature = [sig copy];
-        tabBar.items = items;
 
         if (detIdx != NSNotFound && (NSUInteger)detIdx < self->_buttons.count) {
             if (!self->_detachedButton) {
                 FQXDetachedDockButtonView *circle = [[FQXDetachedDockButtonView alloc] initWithFrame:CGRectMake(0.0, 0.0, 56.0, 56.0)];
+                circle.hidden = YES;
                 objc_setAssociatedObject(circle, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(circle.glassView, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 __weak FQXTabBarInteraction *weakSelf = self;
@@ -2935,7 +2911,13 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             [self->_detachedButton removeFromSuperview];
             self->_detachedButton = nil;
         }
-        [self applyDockItemImages];
+        // Give UIKit complete items before it creates the selected and normal
+        // image views. A settings transition can otherwise capture empty items.
+        [self applyDockItemImagesToItems:items];
+        [UIView performWithoutAnimation:^{
+            [tabBar setItems:items animated:NO];
+            [self syncSelectionExclusivityAnimated:NO];
+        }];
         FQXDiagRecordEvent(FQXDiagCategoryUI, @"dock_detached_state", @{
             @"prefEnabled": @(FQXDockDetachedIsEnabled()),
             @"detachedEnabled": @(detIdx != NSNotFound),
@@ -2955,7 +2937,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         [self->_detachedButton syncUnreadBadgeFromHostButton:detBtn];
     }
 
-    [self syncSelectionExclusivityAnimated:(tabBar.window != nil && !rebuilt)];
+    if (!rebuilt) [self syncSelectionExclusivityAnimated:(tabBar.window != nil)];
     return rebuilt;
 }
 
@@ -3192,33 +3174,37 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     self->_dockLastDetachedActive = hasDetached;
 }
 
+- (void)setLegacyDockOverlay:(UIView *)overlay {
+    UIView *previous = self->_overlay;
+    if (previous == overlay) return;
+    if (self->_nativeDockActive && previous.superview != self->_bar) {
+        FQXSetLegacyDockContentHidden(previous, NO);
+        previous.userInteractionEnabled = YES;
+    }
+    self->_overlay = overlay;
+}
+
 - (void)setNativeDockVisible:(BOOL)visible restoreProxy:(BOOL)restoreProxy {
-    if (self->_nativeDockBar && self->_nativeDockBar.hidden == visible) {
-        self->_nativeDockBar.hidden = !visible;
-    }
     BOOL showDetached = visible && (self->_detachedHostIndex != NSNotFound) && (self->_detachedButton != nil);
-    if (self->_detachedButton && self->_detachedButton.hidden == showDetached) {
-        self->_detachedButton.hidden = !showDetached;
-    }
-    if (visible) {
-        self->_nativeDockActive = YES;
-        FQXSetDockMaterialOwner(self->_bar, self->_proxy, FQXDockMaterialOwnerNative, showDetached);
-        if (self->_overlay) {
-            FQXSetZeroMaskHidden(self->_overlay, YES);
-            if (self->_overlay.userInteractionEnabled) self->_overlay.userInteractionEnabled = NO;
+    self->_nativeDockActive = visible;
+    // The modal transition must never animate the exchange between two sets of glyphs.
+    [UIView performWithoutAnimation:^{
+        if (visible || restoreProxy) {
+            FQXDockMaterialOwner owner = visible ? FQXDockMaterialOwnerNative : FQXDockMaterialOwnerProxy;
+            FQXSetDockMaterialOwner(self->_bar, self->_proxy, owner, showDetached);
+            FQXSetLegacyDockContentHidden(self->_overlay, visible);
+            if (self->_overlay && self->_overlay.userInteractionEnabled == visible)
+                self->_overlay.userInteractionEnabled = !visible;
         }
-        [self ensureDockZOrderInBar:self->_bar];
-        FQXAuditVisibleDockGlassLayers(self->_bar, self->_proxy, self->_nativeDockBar, showDetached ? self->_detachedButton : nil);
-    } else {
-        self->_nativeDockActive = NO;
-        if (restoreProxy) {
-            FQXSetDockMaterialOwner(self->_bar, self->_proxy, FQXDockMaterialOwnerProxy, NO);
-            if (self->_overlay) {
-                FQXSetZeroMaskHidden(self->_overlay, NO);
-                if (!self->_overlay.userInteractionEnabled) self->_overlay.userInteractionEnabled = YES;
-            }
-            FQXAuditVisibleDockGlassLayers(self->_bar, self->_proxy, nil, nil);
-        }
+        if (self->_nativeDockBar && self->_nativeDockBar.hidden == visible)
+            self->_nativeDockBar.hidden = !visible;
+        if (self->_detachedButton && self->_detachedButton.hidden == showDetached)
+            self->_detachedButton.hidden = !showDetached;
+        if (visible) [self ensureDockZOrderInBar:self->_bar];
+    }];
+    if (visible || restoreProxy) {
+        FQXAuditVisibleDockGlassLayers(self->_bar, self->_proxy, visible ? self->_nativeDockBar : nil,
+                                      showDetached ? self->_detachedButton : nil);
     }
 }
 
@@ -3271,13 +3257,13 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             [s syncSelectionExclusivityAnimated:NO];
             return;
         }
-        FQXSetNativeTabSelectionLensVisible(s->_nativeDockBar, YES, 0);
         if (s->_detachedButton) {
             [s->_detachedButton setModuleSelected:NO animated:YES];
         }
         if (slotIdx < s->_nativeDockBar.items.count) {
             s->_nativeDockBar.selectedItem = s->_nativeDockBar.items[slotIdx];
         }
+        FQXSetNativeTabSelectionLensVisible(s->_nativeDockBar, YES, 0);
         s->_lastNativeTabSelectTime = CACurrentMediaTime();
         s->_lastNativeTabSelectHostIndex = tappedHostIdx;
         UIButton *fallbackBtn = (tappedHostIdx < s->_buttons.count) ? s->_buttons[tappedHostIdx] : nil;
@@ -3315,21 +3301,15 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (native) self->_nativeControl = native;
     if (lens) {
         self->_restingLens = lens;
-        if (lens.superview && lens.superview != self->_proxy && lens.superview.superview == self->_bar) {
-            self->_overlay = lens.superview;
+        if (!self->_overlay && lens.superview && lens.superview != self->_proxy &&
+            lens.superview.superview == self->_bar) {
+            [self setLegacyDockOverlay:lens.superview];
         }
     }
     // Runs inside FQHBottomPolish178R7 AFTER Lrepair_front and Lmaterial_update.
     // Re-enforce single-owner proxy neutralization and topmost z-order for detachedButton.
     if (self->_nativeDockActive) {
-        BOOL showDetached = (self->_detachedHostIndex != NSNotFound && self->_detachedButton != nil);
-        FQXSetDockMaterialOwner(self->_bar, self->_proxy, FQXDockMaterialOwnerNative, showDetached);
-        if (self->_overlay) {
-            FQXSetZeroMaskHidden(self->_overlay, YES);
-            if (self->_overlay.userInteractionEnabled) self->_overlay.userInteractionEnabled = NO;
-        }
-        [self ensureDockZOrderInBar:self->_bar];
-        FQXAuditVisibleDockGlassLayers(self->_bar, self->_proxy, self->_nativeDockBar, showDetached ? self->_detachedButton : nil);
+        [self setNativeDockVisible:YES restoreProxy:NO];
     }
 }
 
@@ -3368,14 +3348,19 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (lens) self->_restingLens = lens;
     self->_buttons = [buttons copy];
 
-    UIView *overlay = self->_restingLens.superview;
-    if (!overlay && !native && buttons.count) {
+    // Use the buttons' current container. A removed lens can still reference
+    // the outgoing overlay until UIKit finishes dismissing the settings sheet.
+    UIView *overlay = nil;
+    if (!native && buttons.count) {
         UIView *parent = buttons.firstObject.superview;
         if (parent && parent != proxy && parent != proxy.contentView && parent.superview == bar) {
             overlay = parent;
         }
     }
-    self->_overlay = overlay;
+    if (!overlay && self->_restingLens.superview.superview == bar && self->_restingLens.superview != proxy) {
+        overlay = self->_restingLens.superview;
+    }
+    [self setLegacyDockOverlay:overlay];
 
     BOOL compact = (overlay && overlay.hidden) || (proxy.contentView && proxy.contentView.hidden);
     BOOL hiddenProxy = proxy.hidden || CGRectGetWidth(proxy.frame) < 60.0 || CGRectGetHeight(proxy.frame) < 30.0;
@@ -3394,6 +3379,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
     if (!self->_nativeDockBar) {
         UITabBar *tabBar = [[UITabBar alloc] initWithFrame:bar.bounds];
+        tabBar.hidden = YES;
         tabBar.delegate = self;
         tabBar.clipsToBounds = NO;
         objc_setAssociatedObject(tabBar, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -3429,7 +3415,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     BOOL inkChanged = (self->_dockAppliedInkState != desiredInk);
     BOOL itemsRebuilt = [self syncDockItems];
     if (inkChanged && !itemsRebuilt) {
-        [self applyDockItemImages];
+        [self applyDockItemImagesToItems:self->_nativeDockBar.items];
     }
     if (styleChanged || itemsRebuilt) {
         UIView *curPlatter = FQXFindDockPlatter(self->_nativeDockBar);
@@ -3457,7 +3443,13 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
     // Do NOT apply glass to proxy while expanded: nativeDockBar (+ detached circle) is the sole
     // material owner. Proxy switches to FQXDockMaterialOwnerProxy cleanly on collapse/fallback.
-    [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
+    if (self->_nativeDockActive) {
+        [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
+    } else {
+        [UIView performWithoutAnimation:^{
+            [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
+        }];
+    }
     [self setNativeDockVisible:YES restoreProxy:NO];
 }
 
@@ -5933,7 +5925,6 @@ static void FQXRefreshAllDockAppearances(void) {
         inter->_dockSignature = nil;
         if (inter->_nativeDockBar && inter->_buttons.count) {
             [inter syncDockItems];
-            [inter applyDockItemImages];
             if (inter->_bar && inter->_proxy) {
                 [inter layoutNativeDockInBar:inter->_bar proxy:inter->_proxy forceMeasure:YES];
                 if (inter->_nativeDockActive) {
@@ -6272,7 +6263,7 @@ static void FQXRefreshDynamicIslandState(void);
             BOOL glassDark = (desiredStyle == UIUserInterfaceStyleDark);
             FQXApplyNativeDockMaterial(tabBar, curPlatter, glassDark);
             [inter syncDetachedDockMaterial:glassDark];
-            [inter applyDockItemImages];
+            [inter applyDockItemImagesToItems:tabBar.items];
             [inter ensureDockZOrderInBar:inter->_bar];
             FQXAuditVisibleDockGlassLayers(inter->_bar, inter->_proxy, tabBar, showDetached ? inter->_detachedButton : nil);
         } else if (inter->_proxy) {

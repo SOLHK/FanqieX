@@ -6544,7 +6544,7 @@ static I TabOption(Obj owner,Obj number) {
     if (type==7) return DramaOption;
     if (!InstanceABI(owner,"titleStrWithType:","@20@0:8i16")) return 0;
     Obj title=((Obj(*)(Obj,Sel,int))Message)(owner,sel_registerName("titleStrWithType:"),type);
-    if (Equal(title,"短剧")) return DramaOption;
+    if (Equal(title,"短剧") || Equal(title,"视频")) return DramaOption;
     if (Equal(title,"商城")) return MallOption;
     return 0;
 }
@@ -6589,7 +6589,7 @@ static Obj TabPlan(Obj self,Sel cmd) {
 static Obj FindTabOwner(Obj controller,int depth) {
     if (Kind(controller,"SSTabBarController")) return controller;
     if (!controller || !depth) return 0;
-    Obj children=Get(controller,"children");
+    Obj children=Get(controller,"childViewControllers");
     U count=TabCount(children);
     for (U i=0;i<count;++i) {
         Obj owner=FindTabOwner(At(children,i),depth-1);
@@ -7053,7 +7053,8 @@ static void ToggleChanged(Obj self,Sel cmd,Obj sender) {
         else if (tag==FullscreenFillOption) RefreshFullscreenFill();
         return;
     }
-    Obj owner=ActiveTabOwner();
+    Obj owner=FindTabOwner(Get(Get(sender,"window"),"rootViewController"),5);
+    if (!owner) owner=ActiveTabOwner();
     Obj types=Get(owner,"typeArray");
     if (!on && TabCount(types)==1 && TabOption(owner,At(types,0))==tag) {
         ((void(*)(Obj,Sel,B,B))Message)(sender,sel_registerName("setOn:animated:"),1,1);
