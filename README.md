@@ -2,15 +2,15 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 1.9.6beta8 测试版
+## FanqieX 1.9.6beta9 测试版
 
-从短剧信息流或全集详情页打开「原著」时，阅读页在转场完成后应用插件外观，待 iPhone 验证。
+修复短剧「原著」进入阅读页时，章节标题刷新对空顶部视图写入引发的崩溃，待 iPhone 复测。
 
-- [本版说明和安装方式](docs/REPAIR_1.9.6beta8.md)
+- [本版说明和安装方式](docs/REPAIR_1.9.6beta9.md)
 - [测试版本与分支规范](TESTING.md)
 - [构建与验证记录](https://github.com/SOLHK/FanqieX/actions)
 
-插件文件名和诊断日志版本为 1.9.6beta8，Mach-O 构建标识为 `0x15608`。
+插件文件名和诊断日志版本为 1.9.6beta9，Mach-O 构建标识为 `0x15609`。
 
 ## FanqieX 1.76
 

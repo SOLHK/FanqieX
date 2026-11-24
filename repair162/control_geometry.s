@@ -932,14 +932,6 @@ LGedit171_other:
     ldr w0, [sp, #56]
     .endif
     cbz w0, LGcontrol_fallback
-    .if FQ_VERSION >= 0x15608
-    cmp w0, #2
-    b.eq LGcontrol_deferral_done
-    mov x0, x19
-    bl LFQH_FQHReaderDefer
-    cbnz w0, LGcontrol_reentrant
-    .endif
-LGcontrol_deferral_done:
     AGET x19, LGcontrol_busy_key
     cbnz x0, LGcontrol_reentrant
     ASET x19, LGcontrol_busy_key, x19, 0

@@ -6465,25 +6465,6 @@ static void FQXRecordDramaOriginalNovelStage(NSString *stage, BOOL returning) {
         @{@"stage": stage, @"mainThread": @(NSThread.isMainThread)});
 }
 
-static const void *FQXDramaOriginalNovelReaderOpeningKey(void) {
-    return (const void *)sel_registerName("fqxOriginalNovelReaderOpening");
-}
-
-static Class FQXBeginDramaOriginalNovelReaderOpening(id __strong *previous) {
-    Class reader = NSThread.isMainThread ? objc_lookUpClass("BDReaderViewController") : Nil;
-    if (reader) {
-        const void *key = FQXDramaOriginalNovelReaderOpeningKey();
-        *previous = objc_getAssociatedObject(reader, key);
-        objc_setAssociatedObject(reader, key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    return reader;
-}
-
-static void FQXEndDramaOriginalNovelReaderOpening(Class reader, id previous) {
-    if (reader) objc_setAssociatedObject(reader, FQXDramaOriginalNovelReaderOpeningKey(), previous,
-                                         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
 static void (*OrigDramaDistributionTap)(id, SEL);
 static void HookDramaDistributionTap(id self, SEL cmd) {
     // In the native distribution tap handler, type 3 is the original-book branch.
@@ -6498,13 +6479,7 @@ static void (*OrigDramaOriginalNovelSchemaTap)(id, SEL, id);
 static void HookDramaOriginalNovelSchemaTap(id self, SEL cmd, id bottomBar) {
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", NO);
-    id previous = nil;
-    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
-    @try {
-        OrigDramaOriginalNovelSchemaTap(self, cmd, bottomBar);
-    } @finally {
-        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
-    }
+    OrigDramaOriginalNovelSchemaTap(self, cmd, bottomBar);
     if (trace) FQXRecordDramaOriginalNovelStage(@"schema_route", YES);
 }
 
@@ -6512,13 +6487,7 @@ static void (*OrigDramaOriginalNovelReaderOpen)(id, SEL, id, id, BOOL);
 static void HookDramaOriginalNovelReaderOpen(id self, SEL cmd, id bookInfo, id chapter, BOOL showToast) {
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", NO);
-    id previous = nil;
-    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
-    @try {
-        OrigDramaOriginalNovelReaderOpen(self, cmd, bookInfo, chapter, showToast);
-    } @finally {
-        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
-    }
+    OrigDramaOriginalNovelReaderOpen(self, cmd, bookInfo, chapter, showToast);
     if (trace) FQXRecordDramaOriginalNovelStage(@"reader_route", YES);
 }
 
@@ -6526,13 +6495,7 @@ static void (*OrigDramaOriginalNovelEntranceTap)(id, SEL);
 static void HookDramaOriginalNovelEntranceTap(id self, SEL cmd) {
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"entrance", NO);
-    id previous = nil;
-    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
-    @try {
-        OrigDramaOriginalNovelEntranceTap(self, cmd);
-    } @finally {
-        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
-    }
+    OrigDramaOriginalNovelEntranceTap(self, cmd);
     if (trace) FQXRecordDramaOriginalNovelStage(@"entrance", YES);
 }
 
@@ -6545,13 +6508,7 @@ static void HookDramaReasonNavigate(id self, SEL cmd, id schema, id reason) {
     }
     BOOL trace = FQXDiagnosticsHubIsEnabled();
     if (trace) FQXRecordDramaOriginalNovelStage(@"reason_schema", NO);
-    id previous = nil;
-    Class reader = FQXBeginDramaOriginalNovelReaderOpening(&previous);
-    @try {
-        OrigDramaReasonNavigate(self, cmd, schema, reason);
-    } @finally {
-        FQXEndDramaOriginalNovelReaderOpening(reader, previous);
-    }
+    OrigDramaReasonNavigate(self, cmd, schema, reason);
     if (trace) FQXRecordDramaOriginalNovelStage(@"reason_schema", YES);
 }
 
@@ -8572,19 +8529,9 @@ static void HookUpdateReaderHotCommentBubble(id self, SEL cmd, BOOL show) {
     FQXSyncReaderHotCommentBadge(self);
 }
 
-static UIViewController *FQXEnclosingReaderController(UIView *view);
-
 static void (*OrigReaderNavLayoutMotion)(id, SEL);
 static void HookReaderNavLayoutMotion(UIView *self, SEL cmd) {
     OrigReaderNavLayoutMotion(self, cmd);
-    UIViewController *reader = FQXEnclosingReaderController(self);
-    if (reader) {
-        const void *pendingKey = (const void *)sel_registerName("fqxOriginalNovelReaderPending");
-        if (objc_getAssociatedObject(reader, pendingKey)) return;
-    } else if (!self.window && NSThread.isMainThread &&
-               objc_getAssociatedObject(objc_lookUpClass("BDReaderViewController"), FQXDramaOriginalNovelReaderOpeningKey())) {
-        return;
-    }
     FQXSyncReaderHotCommentBadge(self);
     UIButton *button = FQXObjGet(self, "backBtn");
     if ([button isKindOfClass:UIButton.class]) FQXCenterReaderBackButton(button);

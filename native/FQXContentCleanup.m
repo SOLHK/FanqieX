@@ -232,6 +232,11 @@ static void InstallHotLaunchHooks(void){
 static char ChapterTitleAssociation;
 static void(*OriginalRefresh)(id,SEL,id,id,id);
 static void RefreshChapterTitle(id o,SEL cmd,id top,id context,id book){
+ // The reader can refresh before the original-novel route has created its top view.
+ if(!top){
+  OriginalRefresh(o,cmd,top,context,book);
+  return;
+ }
  id chapter=Get(context,"chapterInfo")?:Get(context,"currentChapterInfo");
  if(!chapter&&!context)chapter=Get(Get(o,"readerManager"),"currentChapterInfo");
  id title=Get(chapter,"chapterTitle");

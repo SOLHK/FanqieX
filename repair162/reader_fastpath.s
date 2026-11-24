@@ -1296,10 +1296,6 @@ LRreader_panel: // self; original host layout has already returned exactly once
     stp d8, d9, [sp, #48]
     mov x19, x0
     cbz x19, LRpanel_done
-    .if FQ_VERSION >= 0x15608
-    bl LFQH_FQHReaderDefer
-    cbnz w0, LRpanel_done
-    .endif
     AGET x19, LRbusy_key
     cbnz x0, LRpanel_done
     ASET x19, LRbusy_key, x19, 0
