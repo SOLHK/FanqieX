@@ -5,6 +5,8 @@
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
 
+extern UIUserInterfaceStyle FQXHostAppInterfaceStyle(UIWindow *window);
+
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
@@ -145,6 +147,8 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic) BOOL diagnosticExportPending;
 @property(nonatomic, strong) NSURL *diagnosticFile;
 @property(nonatomic, copy) NSString *diagnosticError;
+@property(nonatomic, weak) UIWindow *appearanceWindow;
+@property(nonatomic, strong) id appearanceRegistration;
 + (void)installOnController:(UIViewController *)owner router:(id)router ads:(UIViewController *)ads;
 + (UIViewController *)controllerForController:(UIViewController *)owner;
 + (UIViewController *)visibleControllerForController:(UIViewController *)owner;
@@ -154,6 +158,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 - (BOOL)updateRows;
 - (void)beginDiagnosticExport;
 - (void)shareDiagnosticFile;
+- (void)dismissSettings:(id)sender;
 - (void)fqab_156_presentDiagnostics:(NSDictionary *)result;
 @end
 
@@ -833,16 +838,41 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [menu configureSearch];
     [menu updateRows];
     menu.title = owner.title ?: @"FanqieX";
+    UIColor *headerInk = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+        return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? UIColor.whiteColor : UIColor.blackColor;
+    }];
     UILabel *versionLabel = [UILabel new];
     versionLabel.text = FQXPluginVersion();
     versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-    versionLabel.textColor = UIColor.secondaryLabelColor;
+    versionLabel.textColor = headerInk;
     versionLabel.adjustsFontForContentSizeCategory = YES;
     versionLabel.accessibilityLabel = [@"插件版本 " stringByAppendingString:versionLabel.text];
     [versionLabel sizeToFit];
     menu.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:versionLabel];
-    menu.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-        target:menu action:@selector(dismissSettings:)];
+    UIImage *minimizeImage = [UIImage systemImageNamed:@"minus"];
+    UIBarButtonItem *minimize;
+    SEL glassConfiguration = sel_registerName("glassButtonConfiguration");
+    if ([UIButtonConfiguration respondsToSelector:glassConfiguration]) {
+        UIButtonConfiguration *configuration = ((id (*)(id, SEL))objc_msgSend)(UIButtonConfiguration.class, glassConfiguration);
+        configuration.image = minimizeImage;
+        configuration.baseForegroundColor = headerInk;
+        configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        UIButton *button = [UIButton buttonWithConfiguration:configuration primaryAction:nil];
+        button.translatesAutoresizingMaskIntoConstraints = NO;
+        [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:44.0],
+                                                  [button.heightAnchor constraintEqualToConstant:44.0]]];
+        [button addTarget:menu action:@selector(dismissSettings:) forControlEvents:UIControlEventTouchUpInside];
+        button.accessibilityLabel = @"收起设置";
+        minimize = [[UIBarButtonItem alloc] initWithCustomView:button];
+        // The configured button supplies its own glass.
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(minimize, sel_registerName("setHidesSharedBackground:"), YES);
+    } else {
+        minimize = [[UIBarButtonItem alloc] initWithImage:minimizeImage style:UIBarButtonItemStylePlain
+                                                   target:menu action:@selector(dismissSettings:)];
+        minimize.tintColor = headerInk;
+        minimize.accessibilityLabel = @"收起设置";
+    }
+    menu.navigationItem.rightBarButtonItem = minimize;
     // Keep the result alive until the audited presentation boundary adopts it.
     objc_setAssociatedObject(owner, MenuKey, menu, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -868,7 +898,7 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     return menu.navigationController.topViewController ?: menu;
 }
 
-- (void)dismissSettings:(UIBarButtonItem *)sender {
+- (void)dismissSettings:(id)sender {
     (void)sender;
     if (self.diagnosticFile.isFileURL) {
         [NSFileManager.defaultManager removeItemAtURL:self.diagnosticFile error:NULL];
@@ -915,9 +945,48 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     self.definesPresentationContext = YES;
 }
 
+- (void)syncHostAppearance {
+    UINavigationController *navigation = self.navigationController;
+    UIWindow *window = navigation.presentingViewController.viewIfLoaded.window ?: self.viewIfLoaded.window;
+    UIUserInterfaceStyle style = FQXHostAppInterfaceStyle(window);
+    // Let UIKit inherit live window changes whenever the host already uses
+    // the desired style. An explicit override belongs only to the settings stack.
+    if (window.traitCollection.userInterfaceStyle == style) style = UIUserInterfaceStyleUnspecified;
+    if (navigation.overrideUserInterfaceStyle != style) navigation.overrideUserInterfaceStyle = style;
+    if (window == self.appearanceWindow) return;
+    [self stopObservingHostAppearance];
+    self.appearanceWindow = window;
+    Class styleTrait = NSClassFromString(@"UITraitUserInterfaceStyle");
+    SEL observeTraits = sel_registerName("registerForTraitChanges:withHandler:");
+    if (!styleTrait || ![window respondsToSelector:observeTraits]) return;
+    __weak FQXSettingsMenu *weakMenu = self;
+    void (^handler)(id<UITraitEnvironment>, UITraitCollection *) =
+        ^(__unused id<UITraitEnvironment> environment, __unused UITraitCollection *previous) {
+            [weakMenu syncHostAppearance];
+        };
+    self.appearanceRegistration = ((id (*)(id, SEL, NSArray *, id))objc_msgSend)(window, observeTraits, @[styleTrait], handler);
+}
+
+- (void)stopObservingHostAppearance {
+    if (!_appearanceRegistration) return;
+    SEL unregisterTraits = sel_registerName("unregisterForTraitChanges:");
+    ((void (*)(id, SEL, id))objc_msgSend)(_appearanceWindow, unregisterTraits, _appearanceRegistration);
+    _appearanceRegistration = nil;
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (self.path.length == 0) [self syncHostAppearance];
     [self rebuild];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    if (self.path.length == 0 && !self.appearanceWindow) [self syncHostAppearance];
+}
+
+- (void)dealloc {
+    [self stopObservingHostAppearance];
 }
 
 - (BOOL)updateRows {

@@ -310,7 +310,7 @@ static BOOL FQXCommentAppearanceOverrideActive(void) {
     return FQXHotPrefsSnapshot().commentAppearanceMode != FQXCommentAppearanceFollowApp;
 }
 
-static BOOL FQXAppIsInNightMode(void) {
+UIUserInterfaceStyle FQXHostAppInterfaceStyle(UIWindow *window) {
     static Class adapterCls = Nil;
     static Class serviceCls = Nil;
     static SEL defaultSel = NULL;
@@ -333,30 +333,38 @@ static BOOL FQXAppIsInNightMode(void) {
             if (adapter) {
                 Method m = class_getInstanceMethod(object_getClass(adapter), curDarkSel);
                 if (m && method_getNumberOfArguments(m) == 2) {
-                    return ((BOOL (*)(id, SEL))objc_msgSend)(adapter, curDarkSel);
+                    BOOL dark = ((BOOL (*)(id, SEL))objc_msgSend)(adapter, curDarkSel);
+                    return dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
                 }
                 Method m2 = class_getInstanceMethod(object_getClass(adapter), darkSel);
                 if (m2 && method_getNumberOfArguments(m2) == 2) {
-                    return ((BOOL (*)(id, SEL))objc_msgSend)(adapter, darkSel);
+                    BOOL dark = ((BOOL (*)(id, SEL))objc_msgSend)(adapter, darkSel);
+                    return dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
                 }
             }
         }
     }
+    UIUserInterfaceStyle windowStyle = window.overrideUserInterfaceStyle;
+    if (windowStyle == UIUserInterfaceStyleUnspecified) windowStyle = window.traitCollection.userInterfaceStyle;
+    if (windowStyle != UIUserInterfaceStyleUnspecified) return windowStyle;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
         UIUserInterfaceStyle sceneStyle = ws.traitCollection.userInterfaceStyle;
         if (sceneStyle != UIUserInterfaceStyleUnspecified) {
-            return sceneStyle == UIUserInterfaceStyleDark;
+            return sceneStyle;
         }
         for (UIWindow *win in ws.windows) {
             if (!win.isKeyWindow) continue;
-            if (win.overrideUserInterfaceStyle == UIUserInterfaceStyleDark) return YES;
-            if (win.overrideUserInterfaceStyle == UIUserInterfaceStyleLight) return NO;
-            return win.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+            if (win.overrideUserInterfaceStyle != UIUserInterfaceStyleUnspecified) return win.overrideUserInterfaceStyle;
+            return win.traitCollection.userInterfaceStyle;
         }
     }
-    return UIScreen.mainScreen.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    return UIScreen.mainScreen.traitCollection.userInterfaceStyle;
+}
+
+static BOOL FQXAppIsInNightMode(void) {
+    return FQXHostAppInterfaceStyle(nil) == UIUserInterfaceStyleDark;
 }
 
 static BOOL FQXCommentsUseDarkTheme(void) {
