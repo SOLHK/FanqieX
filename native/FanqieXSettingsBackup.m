@@ -68,6 +68,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaHideSeriesTag.1": @NO,
         @"FanqieX.DramaHideTitleBadge.1": @NO,
         @"FanqieX.DramaHideGenreTags.1": @NO,
+        @"FanqieX.DramaHideEpisodeAdaptations.1": @NO,
+        @"FanqieX.DramaHideEpisodeSameSeries.1": @NO,
+        @"FanqieX.DramaHideEpisodeRecommend.1": @NO,
         @"FanqieX.DramaUnlockDanmaku.1": @YES,
         @"FanqieX.DramaShowDanmakuButton.1": @YES,
         @"FanqieX.CommentMaterialStyle.1": @0,
@@ -154,7 +157,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     double number = [value doubleValue];
     if (!isfinite(number)) return nil;
     if ([key isEqualToString:@"FanqieAdBlock.Options.1"]) {
-        return number >= 0 && number <= 0x3FFFF && number == trunc(number) ? @((NSInteger)number) : nil;
+        return number >= 0 && number <= 0xFFFFF && number == trunc(number) ? @((NSInteger)number) : nil;
     }
     if ([key isEqualToString:@"FanqieX.DramaPlaybackOptionsMaterial.1"]) {
         return number == -1 || number == 0 || number == 1 || number == 2 || number == 4

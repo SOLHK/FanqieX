@@ -10,6 +10,7 @@
 #import "FanqieXDiagnosticsHub.h"
 extern void FQXInstallContentCleanupHooks(void);
 extern void FQXInstallMotionAndAudioHooks(void);
+extern void FQXRefreshReaderAndAudioPendants(void);
 
 #define CLEANUP_OPTIONS(X) \
     X(AuthorWords, "ReaderAuthorWords", "显示作者的话", "reader", YES) \
@@ -93,6 +94,9 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaHideSeriesTag, "DramaHideSeriesTag", "隐藏短剧系列剧追剧标签", "drama", NO) \
     X(DramaHideTitleBadge, "DramaHideTitleBadge", "隐藏短剧标题角标（上新/爆款）", "drama", NO) \
     X(DramaHideGenreTags, "DramaHideGenreTags", "隐藏短剧题材与季数标签", "drama", NO) \
+    X(DramaHideEpisodeAdaptations, "DramaHideEpisodeAdaptations", "隐藏选集原著和更多改编", "drama", NO) \
+    X(DramaHideEpisodeSameSeries, "DramaHideEpisodeSameSeries", "隐藏选集同系列剧", "drama", NO) \
+    X(DramaHideEpisodeRecommend, "DramaHideEpisodeRecommend", "隐藏选集底部推荐视频", "drama", NO) \
     X(DramaOutlineActions, "DramaOutlineActions", "短剧右侧使用空心图标", "drama", NO) \
     X(DramaShowCollect, "DramaShowCollect", "显示收藏按钮", "dramaActions", YES) \
     X(DramaShowComment, "DramaShowComment", "显示评论按钮", "dramaActions", YES) \
@@ -2100,6 +2104,9 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:DramaHideSeriesTagKey] ||
                [key isEqualToString:DramaHideTitleBadgeKey] ||
                [key isEqualToString:DramaHideGenreTagsKey] ||
+               [key isEqualToString:DramaHideEpisodeAdaptationsKey] ||
+               [key isEqualToString:DramaHideEpisodeSameSeriesKey] ||
+               [key isEqualToString:DramaHideEpisodeRecommendKey] ||
                [key isEqualToString:DramaShowDanmakuButtonKey] ||
                [key isEqualToString:@"FanqieX.DramaAuthorDeclaration.1"] ||
                [key isEqualToString:@"FanqieX.DramaOriginalNovel.1"]) {
@@ -2231,6 +2238,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         UIView *button = LastSpeechButton;
         NSNumber *wasHidden = objc_getAssociatedObject(button, &SpeechRequestedHidden);
         if (wasHidden) SpeechHidden(button, @selector(setHidden:), wasHidden.boolValue);
+    } else if ([key isEqualToString:ListenPendantKey] || [key isEqualToString:AudioAdsKey]) {
+        FQXRefreshReaderAndAudioPendants();
     } else if ([key isEqualToString:BadgeKey] && !Option(BadgeKey, YES) && NativeBadge) {
         NativeBadge(UIApplication.sharedApplication, sel_registerName("setApplicationIconBadgeNumber:"), 0);
     } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] ||

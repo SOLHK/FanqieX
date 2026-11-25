@@ -240,10 +240,125 @@ static void test_shelf_and_history_compaction_and_pager(void) {
     assert(FQXShouldShowDramaOriginalNovelEntry(0, 0) == 0);
 }
 
+static void test_audio_ad_duration_gate_and_pendant_purification_policy(void) {
+    /* 1. Default legacy options mask when FanqieAdBlock.Options.1 is unset is 0x57FFF
+          (bits 0..14, 16, 18 ON; bit 15 welfare tab & bit 17 welfare pendant OFF). */
+    assert(FQXEffectiveLegacyAdOptionsMask(0, 0u) == 0x57FFFu);
+    assert(FQXEffectiveLegacyAdOptionsMask(1, 0x7FFFFu) == 0x7FFFFu);
+    assert(FQXEffectiveLegacyAdOptionsMask(1, 0u) == 0u);
+
+    /* 2. Audiobook ad & "看广告攒时长" duration gate policy:
+          Active when FanqieX.AudioAds.1 is ON OR legacy mask has bit 7 (0x80) or bit 8 (0x100). */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(0, 0u, 0) == 1);          /* Default 0x57FFF includes 0x180 */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, 0x7FFFFu, 0) == 1);    /* User's 524287 (all 19 switches ON) */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, (1u << 7), 0) == 1);   /* Audio patch ad switch only */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, (1u << 8), 0) == 1);   /* Audio info-flow ad switch only */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, 0u, 1) == 1);          /* Standalone FanqieX.AudioAds.1 ON */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, 0x57E7Fu, 0) == 0);    /* Bits 7 & 8 explicitly turned OFF, AudioAds OFF */
+    assert(FQXShouldBlockAudioAdsAndDurationGate(1, 0u, 0) == 0);          /* Everything OFF */
+
+    /* 3. Welfare / gold-coin / listen-earn pendant suppression policy:
+          Active when FanqieX.ListenPendant.1 is ON OR legacy mask has bit 17 (0x20000). */
+    assert(FQXShouldSuppressWelfareListenPendant(0, 0u, 0) == 0);          /* Default 0x57FFF has bit 17 OFF */
+    assert(FQXShouldSuppressWelfareListenPendant(0, 0u, 1) == 1);          /* ListenPendant ON */
+    assert(FQXShouldSuppressWelfareListenPendant(1, 0x7FFFFu, 0) == 1);    /* Legacy bit 17 ON */
+    assert(FQXShouldSuppressWelfareListenPendant(1, (1u << 17), 0) == 1);  /* Bit 17 only */
+    assert(FQXShouldSuppressWelfareListenPendant(1, 0x5FFFFu, 0) == 0);    /* Bit 17 OFF and ListenPendant OFF */
+
+    /* 4. Bottom-right reader "01:52:42 听书时长" hourglass pendant (SSBizAudioAdNewReaderPendantView /
+          SSAudioTTSPreUnlockPendantInsertObj): suppressed when EITHER pendant purification OR
+          audiobook ad-duration blocking is active; restores when both are disabled. */
+    assert(FQXShouldSuppressReaderAudioDurationPendant(0, 0u, 0, 0) == 1);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, 0x7FFFFu, 1, 0) == 1);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, (1u << 17), 0, 0) == 1);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, 0u, 1, 0) == 1);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, 0u, 0, 1) == 1);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, 0x57E7Fu, 0, 0) == 0);
+    assert(FQXShouldSuppressReaderAudioDurationPendant(1, 0u, 0, 0) == 0);
+
+    /* 5. BDFQPlayManager -tryToPlayAtTime:position:disableIntercept:source: force-disable policy:
+          Forces disableIntercept=YES for normal indicator/chapter playback when audio ad gate is blocked,
+          and always preserves remote/play/toggle lock-screen resume. */
+    assert(FQXShouldForceDisableAudioPlayIntercept(1, 0x7FFFFu, 0, 0) == 1);
+    assert(FQXShouldForceDisableAudioPlayIntercept(0, 0u, 0, 0) == 1);
+    assert(FQXShouldForceDisableAudioPlayIntercept(1, 0x57E7Fu, 0, 0) == 0);
+    assert(FQXShouldForceDisableAudioPlayIntercept(1, 0u, 0, 0) == 0);
+    assert(FQXShouldForceDisableAudioPlayIntercept(1, 0u, 0, 1) == 1);
+}
+
+static void test_video_backdrop_viewport_and_single_series_tray_policy(void) {
+    /* 1. Exact viewport match */
+    assert(FQXVideoBackdropSameRect(0.0, 0.0, 440.0, 867.0, 0.0, 0.0, 440.0, 867.0, 0.75) == 1);
+    assert(FQXVideoBackdropSameRect(0.0, 0.0, 440.0, 867.0, 0.0, 0.0, 440.0, 956.0, 0.75) == 0);
+
+    /* 2. Overscanned aspect-fill portrait cover centered on (0, 0, 440, 867) viewport (MidY=433.5):
+          Fixes the +44.5pt downward jump ~0.3-0.4s after swipe settle when coverImageView hands off to TTMetalView! */
+    assert(FQXVideoBackdropMatchesViewport(0.0, 0.0, 440.0, 867.0, 0.0, 0.0, 440.0, 867.0) == 1);
+    assert(FQXVideoBackdropMatchesViewport(-24.0, 0.0, 488.0, 867.0, 0.0, 0.0, 440.0, 867.0) == 1);
+    assert(FQXVideoBackdropMatchesViewport(0.0, -36.0, 440.0, 939.0, 0.0, 0.0, 440.0, 867.0) == 1);
+    /* Already-expanded full-screen cover (MidY=478.0) or 16:9 letterbox cover must NOT match 867pt viewport */
+    assert(FQXVideoBackdropMatchesViewport(-27.0, 0.0, 494.0, 956.0, 0.0, 0.0, 440.0, 867.0) == 0);
+    assert(FQXVideoBackdropMatchesViewport(0.0, 310.0, 440.0, 247.5, 0.0, 0.0, 440.0, 867.0) == 0);
+
+    /* 3. Cached single-series bottom tray height validation for frame-0 alignment before HUD transfer */
+    assert(FQXShouldUseCachedSingleSeriesTrayHeight(89.0, 440.0, 956.0, 440.0, 956.0) == 1);
+    assert(FQXShouldUseCachedSingleSeriesTrayHeight(0.0, 440.0, 956.0, 440.0, 956.0) == 0);
+    assert(FQXShouldUseCachedSingleSeriesTrayHeight(180.0, 440.0, 956.0, 440.0, 956.0) == 0);
+    assert(FQXShouldUseCachedSingleSeriesTrayHeight(89.0, 320.0, 956.0, 440.0, 956.0) == 0);
+}
+
+static void test_pinch_pure_clean_session_and_745_gates(void) {
+    /* 1. Two-finger spread (+1) enters Pure-Clean; two-finger shrink (-1) exits Pure-Clean */
+    assert(FQXEvaluatePinchCleanTransition(0, 1.15, 0.10) == 1);
+    assert(FQXEvaluatePinchCleanTransition(0, 1.05, 0.45) == 1);
+    assert(FQXEvaluatePinchCleanTransition(0, 0.85, -0.50) == 0);
+    assert(FQXEvaluatePinchCleanTransition(1, 0.88, -0.10) == -1);
+    assert(FQXEvaluatePinchCleanTransition(1, 0.95, -0.45) == -1);
+    assert(FQXEvaluatePinchCleanTransition(1, 1.18, 0.50) == 0);
+
+    /* 2. Session-level persistence across vertical video swipes:
+          Incoming cell adopts active feed session Pure-Clean immediately;
+          outgoing cell unmasks ONLY its own overlays while keeping shared header/Dock masked! */
+    assert(FQXShouldApplyPinchCleanToIncomingCell(1, 1, 1, 0) == 1);
+    assert(FQXShouldApplyPinchCleanToIncomingCell(1, 0, 1, 0) == 0);
+    assert(FQXShouldApplyPinchCleanToIncomingCell(1, 1, 0, 0) == 0); /* Landscape window */
+    assert(FQXShouldApplyPinchCleanToIncomingCell(1, 1, 1, 1) == 0); /* Fullscreen player */
+    assert(FQXShouldApplyPinchCleanToIncomingCell(0, 1, 1, 0) == 0); /* Feature disabled */
+
+    assert(FQXShouldKeepSharedChromeMaskedOnCellDepart(1, 1, 0) == 1); /* Swiping to next video */
+    assert(FQXShouldKeepSharedChromeMaskedOnCellDepart(1, 1, 1) == 0); /* Leaving feed VC */
+    assert(FQXShouldKeepSharedChromeMaskedOnCellDepart(1, 0, 0) == 0); /* Session exited */
+    assert(FQXShouldKeepSharedChromeMaskedOnCellDepart(0, 1, 0) == 0); /* Feature toggled off */
+
+    /* 3. Episode selection sheet 3 module switches (default OFF -> visible) */
+    assert(FQXShouldHideEpisodePanelAdaptations(0) == 0);
+    assert(FQXShouldHideEpisodePanelAdaptations(1) == 1);
+    assert(FQXShouldHideEpisodePanelSameSeries(0) == 0);
+    assert(FQXShouldHideEpisodePanelSameSeries(1) == 1);
+    assert(FQXShouldHideEpisodePanelRecommend(0) == 0);
+    assert(FQXShouldHideEpisodePanelRecommend(1) == 1);
+
+    /* 4. 7.4.5 Short-Video Feed / Patch / Bookstore-Popup legacy ad bitmask gates */
+    assert(FQXShouldBlockShortVideoFeedAd(0, 0u) == 1);
+    assert(FQXShouldBlockShortVideoFeedAd(1, (1u << 9)) == 1);
+    assert(FQXShouldBlockShortVideoFeedAd(1, 0u) == 0);
+
+    assert(FQXShouldBlockShortVideoPatchAd(0, 0u) == 1);
+    assert(FQXShouldBlockShortVideoPatchAd(1, (1u << 10)) == 1);
+    assert(FQXShouldBlockShortVideoPatchAd(1, 0u) == 0);
+
+    assert(FQXShouldBlockBookstoreAndPopupAd(0, 0u) == 1);
+    assert(FQXShouldBlockBookstoreAndPopupAd(1, (1u << 6)) == 1);
+    assert(FQXShouldBlockBookstoreAndPopupAd(1, 0u) == 0);
+}
+
 int main(void) {
     test_drama_top_capsule_alignment();
     test_sheet_blur_policy();
     test_shelf_and_history_compaction_and_pager();
+    test_audio_ad_duration_gate_and_pendant_purification_policy();
+    test_video_backdrop_viewport_and_single_series_tray_policy();
+    test_pinch_pure_clean_session_and_745_gates();
     puts("Layout and sheet policy: concentric capsule, hardware sheet blur, strip compaction & visible pager passed.");
     return 0;
 }

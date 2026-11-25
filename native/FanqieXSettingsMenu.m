@@ -563,18 +563,41 @@ static void AddCommentStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hid
     [menu.catalog addObject:composerRow];
 }
 
+static UIImage *DrawSettingsMinimizeIcon(void) {
+    CGSize canvas = CGSizeMake(24.0, 24.0);
+    UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat defaultFormat];
+    fmt.opaque = NO;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:canvas format:fmt];
+    UIImage *img = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *ctx) {
+        [UIColor.blackColor setStroke];
+
+        // Cute, clean iOS-style rounded downward chevron + soft dock pill bar
+        UIBezierPath *chevron = [UIBezierPath bezierPath];
+        [chevron moveToPoint:CGPointMake(7.2, 8.6)];
+        [chevron addLineToPoint:CGPointMake(12.0, 13.4)];
+        [chevron addLineToPoint:CGPointMake(16.8, 8.6)];
+        chevron.lineWidth = 2.25;
+        chevron.lineCapStyle = kCGLineCapRound;
+        chevron.lineJoinStyle = kCGLineJoinRound;
+        [chevron stroke];
+
+        UIBezierPath *tray = [UIBezierPath bezierPath];
+        [tray moveToPoint:CGPointMake(8.0, 16.8)];
+        [tray addLineToPoint:CGPointMake(16.0, 16.8)];
+        tray.lineWidth = 2.25;
+        tray.lineCapStyle = kCGLineCapRound;
+        [tray stroke];
+    }];
+    return [img imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
+
 static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id target, SEL action) {
-    CGRect frame = CGRectMake(0, 0, 80, 44);
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    BOOL hasTitle = title.length > 0;
+    CGRect frame = CGRectMake(0, 0, hasTitle ? 96.0 : 48.0, 40.0);
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
     button.frame = frame;
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.tintColor = UIColor.labelColor;
-    [button setTitle:title forState:UIControlStateNormal];
-    [button setImage:image forState:UIControlStateNormal];
-    button.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-    button.titleLabel.adjustsFontForContentSizeCategory = YES;
-    button.titleLabel.adjustsFontSizeToFitWidth = YES;
-    button.titleLabel.minimumScaleFactor = 0.75;
     [button addTarget:target action:action forControlEvents:UIControlEventPrimaryActionTriggered];
 
     UIVisualEffectView *surface;
@@ -594,7 +617,38 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     surface.frame = frame;
     surface.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     surface.userInteractionEnabled = NO;
-    [button insertSubview:surface atIndex:0];
+    [button addSubview:surface];
+
+    if (hasTitle) {
+        UILabel *label = [UILabel new];
+        label.translatesAutoresizingMaskIntoConstraints = NO;
+        label.text = title;
+        label.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold];
+        label.textColor = UIColor.labelColor;
+        label.textAlignment = NSTextAlignmentCenter;
+        label.adjustsFontSizeToFitWidth = YES;
+        label.minimumScaleFactor = 0.85;
+        label.userInteractionEnabled = NO;
+        [button addSubview:label];
+        [NSLayoutConstraint activateConstraints:@[
+            [label.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:10.0],
+            [label.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-10.0],
+            [label.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+        ]];
+    } else if (image) {
+        UIImageView *iconView = [[UIImageView alloc] initWithImage:image];
+        iconView.translatesAutoresizingMaskIntoConstraints = NO;
+        iconView.tintColor = UIColor.labelColor;
+        iconView.contentMode = UIViewContentModeCenter;
+        iconView.userInteractionEnabled = NO;
+        [button addSubview:iconView];
+        [NSLayoutConstraint activateConstraints:@[
+            [iconView.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
+            [iconView.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+            [iconView.widthAnchor constraintEqualToConstant:24.0],
+            [iconView.heightAnchor constraintEqualToConstant:24.0],
+        ]];
+    }
 
     [NSLayoutConstraint activateConstraints:@[[button.widthAnchor constraintEqualToConstant:CGRectGetWidth(frame)],
                                               [button.heightAnchor constraintEqualToConstant:CGRectGetHeight(frame)]]];
@@ -712,7 +766,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             row.path = @"书架净化/筛选栏标签";
         if ([option[@"key"] hasPrefix:@"FanqieX.ShelfFavorites"])
             row.path = @"书架净化/收藏页";
-        if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1", @"FanqieX.DramaShowDanmakuButton.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1",
+               @"FanqieX.DramaHideEpisodeAdaptations.1", @"FanqieX.DramaHideEpisodeSameSeries.1", @"FanqieX.DramaHideEpisodeRecommend.1",
+               @"FanqieX.DramaShowDanmakuButton.1"] containsObject:option[@"key"]])
             row.path = @"短剧/页面内容";
         if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"])
             row.path = @"外观/玻璃与尺寸";
@@ -731,6 +787,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.DramaHideSeriesTag.1":@"短剧 漫剧 系列剧 追剧 共 万人在追 在追 标签 入口 横幅 隐藏 关闭",
             @"FanqieX.DramaHideTitleBadge.1":@"短剧 漫剧 上新 爆款 热播 新剧 独播 角标 徽标 标题 标签 隐藏 关闭",
             @"FanqieX.DramaHideGenreTags.1":@"短剧 漫剧 题材 分类 季数 第1季 第2季 逆袭 都市日常 奇幻脑洞 重生 演员 标签 隐藏 关闭",
+            @"FanqieX.DramaHideEpisodeAdaptations.1":@"短剧 漫剧 选集 原著 更多改编 改编 有声书 原著小说 衍生 隐藏 关闭",
+            @"FanqieX.DramaHideEpisodeSameSeries.1":@"短剧 漫剧 选集 同系列剧 同系列 第二季 第三季 第四季 预约 系列 隐藏 关闭",
+            @"FanqieX.DramaHideEpisodeRecommend.1":@"短剧 漫剧 选集 底部推荐 推荐视频 猜你喜欢 双列推荐 更多推荐 隐藏 关闭",
             @"FanqieX.CommentActivityBanner.1":@"评论区 公告 活动 社区公约 文明发言 活动横幅 激励 创作者计划 段评 顶部 隐藏 关闭",
             @"FanqieX.CommentSearchEntrance.1":@"评论区 大家都在搜 大家在搜 热搜 搜索 推荐 顶部 隐藏 关闭",
             @"FanqieX.DramaOutlineActions.1":@"侧栏 点赞 评论 收藏 分享 线条 空心 轮廓 图标",
@@ -752,10 +811,10 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.ExcerptWidgetGuide.1":@"书摘 小组件 桌面 提醒 弹窗",
             @"FanqieX.ContentWidgetGuide.1":@"内容 小组件 桌面 提醒 弹窗",
             @"FanqieX.BookstorePublishButton.1":@"书城 发帖 发布 按钮 悬浮",
-            @"FanqieX.ListenPendant.1":@"听读赚钱 赚钱 挂件 悬浮 福利 金币",
+            @"FanqieX.ListenPendant.1":@"听读赚钱 赚钱 挂件 悬浮 福利 金币 听书时长 沙漏 右下角 阅读挂件",
             @"FanqieX.StoryAds.1":@"短篇 正文 广告 拦截 净化",
             @"FanqieX.HotLaunchAds.1":@"热启动 开屏 广告 拦截 净化",
-            @"FanqieX.AudioAds.1":@"听书 朗读 广告 拦截 净化",
+            @"FanqieX.AudioAds.1":@"听书 朗读 看广告 攒时长 免广告 听书时长 解锁 贴片 信息流 广告 拦截 净化",
             @"FanqieX.ChapterTitle.1":@"返回 标题 章节名 书名 阅读页",
             @"FanqieX.NotificationsBadge.1":@"红点 数字 角标 通知 提醒",
             @"FanqieX.ReaderChapterEndDrama.1":@"阅读底栏 改编剧场 改编剧入口",
@@ -906,9 +965,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     UIBarButtonItem *releaseNotes = SettingsHeaderItem(version, nil, menu, @selector(showReleaseNotes:));
     releaseNotes.customView.accessibilityLabel = [@"插件版本 " stringByAppendingString:version];
     releaseNotes.customView.accessibilityHint = @"展开本版更新";
-    UIImageSymbolConfiguration *symbol = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    UIImage *chevron = [UIImage systemImageNamed:@"chevron.down" withConfiguration:symbol];
-    UIBarButtonItem *minimize = SettingsHeaderItem(nil, chevron, menu, @selector(dismissSettings:));
+    UIBarButtonItem *minimize = SettingsHeaderItem(nil, DrawSettingsMinimizeIcon(), menu, @selector(dismissSettings:));
     minimize.customView.accessibilityLabel = @"收起设置";
     menu.navigationItem.leftBarButtonItem = releaseNotes;
     menu.navigationItem.rightBarButtonItem = minimize;
@@ -944,11 +1001,11 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     }
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复「我的」页快捷入口卡片在出现「继续追漫 / 历史外露」等附着横条时，4 个圆形快捷按钮向下错位并与横条重叠的问题。\n"
-                  "• 修复书架「收藏」页关闭「显示『查看短剧浏览历史』卡片」后仍显示该卡片的问题（修正宿主枚举判断并补充进入页面时的策略同步）。\n"
-                  "• 新增「短剧 › 页面内容 › 显示左下角弹幕按钮」开关（默认开启）：关闭后隐藏短剧/漫剧左下角「弹✓」按钮并自然收起空行，不影响弹幕播放与长按面板弹幕设置。\n"
-                  "• 修复「显示阅读原著」关闭后在剧集播放页与外流推荐页仍显示进度条上方「原著《…》」条、推荐理由原著胶囊、选集原著入口及浮层书卡的问题，并支持即时生效。\n"
-                  "• 修复「显示作者声明」关闭后在剧集播放页与外流推荐页仍显示「作者声明：内容由AI生成」的问题（覆盖 AI 声明视图判断、文案与隐藏状态，并在设置切换时即时刷新）。",
+                  "• 修复短剧/漫剧双指清屏滑到下一集即失效：改为会话级清屏状态并在上下切集时无缝接管新视频浮层、保持共享顶栏与底栏隐藏，同时隔离宿主捏合手势抢占与清屏态捏合回退命中。\n"
+                  "• 修复短剧全屏播放与首页上下滑动画面抖动：识别居中超界竖屏封面与 TTMetalView 共享全屏锚点消除 +44.5pt 跳变，缓存单剧底栏高度实现切集第 0 帧对齐，并在滚动时 1:1 同步跟手刷新视频背景。\n"
+                  "• 新增短剧/漫剧选集面板三项净化开关：「隐藏选集原著和更多改编」「隐藏选集同系列剧」「隐藏选集底部推荐视频」（位于「短剧 › 页面内容」）。\n"
+                  "• 优化 FanqieX 设置顶栏视觉：增大左侧版本号胶囊字号与字重，右侧采用自绘圆润 iOS 风格最小化收起图标并置于液态玻璃表层之上。\n"
+                  "• 修复听书「看广告攒时长」强制拦截及阅读页右下角「听书时长」沙漏悬浮挂件净化失效，并补齐番茄 7.4.5 短剧直播/小游戏/后贴片/优惠券与侧栏游戏等适配。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;

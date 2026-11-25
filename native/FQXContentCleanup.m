@@ -3,13 +3,70 @@
 #import <os/lock.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#include <stdatomic.h>
 #import "FQXHookInstaller.h"
+#import "FQXLayoutAndSheetPolicy.h"
 #import "FanqieXDiagnosticsHub.h"
 
+extern void FQXRefreshReaderAndAudioPendants(void);
+
 #define KEY(name) @"FanqieX." name ".1"
+typedef BOOL (*FQXGateFn)(void);
+
 static BOOL On(NSString *key){id v=[NSUserDefaults.standardUserDefaults objectForKey:key];return [v respondsToSelector:@selector(boolValue)]&&[v boolValue];}
 static SEL Sel(const char *s){return sel_registerName(s);}
 static id Get(id o,const char *s){SEL x=Sel(s);return o&&[o respondsToSelector:x]?((id(*)(id,SEL))objc_msgSend)(o,x):nil;}
+
+static unsigned int FQXReadLegacyAdOptionsMask(int *outHasStored) {
+    id v = [NSUserDefaults.standardUserDefaults objectForKey:@"FanqieAdBlock.Options.1"];
+    if ([v respondsToSelector:@selector(unsignedIntValue)]) {
+        if (outHasStored) *outHasStored = 1;
+        return [v unsignedIntValue];
+    }
+    if ([v respondsToSelector:@selector(integerValue)]) {
+        if (outHasStored) *outHasStored = 1;
+        return (unsigned int)[v integerValue];
+    }
+    if (outHasStored) *outHasStored = 0;
+    return 0u;
+}
+
+static BOOL FQXAudioAdGateBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldBlockAudioAdsAndDurationGate(hasMask, mask, On(KEY("AudioAds")) ? 1 : 0) != 0;
+}
+
+static BOOL FQXWelfarePendantBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldSuppressWelfareListenPendant(hasMask, mask, On(KEY("ListenPendant")) ? 1 : 0) != 0;
+}
+
+static BOOL FQXReaderAudioPendantBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldSuppressReaderAudioDurationPendant(
+        hasMask, mask, On(KEY("ListenPendant")) ? 1 : 0, On(KEY("AudioAds")) ? 1 : 0) != 0;
+}
+
+static BOOL FQXShortVideoFeedAdBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldBlockShortVideoFeedAd(hasMask, mask) != 0;
+}
+
+static BOOL FQXShortVideoPatchAdBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldBlockShortVideoPatchAd(hasMask, mask) != 0;
+}
+
+static BOOL FQXBookstoreAndPopupAdBlocked(void) {
+    int hasMask = 0;
+    unsigned int mask = FQXReadLegacyAdOptionsMask(&hasMask);
+    return FQXShouldBlockBookstoreAndPopupAd(hasMask, mask) != 0;
+}
 
 static Class FQXLookupMatchingClass(const char *c, SEL x, BOOL cm, const char *enc) {
     Class cls = c ? objc_lookUpClass(c) : Nil;
@@ -100,30 +157,232 @@ static BOOL Object1(const char*c,const char*s,NSString*k){
  });
  if(!FQXDiagInstallOwnedHook(cls,c,x,NO,"@24@0:8@16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
 }
-static BOOL BoolClass(const char*c,const char*s,NSString*k){
- SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,YES,"B24@0:8#16"); if(!cls)return NO;
- __block IMP old=NULL;
- const char *rule=k.UTF8String;
- IMP hook=imp_implementationWithBlock(^BOOL(id o,Class a){
-  CFTimeInterval t0=CACurrentMediaTime();
-  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return NO;}
-  BOOL r=((BOOL(*)(id,SEL,Class))old)(o,x,a);
-  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
-  return r;
- });
- if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"B24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+static BOOL GateConstBool0(const char *c, const char *s, BOOL cm, BOOL blockedVal, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "B16@0:8");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id o) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return blockedVal;
+        }
+        BOOL r = ((BOOL (*)(id, SEL))old)(o, x);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "B16@0:8", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
 }
-static BOOL VoidClass(const char*c,const char*s,NSString*k){
- SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,YES,"v24@0:8#16"); if(!cls)return NO;
- __block IMP old=NULL;
- const char *rule=k.UTF8String;
- IMP hook=imp_implementationWithBlock(^(id o,Class a){
-  CFTimeInterval t0=CACurrentMediaTime();
-  if(On(k)){FQXDiagRecordHook(c,s,rule,"option_enabled","blocked",(CACurrentMediaTime()-t0)*1000.0);return;}
-  ((void(*)(id,SEL,Class))old)(o,x,a);
-  FQXDiagRecordHook(c,s,rule,"option_off","allowed",(CACurrentMediaTime()-t0)*1000.0);
- });
- if(!FQXDiagInstallOwnedHook(cls,c,x,YES,"v24@0:8#16",rule,hook,&old)){imp_removeBlock(hook);return NO;}return YES;
+static BOOL GateVoid0(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "v16@0:8");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^(id o) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL))old)(o, x);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "v16@0:8", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateVoid1Obj(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "v24@0:8@16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^(id o, id a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL, id))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "v24@0:8@16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateVoid2Obj(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "v32@0:8@16@24");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^(id o, id a, id b) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL, id, id))old)(o, x, a, b);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "v32@0:8@16@24", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateVoid1ObjBlock(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "v32@0:8@16@?24");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^(id o, id a, id blk) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            (void)blk;
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL, id, id))old)(o, x, a, blk);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "v32@0:8@16@?24", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateBool1Obj(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "B24@0:8@16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id o, id a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL r = ((BOOL (*)(id, SEL, id))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "B24@0:8@16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateBool1Class(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "B24@0:8#16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id o, Class a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL r = ((BOOL (*)(id, SEL, Class))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "B24@0:8#16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateVoid1Class(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "v24@0:8#16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^(id o, Class a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL, Class))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "v24@0:8#16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateBool1UInt(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "B24@0:8Q16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id o, NSUInteger a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL r = ((BOOL (*)(id, SEL, NSUInteger))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "B24@0:8Q16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateBool1Int(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "B24@0:8q16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^BOOL(id o, NSInteger a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return NO;
+        }
+        BOOL r = ((BOOL (*)(id, SEL, NSInteger))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "B24@0:8q16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+static BOOL GateNil0(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "@16@0:8");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^id(id o) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return nil;
+        }
+        id r = ((id (*)(id, SEL))old)(o, x);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "@16@0:8", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
 }
 static BOOL Void1(const char*c,const char*s,BOOL cm,NSString*k,const char*getter){
  SEL x=Sel(s); Class cls=FQXLookupMatchingClass(c,x,cm,"v24@0:8@16"); if(!cls)return NO;
@@ -356,6 +615,18 @@ static os_unfair_lock sAudioTrackLock = OS_UNFAIR_LOCK_INIT;
 static __weak id sLastAudioSDKManager;
 static NSHashTable *sTrackedTTSManagers;
 static NSHashTable *sTrackedParaManagers;
+static NSHashTable *sTrackedReaderPendantManagers;
+static NSHashTable *sTrackedReaderPendantInsertObjs;
+static NSHashTable *sTrackedWelfarePendantManagers;
+static NSHashTable *sTrackedPreUnlockViewManagers;
+
+static void TrackInWeakTable(NSHashTable * __strong *tableSlot, id obj) {
+    if (!obj || !tableSlot) return;
+    os_unfair_lock_lock(&sAudioTrackLock);
+    if (!*tableSlot) *tableSlot = [NSHashTable weakObjectsHashTable];
+    [*tableSlot addObject:obj];
+    os_unfair_lock_unlock(&sAudioTrackLock);
+}
 
 static BOOL BoolMsg0(id o,const char *s){
  SEL x=Sel(s);return o&&[o respondsToSelector:x]?((BOOL(*)(id,SEL))objc_msgSend)(o,x):NO;
@@ -777,19 +1048,780 @@ static void InstallAudioBookSyncAndRemoteHooks(void){
   SEL st=Sel("tryToPlayAtTime:position:disableIntercept:source:");__block IMP ot=NULL;
   IMP ht=imp_implementationWithBlock(^(id o,double t,id pos,BOOL disInt,id src){
    NSString *srcStr=[src isKindOfClass:NSString.class]?(NSString *)src:@"";
+   BOOL isResumeSrc=NO;
    if(srcStr.length){
     if([srcStr isEqualToString:@"play"]||[srcStr isEqualToString:@"toggle"]||
        [srcStr rangeOfString:@"remote" options:NSCaseInsensitiveSearch].location!=NSNotFound||
        [srcStr rangeOfString:@"toggle" options:NSCaseInsensitiveSearch].location!=NSNotFound){
+     isResumeSrc=YES;
      FQXEnsurePlaybackSessionActive();
-     disInt=YES;
     }
+   }
+   int hasMask=0;
+   unsigned int mask=FQXReadLegacyAdOptionsMask(&hasMask);
+   if(FQXShouldForceDisableAudioPlayIntercept(hasMask,mask,On(KEY("AudioAds"))?1:0,isResumeSrc?1:0)){
+    disInt=YES;
    }
    ((void(*)(id,SEL,double,id,BOOL,id))ot)(o,st,t,pos,disInt,src);
    FQXDiagRecordTTSPlaybackEvent(FQXAudioSDKManager(),o,pos,srcStr,"bdfqTryToPlayAtTime",YES);
   });
   if(!FQXInstallOwnedHook(cls,st,NO,"v44@0:8d16@24B32@36",ht,&ot))imp_removeBlock(ht);
  }
+}
+
+static char kFQXControlledHostHiddenKey;
+static char kFQXControlledForcedHiddenKey;
+static _Thread_local BOOL sFQXInternalSetHidden = NO;
+
+static void FQXSyncControlledViewHidden(UIView *view, BOOL forceHide) {
+    if (![view isKindOfClass:UIView.class]) return;
+    if (forceHide) {
+        if (!objc_getAssociatedObject(view, &kFQXControlledHostHiddenKey)) {
+            objc_setAssociatedObject(view, &kFQXControlledHostHiddenKey, @(view.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        objc_setAssociatedObject(view, &kFQXControlledForcedHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!view.hidden) {
+            sFQXInternalSetHidden = YES;
+            view.hidden = YES;
+            sFQXInternalSetHidden = NO;
+        }
+    } else if (objc_getAssociatedObject(view, &kFQXControlledForcedHiddenKey)) {
+        NSNumber *hostHidden = objc_getAssociatedObject(view, &kFQXControlledHostHiddenKey);
+        objc_setAssociatedObject(view, &kFQXControlledForcedHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        BOOL targetHidden = hostHidden ? hostHidden.boolValue : NO;
+        if (view.hidden != targetHidden) {
+            sFQXInternalSetHidden = YES;
+            view.hidden = targetHidden;
+            sFQXInternalSetHidden = NO;
+        }
+    }
+}
+
+static void InstallControlledViewVisibilityHooks(const char *className, const char *rule, FQXGateFn gate) {
+    Class cls = objc_lookUpClass(className);
+    if (!cls) return;
+    SEL setHiddenSel = Sel("setHidden:");
+    __block IMP origSetHidden = NULL;
+    IMP setHiddenHook = imp_implementationWithBlock(^(UIView *v, BOOL hidden) {
+        if (!sFQXInternalSetHidden) {
+            objc_setAssociatedObject(v, &kFQXControlledHostHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (gate()) {
+            objc_setAssociatedObject(v, &kFQXControlledForcedHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            FQXDiagPushPluginViewReason(rule, "setHidden:");
+            ((void (*)(id, SEL, BOOL))origSetHidden)(v, setHiddenSel, YES);
+            FQXDiagPopPluginViewReason();
+            return;
+        }
+        objc_setAssociatedObject(v, &kFQXControlledForcedHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        ((void (*)(id, SEL, BOOL))origSetHidden)(v, setHiddenSel, hidden);
+    });
+    if (!FQXInstallOwnedHook(cls, setHiddenSel, NO, "v20@0:8B16", setHiddenHook, &origSetHidden)) {
+        imp_removeBlock(setHiddenHook);
+    }
+
+    for (NSString *selName in @[@"didMoveToWindow", @"layoutSubviews"]) {
+        SEL s = NSSelectorFromString(selName);
+        __block IMP orig = NULL;
+        IMP h = imp_implementationWithBlock(^(UIView *v) {
+            ((void (*)(id, SEL))orig)(v, s);
+            if (gate()) {
+                FQXDiagPushPluginViewReason(rule, selName.UTF8String);
+                FQXSyncControlledViewHidden(v, YES);
+                FQXDiagPopPluginViewReason();
+            }
+        });
+        if (!FQXInstallOwnedHook(cls, s, NO, "v16@0:8", h, &orig)) {
+            imp_removeBlock(h);
+        }
+    }
+}
+
+static void FQXWalkWindowViewsForPendantRefresh(UIView *root,
+                                                NSInteger depth,
+                                                BOOL hideReaderAudioPendant,
+                                                BOOL hideWelfarePendant,
+                                                BOOL hideAudioGate) {
+    if (![root isKindOfClass:UIView.class] || depth > 20) return;
+    static Class sReaderPendantViewCls, sReaderPendantTipCls, sPreUnlockBarCls;
+    static Class sWelfarePendantCls, sWelfareCircleCls, sWelfareCouponCls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        sReaderPendantViewCls = objc_lookUpClass("SSBizAudioAdNewReaderPendantView");
+        sReaderPendantTipCls  = objc_lookUpClass("SSBizAudioAdNewReaderPendantTipView");
+        sPreUnlockBarCls      = objc_lookUpClass("SSBizAudioAdPreUnlockBarView");
+        sWelfarePendantCls    = objc_lookUpClass("SSWelfarePendant");
+        sWelfareCircleCls     = objc_lookUpClass("SSWelfarePendantCircleView");
+        sWelfareCouponCls     = objc_lookUpClass("SSWelfarePendantBookCouponView");
+    });
+
+    if ((sReaderPendantViewCls && [root isKindOfClass:sReaderPendantViewCls]) ||
+        (sReaderPendantTipCls && [root isKindOfClass:sReaderPendantTipCls])) {
+        FQXSyncControlledViewHidden(root, hideReaderAudioPendant);
+        return;
+    }
+    if (sPreUnlockBarCls && [root isKindOfClass:sPreUnlockBarCls]) {
+        if (hideAudioGate) VoidMsg0(root, "stopCountDown");
+        FQXSyncControlledViewHidden(root, hideAudioGate);
+        return;
+    }
+    if ((sWelfarePendantCls && [root isKindOfClass:sWelfarePendantCls]) ||
+        (sWelfareCircleCls && [root isKindOfClass:sWelfareCircleCls]) ||
+        (sWelfareCouponCls && [root isKindOfClass:sWelfareCouponCls])) {
+        FQXSyncControlledViewHidden(root, hideWelfarePendant);
+        return;
+    }
+
+    for (UIView *sub in root.subviews) {
+        FQXWalkWindowViewsForPendantRefresh(sub, depth + 1, hideReaderAudioPendant, hideWelfarePendant, hideAudioGate);
+    }
+}
+
+static int FQXCurrentPendantAndAudioGateStateMask(void) {
+    int m = 0;
+    if (FQXReaderAudioPendantBlocked()) m |= 1;
+    if (FQXWelfarePendantBlocked()) m |= 2;
+    if (FQXAudioAdGateBlocked()) m |= 4;
+    return m;
+}
+
+static _Atomic int sLastObservedGateStateMask = -1;
+
+void FQXRefreshReaderAndAudioPendants(void) {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshReaderAndAudioPendants(); });
+        return;
+    }
+    static BOOL sRefreshing = NO;
+    if (sRefreshing) return;
+    sRefreshing = YES;
+
+    BOOL hideReaderAudioPendant = FQXReaderAudioPendantBlocked();
+    BOOL hideWelfarePendant = FQXWelfarePendantBlocked();
+    BOOL hideAudioGate = FQXAudioAdGateBlocked();
+    atomic_store_explicit(&sLastObservedGateStateMask, FQXCurrentPendantAndAudioGateStateMask(), memory_order_relaxed);
+
+    FQXDiagPushPluginViewReason("FanqieX.PendantAndAudioGateRefresh", "FQXRefreshReaderAndAudioPendants");
+
+    for (id mgr in SnapshotTracked(sTrackedReaderPendantManagers)) {
+        id v = Get(mgr, "view");
+        if (hideReaderAudioPendant) {
+            VoidMsg0(mgr, "hideTip");
+            VoidMsg0(mgr, "hidePendantView");
+            if ([v isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)v, YES);
+        } else {
+            if ([v isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)v, NO);
+            VoidMsg0(mgr, "updateViewTaskPanelState");
+        }
+    }
+
+    for (id ins in SnapshotTracked(sTrackedReaderPendantInsertObjs)) {
+        id pv = Get(ins, "ttsPreunlockPendant");
+        if (hideReaderAudioPendant) {
+            VoidMsg0(ins, "hideFloatingBtnFromPendant");
+            if ([pv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)pv, YES);
+        } else {
+            if ([pv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)pv, NO);
+        }
+    }
+
+    for (id wm in SnapshotTracked(sTrackedWelfarePendantManagers)) {
+        if (hideWelfarePendant) {
+            VoidMsg0(wm, "dismissPendant");
+            VoidMsg0(wm, "tryDismissPendant");
+            VoidMsg0(wm, "removeHoverView");
+            id cpv = Get(wm, "currentPendantView");
+            if ([cpv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)cpv, YES);
+            id khv = Get(wm, "currentKmpHoverBridgeView");
+            if ([khv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)khv, YES);
+        } else {
+            id cpv = Get(wm, "currentPendantView");
+            if ([cpv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)cpv, NO);
+            id khv = Get(wm, "currentKmpHoverBridgeView");
+            if ([khv isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)khv, NO);
+            VoidMsg0(wm, "refreshIfNeeded");
+            VoidMsg0(wm, "refreshHoverView");
+        }
+    }
+
+    for (id pm in SnapshotTracked(sTrackedPreUnlockViewManagers)) {
+        id bar = Get(pm, "preUnlockView") ?: Get(pm, "unlockView");
+        if ([bar isKindOfClass:UIView.class]) {
+            if (hideAudioGate) VoidMsg0(bar, "stopCountDown");
+            FQXSyncControlledViewHidden((UIView *)bar, hideAudioGate);
+        }
+        VoidMsg0(pm, "updateAheadInspireUnlockViewHidden");
+    }
+
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            FQXWalkWindowViewsForPendantRefresh(window, 0, hideReaderAudioPendant, hideWelfarePendant, hideAudioGate);
+        }
+    }
+
+    FQXDiagPopPluginViewReason();
+    sRefreshing = NO;
+}
+
+static void InstallAudioPlayInterceptHook(const char *className) {
+    SEL x = Sel("audioShouldInterceptWhenPlayCurrent:interceptSource:interceptInfo:");
+    Class cls = FQXLookupMatchingClass(className, x, NO, "v40@0:8^B16^@24^@32");
+    if (!cls) return;
+    __block IMP old = NULL;
+    const char *rule = "FanqieX.AudioAdDurationGate";
+    IMP hook = imp_implementationWithBlock(^(id o, BOOL *shouldIntercept, void *interceptSource, void *interceptInfo) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (FQXAudioAdGateBlocked()) {
+            if (shouldIntercept) *shouldIntercept = NO;
+            FQXDiagRecordHook(className, "audioShouldInterceptWhenPlayCurrent:interceptSource:interceptInfo:",
+                              rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return;
+        }
+        ((void (*)(id, SEL, BOOL *, void *, void *))old)(o, x, shouldIntercept, interceptSource, interceptInfo);
+        FQXDiagRecordHook(className, "audioShouldInterceptWhenPlayCurrent:interceptSource:interceptInfo:",
+                          rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+    });
+    if (!FQXDiagInstallOwnedHook(cls, className, x, NO, "v40@0:8^B16^@24^@32", rule, hook, &old)) {
+        imp_removeBlock(hook);
+    }
+}
+
+static void InstallReaderAndListenPendantHooks(void) {
+    const char *readerPendantRule = "FanqieX.ReaderAudioPendant";
+    const char *welfarePendantRule = "FanqieX.ListenPendant.1";
+
+    /* 1. Bottom-right reader "01:52:42 听书时长" hourglass pendant (SSBizAudioAdNewReaderPendant* & SSAudioTTSPreUnlockPendantInsertObj) */
+    GateConstBool0("SSBizAudioAdABTestService", "ttsSyncPendantEnable", YES, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdABTestService", "ttsSyncPendantForceShow", YES, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdNewReaderPendantManager", "canShowReaderPendant", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdNewReaderPendantManager", "isPendantActive", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdNewReaderPendantManager", "canShowPreunlock", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdNewReaderPendantManager", "canShowDailyTip", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSBizAudioAdNewReaderPendantManager", "handlePreunlockTipShow", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateVoid0("SSBizAudioAdNewReaderPendantManager", "tryShowTips", NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+
+    {
+        Class cls = objc_lookUpClass("SSBizAudioAdNewReaderPendantManager");
+        SEL sSetRM = Sel("setReaderManager:");
+        __block IMP oSetRM = NULL;
+        IMP hSetRM = imp_implementationWithBlock(^(id o, id rm) {
+            TrackInWeakTable(&sTrackedReaderPendantManagers, o);
+            ((void (*)(id, SEL, id))oSetRM)(o, sSetRM, rm);
+            if (FQXReaderAudioPendantBlocked()) {
+                VoidMsg0(o, "hidePendantView");
+                id v = Get(o, "view");
+                if ([v isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)v, YES);
+            }
+        });
+        if (!FQXInstallOwnedHook(cls, sSetRM, NO, "v24@0:8@16", hSetRM, &oSetRM)) imp_removeBlock(hSetRM);
+
+        SEL sGet = Sel("getReaderPendant");
+        __block IMP oGet = NULL;
+        IMP hGet = imp_implementationWithBlock(^id(id o) {
+            TrackInWeakTable(&sTrackedReaderPendantManagers, o);
+            if (FQXReaderAudioPendantBlocked()) {
+                id v = Get(o, "view");
+                if ([v isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)v, YES);
+                FQXDiagRecordHook("SSBizAudioAdNewReaderPendantManager", "getReaderPendant", readerPendantRule, "gate_active", "blocked", 0.0);
+                return nil;
+            }
+            return ((id (*)(id, SEL))oGet)(o, sGet);
+        });
+        if (!FQXInstallOwnedHook(cls, sGet, NO, "@16@0:8", hGet, &oGet)) imp_removeBlock(hGet);
+
+        SEL sShow = Sel("showPendantView");
+        __block IMP oShow = NULL;
+        IMP hShow = imp_implementationWithBlock(^(id o) {
+            TrackInWeakTable(&sTrackedReaderPendantManagers, o);
+            if (FQXReaderAudioPendantBlocked()) {
+                VoidMsg0(o, "hidePendantView");
+                id v = Get(o, "view");
+                if ([v isKindOfClass:UIView.class]) FQXSyncControlledViewHidden((UIView *)v, YES);
+                FQXDiagRecordHook("SSBizAudioAdNewReaderPendantManager", "showPendantView", readerPendantRule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL))oShow)(o, sShow);
+        });
+        if (!FQXInstallOwnedHook(cls, sShow, NO, "v16@0:8", hShow, &oShow)) imp_removeBlock(hShow);
+
+        SEL sTip = Sel("showTipText:forceShow:");
+        __block IMP oTip = NULL;
+        IMP hTip = imp_implementationWithBlock(^(id o, id text, BOOL force) {
+            TrackInWeakTable(&sTrackedReaderPendantManagers, o);
+            if (FQXReaderAudioPendantBlocked()) return;
+            ((void (*)(id, SEL, id, BOOL))oTip)(o, sTip, text, force);
+        });
+        if (!FQXInstallOwnedHook(cls, sTip, NO, "v28@0:8@16B24", hTip, &oTip)) imp_removeBlock(hTip);
+    }
+
+    InstallControlledViewVisibilityHooks("SSBizAudioAdNewReaderPendantView", readerPendantRule, FQXReaderAudioPendantBlocked);
+    InstallControlledViewVisibilityHooks("SSBizAudioAdNewReaderPendantTipView", readerPendantRule, FQXReaderAudioPendantBlocked);
+
+    GateConstBool0("SSAudioTTSPreUnlockPendantInsertObj", "shouldInsert", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateConstBool0("SSAudioTTSPreUnlockPendantInsertObj", "shouldShow", NO, NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    GateNil0("SSAudioTTSPreUnlockPendantInsertObj", "insertView", NO, readerPendantRule, FQXReaderAudioPendantBlocked);
+    {
+        Class cls = objc_lookUpClass("SSAudioTTSPreUnlockPendantInsertObj");
+        SEL sInit = Sel("initWithReaderManager:");
+        __block IMP oInit = NULL;
+        IMP hInit = imp_implementationWithBlock(^id(id o, id rm) {
+            id res = ((id (*)(id, SEL, id))oInit)(o, sInit, rm);
+            TrackInWeakTable(&sTrackedReaderPendantInsertObjs, res);
+            return res;
+        });
+        if (!FQXInstallOwnedHook(cls, sInit, NO, "@24@0:8@16", hInit, &oInit)) imp_removeBlock(hInit);
+
+        SEL sShowBtn = Sel("showFloatingBtnFromPendant");
+        __block IMP oShowBtn = NULL;
+        IMP hShowBtn = imp_implementationWithBlock(^(id o) {
+            TrackInWeakTable(&sTrackedReaderPendantInsertObjs, o);
+            if (FQXReaderAudioPendantBlocked()) {
+                VoidMsg0(o, "hideFloatingBtnFromPendant");
+                return;
+            }
+            ((void (*)(id, SEL))oShowBtn)(o, sShowBtn);
+        });
+        if (!FQXInstallOwnedHook(cls, sShowBtn, NO, "v16@0:8", hShowBtn, &oShowBtn)) imp_removeBlock(hShowBtn);
+    }
+
+    /* 2. Welfare / Listen-and-Earn / KMP / Reader Floating Pendants (instance methods cm=NO!) */
+    GateBool1Class("SSWelfareListenPendantManager", "canShowPendantInVC:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid1Class("SSWelfareListenPendantManager", "ssBaseViewControllerViewDidAppear:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid2Obj("SSWelfareListenPendantManager", "listenerDidAppear:audioModel:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateConstBool0("SSWelfareListenPendantManager", "shouldUseKmpListenPendant", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateConstBool0("SSWelfareListenPendantManager", "isCommonCouldShowBubble", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid1Obj("SSWelfareListenPendantManager", "triggerKmpPendantIfNeededWithAttachView:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "addHoverView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "refreshHoverView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "tryShowAssetAwarenessBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "tryShowLimitTimeDoubleBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "tryShowTodayMaxRewardBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "tryShowRewardNoticeBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareListenPendantManager", "tryShowDaily1MinTipsBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    {
+        Class cls = objc_lookUpClass("SSWelfareListenPendantManager");
+        SEL sTry = Sel("tryShowPendant:");
+        __block IMP oTry = NULL;
+        IMP hTry = imp_implementationWithBlock(^(id o, Class vcCls) {
+            TrackInWeakTable(&sTrackedWelfarePendantManagers, o);
+            if (FQXWelfarePendantBlocked()) {
+                VoidMsg0(o, "dismissPendant");
+                VoidMsg0(o, "removeHoverView");
+                FQXDiagRecordHook("SSWelfareListenPendantManager", "tryShowPendant:", welfarePendantRule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL, Class))oTry)(o, sTry, vcCls);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSWelfareListenPendantManager", sTry, NO, "v24@0:8#16", welfarePendantRule, hTry, &oTry)) {
+            imp_removeBlock(hTry);
+        }
+    }
+
+    GateVoid0("SSWelfareGlobalPendantManager", "showAfterHidingTemp", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareGlobalPendantManager", "addHoverView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareGlobalPendantManager", "refreshHoverView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid1Obj("SSWelfareGlobalPendantManager", "triggerKmpPendantIfNeededWithAttachView:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateConstBool0("SSWelfareGlobalPendantManager", "isCommonCouldShowBubble", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareGlobalPendantManager", "tryShowDaily1MinBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid0("SSWelfareGlobalPendantManager", "tryShowAssetAwarenessBubble", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    {
+        Class cls = objc_lookUpClass("SSWelfareGlobalPendantManager");
+        SEL sTry = Sel("tryShowPendant");
+        __block IMP oTry = NULL;
+        IMP hTry = imp_implementationWithBlock(^(id o) {
+            TrackInWeakTable(&sTrackedWelfarePendantManagers, o);
+            if (FQXWelfarePendantBlocked()) {
+                VoidMsg0(o, "tryDismissPendant");
+                VoidMsg0(o, "removeHoverView");
+                FQXDiagRecordHook("SSWelfareGlobalPendantManager", "tryShowPendant", welfarePendantRule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL))oTry)(o, sTry);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSWelfareGlobalPendantManager", sTry, NO, "v16@0:8", welfarePendantRule, hTry, &oTry)) {
+            imp_removeBlock(hTry);
+        }
+    }
+
+    GateVoid1Obj("SSWelfareReadingToolPendantManager", "injectCyberPendant:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateVoid2Obj("SSWelfareReadingToolPendantManager", "willAttached:pendant:", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+
+    GateConstBool0("SSReaderFloatingBtnBookActivityPendantInsertObj", "shouldInsert", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateConstBool0("SSReaderFloatingBtnBookActivityPendantInsertObj", "shouldShow", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateNil0("SSReaderFloatingBtnBookActivityPendantInsertObj", "insertView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+
+    GateConstBool0("SSReaderAIGCTaskPendantInsertObj", "shouldInsert", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateConstBool0("SSReaderAIGCTaskPendantInsertObj", "shouldShow", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+    GateNil0("SSReaderAIGCTaskPendantInsertObj", "insertView", NO, welfarePendantRule, FQXWelfarePendantBlocked);
+
+    GateConstBool0("SSStoryPostNavigationBarConfig", "showGoldCoinProgress", NO, NO, welfarePendantRule, FQXWelfarePendantBlocked);
+}
+
+static void InstallAudioAdAndDurationGateHooks(void) {
+    const char *rule = "FanqieX.AudioAdDurationGate";
+
+    /* 1. Out-pointer playback interception gates */
+    InstallAudioPlayInterceptHook("SSBizAudioAdInspireManager");
+    InstallAudioPlayInterceptHook("SSBizAudioAdNewReaderPendantManager");
+    InstallAudioPlayInterceptHook("SSAdAudioManager");
+    InstallAudioPlayInterceptHook("SSAdAudioPatchClient");
+    InstallAudioPlayInterceptHook("SSAdBackgroundAudioClient");
+
+    {
+        Class cls = objc_lookUpClass("SSAdAudioManager");
+        SEL sPlaying = Sel("adPlayingAuidoShouldIntercept:");
+        __block IMP oPlaying = NULL;
+        IMP hPlaying = imp_implementationWithBlock(^(id o, BOOL *shouldIntercept) {
+            if (FQXAudioAdGateBlocked()) {
+                if (shouldIntercept) *shouldIntercept = NO;
+                FQXDiagRecordHook("SSAdAudioManager", "adPlayingAuidoShouldIntercept:", rule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL, BOOL *))oPlaying)(o, sPlaying, shouldIntercept);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSAdAudioManager", sPlaying, NO, "v24@0:8^B16", rule, hPlaying, &oPlaying)) {
+            imp_removeBlock(hPlaying);
+        }
+    }
+    {
+        Class cls = objc_lookUpClass("SSBizAudioAdFunnelPopupManager");
+        SEL sInd = Sel("audioIndicatorWillShowWithPlayPosition:showContext:shouldIntercept:");
+        __block IMP oInd = NULL;
+        IMP hInd = imp_implementationWithBlock(^(id o, id pos, id ctx, BOOL *shouldIntercept) {
+            if (FQXAudioAdGateBlocked()) {
+                if (shouldIntercept) *shouldIntercept = NO;
+                FQXDiagRecordHook("SSBizAudioAdFunnelPopupManager", "audioIndicatorWillShowWithPlayPosition:showContext:shouldIntercept:", rule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL, id, id, BOOL *))oInd)(o, sInd, pos, ctx, shouldIntercept);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSBizAudioAdFunnelPopupManager", sInd, NO, "v40@0:8@16@24^B32", rule, hInd, &oInd)) {
+            imp_removeBlock(hInd);
+        }
+    }
+
+    /* 2. Master Inspire / PreUnlock / AB / Ad-Free Privilege Gates */
+    GateBool1UInt("SSBizAudioAdABTestService", "isAudioInspireAdOpenWithType:", YES, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestService", "enableBelowReadFlowAd", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestService", "ttsTipExitEnable", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestService", "dialogExitEnable", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestHelper", "canAddTimeAd", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestHelper", "ttsAutoAdEnablePopScene", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestHelper", "enablePlayletRetentionDialog", YES, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdABTestHelper", "enablePlayletRewardPanel", YES, NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdAudioInspireStrategyDataManager", "isOpen", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdAudioInspireStrategyDataManager", "entryDirectAd", NO, NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdSettingsAudioInspireConfig", "enable", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdSettingsAudioInspireConfig", "audio_pre_lock_show_directly", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdSettingsAudioInspireConfig", "old_profit_time_out_show_dialog_immediately", NO, NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdSettingsAudioPatchMetaData", "enable", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdSettingsAudioPatchMetaData", "shouldPauseAudioPlayer", NO, NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdSettingsBackgroundAudioConfig", "enable", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdSettingsBackgroundAudioConfig", "shouldPauseAudioPlayer", NO, NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdAudioSettingManager", "hasFreeAdProfit", NO, YES, rule, FQXAudioAdGateBlocked);
+    GateBool1UInt("SSAdAudioSettingManager", "audioAdSceneEnableWithType:", NO, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSAdAudioSettingManager");
+        SEL sOpen = Sel("audioAdOpenWithType:sceneType:hotStory:");
+        __block IMP oOpen = NULL;
+        IMP hOpen = imp_implementationWithBlock(^BOOL(id o, NSUInteger tp, NSUInteger sc, BOOL hs) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, NSUInteger, NSUInteger, BOOL))oOpen)(o, sOpen, tp, sc, hs);
+        });
+        if (!FQXInstallOwnedHook(cls, sOpen, NO, "B36@0:8Q16Q24B32", hOpen, &oOpen)) imp_removeBlock(hOpen);
+
+        SEL sAvail = Sel("availableWithType:adSource:hotStory:");
+        __block IMP oAvail = NULL;
+        IMP hAvail = imp_implementationWithBlock(^BOOL(id o, NSUInteger tp, id src, BOOL hs) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, NSUInteger, id, BOOL))oAvail)(o, sAvail, tp, src, hs);
+        });
+        if (!FQXInstallOwnedHook(cls, sAvail, NO, "B36@0:8Q16@24B32", hAvail, &oAvail)) imp_removeBlock(hAvail);
+
+        SEL sShow = Sel("shouldShowWithType:bookId:index:hotStory:");
+        __block IMP oShow = NULL;
+        IMP hShow = imp_implementationWithBlock(^BOOL(id o, NSUInteger tp, id bid, NSUInteger idx, BOOL hs) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, NSUInteger, id, NSUInteger, BOOL))oShow)(o, sShow, tp, bid, idx, hs);
+        });
+        if (!FQXInstallOwnedHook(cls, sShow, NO, "B44@0:8Q16@24Q32B40", hShow, &oShow)) imp_removeBlock(hShow);
+    }
+
+    GateConstBool0("SSSpeechToneAudioAdFreeManager", "shouldSkipShowAudioPatchAd", NO, YES, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSSpeechToneAudioAdFreeManager", "shouldHideAheadUnlock", NO, YES, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSSpeechToneAudioAdFreeManager", "shouldSkipReportAudioConsumeTime", NO, YES, rule, FQXAudioAdGateBlocked);
+
+    /* 3. Countdown Expiry, PreUnlock Bar, Funnel/Default Popups & AutoPlay Ad */
+    GateVoid1Obj("SSBizAudioAdInspireManager", "countDownHadFinishedInCountDownView:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdInspireManager", "setNeedAutoShowPreUnlockWithScene:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSBizAudioAdInspireManager", "tryAutoShowSignInAlert", NO, rule, FQXAudioAdGateBlocked);
+
+    GateVoid0("SSBizAudioAdStartPlayPreUnlockManager", "showStartPlayInterceptInspire", YES, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSBizAudioAdStartPlayPreUnlockManager");
+        SEL sStart = Sel("showStartPlayPreUnlockWithCanShowView:canPlayTip:");
+        __block IMP oStart = NULL;
+        IMP hStart = imp_implementationWithBlock(^(id o, BOOL canShow, BOOL canTip) {
+            if (FQXAudioAdGateBlocked()) {
+                FQXDiagRecordHook("SSBizAudioAdStartPlayPreUnlockManager", "showStartPlayPreUnlockWithCanShowView:canPlayTip:", rule, "gate_active", "blocked", 0.0);
+                return;
+            }
+            ((void (*)(id, SEL, BOOL, BOOL))oStart)(o, sStart, canShow, canTip);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSBizAudioAdStartPlayPreUnlockManager", sStart, YES, "v24@0:8B16B20", rule, hStart, &oStart)) {
+            imp_removeBlock(hStart);
+        }
+    }
+
+    GateVoid1Obj("SSBizAudioAdInspirePopupService", "showInspirePopupWithPopScene:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1ObjBlock("SSBizAudioAdInspirePopupService", "showInspirePopupWithPopScene:dismissBlock:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdInspirePopupService", "showInspirePopupWithProcessParam:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdFunnelPopupManager", "showInspireFunnelPopupViewWithProcessParam:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdDefaultPopupManager", "showInspireFunnelPopupViewWithPopScene:", NO, rule, FQXAudioAdGateBlocked);
+
+    GateVoid1Obj("SSAdAudioInspireAutoPlayManager", "startAutoPlay:", NO, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSAdAudioInspireAutoPlayManager");
+        for (NSString *selStr in @[@"checkCanAutoPlayAdWithPopScene:data:consumeLeftTime:isFromAudioStart:",
+                                   @"checkAndStartAutoPlayWithPopScene:data:consumeLeftTime:isFromAudioStart:"]) {
+            SEL s = NSSelectorFromString(selStr);
+            __block IMP orig = NULL;
+            IMP h = imp_implementationWithBlock(^BOOL(id o, id sc, id dt, NSInteger left, BOOL fromStart) {
+                return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, id, id, NSInteger, BOOL))orig)(o, s, sc, dt, left, fromStart);
+            });
+            if (!FQXInstallOwnedHook(cls, s, NO, "B44@0:8@16@24q32B40", h, &orig)) imp_removeBlock(h);
+        }
+        SEL s3 = Sel("checkAndStartAutoPlayWithPopScene:data:consumeLeftTime:");
+        __block IMP o3 = NULL;
+        IMP h3 = imp_implementationWithBlock(^BOOL(id o, id sc, id dt, NSInteger left) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, id, id, NSInteger))o3)(o, s3, sc, dt, left);
+        });
+        if (!FQXInstallOwnedHook(cls, s3, NO, "B40@0:8@16@24q32", h3, &o3)) imp_removeBlock(h3);
+    }
+
+    GateConstBool0("SSBizAudioAdPreUnlockViewManager", "canShowAheadUnlock", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdPreUnlockViewManager", "forceShowPannel", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdPreUnlockViewManager", "isShouldShowKeepUnlock", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSBizAudioAdPreUnlockViewManager", "showAheadInspireUnlockViewAppearAnimate", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdPreUnlockViewManager", "unlockBarViewConsumeProfitHasFinishedCount:", NO, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSBizAudioAdPreUnlockViewManager");
+        SEL sInit = Sel("initWithPlayViewController:");
+        __block IMP oInit = NULL;
+        IMP hInit = imp_implementationWithBlock(^id(id o, id vc) {
+            id res = ((id (*)(id, SEL, id))oInit)(o, sInit, vc);
+            TrackInWeakTable(&sTrackedPreUnlockViewManagers, res);
+            return res;
+        });
+        if (!FQXInstallOwnedHook(cls, sInit, NO, "@24@0:8@16", hInit, &oInit)) imp_removeBlock(hInit);
+    }
+    InstallControlledViewVisibilityHooks("SSBizAudioAdPreUnlockBarView", rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSBizAudioAdPlayIndicatorUnlockTipService", "canShowTip", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSBizAudioAdPlayIndicatorUnlockTipService", "tryShowTipWithPlayIndicator:", NO, rule, FQXAudioAdGateBlocked);
+
+    GateBool1Obj("SSBizAudioAdMyUserAudioPreUnlockService", "canShowPreUnlockTextWithBookId:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1ObjBlock("SSBizAudioAdMyUserAudioPreUnlockService", "tryShowPreUnlockTipWithAnchorView:tappedHandler:", NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSBizAudioAdReaderPreUnlockController", "needShowAheadUnlockEntrance", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdReaderTTSGiftController", "needShowAudioInspire", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSBizAudioAdReaderTTSGiftController", "p_needShowAudioInspire", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1ObjBlock("SSBizAudioAdReaderTTSGiftController", "showReaderAudioInspireWithPosition:success:", NO, rule, FQXAudioAdGateBlocked);
+
+    /* 4. Audio Patch / Background / Feed Clients & Adapter */
+    GateConstBool0("SSAdCommonConfigAdapter", "audioPatchAdSwitch", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdCommonConfigAdapter", "audioInfoFlowAdSwitch", NO, NO, rule, FQXAudioAdGateBlocked);
+
+    GateVoid2Obj("SSAdAudioManager", "initClientsIfNeededWithTypes:bookId:", NO, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSAdAudioManager");
+        SEL sHas = Sel("hasAdType:bookId:");
+        __block IMP oHas = NULL;
+        IMP hHas = imp_implementationWithBlock(^BOOL(id o, NSUInteger tp, id bid) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, NSUInteger, id))oHas)(o, sHas, tp, bid);
+        });
+        if (!FQXInstallOwnedHook(cls, sHas, NO, "B32@0:8Q16@24", hHas, &oHas)) imp_removeBlock(hHas);
+
+        SEL sCreate = Sel("createClientWithBookId:type:");
+        __block IMP oCreate = NULL;
+        IMP hCreate = imp_implementationWithBlock(^id(id o, id bid, NSUInteger tp) {
+            return FQXAudioAdGateBlocked() ? nil : ((id (*)(id, SEL, id, NSUInteger))oCreate)(o, sCreate, bid, tp);
+        });
+        if (!FQXInstallOwnedHook(cls, sCreate, NO, "@32@0:8@16Q24", hCreate, &oCreate)) imp_removeBlock(hCreate);
+    }
+
+    GateConstBool0("SSAdAudioPatchClient", "hasAd", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdAudioPatchClient", "shouldInterceptAudio", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdAudioPatchClient", "checkShouldReload", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "initLoader", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "initMetaverseLoader", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "metaverReload", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "reload", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "addAdIfNeeded", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchClient", "addPatchAd", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdAudioPatchClient", "showMetaverseDataIfNeed:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdAudioPatchClient", "showMannorDataIfNeed:", NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdAudioPatchAdapterClient", "hasAd", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdAudioPatchAdapterClient", "checkShouldReload", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdAudioPatchAdapterClient", "shouldDropCurrentPatchAd", NO, YES, rule, FQXAudioAdGateBlocked);
+    GateBool1Int("SSAdAudioPatchAdapterClient", "isAvailableInBasicRulesWithScene:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdAudioPatchAdapterClient", "reload", NO, rule, FQXAudioAdGateBlocked);
+    {
+        Class cls = objc_lookUpClass("SSAdAudioPatchAdapterClient");
+        SEL sBiz = Sel("isAvailableInBizRulesWithScene:patchScene:");
+        __block IMP oBiz = NULL;
+        IMP hBiz = imp_implementationWithBlock(^BOOL(id o, NSInteger sc, NSInteger psc) {
+            return FQXAudioAdGateBlocked() ? NO : ((BOOL (*)(id, SEL, NSInteger, NSInteger))oBiz)(o, sBiz, sc, psc);
+        });
+        if (!FQXInstallOwnedHook(cls, sBiz, NO, "B32@0:8q16q24", hBiz, &oBiz)) imp_removeBlock(hBiz);
+    }
+
+    GateConstBool0("SSAdBackgroundAudioClient", "hasAd", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdBackgroundAudioClient", "checkShouldReload", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdBackgroundAudioClient", "initLoader", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdBackgroundAudioClient", "reload", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdBackgroundAudioClient", "addPatchAd", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdBackgroundAudioClient", "preloadAdDataIfNeeded", NO, rule, FQXAudioAdGateBlocked);
+
+    GateConstBool0("SSAdFeedAudioClient", "hasAd", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateConstBool0("SSAdFeedAudioClient", "checkShouldReload", NO, NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdFeedAudioClient", "initLoader", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdFeedAudioClient", "initMetaverseLoader", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdFeedAudioClient", "metaverReload", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdFeedAudioClient", "reload", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid0("SSAdFeedAudioClient", "addFeedAudioAd", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdFeedAudioClient", "showMetaverseDataIfNeed:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdFeedAudioClient", "showMannorDataIfNeed:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdFeedAudioATModel", "setMaterielData:", NO, rule, FQXAudioAdGateBlocked);
+    GateVoid1Obj("SSAdFeedAudioATModel", "updateWithMaterielData:", NO, rule, FQXAudioAdGateBlocked);
+}
+
+static BOOL GateNil1Obj(const char *c, const char *s, BOOL cm, const char *rule, FQXGateFn gate) {
+    SEL x = Sel(s);
+    Class cls = FQXLookupMatchingClass(c, x, cm, "@24@0:8@16");
+    if (!cls) return NO;
+    __block IMP old = NULL;
+    IMP hook = imp_implementationWithBlock(^id(id o, id a) {
+        CFTimeInterval t0 = CACurrentMediaTime();
+        if (gate()) {
+            FQXDiagRecordHook(c, s, rule, "gate_active", "blocked", (CACurrentMediaTime() - t0) * 1000.0);
+            return nil;
+        }
+        id r = ((id (*)(id, SEL, id))old)(o, x, a);
+        FQXDiagRecordHook(c, s, rule, "gate_off", "allowed", (CACurrentMediaTime() - t0) * 1000.0);
+        return r;
+    });
+    if (!FQXDiagInstallOwnedHook(cls, c, x, cm, "@24@0:8@16", rule, hook, &old)) {
+        imp_removeBlock(hook);
+        return NO;
+    }
+    return YES;
+}
+
+static void Install745ShortVideoAndPopupAdGates(void) {
+    const char *feedRule = "FanqieAdBlock.ShortVideoFeedAd";
+    const char *patchRule = "FanqieAdBlock.ShortVideoPatchAd";
+    const char *popupRule = "FanqieAdBlock.BookstoreAndPopupAd";
+
+    /* 1. 7.4.3/7.4.5 Short-Video Feed E-commerce / Live / Mini-Game / Survey Insertions */
+    GateConstBool0("SSBizVideoAdABTestHelper", "enableEcomForceCard", YES, NO, feedRule, FQXShortVideoFeedAdBlocked);
+    GateNil1Obj("SSShortVideoLiveService", "createFeedLiveInsertModelWithRoomModel:", NO, feedRule, FQXShortVideoFeedAdBlocked);
+    GateNil1Obj("SSShortVideoRecommendOutterListDataSource", "liveFeedDataModelWithCellViewData:", NO, feedRule, FQXShortVideoFeedAdBlocked);
+    GateConstBool0("SSBizVideoABTestHelper", "enableSeriesEndDirectGame", YES, NO, feedRule, FQXShortVideoFeedAdBlocked);
+    GateBool1Int("BDADShortVideoCommonAdManager", "checkHomePageAdBasicReqRulesWithEpisodeIndex:", NO, feedRule, FQXShortVideoFeedAdBlocked);
+    {
+        Class cls = objc_lookUpClass("SSVideoMiniGameService");
+        SEL sPage = Sel("createFeedPageDataModelWithCellViewData:listVCContext:");
+        __block IMP oPage = NULL;
+        IMP hPage = imp_implementationWithBlock(^id(id o, id data, id ctx) {
+            if (FQXShortVideoFeedAdBlocked()) {
+                FQXDiagRecordHook("SSVideoMiniGameService", "createFeedPageDataModelWithCellViewData:listVCContext:", feedRule, "gate_active", "blocked", 0.0);
+                return nil;
+            }
+            return ((id (*)(id, SEL, id, id))oPage)(o, sPage, data, ctx);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSVideoMiniGameService", sPage, NO, "@32@0:8@16@24", feedRule, hPage, &oPage)) {
+            imp_removeBlock(hPage);
+        }
+
+        SEL sDirect = Sel("createDirectGameContentModelWithCellViewData:source:host:");
+        __block IMP oDirect = NULL;
+        IMP hDirect = imp_implementationWithBlock(^id(id o, id data, NSInteger source, id host) {
+            if (FQXShortVideoFeedAdBlocked()) {
+                FQXDiagRecordHook("SSVideoMiniGameService", "createDirectGameContentModelWithCellViewData:source:host:", feedRule, "gate_active", "blocked", 0.0);
+                return nil;
+            }
+            return ((id (*)(id, SEL, id, NSInteger, id))oDirect)(o, sDirect, data, source, host);
+        });
+        if (!FQXDiagInstallOwnedHook(cls, "SSVideoMiniGameService", sDirect, NO, "@40@0:8@16q24@32", feedRule, hDirect, &oDirect)) {
+            imp_removeBlock(hDirect);
+        }
+    }
+    {
+        Class surveyCls = objc_lookUpClass("SSShortVideoSatisfactionSurveyManager");
+        SEL sShow = Sel("showSurveyWithStyle:videoId:");
+        __block IMP oShow = NULL;
+        IMP hShow = imp_implementationWithBlock(^(id o, NSInteger style, id vid) {
+            if (FQXShortVideoFeedAdBlocked()) return;
+            ((void (*)(id, SEL, NSInteger, id))oShow)(o, sShow, style, vid);
+        });
+        if (!FQXInstallOwnedHook(surveyCls, sShow, NO, "v32@0:8q16@24", hShow, &oShow)) imp_removeBlock(hShow);
+
+        const char *surveySels[] = {
+            "tryShowSingleVideoSurveyIfNeededWithVideoId:",
+            "tryShowInnerFlowQuickSlideSurveyIfNeededWithVideoId:",
+            "tryShowInnerFlowDetailReturnSurveyIfNeededWithVideoId:",
+            "tryShowPeriodSkipSurveyIfNeededWithVideoId:",
+            "tryShowContinueSkipSurveyIfNeededWithVideoId:",
+            "tryRestoreReadingItemSurveyIfNeededWithVideoId:"
+        };
+        for (size_t i = 0; i < sizeof(surveySels) / sizeof(surveySels[0]); ++i) {
+            GateBool1Obj("SSShortVideoSatisfactionSurveyManager", surveySels[i], NO, feedRule, FQXShortVideoFeedAdBlocked);
+        }
+    }
+
+    /* 2. 7.4.3/7.4.5 Short-Video Back-Patch / Plot-Touch / Sidebar-Patch Ad Gates */
+    GateBool1Obj("BDADBackPatchAdService", "shouldShowAdWithContext:", NO, patchRule, FQXShortVideoPatchAdBlocked);
+    GateBool1Obj("BDADPlotTouchAdService", "canShowPlotAdWithContext:", NO, patchRule, FQXShortVideoPatchAdBlocked);
+    GateBool1Obj("BDADShortVideoSideBarPatchSwitchComponent", "isAvailableWithCtx:", NO, patchRule, FQXShortVideoPatchAdBlocked);
+    {
+        Class backCls = objc_lookUpClass("BDADBackPatchAdService");
+        SEL sReq = Sel("shouldRequestAdWithPlaybackTime:duration:context:");
+        __block IMP oReq = NULL;
+        IMP hReq = imp_implementationWithBlock(^BOOL(id o, double t, double dur, id ctx) {
+            if (FQXShortVideoPatchAdBlocked()) {
+                FQXDiagRecordHook("BDADBackPatchAdService", "shouldRequestAdWithPlaybackTime:duration:context:", patchRule, "gate_active", "blocked", 0.0);
+                return NO;
+            }
+            return ((BOOL (*)(id, SEL, double, double, id))oReq)(o, sReq, t, dur, ctx);
+        });
+        if (!FQXDiagInstallOwnedHook(backCls, "BDADBackPatchAdService", sReq, NO, "B40@0:8d16d24@32", patchRule, hReq, &oReq)) {
+            imp_removeBlock(hReq);
+        }
+
+        Class plotCls = objc_lookUpClass("BDADPlotTouchAdService");
+        SEL sPlot = Sel("canRequestAdWithPlaybackTime:context:");
+        __block IMP oPlot = NULL;
+        IMP hPlot = imp_implementationWithBlock(^BOOL(id o, double t, id ctx) {
+            if (FQXShortVideoPatchAdBlocked()) {
+                FQXDiagRecordHook("BDADPlotTouchAdService", "canRequestAdWithPlaybackTime:context:", patchRule, "gate_active", "blocked", 0.0);
+                return NO;
+            }
+            return ((BOOL (*)(id, SEL, double, id))oPlot)(o, sPlot, t, ctx);
+        });
+        if (!FQXDiagInstallOwnedHook(plotCls, "BDADPlotTouchAdService", sPlot, NO, "B32@0:8d16@24", patchRule, hPlot, &oPlot)) {
+            imp_removeBlock(hPlot);
+        }
+    }
+
+    /* 3. 7.4.3/7.4.5 Live Benefit & E-commerce Coupon Popups */
+    GateConstBool0("IESLiveUGBenefitCouponFragment", "shouldShowBalanceCouponPopup", NO, NO, popupRule, FQXBookstoreAndPopupAdBlocked);
+    GateConstBool0("IESLiveUGBenefitCouponFragment", "shouldShowExpansionCouponPopup", NO, NO, popupRule, FQXBookstoreAndPopupAdBlocked);
+    GateBool1Obj("SSCouponPopupFrequencyHelper", "canShowPopup:", YES, popupRule, FQXBookstoreAndPopupAdBlocked);
 }
 
 static BOOL FQXRankTemplateURLIsUsable(NSString *value) {
@@ -921,7 +1953,7 @@ void FQXInstallContentCleanupHooks(void){
   FQXInstallRankRouteHook("SSBookStoreRank", "linkUrl");
   FQXInstallRankRouter();
   FQXInstallRankLoadRetry();
-  NSString *drama=KEY("DramaAutoplay"),*rating=KEY("ReaderRatingInvite"),*excerpt=KEY("ExcerptWidgetGuide"),*widget=KEY("ContentWidgetGuide"),*publish=KEY("BookstorePublishButton"),*pendant=KEY("ListenPendant"),*story=KEY("StoryAds"),*audio=KEY("AudioAds");
+  NSString *drama=KEY("DramaAutoplay"),*rating=KEY("ReaderRatingInvite"),*excerpt=KEY("ExcerptWidgetGuide"),*widget=KEY("ContentWidgetGuide"),*publish=KEY("BookstorePublishButton"),*story=KEY("StoryAds");
   Bool0("SSShortVideoFeedColdPlayManager","canShowVideoFeedColdPlayVC",NO,drama);
   Void0("SSShortVideoFeedColdPlayManager","prepareVideoFeedColdPlayerIfNeeded",NO,drama);
   Void0("SSVideoFeedContainerViewController","tryExitInterruptInitialModelPlayIfNeed",NO,drama);
@@ -942,36 +1974,33 @@ void FQXInstallContentCleanupHooks(void){
   Void0Hide("SSBookStoreCommunityPublishEntranceComponent","injectViewsIntoContainer",publish,"publishButton",NULL);
   Void0Hide("SSBookStoreCommunityPublishEntranceComponent","refreshPublishButtonPositionIfNeed",publish,"publishButton",NULL);
 
-  BoolClass("SSWelfareListenPendantManager","canShowPendantInVC:",pendant);
-  VoidClass("SSWelfareListenPendantManager","tryShowPendant:",pendant);
-  Void1("SSWelfareListenPendantManager","triggerKmpPendantIfNeededWithAttachView:",NO,pendant,NULL);
-  Void0("SSWelfareListenPendantManager","addHoverView",NO,pendant);
-  Void0("SSWelfareListenPendantManager","refreshHoverView",NO,pendant);
-  Void0("SSWelfareListenPendantManager","tryShowAssetAwarenessBubble",NO,pendant);
-  Void0("SSWelfareListenPendantManager","tryShowLimitTimeDoubleBubble",NO,pendant);
-  Void0("SSWelfareListenPendantManager","tryShowTodayMaxRewardBubble",NO,pendant);
-  Void0("SSWelfareListenPendantManager","tryShowRewardNoticeBubble",NO,pendant);
-  Void0("SSWelfareListenPendantManager","tryShowDaily1MinTipsBubble",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","tryShowPendant",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","showAfterHidingTemp",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","addHoverView",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","refreshHoverView",NO,pendant);
-  Void1("SSWelfareGlobalPendantManager","triggerKmpPendantIfNeededWithAttachView:",NO,pendant,NULL);
-  Bool0("SSWelfareGlobalPendantManager","isCommonCouldShowBubble",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","tryShowDaily1MinBubble",NO,pendant);
-  Void0("SSWelfareGlobalPendantManager","tryShowAssetAwarenessBubble",NO,pendant);
+  InstallReaderAndListenPendantHooks();
+  InstallAudioAdAndDurationGateHooks();
+  Install745ShortVideoAndPopupAdGates();
+  InstallAudioBookSyncAndRemoteHooks();
+
+  atomic_store_explicit(&sLastObservedGateStateMask, FQXCurrentPendantAndAudioGateStateMask(), memory_order_relaxed);
+  [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
+                                                  object:nil
+                                                   queue:NSOperationQueue.mainQueue
+                                              usingBlock:^(__unused NSNotification *note) {
+      int cur = FQXCurrentPendantAndAudioGateStateMask();
+      int prev = atomic_exchange_explicit(&sLastObservedGateStateMask, cur, memory_order_relaxed);
+      if (prev != cur) {
+          FQXRefreshReaderAndAudioPendants();
+      }
+  }];
 
   Bool0("SSBizAdImpl","isStoryAdEnable",NO,story);
   Bool0("BDADStoryAdManager","canRequestStoryAd",NO,story);
   Bool0("SSShortStoryAdConfig","enable_short_story_ad",NO,story);
   Object1("SSBizStoryAdInsertManager","getAdModelWithPageInfo:",story);
   Bool0("SSStoryPostFeedViewController","isInterceptAdShowAndStopScroll",NO,story);
-  Bool0("SSStoryPostNavigationBarConfig","showGoldCoinProgress",NO,pendant);
 
   InstallHotLaunchHooks();
   InstallWidgetDialogHooks();
 
-  // Defer Reader-only & Audiobook-only hooks off the dyld cold-start path.
+  // Defer Reader-only comment/inline hooks off the dyld cold-start path, and sweep any early-mounted pendants.
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                  dispatch_get_main_queue(), ^{
    Bool3("SSReaderBookCommentDialogTask","shouldShowBookCommentGuideWithReaderManager:userId:fromCtx:",rating);
@@ -982,20 +2011,9 @@ void FQXInstallContentCleanupHooks(void){
    Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowV723BookEndCommentGuide",NO,rating);
    Void0("SSReaderBookEndCommentSectionInsertHelper","tryShowAppendCommentGuide",NO,rating);
 
-   Bool0("SSAdFeedAudioClient","hasAd",NO,audio);
-   Void1("SSAdFeedAudioATModel","setMaterielData:",NO,audio,NULL);
-   Void1("SSAdFeedAudioATModel","updateWithMaterielData:",NO,audio,NULL);
-   Bool0("SSAdCommonConfigAdapter","audioPatchAdSwitch",NO,audio);
-   Bool0("SSAdCommonConfigAdapter","audioInfoFlowAdSwitch",NO,audio);
-   Void0("SSAdFeedAudioClient","initLoader",NO,audio);
-   Void0("SSAdFeedAudioClient","initMetaverseLoader",NO,audio);
-   Void0("SSAdFeedAudioClient","metaverReload",NO,audio);
-   Void0("SSAdFeedAudioClient","addFeedAudioAd",NO,audio);
-   Void1("SSAdFeedAudioClient","showMetaverseDataIfNeed:",NO,audio,NULL);
-   Void1("SSAdFeedAudioClient","showMannorDataIfNeed:",NO,audio,NULL);
    InstallChapterTitle();
    InstallReaderInlineDramaAdHooks();
-   InstallAudioBookSyncAndRemoteHooks();
+   FQXRefreshReaderAndAudioPendants();
   });
  });
 }

@@ -113,6 +113,7 @@ def read_entries(data):
     versions[0x15709] = b'FQ162EXT'
     versions[0x1570A] = b'FQ162EXT'
     versions[0x15800] = b'FQ162EXT'
+    versions[0x15802] = b'FQ162EXT'
     versions[0x14e0f] = b'FQ162EXT'
     require(words[6] in versions, 'Interaction audit requires a known version')
     extension = 0x800 + words[60]

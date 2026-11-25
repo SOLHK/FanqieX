@@ -43,8 +43,8 @@ static const char FQXK_FQXPinchRecognizerKey = 0;
 #define FQXPinchRecognizerKey ((const void *)&FQXK_FQXPinchRecognizerKey)
 static const char FQXK_FQXPinchPureCleanActiveKey = 0;
 #define FQXPinchPureCleanActiveKey ((const void *)&FQXK_FQXPinchPureCleanActiveKey)
-static const char FQXK_FQXPinchHiddenViewsKey = 0;
-#define FQXPinchHiddenViewsKey ((const void *)&FQXK_FQXPinchHiddenViewsKey)
+static const char FQXK_FQXPinchViewCleanStateKey = 0;
+#define FQXPinchViewCleanStateKey ((const void *)&FQXK_FQXPinchViewCleanStateKey)
 static const char FQXK_FQXDramaFeatheredGradKey = 0;
 #define FQXDramaFeatheredGradKey ((const void *)&FQXK_FQXDramaFeatheredGradKey)
 static const char FQXK_AudioStockPositionKey = 0;
@@ -71,10 +71,12 @@ static const char FQXK_AudioBackdropStockConstraintsKey = 0;
 #define AudioBackdropStockConstraintsKey ((const void *)&FQXK_AudioBackdropStockConstraintsKey)
 static const char FQXK_AudioBackdropStockLayoutKey = 0;
 #define AudioBackdropStockLayoutKey ((const void *)&FQXK_AudioBackdropStockLayoutKey)
-static const char FQXK_DramaCanvasStockKey = 0;
-#define DramaCanvasStockKey ((const void *)&FQXK_DramaCanvasStockKey)
-static const char FQXK_DramaCanvasAppliedKey = 0;
-#define DramaCanvasAppliedKey ((const void *)&FQXK_DramaCanvasAppliedKey)
+static const char FQXK_FQXVideoBackdropLinkKey = 0;
+#define FQXVideoBackdropLinkKey ((const void *)&FQXK_FQXVideoBackdropLinkKey)
+static const char FQXK_FQXDetailVideoBackdropKey = 0;
+#define FQXDetailVideoBackdropKey ((const void *)&FQXK_FQXDetailVideoBackdropKey)
+static const char FQXK_FQXDetailOwnerTrayRectKey = 0;
+#define FQXDetailOwnerTrayRectKey ((const void *)&FQXK_FQXDetailOwnerTrayRectKey)
 static const char FQXK_CommentSearchGlassKey = 0;
 #define CommentSearchGlassKey ((const void *)&FQXK_CommentSearchGlassKey)
 static const char FQXK_ExpandedInputBaseTransformKey = 0;
@@ -119,6 +121,9 @@ static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
 static NSString *const DramaShowDanmakuButtonPrefKey = @"FanqieX.DramaShowDanmakuButton.1";
 static NSString *const DramaAuthorDeclarationPrefKey = @"FanqieX.DramaAuthorDeclaration.1";
 static NSString *const DramaOriginalNovelPrefKey = @"FanqieX.DramaOriginalNovel.1";
+static NSString *const DramaHideEpisodeAdaptationsPrefKey = @"FanqieX.DramaHideEpisodeAdaptations.1";
+static NSString *const DramaHideEpisodeSameSeriesPrefKey = @"FanqieX.DramaHideEpisodeSameSeries.1";
+static NSString *const DramaHideEpisodeRecommendPrefKey = @"FanqieX.DramaHideEpisodeRecommend.1";
 static NSString *const FQXCTForegroundColorAttr = @"CTForegroundColor";
 static const CGFloat AudioNavigationButtonDiameter = 42.0;
 static const CGFloat AudioBookArrowDiameter = 28.0;
@@ -175,6 +180,9 @@ typedef struct {
     BOOL dramaShowDanmakuButton;
     BOOL dramaAuthorDeclaration;
     BOOL dramaOriginalNovel;
+    BOOL dramaHideEpisodeAdaptations;
+    BOOL dramaHideEpisodeSameSeries;
+    BOOL dramaHideEpisodeRecommend;
 } FQXHotPrefsCache;
 
 static pthread_mutex_t gFQXHotPrefsLock = PTHREAD_MUTEX_INITIALIZER;
@@ -259,6 +267,9 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     fresh.dramaAuthorDeclaration = [authorDeclObj respondsToSelector:@selector(boolValue)] ? [authorDeclObj boolValue] : YES;
     id origNovelObj = [ud objectForKey:DramaOriginalNovelPrefKey];
     fresh.dramaOriginalNovel = [origNovelObj respondsToSelector:@selector(boolValue)] ? [origNovelObj boolValue] : YES;
+    fresh.dramaHideEpisodeAdaptations = [ud boolForKey:DramaHideEpisodeAdaptationsPrefKey];
+    fresh.dramaHideEpisodeSameSeries = [ud boolForKey:DramaHideEpisodeSameSeriesPrefKey];
+    fresh.dramaHideEpisodeRecommend = [ud boolForKey:DramaHideEpisodeRecommendPrefKey];
 
     pthread_mutex_lock(&gFQXHotPrefsLock);
     if (atomic_load_explicit(&gFQXHotPrefsGen, memory_order_acquire) == gen) {
@@ -287,6 +298,18 @@ static BOOL FQXDramaAuthorDeclarationEnabled(void) {
 
 static BOOL FQXDramaOriginalNovelEnabled(void) {
     return FQXHotPrefsSnapshot().dramaOriginalNovel;
+}
+
+static BOOL FQXDramaHideEpisodeAdaptationsEnabled(void) {
+    return FQXShouldHideEpisodePanelAdaptations(FQXHotPrefsSnapshot().dramaHideEpisodeAdaptations ? 1 : 0) != 0;
+}
+
+static BOOL FQXDramaHideEpisodeSameSeriesEnabled(void) {
+    return FQXShouldHideEpisodePanelSameSeries(FQXHotPrefsSnapshot().dramaHideEpisodeSameSeries ? 1 : 0) != 0;
+}
+
+static BOOL FQXDramaHideEpisodeRecommendEnabled(void) {
+    return FQXShouldHideEpisodePanelRecommend(FQXHotPrefsSnapshot().dramaHideEpisodeRecommend ? 1 : 0) != 0;
 }
 
 static CFTimeInterval gFQXDockTouchGraceUntil = 0.0;
@@ -6695,10 +6718,16 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
     FQXRefreshAllAudioGlass();
 }
 
+static void FQXRefreshAllEpisodePanels(void);
+static void FQXRefreshAllVideoBackdropsInWindows(void);
+static void FQXRefreshVideoBackdropInController(UIViewController *vc);
+
 + (void)refreshDramaControls {
     FQXInvalidateHotPrefsCache();
     FQXRefreshAllDramaControlsInWindows();
     FQXRefreshAllDramaSeriesPills();
+    FQXRefreshAllEpisodePanels();
+    FQXRefreshAllVideoBackdropsInWindows();
 }
 
 + (void)refreshDramaHeaderBlur {
@@ -6927,6 +6956,7 @@ static void (*OrigShortVideoListDidAppear)(id, SEL, BOOL);
 static void HookShortVideoListDidAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (OrigShortVideoListDidAppear) OrigShortVideoListDidAppear(self, _cmd, animated);
     FQXRefreshDramaControllerControls(self, NO);
+    FQXRefreshVideoBackdropInController(self);
 }
 
 static void (*OrigSeriesFeedWillAppear)(id, SEL, BOOL);
@@ -7200,17 +7230,6 @@ static BOOL FQXIsSeriesDetailControl(UIView *control) {
            (singleCls && [control isKindOfClass:singleCls]);
 }
 
-static UIView *FQXSeriesDetailBottomDock(UIView *control) {
-    if (![control isKindOfClass:UIView.class]) return nil;
-    UIView *single = FQXObjGet(control, "singleSeriesBottomView");
-    if ([single isKindOfClass:UIView.class] && !single.hidden && single.window) return single;
-    UIView *newInfo = FQXObjGet(control, "episodeNewInfoView");
-    if ([newInfo isKindOfClass:UIView.class] && !newInfo.hidden && newInfo.window) return newInfo;
-    UIView *bottom = FQXObjGet(control, "bottomView");
-    if ([bottom isKindOfClass:UIView.class] && !bottom.hidden && bottom.window) return bottom;
-    return single ?: newInfo ?: bottom;
-}
-
 static void FQXClearDramaBottomInsertMask(UIView *view) {
     if (![view isKindOfClass:UIView.class]) return;
     BOOL enabled = FQXGlassEnabled();
@@ -7240,78 +7259,6 @@ static void FQXClearDramaBottomInsertMask(UIView *view) {
         }
         FQXFeatherDramaBottomGradientView(control);
     }
-}
-
-static CGSize FQXExpandPortraitCanvasSize(CGSize stock) {
-    if (!FQXGlassEnabled() || stock.width <= 0.0 || stock.height <= stock.width) return stock;
-    CGRect screen = UIScreen.mainScreen.bounds;
-    CGFloat screenW = MIN(screen.size.width, screen.size.height);
-    CGFloat screenH = MAX(screen.size.width, screen.size.height);
-    if (screenH <= screenW) return stock;
-    CGFloat diff = screenH - stock.height;
-    if (fabs(stock.width - screenW) <= 2.0 && stock.height >= screenH * 0.68 &&
-        diff >= 24.0 && diff <= 180.0) {
-        stock.height = screenH;
-    }
-    return stock;
-}
-
-static CGRect FQXExpandPortraitCanvasRect(CGRect stock) {
-    if (!FQXGlassEnabled() || stock.size.width <= 0.0 || stock.size.height <= stock.size.width) return stock;
-    CGRect screen = UIScreen.mainScreen.bounds;
-    CGFloat screenW = MIN(screen.size.width, screen.size.height);
-    CGFloat screenH = MAX(screen.size.width, screen.size.height);
-    if (screenH <= screenW) return stock;
-    CGFloat maxY = CGRectGetMaxY(stock);
-    CGFloat diff = screenH - maxY;
-    if (stock.origin.y <= 4.0 && stock.size.width >= screenW - 2.0 &&
-        stock.size.height >= screenH * 0.68 && diff >= 24.0 && diff <= 180.0) {
-        CGFloat targetH = screenH - stock.origin.y;
-        CGFloat targetW = stock.size.width * (targetH / stock.size.height);
-        return CGRectMake((screenW - targetW) * 0.5, stock.origin.y, targetW, targetH);
-    }
-    return stock;
-}
-
-static CGSize (*OrigPlayerViewSizeWithModel)(id, SEL, id);
-static CGSize HookPlayerViewSizeWithModel(id self, SEL _cmd, id model) {
-    CGSize stock = OrigPlayerViewSizeWithModel ? OrigPlayerViewSizeWithModel(self, _cmd, model) : CGSizeZero;
-    return FQXExpandPortraitCanvasSize(stock);
-}
-
-static CGSize (*OrigScaleAspectFitPlayerViewSizeWithModel)(id, SEL, id);
-static CGSize HookScaleAspectFitPlayerViewSizeWithModel(id self, SEL _cmd, id model) {
-    CGSize stock = OrigScaleAspectFitPlayerViewSizeWithModel
-        ? OrigScaleAspectFitPlayerViewSizeWithModel(self, _cmd, model) : CGSizeZero;
-    return FQXExpandPortraitCanvasSize(stock);
-}
-
-static CGRect (*OrigPortraitPlayerViewFrameWithModel)(id, SEL, id);
-static CGRect HookPortraitPlayerViewFrameWithModel(id self, SEL _cmd, id model) {
-    CGRect stock = OrigPortraitPlayerViewFrameWithModel
-        ? OrigPortraitPlayerViewFrameWithModel(self, _cmd, model) : CGRectZero;
-    return FQXExpandPortraitCanvasRect(stock);
-}
-
-static CGRect (*OrigScaleAspectFitContainerViewFrameWithModel)(id, SEL, id);
-static CGRect HookScaleAspectFitContainerViewFrameWithModel(id self, SEL _cmd, id model) {
-    CGRect stock = OrigScaleAspectFitContainerViewFrameWithModel
-        ? OrigScaleAspectFitContainerViewFrameWithModel(self, _cmd, model) : CGRectZero;
-    return FQXExpandPortraitCanvasRect(stock);
-}
-
-static CGFloat (*OrigMaxPlayerViewHeightWithModel)(id, SEL, id);
-static CGFloat HookMaxPlayerViewHeightWithModel(id self, SEL _cmd, id model) {
-    CGFloat stock = OrigMaxPlayerViewHeightWithModel ? OrigMaxPlayerViewHeightWithModel(self, _cmd, model) : 0.0;
-    if (!FQXGlassEnabled() || stock <= 0.0) return stock;
-    CGRect screen = UIScreen.mainScreen.bounds;
-    CGFloat screenW = MIN(screen.size.width, screen.size.height);
-    CGFloat screenH = MAX(screen.size.width, screen.size.height);
-    CGFloat diff = screenH - stock;
-    if (stock > screenW && diff >= 24.0 && diff <= 180.0) {
-        return screenH;
-    }
-    return stock;
 }
 
 static void (*OrigBottomInsertSetup)(id, SEL);
@@ -7365,154 +7312,1226 @@ static void HookSingleSeriesSetupSingleBottom(UIView *self, SEL _cmd) {
     FQXCleanSeriesControlBottom(self);
 }
 
-static CGRect FQXDramaCanvasStock(UIView *view) {
-    NSValue *old = objc_getAssociatedObject(view, DramaCanvasStockKey);
-    NSValue *applied = objc_getAssociatedObject(view, DramaCanvasAppliedKey);
-    return old && applied && CGRectEqualToRect(view.frame, applied.CGRectValue)
-        ? old.CGRectValue : view.frame;
-}
-
-static void FQXSetDramaCanvasFrame(UIView *view, CGRect stock, CGRect target) {
-    if (!view) return;
-    if (!CGRectEqualToRect(view.frame, target)) view.frame = target;
-    if (CGRectEqualToRect(stock, target)) {
-        objc_setAssociatedObject(view, DramaCanvasStockKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(view, DramaCanvasAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else {
-        objc_setAssociatedObject(view, DramaCanvasStockKey, [NSValue valueWithCGRect:stock], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(view, DramaCanvasAppliedKey, [NSValue valueWithCGRect:target], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-}
-
-static void FQXAudioSetHiddenTracked(UIView *view, BOOL hide);
-
-static void FQXUpdateSeriesRenderCanvas(UIView *player) {
-    if (![player isKindOfClass:UIView.class]) return;
-    UIView *control = FQXObjGet(player, "portraitControlView");
-    BOOL detail = FQXIsSeriesDetailControl(control);
-    if (!detail && !objc_getAssociatedObject(FQXObjGet(player, "playerView"), DramaCanvasStockKey)) return;
-    UIView *render = FQXObjGet(player, "playerView");
-    UIView *container = FQXObjGet(player, "playerViewContainerView");
-    UIView *parent = container.superview;
-    UIWindow *window = player.window;
-    UIView *cellView = nil;
-    Class cellCls = objc_lookUpClass("FQVShortVideoPlayerCellView");
-    for (UIView *cur = player.superview; cur; cur = cur.superview) {
-        if (cellCls && [cur isKindOfClass:cellCls]) {
-            cellView = cur;
-            break;
-        }
-    }
-    UIView *playerSuper = FQXObjGet(cellView, "playerSuperView");
-    CGRect stockRender = FQXDramaCanvasStock(render), stockContainer = FQXDramaCanvasStock(container);
-    CGRect stockPlayer = FQXDramaCanvasStock(player);
-    CGRect stockPlayerSuper = playerSuper ? FQXDramaCanvasStock(playerSuper) : CGRectZero;
-    CGRect targetRender = stockRender, targetContainer = stockContainer;
-    CGRect targetPlayer = stockPlayer, targetPlayerSuper = stockPlayerSuper;
-    BOOL expanded = NO;
-    UIView *bottom = FQXSeriesDetailBottomDock(control);
-    if (detail && FQXGlassEnabled() && window && bottom && bottom.window == window && !bottom.hidden &&
-        render && render.superview == container && parent) {
-        CGRect screen = window.bounds;
-        CGRect viewport = [player convertRect:player.bounds toView:window];
-        CGRect picture = [container convertRect:stockRender toView:window];
-        CGRect dock = [bottom convertRect:bottom.bounds toView:window];
-        CGFloat end = CGRectGetMaxY(screen);
-        CGFloat gap = end - CGRectGetMaxY(picture);
-        if (CGRectGetHeight(screen) > CGRectGetWidth(screen) &&
-            CGRectGetWidth(viewport) >= CGRectGetWidth(screen) - 2.0 &&
-            CGRectGetWidth(picture) >= CGRectGetWidth(viewport) - 2.0 &&
-            CGRectGetHeight(picture) >= CGRectGetHeight(screen) * 0.68 &&
-            CGRectGetHeight(picture) > CGRectGetWidth(picture) && gap > 1.0 && gap < 180.0 &&
-            CGRectGetMaxY(dock) >= CGRectGetMaxY(picture) - 2.0 &&
-            CGRectGetMinY(dock) >= CGRectGetMaxY(picture) - 52.0) {
-            CGFloat localBottom = [window convertPoint:CGPointMake(0.0, end) toView:container].y;
-            CGFloat height = localBottom - CGRectGetMinY(stockRender);
-            CGFloat width = CGRectGetWidth(stockRender) * height / CGRectGetHeight(stockRender);
-            targetRender = CGRectMake(CGRectGetMidX(stockRender) - width * 0.5,
-                                      CGRectGetMinY(stockRender), width, height);
-            CGFloat parentBottom = [window convertPoint:CGPointMake(0.0, end) toView:parent].y;
-            targetContainer.size.height = MAX(CGRectGetHeight(stockContainer), parentBottom - CGRectGetMinY(stockContainer));
-            if (player.superview) {
-                CGFloat playerBottom = [window convertPoint:CGPointMake(0.0, end) toView:player.superview].y;
-                targetPlayer.size.height = MAX(CGRectGetHeight(stockPlayer), playerBottom - CGRectGetMinY(stockPlayer));
-            }
-            if (playerSuper && playerSuper.superview) {
-                CGFloat superBottom = [window convertPoint:CGPointMake(0.0, end) toView:playerSuper.superview].y;
-                targetPlayerSuper.size.height = MAX(CGRectGetHeight(stockPlayerSuper), superBottom - CGRectGetMinY(stockPlayerSuper));
-            }
-            expanded = YES;
-        }
-    }
-    FQXAudioSetUnclipped(player, expanded);
-    FQXAudioSetUnclipped(player.superview, expanded);
-    FQXAudioSetUnclipped(container, expanded);
-    FQXAudioSetUnclipped(parent, expanded);
-    FQXAudioSetUnclipped(playerSuper, expanded);
-    FQXAudioClearBackground(FQXObjGet(player, "playerViewMaskView"), detail && FQXGlassEnabled());
-    if (detail) {
-        FQXCleanSeriesControlBottom(control);
-        if (cellView) {
-            FQXAudioClearBackground(FQXObjGet(cellView, "playerScaleBackgroundView"), FQXGlassEnabled());
-            FQXAudioSetHiddenTracked(FQXObjGet(cellView, "leftBottomCorRadiusImageView"), expanded);
-            FQXAudioSetHiddenTracked(FQXObjGet(cellView, "rightBottomCorRadiusImageView"), expanded);
-        }
-    }
-    if (playerSuper) FQXSetDramaCanvasFrame(playerSuper, stockPlayerSuper, targetPlayerSuper);
-    FQXSetDramaCanvasFrame(player, stockPlayer, targetPlayer);
-    FQXSetDramaCanvasFrame(container, stockContainer, targetContainer);
-    FQXSetDramaCanvasFrame(render, stockRender, targetRender);
-}
-
-static void (*OrigPlayerCanvasLayout)(id, SEL);
-static void HookPlayerCanvasLayout(UIView *self, SEL cmd) {
-    OrigPlayerCanvasLayout(self, cmd);
-    FQXUpdateSeriesRenderCanvas(self);
-}
-
 static void (*OrigSeriesBottomAlpha)(id, SEL, CGFloat);
 static void HookSeriesBottomAlpha(UIView *control, SEL cmd, CGFloat alpha) {
-    OrigSeriesBottomAlpha(control, cmd, alpha);
+    if (OrigSeriesBottomAlpha) OrigSeriesBottomAlpha(control, cmd, alpha);
     FQXCleanSeriesControlBottom(control);
 }
 
 static void (*OrigSingleSeriesBottomAlpha)(id, SEL, CGFloat);
 static void HookSingleSeriesBottomAlpha(UIView *control, SEL cmd, CGFloat alpha) {
-    OrigSingleSeriesBottomAlpha(control, cmd, alpha);
+    if (OrigSingleSeriesBottomAlpha) OrigSingleSeriesBottomAlpha(control, cmd, alpha);
     FQXCleanSeriesControlBottom(control);
+}
+
+static void FQXAudioSetHiddenTracked(UIView *view, BOOL hide);
+
+#pragma mark - Short-Video Fullscreen & Vertical Feed Anti-Jitter Backdrop (FQXVideoBackdrop)
+
+static const char FQXK_FQXPlayerTransferFlagKey = 0;
+#define FQXPlayerTransferFlagKey ((const void *)&FQXK_FQXPlayerTransferFlagKey)
+static const char FQXK_FQXFeedDeferredRefreshKey = 0;
+#define FQXFeedDeferredRefreshKey ((const void *)&FQXK_FQXFeedDeferredRefreshKey)
+
+static BOOL FQXPlayerIsTransferring(UIView *view) {
+    for (UIView *cur = view; cur; cur = cur.superview) {
+        if ([objc_getAssociatedObject(cur, FQXPlayerTransferFlagKey) boolValue]) return YES;
+    }
+    return NO;
+}
+
+static BOOL FQXVideoBackdropSameCGRect(CGRect a, CGRect b, CGFloat tol) {
+    return FQXVideoBackdropSameRect(a.origin.x, a.origin.y, a.size.width, a.size.height,
+                                    b.origin.x, b.origin.y, b.size.width, b.size.height, tol) != 0;
+}
+
+static BOOL FQXVideoBackdropMatchesCGRect(CGRect cand, CGRect vp) {
+    return FQXVideoBackdropMatchesViewport(cand.origin.x, cand.origin.y, cand.size.width, cand.size.height,
+                                           vp.origin.x, vp.origin.y, vp.size.width, vp.size.height) != 0;
+}
+
+static CATransform3D FQXVideoBackdropCoverTransform(CGSize picture, CGRect native, CGRect full) {
+    CGFloat scale = MAX(full.size.width / picture.width, full.size.height / picture.height);
+    CATransform3D transform = CATransform3DMakeScale(scale, scale, 1.0);
+    transform.m42 = CGRectGetMidY(full) - CGRectGetMidY(native);
+    return transform;
+}
+
+typedef struct {
+    CGRect frame;
+    CGRect appliedFrame;
+    UIViewContentMode contentMode;
+} FQXVideoPortraitCover;
+
+@class FQXVideoBackdrop;
+
+@interface FQXVideoBackdropLink : NSObject
+@property(nonatomic, weak) FQXVideoBackdrop *owner;
+@end
+@implementation FQXVideoBackdropLink
+@end
+
+@interface FQXVideoBackdrop : NSObject
+@property(nonatomic, weak) UICollectionView *feed;
+@property(nonatomic, weak) UIView *root;
+@property(nonatomic, weak) UIView *bar;
+@property(nonatomic, weak) UIViewController *owner;
+@property(nonatomic, strong) UIView *underlay;
+@property(nonatomic, strong) NSArray<CALayer *> *pagingMattes;
+@property(nonatomic, strong) NSMapTable<UIView *, NSValue *> *portraitRenderers;
+@property(nonatomic, strong) NSMapTable<UIImageView *, NSValue *> *portraitCovers;
+@property(nonatomic, strong) NSHashTable<UIView *> *portraitClips;
+@property(nonatomic, strong) NSMapTable<CAGradientLayer *, NSNumber *> *portraitGradients;
+@property(nonatomic, weak) UICollectionViewCell *frontPortraitCell;
+@property(nonatomic, strong) NSMapTable<UIImageView *, NSNumber *> *cornerAlpha;
+@property(nonatomic, weak) UIView *detailTray;
+@property(nonatomic, strong) UIColor *detailTrayPaint;
+@property(nonatomic) BOOL ownsClipping;
+@property(nonatomic) BOOL refreshing;
+- (void)refreshFeed;
+- (void)refreshDetail:(UIView *)canvas;
+- (void)prepareRendererTransfer:(UIView *)view;
+- (void)restore;
+@end
+
+static BOOL FQXVideoBackdropVisible(UIView *view, UIView *root) {
+    if (!view.window) return NO;
+    for (UIView *node = view; node; node = node.superview) {
+        if (node.hidden || node.alpha < 0.99 ||
+            !CGAffineTransformIsIdentity(node.transform) ||
+            !CATransform3DIsIdentity(node.layer.transform)) return NO;
+        if (node == root) return YES;
+    }
+    return NO;
+}
+
+static UIViewController *FQXVideoBackdropOwner(UIView *view) {
+    Class expected = objc_lookUpClass("FQVShortVideoListViewController");
+    if (!expected) return nil;
+    for (UIResponder *responder = view.nextResponder; responder; responder = responder.nextResponder) {
+        if ([responder isKindOfClass:UIViewController.class]) {
+            return [responder isKindOfClass:expected] ? (UIViewController *)responder : nil;
+        }
+    }
+    return nil;
+}
+
+static BOOL FQXVideoBackdropHasTransition(UIViewController *owner) {
+    for (UIViewController *controller = owner; controller; controller = controller.parentViewController) {
+        if (controller.transitionCoordinator || controller.isBeingDismissed || controller.isBeingPresented) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL FQXVideoBackdropFullWindow(UIView *view, UIWindow *window) {
+    if (!view || !window) return NO;
+    CGRect rect = [view convertRect:view.bounds toView:window];
+    return FQXVideoBackdropSameCGRect(rect, window.bounds, 0.75);
+}
+
+static BOOL FQXVideoBackdropFeedGeometry(UICollectionView *feed, UIViewController *owner,
+                                         UIView *root, UIView *bar) {
+    UIView *parent = feed.superview;
+    UIWindow *window = root.window;
+    UIView *ownerView = owner.viewIfLoaded;
+    if (!window || !parent || !ownerView || (parent != ownerView && ![parent isDescendantOfView:ownerView]) ||
+        window.bounds.size.height <= window.bounds.size.width || feed.layer.mask ||
+        !FQXVideoBackdropVisible(feed, window) || bar.window != window ||
+        !FQXVideoBackdropFullWindow(parent, window) || !FQXVideoBackdropFullWindow(root, window) ||
+        FQXVideoBackdropHasTransition(owner)) return NO;
+    CGRect frame = feed.frame, full = parent.bounds;
+    CGFloat uncovered = CGRectGetMaxY(full) - CGRectGetMaxY(frame);
+    return uncovered > 0.75 && uncovered <= 160.0 &&
+        fabs(CGRectGetMinX(frame) - CGRectGetMinX(full)) <= 0.75 &&
+        fabs(CGRectGetMinY(frame) - CGRectGetMinY(full)) <= 0.75 &&
+        fabs(CGRectGetMaxX(frame) - CGRectGetMaxX(full)) <= 0.75;
+}
+
+static UICollectionViewCell *FQXVideoBackdropCellAtY(UICollectionView *feed, CGFloat y, CGRect *edgeFrame) {
+    CGRect viewport = feed.bounds;
+    for (UIView *child in feed.subviews) {
+        if (![child isKindOfClass:UICollectionViewCell.class] || !FQXVideoBackdropVisible(child, feed)) continue;
+        UICollectionViewCell *cell = (UICollectionViewCell *)child;
+        CGRect frame = [cell convertRect:cell.bounds toView:feed];
+        if (CGRectGetMinY(frame) <= y && CGRectGetMaxY(frame) > y &&
+            fabs(CGRectGetMinX(frame) - CGRectGetMinX(viewport)) <= 0.75 &&
+            fabs(CGRectGetMaxX(frame) - CGRectGetMaxX(viewport)) <= 0.75) {
+            if (edgeFrame) *edgeFrame = frame;
+            return cell;
+        }
+    }
+    return nil;
+}
+
+static BOOL FQXVideoBackdropCrossesBottom(UICollectionView *feed, CGRect cellFrame) {
+    CGRect viewport = feed.bounds;
+    CGFloat top = CGRectGetMinY(viewport);
+    CGFloat bottom = CGRectGetMaxY(viewport);
+    UIEdgeInsets insets = feed.adjustedContentInset;
+    if (top < -insets.top - 0.75 || bottom > feed.contentSize.height + insets.bottom + 0.75) return NO;
+    return CGRectGetMinY(cellFrame) > top + 0.75 && CGRectGetMaxY(cellFrame) > bottom + 0.75;
+}
+
+static UIView *FQXVideoBackdropCanvas(UICollectionViewCell *cell, UICollectionView *feed, CGFloat y) {
+    Class canvasClass = objc_lookUpClass("FQVShortVideoPlayerCellView");
+    if (!canvasClass || !cell) return nil;
+    CGRect viewport = feed.bounds;
+    for (UIView *canvas in cell.contentView.subviews) {
+        if (![canvas isKindOfClass:canvasClass] || !FQXVideoBackdropVisible(canvas, cell)) continue;
+        CGRect frame = [canvas convertRect:canvas.bounds toView:feed];
+        if (CGRectGetMinY(frame) > y || CGRectGetMaxY(frame) <= y ||
+            fabs(CGRectGetMinX(frame) - CGRectGetMinX(viewport)) > 0.75 ||
+            fabs(CGRectGetMaxX(frame) - CGRectGetMaxX(viewport)) > 0.75) continue;
+        return canvas;
+    }
+    return nil;
+}
+
+static UIView *FQXDetailVideoBackdropCanvas(UIView *view) {
+    Class canvasClass = objc_lookUpClass("FQVShortVideoPlayerCellView");
+    for (UIView *node = view; node; node = node.superview) {
+        if (canvasClass && [node isKindOfClass:canvasClass]) return node;
+    }
+    return nil;
+}
+
+static UIColor *FQXVideoBackdropMatte(UIView *canvas) {
+    if (!canvas) return nil;
+    UIColor *color = [canvas.backgroundColor resolvedColorWithTraitCollection:canvas.traitCollection];
+    CGFloat alpha = 0.0;
+    return [color getRed:NULL green:NULL blue:NULL alpha:&alpha] && alpha >= 0.99 ? color : nil;
+}
+
+static BOOL FQXVideoBackdropHasLetterbox(UIView *canvas) {
+    Class playerCls = objc_lookUpClass("FQVPlayer");
+    Class renderCls = objc_lookUpClass("TTPlayerView");
+    if (!canvas || !playerCls || !renderCls) return NO;
+    for (UIView *wrapper in canvas.subviews) {
+        UIView *player = wrapper.subviews.firstObject;
+        if (![player isKindOfClass:playerCls]) continue;
+        for (UIView *renderer in player.subviews) {
+            if (![renderer isKindOfClass:renderCls] || renderer.hidden) continue;
+            CGRect frame = [renderer convertRect:renderer.bounds toView:canvas];
+            return frame.size.width > frame.size.height && frame.size.height > 0.0 &&
+                CGRectGetMinY(frame) > CGRectGetMinY(canvas.bounds) + 1.0 &&
+                CGRectGetMaxY(frame) < CGRectGetMaxY(canvas.bounds) - 1.0;
+        }
+    }
+    return NO;
+}
+
+static UIView *FQXVideoBackdropMetal(UIView *renderer, UIView *player, CGRect viewport) {
+    Class metalCls = objc_lookUpClass("TTMetalView");
+    if (!metalCls || FQXPlayerIsTransferring(renderer) || renderer.subviews.count != 1 ||
+        renderer.layer.sublayers.count != 1 ||
+        !FQXVideoBackdropSameCGRect([renderer convertRect:renderer.bounds toView:player], viewport, 0.75) ||
+        !CGPointEqualToPoint(renderer.layer.anchorPoint, CGPointMake(0.5, 0.5))) return nil;
+    UIView *metal = renderer.subviews.firstObject;
+    if (![metal isKindOfClass:metalCls] || renderer.layer.sublayers.firstObject != metal.layer ||
+        metal.bounds.size.width <= 0.0 || metal.bounds.size.height <= metal.bounds.size.width ||
+        fabs(metal.center.x - CGRectGetMidX(renderer.bounds)) > 0.75 ||
+        fabs(metal.center.y - CGRectGetMidY(renderer.bounds)) > 0.75) return nil;
+    for (UIView *node = metal; node; node = node.superview) {
+        if (node.layer.mask || !CATransform3DIsIdentity(node.layer.transform) ||
+            (node != renderer && !CATransform3DIsIdentity(node.layer.sublayerTransform))) return nil;
+        if (node == player) return metal;
+    }
+    return nil;
+}
+
+static BOOL FQXVideoBackdropPortraitModel(id model) {
+    const char *keys[] = {"shortVideoModel", "videoInfo"};
+    for (NSUInteger i = 0; i < 2; i++) {
+        id info = FQXObjGet(model, keys[i]);
+        if (!info) continue;
+        SEL width = sel_registerName("videoWidth"), height = sel_registerName("videoHeight");
+        Method w = class_getInstanceMethod(object_getClass(info), width);
+        Method h = class_getInstanceMethod(object_getClass(info), height);
+        if (!w || !h || strcmp(method_getTypeEncoding(w), "d16@0:8") != 0 ||
+            strcmp(method_getTypeEncoding(h), "d16@0:8") != 0) continue;
+        double x = ((double (*)(id, SEL))objc_msgSend)(info, width);
+        double y = ((double (*)(id, SEL))objc_msgSend)(info, height);
+        if (x > 0.0 && y > 0.0 && isfinite(x) && isfinite(y)) return y > x;
+    }
+    return NO;
+}
+
+static BOOL FQXVideoBackdropSingleList(UIViewController *owner) {
+    id list = FQXObjGet(owner, "listPlayer");
+    if (!list) return NO;
+    SEL single = sel_registerName("isSingleSeriesList");
+    Method method = class_getInstanceMethod(object_getClass(list), single);
+    return method && strcmp(method_getTypeEncoding(method), "B16@0:8") == 0 &&
+        ((BOOL (*)(id, SEL))objc_msgSend)(list, single);
+}
+
+static UIView *FQXVideoBackdropPlayer(UIView *canvas) {
+    Class playerCls = objc_lookUpClass("FQVPlayer");
+    if (!canvas || !playerCls) return nil;
+    for (UIView *wrapper in canvas.subviews) {
+        UIView *player = wrapper.subviews.firstObject;
+        if (wrapper.class == UIView.class && wrapper.subviews.count == 1 &&
+            [player isKindOfClass:playerCls] &&
+            FQXVideoBackdropSameCGRect(wrapper.frame, canvas.bounds, 0.75) &&
+            FQXVideoBackdropSameCGRect(player.frame, wrapper.bounds, 0.75) &&
+            !wrapper.layer.mask && CATransform3DIsIdentity(wrapper.layer.transform) &&
+            CATransform3DIsIdentity(wrapper.layer.sublayerTransform)) return player;
+    }
+    return nil;
+}
+
+static UIImageView *FQXVideoBackdropCover(UIView *owner) {
+    if (!owner) return nil;
+    UIImageView *cover = (UIImageView *)FQXRawIvarObj(owner, "_coverImageView");
+    if (!cover) cover = FQXObjGet(owner, "coverImageView");
+    return [cover isKindOfClass:UIImageView.class] && [cover isDescendantOfView:owner] ? cover : nil;
+}
+
+static BOOL FQXVideoBackdropPortraitImage(UIImageView *cover) {
+    return cover && cover.image && cover.image.size.height > cover.image.size.width;
+}
+
+static BOOL FQXVideoBackdropFrameReady(UIView *player) {
+    id model = FQXObjGet(player, "model");
+    if (!model) return YES;
+    SEL ready = sel_registerName("readyToDisPlay");
+    Method method = class_getInstanceMethod(object_getClass(model), ready);
+    return !method || strcmp(method_getTypeEncoding(method), "B16@0:8") != 0 ||
+        ((BOOL (*)(id, SEL))objc_msgSend)(model, ready);
+}
+
+static CGFloat FQXVideoBackdropFirstPictureY(UIView *canvas, UIView *feed) {
+    if (!canvas || !feed) return CGFLOAT_MAX;
+    UIView *player = FQXVideoBackdropPlayer(canvas);
+    CGFloat pictureTop = CGFLOAT_MAX;
+    Class renderCls = objc_lookUpClass("TTPlayerView");
+    Class metalCls = objc_lookUpClass("TTMetalView");
+    if (player && !player.hidden && player.alpha > 0.01 && FQXVideoBackdropFrameReady(player)) {
+        for (UIView *view in player.subviews) {
+            if (!renderCls || ![view isKindOfClass:renderCls] ||
+                view.hidden || view.alpha <= 0.01 || FQXPlayerIsTransferring(view)) continue;
+            UIView *metal = view.subviews.firstObject;
+            if (!metalCls || ![metal isKindOfClass:metalCls] ||
+                metal.hidden || metal.alpha <= 0.01 || CGRectIsEmpty(metal.bounds)) continue;
+            pictureTop = MIN(pictureTop, CGRectGetMinY([metal.layer convertRect:metal.layer.bounds toLayer:feed.layer]));
+        }
+    }
+    UIImageView *covers[] = {FQXVideoBackdropCover(canvas), FQXVideoBackdropCover(player)};
+    for (NSUInteger i = 0; i < 2; i++) {
+        UIImageView *cover = covers[i];
+        if (!cover.image || (i == 1 && cover == covers[0])) continue;
+        BOOL visible = YES;
+        for (UIView *node = cover; node && node != canvas; node = node.superview) {
+            if (node.hidden || node.alpha <= 0.01) { visible = NO; break; }
+        }
+        if (!visible) continue;
+        CGRect picture = cover.bounds;
+        if (cover.contentMode == UIViewContentModeScaleAspectFit) {
+            CGSize size = cover.image.size;
+            if (size.width <= 0.0 || size.height <= 0.0) continue;
+            CGFloat scale = MIN(picture.size.width / size.width, picture.size.height / size.height);
+            picture = CGRectInset(picture,
+                                  (picture.size.width - size.width * scale) * 0.5,
+                                  (picture.size.height - size.height * scale) * 0.5);
+        }
+        if (!CGRectIsEmpty(picture)) {
+            pictureTop = MIN(pictureTop, CGRectGetMinY([cover convertRect:picture toView:feed]));
+        }
+    }
+    return pictureTop;
+}
+
+static CAGradientLayer *FQXVideoBackdropBottomGradient(UIView *canvas, CGRect viewport) {
+    Class controlsClass = objc_lookUpClass("FQVShortVideoVPlayerControlView");
+    Class gradientClass = objc_lookUpClass("FQVShortVideoGradientLayerView");
+    if (!canvas || !controlsClass || !gradientClass) return nil;
+    for (UIView *control in canvas.subviews) {
+        if (![control isKindOfClass:controlsClass]) continue;
+        UIView *expectedGrad = FQXRawIvarObj(control, "_bottomGradientView") ?: FQXObjGet(control, "bottomGradientView");
+        for (UIView *view in control.subviews) {
+            if (![view isKindOfClass:gradientClass] || view != expectedGrad) continue;
+            CGRect frame = [view convertRect:view.bounds toView:canvas];
+            CGRect expected = CGRectMake(CGRectGetMinX(viewport), CGRectGetMaxY(viewport) - frame.size.height,
+                                         viewport.size.width, frame.size.height);
+            if (!FQXVideoBackdropSameCGRect(frame, expected, 0.75)) continue;
+            CALayer *gl = FQXObjGet(view, "gradientLayer") ?: view.layer;
+            if ([gl isKindOfClass:CAGradientLayer.class]) return (CAGradientLayer *)gl;
+        }
+    }
+    return nil;
+}
+
+@implementation FQXVideoBackdrop
+- (void)dealloc {
+    for (CALayer *layer in _pagingMattes) [layer removeFromSuperlayer];
+    [self restorePortraitExcept:nil];
+    [self bringPortraitForward:nil];
+    [self restoreDetailTray];
+    if (_ownsClipping) _feed.clipsToBounds = YES;
+    [self restoreCornerImages];
+    [_underlay removeFromSuperview];
+}
+
+- (void)restoreDetailTray {
+    if ([self.detailTray.backgroundColor isEqual:UIColor.clearColor]) {
+        self.detailTray.backgroundColor = self.detailTrayPaint;
+    }
+    self.detailTray = nil;
+    self.detailTrayPaint = nil;
+}
+
+- (void)suppressPortraitGradient:(CAGradientLayer *)layer active:(NSMutableSet *)active {
+    if (!layer) return;
+    [active addObject:layer];
+    if (layer.opacity != 0.0f) {
+        if (!self.portraitGradients) self.portraitGradients = [NSMapTable weakToStrongObjectsMapTable];
+        [self.portraitGradients setObject:@(layer.opacity) forKey:layer];
+        layer.opacity = 0.0f;
+    }
+}
+
+- (void)bringPortraitForward:(UICollectionViewCell *)cell {
+    if (cell == self.frontPortraitCell && (!cell || cell.layer.zPosition == 1.0)) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (self.frontPortraitCell.layer.zPosition == 1.0) self.frontPortraitCell.layer.zPosition = 0.0;
+    self.frontPortraitCell = nil;
+    if (cell && cell.layer.zPosition == 0.0) {
+        cell.layer.zPosition = 1.0;
+        self.frontPortraitCell = cell;
+    }
+    [CATransaction commit];
+}
+
+- (void)restoreCornerImages {
+    for (UIImageView *image in self.cornerAlpha) {
+        if (image.alpha == 0.0) image.alpha = [[self.cornerAlpha objectForKey:image] doubleValue];
+    }
+    [self.cornerAlpha removeAllObjects];
+}
+
+- (void)updateCornerImages:(NSArray<UIView *> *)siblings frame:(CGRect)frame {
+    CGRect leftFrame = CGRectMake(CGRectGetMinX(frame), CGRectGetMaxY(frame) - 12.0, 12.0, 12.0);
+    CGRect rightFrame = CGRectOffset(leftFrame, CGRectGetWidth(frame) - 12.0, 0.0);
+    UIImageView *left = nil, *right = nil;
+    for (UIView *view in siblings) {
+        if (![view isKindOfClass:UIImageView.class] || view.userInteractionEnabled) continue;
+        if (FQXVideoBackdropSameCGRect(view.frame, leftFrame, 0.5)) {
+            if (left) { [self restoreCornerImages]; return; }
+            left = (UIImageView *)view;
+        } else if (FQXVideoBackdropSameCGRect(view.frame, rightFrame, 0.5)) {
+            if (right) { [self restoreCornerImages]; return; }
+            right = (UIImageView *)view;
+        }
+    }
+    if (!left || !right) { [self restoreCornerImages]; return; }
+    for (UIImageView *image in self.cornerAlpha.keyEnumerator.allObjects) {
+        if (image == left || image == right) continue;
+        if (image.alpha == 0.0) image.alpha = [[self.cornerAlpha objectForKey:image] doubleValue];
+        [self.cornerAlpha removeObjectForKey:image];
+    }
+    if (!self.cornerAlpha) self.cornerAlpha = [NSMapTable weakToStrongObjectsMapTable];
+    for (UIImageView *image in @[left, right]) {
+        if (image.alpha == 0.0) continue;
+        [self.cornerAlpha setObject:@(image.alpha) forKey:image];
+        image.alpha = 0.0;
+    }
+}
+
+- (void)restoreClipping {
+    BOOL owned = self.ownsClipping;
+    self.ownsClipping = NO;
+    if (owned && !self.feed.clipsToBounds) self.feed.clipsToBounds = YES;
+}
+
+- (void)restorePortraitExcept:(NSSet *)active {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (UIView *renderer in self.portraitRenderers.keyEnumerator.allObjects) {
+        if ([active containsObject:renderer]) continue;
+        CATransform3D applied = [[self.portraitRenderers objectForKey:renderer] CATransform3DValue];
+        if (CATransform3DEqualToTransform(renderer.layer.sublayerTransform, applied)) {
+            renderer.layer.sublayerTransform = CATransform3DIdentity;
+        }
+        [self.portraitRenderers removeObjectForKey:renderer];
+    }
+    for (UIImageView *cover in self.portraitCovers.keyEnumerator.allObjects) {
+        if ([active containsObject:cover]) continue;
+        FQXVideoPortraitCover saved;
+        [[self.portraitCovers objectForKey:cover] getValue:&saved size:sizeof(saved)];
+        if (CGRectEqualToRect(cover.frame, saved.appliedFrame)) cover.frame = saved.frame;
+        if (cover.contentMode == UIViewContentModeScaleAspectFill) cover.contentMode = saved.contentMode;
+        [self.portraitCovers removeObjectForKey:cover];
+    }
+    for (UIView *view in self.portraitClips.allObjects) {
+        if ([active containsObject:view]) continue;
+        if (!view.clipsToBounds) view.clipsToBounds = YES;
+        [self.portraitClips removeObject:view];
+    }
+    for (CAGradientLayer *layer in self.portraitGradients.keyEnumerator.allObjects) {
+        if ([active containsObject:layer]) continue;
+        if (layer.opacity == 0.0f) layer.opacity = [[self.portraitGradients objectForKey:layer] floatValue];
+        [self.portraitGradients removeObjectForKey:layer];
+    }
+    [CATransaction commit];
+}
+
+- (void)releasePortraitClippingFrom:(UIView *)view to:(UIView *)boundary active:(NSMutableSet *)active {
+    for (UIView *node = view; node && node != boundary; node = node.superview) {
+        [active addObject:node];
+        if (!node.clipsToBounds) continue;
+        if (!self.portraitClips) self.portraitClips = [NSHashTable weakObjectsHashTable];
+        [self.portraitClips addObject:node];
+        node.clipsToBounds = NO;
+    }
+}
+
+- (BOOL)fillPortraitInCanvas:(UIView *)canvas viewport:(CGRect)viewport full:(CGRect)full
+                    boundary:(UIView *)boundary active:(NSMutableSet *)active {
+    if (!canvas) return NO;
+    UIView *player = FQXVideoBackdropPlayer(canvas);
+    UIImageView *covers[] = {FQXVideoBackdropCover(canvas), FQXVideoBackdropCover(player)};
+    if ((!player && !covers[0]) || CGRectIsEmpty(viewport) || CGRectIsEmpty(full)) return NO;
+    UIView *coordinateView = player ?: canvas;
+    for (UIView *node = coordinateView; node && node != boundary; node = node.superview) {
+        if (node.layer.mask || !CATransform3DIsIdentity(node.layer.transform) ||
+            !CATransform3DIsIdentity(node.layer.sublayerTransform)) return NO;
+    }
+    Class renderCls = objc_lookUpClass("TTPlayerView");
+    for (UIView *renderer in player.subviews) {
+        if (!renderCls || ![renderer isKindOfClass:renderCls]) continue;
+        if (FQXPlayerIsTransferring(renderer) ||
+            (!CGRectIsEmpty(renderer.frame) && renderer.bounds.size.width >= renderer.bounds.size.height &&
+             FQXVideoBackdropFrameReady(player))) return NO;
+    }
+    BOOL filled = NO;
+    BOOL extends = CGRectGetMaxY(full) > CGRectGetMaxY(viewport) + 0.75;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (UIView *renderer in player.subviews) {
+        if (!renderCls || ![renderer isKindOfClass:renderCls]) continue;
+        UIView *metal = FQXVideoBackdropMetal(renderer, player, viewport);
+        if (!metal) continue;
+        CATransform3D current = renderer.layer.sublayerTransform;
+        NSValue *previous = [self.portraitRenderers objectForKey:renderer];
+        if (!CATransform3DIsIdentity(current) &&
+            !(previous && CATransform3DEqualToTransform(current, previous.CATransform3DValue))) continue;
+        CATransform3D transform = FQXVideoBackdropCoverTransform(metal.bounds.size, viewport, full);
+        if (!self.portraitRenderers) self.portraitRenderers = [NSMapTable weakToStrongObjectsMapTable];
+        if (!previous || !CATransform3DEqualToTransform(previous.CATransform3DValue, transform)) {
+            [self.portraitRenderers setObject:[NSValue valueWithCATransform3D:transform] forKey:renderer];
+        }
+        if (!CATransform3DEqualToTransform(current, transform)) renderer.layer.sublayerTransform = transform;
+        [active addObject:renderer];
+        if (extends) {
+            [self releasePortraitClippingFrom:renderer to:boundary active:active];
+        } else if ([self.portraitClips containsObject:renderer]) {
+            renderer.clipsToBounds = YES;
+            [self.portraitClips removeObject:renderer];
+        }
+        filled = YES;
+    }
+
+    for (NSUInteger i = 0; i < 2; i++) {
+        UIImageView *cover = covers[i];
+        if (!cover || (i == 1 && cover == covers[0]) || cover.layer.mask ||
+            !CGAffineTransformIsIdentity(cover.transform) ||
+            !(cover.image ? FQXVideoBackdropPortraitImage(cover) :
+              (filled || FQXVideoBackdropPortraitModel(FQXObjGet(canvas, "model"))))) continue;
+        NSValue *old = [self.portraitCovers objectForKey:cover];
+        FQXVideoPortraitCover saved = {cover.frame, CGRectZero, cover.contentMode};
+        if (old) {
+            [old getValue:&saved size:sizeof(saved)];
+            if (!CGRectEqualToRect(cover.frame, saved.appliedFrame)) saved.frame = cover.frame;
+            if (cover.contentMode != UIViewContentModeScaleAspectFill) saved.contentMode = cover.contentMode;
+        }
+        CGRect nativeCover = [cover.superview convertRect:saved.frame toView:coordinateView];
+        if (FQXVideoBackdropMatchesCGRect(nativeCover, viewport) ||
+            FQXVideoBackdropMatchesCGRect(nativeCover, coordinateView.bounds)) {
+            saved.appliedFrame = [coordinateView convertRect:full toView:cover.superview];
+            if (!self.portraitCovers) self.portraitCovers = [NSMapTable weakToStrongObjectsMapTable];
+            [self.portraitCovers setObject:[NSValue valueWithBytes:&saved objCType:@encode(FQXVideoPortraitCover)]
+                                    forKey:cover];
+            if (cover.contentMode != UIViewContentModeScaleAspectFill) {
+                cover.contentMode = UIViewContentModeScaleAspectFill;
+            }
+            if (!CGRectEqualToRect(cover.frame, saved.appliedFrame)) cover.frame = saved.appliedFrame;
+            [active addObject:cover];
+            if (extends) [self releasePortraitClippingFrom:cover.superview to:boundary active:active];
+            filled = YES;
+        }
+    }
+    if (filled) [self suppressPortraitGradient:FQXVideoBackdropBottomGradient(canvas, viewport) active:active];
+    [CATransaction commit];
+    return filled;
+}
+
+- (void)removeFeed {
+    for (CALayer *layer in self.pagingMattes) [layer removeFromSuperlayer];
+    self.pagingMattes = nil;
+    UICollectionView *feed = self.feed;
+    FQXVideoBackdropLink *link = objc_getAssociatedObject(feed, FQXVideoBackdropLinkKey);
+    if (link.owner == self) {
+        objc_setAssociatedObject(feed, FQXVideoBackdropLinkKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [self restorePortraitExcept:nil];
+    [self bringPortraitForward:nil];
+    [self restoreClipping];
+    [self restoreCornerImages];
+    [self restoreDetailTray];
+    [self.underlay removeFromSuperview];
+    self.underlay = nil;
+    self.feed = nil; self.root = nil; self.bar = nil; self.owner = nil;
+}
+
+- (void)updateUnderlay:(UIColor *)color {
+    UIView *parent = self.feed.superview;
+    UIView *underlay = self.underlay;
+    if (!color || !parent) {
+        underlay.hidden = YES;
+        return;
+    }
+    if (!underlay) {
+        underlay = [UIView new];
+        underlay.accessibilityIdentifier = @"fanqiex.video.matte";
+        underlay.accessibilityElementsHidden = YES;
+        underlay.userInteractionEnabled = NO;
+        self.underlay = underlay;
+    }
+    CGRect frame = self.feed.frame;
+    CGFloat edge = CGRectGetMaxY(frame);
+    CGRect strip = CGRectMake(CGRectGetMinX(frame), edge, CGRectGetWidth(frame),
+                              CGRectGetMaxY(parent.bounds) - edge);
+    if (!CGRectEqualToRect(underlay.frame, strip)) underlay.frame = strip;
+    if (![underlay.backgroundColor isEqual:color]) underlay.backgroundColor = color;
+    NSUInteger index = [parent.subviews indexOfObjectIdenticalTo:underlay];
+    NSUInteger feedIndex = [parent.subviews indexOfObjectIdenticalTo:self.feed];
+    if (index == NSNotFound || index >= feedIndex) [parent insertSubview:underlay belowSubview:self.feed];
+    underlay.hidden = NO;
+}
+
+- (void)restore {
+    if (self.refreshing) return;
+    self.refreshing = YES;
+    [self removeFeed];
+    self.refreshing = NO;
+}
+
+- (UIColor *)pagingMatteForCanvas:(UIView *)bottom frame:(CGRect)bottomFrame color:(UIColor *)color {
+    UICollectionView *feed = self.feed;
+    CGRect topFrame = CGRectNull;
+    CGFloat topY = CGRectGetMinY(feed.bounds) + 0.75;
+    UIView *top = nil;
+    if (color && FQXVideoBackdropCrossesBottom(feed, bottomFrame) && FQXVideoBackdropHasLetterbox(bottom)) {
+        UICollectionViewCell *cell = FQXVideoBackdropCellAtY(feed, topY, &topFrame);
+        if (fabs(CGRectGetMaxY(topFrame) - CGRectGetMinY(bottomFrame)) <= 0.75) {
+            top = FQXVideoBackdropCanvas(cell, feed, topY);
+        }
+    }
+    UIColor *start = FQXVideoBackdropMatte(top);
+    if (!start || !FQXVideoBackdropHasLetterbox(top) || [start isEqual:color]) {
+        for (CALayer *layer in self.pagingMattes) [layer removeFromSuperlayer];
+        self.pagingMattes = nil;
+        return color;
+    }
+    CGFloat r = 0, g = 0, b = 0, endR = 0, endG = 0, endB = 0;
+    [start getRed:&r green:&g blue:&b alpha:NULL];
+    [color getRed:&endR green:&endG blue:&endB alpha:NULL];
+    CGFloat fraction = MIN(1.0, MAX(0.0, (CGRectGetMaxY(feed.bounds) - CGRectGetMinY(bottomFrame)) / feed.bounds.size.height));
+    UIColor *blend = [UIColor colorWithRed:r + (endR - r) * fraction
+                                     green:g + (endG - g) * fraction
+                                      blue:b + (endB - b) * fraction
+                                     alpha:1.0];
+    if (!self.pagingMattes) self.pagingMattes = @[[CALayer layer], [CALayer layer]];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    NSUInteger index = 0;
+    for (UIView *canvas in @[top, bottom]) {
+        CALayer *layer = self.pagingMattes[index++];
+        if (layer.superlayer != canvas.layer) [canvas.layer insertSublayer:layer atIndex:0];
+        layer.zPosition = -1.0;
+        layer.frame = canvas.bounds;
+        layer.backgroundColor = blend.CGColor;
+    }
+    [CATransaction commit];
+    return blend;
+}
+
+- (void)updateFeed {
+    UICollectionView *feed = self.feed;
+    if (feed.window && feed.window == self.root.window && FQXVideoBackdropHasTransition(self.owner)) return;
+    if (!FQXGlassEnabled() || !FQXVideoBackdropFeedGeometry(feed, self.owner, self.root, self.bar)) {
+        [self removeFeed];
+        return;
+    }
+
+    CGRect cellFrame = CGRectNull;
+    CGFloat edge = CGRectGetMaxY(feed.bounds) - 0.75;
+    UICollectionViewCell *cell = FQXVideoBackdropCellAtY(feed, edge, &cellFrame);
+    UIView *canvas = FQXVideoBackdropCanvas(cell, feed, edge);
+    CGFloat extra = MAX(0.0, CGRectGetMaxY(feed.superview.bounds) - CGRectGetMaxY(feed.frame));
+    CGRect topFrame = CGRectNull;
+    CGFloat top = CGRectGetMinY(feed.bounds) + 0.75;
+    UICollectionViewCell *topCell = FQXVideoBackdropCellAtY(feed, top, &topFrame);
+    NSMutableSet *active = [NSMutableSet set];
+    CGRect full = canvas.bounds;
+    full.size.height += extra;
+    BOOL portrait = cell && fabs(cellFrame.size.height - feed.bounds.size.height) <= 0.75 &&
+        [self fillPortraitInCanvas:canvas viewport:canvas.bounds full:full boundary:feed active:active];
+    BOOL topPortrait = NO, keepUpperPicture = NO;
+    if (topCell && topCell != cell && fabs(topFrame.size.height - feed.bounds.size.height) <= 0.75) {
+        UIView *topCanvas = FQXVideoBackdropCanvas(topCell, feed, top);
+        CGRect topFull = topCanvas.bounds;
+        topFull.size.height += extra;
+        CGFloat advance = CGRectGetMinY(feed.bounds) - CGRectGetMinY(topFrame);
+        topPortrait = [self fillPortraitInCanvas:topCanvas viewport:topCanvas.bounds full:topFull boundary:feed active:active];
+        if (topPortrait && advance > 0.0 && extra > 0.75) {
+            BOOL reachedEnd = !cell && CGRectGetMaxY(topFrame) >= feed.contentSize.height - 0.75;
+            CGFloat physicalBottom = CGRectGetMaxY(feed.bounds) + extra;
+            keepUpperPicture = reachedEnd ||
+                (advance < extra && FQXVideoBackdropFirstPictureY(canvas, feed) > physicalBottom - extra + 0.75);
+        }
+    }
+    [self restorePortraitExcept:active];
+    UIColor *matte = (!portrait && extra > 0.75) ? FQXVideoBackdropMatte(canvas) : nil;
+    [self updateUnderlay:[self pagingMatteForCanvas:canvas frame:cellFrame color:matte]];
+
+    BOOL overflows = extra > 0.75 && (portrait || keepUpperPicture || (cell && FQXVideoBackdropCrossesBottom(feed, cellFrame)));
+    [self bringPortraitForward:keepUpperPicture ? topCell : (overflows && portrait ? cell : nil)];
+    if (overflows || matte) [self updateCornerImages:feed.superview.subviews frame:feed.frame];
+    else [self restoreCornerImages];
+    if (!overflows) {
+        [self restoreClipping];
+        return;
+    }
+    if (feed.clipsToBounds) {
+        self.ownsClipping = YES;
+        feed.clipsToBounds = NO;
+    }
+}
+
+- (void)prepareRendererTransfer:(UIView *)view {
+    NSArray<UIView *> *renderers = self.portraitRenderers.keyEnumerator.allObjects;
+    NSArray<UIImageView *> *covers = self.portraitCovers.keyEnumerator.allObjects;
+    NSMutableSet *keep = [NSMutableSet set];
+    BOOL moving = NO;
+    for (UIView *surface in [(renderers ?: @[]) arrayByAddingObjectsFromArray:covers ?: @[]]) {
+        if (surface == view || [surface isDescendantOfView:view] || [view isDescendantOfView:surface]) {
+            moving = YES;
+            continue;
+        }
+        UIView *canvas = FQXDetailVideoBackdropCanvas(surface);
+        UIView *boundary = self.feed ?: canvas;
+        for (UIView *node = surface; node && node != boundary; node = node.superview) [keep addObject:node];
+        for (CAGradientLayer *layer in self.portraitGradients) {
+            UIView *gradient = (id)layer.delegate;
+            if ([gradient isKindOfClass:UIView.class] && [gradient isDescendantOfView:canvas]) [keep addObject:layer];
+        }
+    }
+    if (!moving) return;
+    [self restorePortraitExcept:keep];
+    if (!self.frontPortraitCell || ![keep containsObject:self.frontPortraitCell]) {
+        [self restoreClipping];
+        [self bringPortraitForward:nil];
+    }
+    [self restoreCornerImages];
+    [self restoreDetailTray];
+}
+
+- (void)refreshDetail:(UIView *)canvas {
+    if (self.refreshing) return;
+    UIViewController *owner = FQXVideoBackdropOwner(canvas);
+    UIWindow *window = canvas.window;
+    UIView *root = owner.viewIfLoaded;
+    CGRect page = root ? [canvas convertRect:canvas.bounds toView:root] : CGRectZero;
+    BOOL fullPage = window && root.window == window &&
+        fabs(CGRectGetWidth(root.bounds) - CGRectGetWidth(window.bounds)) <= 0.75 &&
+        fabs(CGRectGetHeight(root.bounds) - CGRectGetHeight(window.bounds)) <= 0.75 &&
+        fabs(CGRectGetMinX(page) - CGRectGetMinX(root.bounds)) <= 0.75 &&
+        fabs(CGRectGetWidth(page) - CGRectGetWidth(window.bounds)) <= 0.75 &&
+        fabs(CGRectGetHeight(page) - CGRectGetHeight(window.bounds)) <= 0.75;
+    if (!FQXGlassEnabled() || !owner || window.bounds.size.width >= window.bounds.size.height || !fullPage) {
+        [self restore];
+        return;
+    }
+
+    self.refreshing = YES;
+    UIView *tray = nil, *corners = nil, *hud = nil;
+    UIView *player = FQXVideoBackdropPlayer(canvas);
+    Class trayClass1 = objc_lookUpClass("FQVShortVideoPlayerBottomView");
+    Class trayClass2 = objc_lookUpClass("FQVShortVideoVPlayerContainBottomEpisodeInfoView");
+    for (UIView *child in canvas.subviews) {
+        if (FQXIsSeriesDetailControl(child)) {
+            hud = child;
+            FQXCleanSeriesControlBottom(child);
+            for (UIView *candidate in child.subviews) {
+                if ((trayClass1 && [candidate isKindOfClass:trayClass1]) ||
+                    (trayClass2 && [candidate isKindOfClass:trayClass2])) {
+                    if (!candidate.hidden) { tray = candidate; break; }
+                    if (!tray) tray = candidate;
+                }
+            }
+        }
+    }
+
+    id model = FQXObjGet(canvas, "model");
+    BOOL portrait = FQXVideoBackdropPortraitModel(model);
+    CGRect predicted = CGRectZero;
+    if (hud) {
+        SEL pfSel = sel_registerName("playerViewFrame");
+        Method pfM = class_getInstanceMethod(object_getClass(hud), pfSel);
+        if (pfM && strcmp(method_getTypeEncoding(pfM), "{CGRect={CGPoint=dd}{CGSize=dd}}16@0:8") == 0) {
+            predicted = ((CGRect (*)(id, SEL))objc_msgSend)(hud, pfSel);
+        }
+    }
+    if (CGRectIsEmpty(predicted) && model) {
+        id component = FQXObjGet(FQXObjGet(owner, "listPlayer"), "playerComponent");
+        SEL vpSel = sel_registerName("videoPlayerViewFrameWithModel:");
+        Method vpM = component ? class_getInstanceMethod(object_getClass(component), vpSel) : NULL;
+        if (vpM && strcmp(method_getTypeEncoding(vpM), "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16") == 0) {
+            predicted = ((CGRect (*)(id, SEL, id))objc_msgSend)(component, vpSel, model);
+        }
+    }
+    /* Coexistence guard: if AlignedGlass (feedType == 4) already expanded the player viewport to full screen, abstain. */
+    if (!CGRectIsEmpty(predicted) &&
+        fabs(CGRectGetHeight(predicted) - CGRectGetHeight(canvas.bounds)) <= 1.5) {
+        [self restorePortraitExcept:nil];
+        [self restoreCornerImages];
+        [self restoreDetailTray];
+        self.refreshing = NO;
+        return;
+    }
+
+    CGRect bottom = tray ? [tray convertRect:tray.bounds toView:canvas] : CGRectZero;
+    CGRect viewport = canvas.bounds;
+    viewport.size.height -= bottom.size.height;
+    if (portrait && CGRectIsEmpty(bottom)) {
+        /* Incoming single-series cell before shared HUD transfers: align from frame 0 using predicted or cached tray! */
+        if (!CGRectIsEmpty(predicted) &&
+            fabs(CGRectGetMinY(predicted) - CGRectGetMinY(canvas.bounds)) <= 0.75 &&
+            fabs(CGRectGetMinX(predicted) - CGRectGetMinX(canvas.bounds)) <= 0.75 &&
+            fabs(CGRectGetWidth(predicted) - CGRectGetWidth(canvas.bounds)) <= 0.75 &&
+            CGRectGetHeight(canvas.bounds) - CGRectGetHeight(predicted) >= 44.0) {
+            viewport = predicted;
+            bottom = CGRectMake(CGRectGetMinX(viewport), CGRectGetMaxY(viewport), viewport.size.width,
+                                CGRectGetMaxY(canvas.bounds) - CGRectGetMaxY(viewport));
+        } else {
+            NSValue *cached = objc_getAssociatedObject(owner, FQXDetailOwnerTrayRectKey);
+            CGRect cachedBottom = cached ? cached.CGRectValue : CGRectZero;
+            if (FQXShouldUseCachedSingleSeriesTrayHeight(cachedBottom.size.height, cachedBottom.size.width,
+                                                         CGRectGetMaxY(cachedBottom),
+                                                         CGRectGetWidth(canvas.bounds),
+                                                         CGRectGetMaxY(canvas.bounds))) {
+                bottom = CGRectMake(CGRectGetMinX(canvas.bounds),
+                                    CGRectGetMaxY(canvas.bounds) - cachedBottom.size.height,
+                                    CGRectGetWidth(canvas.bounds), cachedBottom.size.height);
+                viewport = canvas.bounds;
+                viewport.size.height -= bottom.size.height;
+            }
+        }
+    }
+
+    NSMutableSet *active = [NSMutableSet set];
+    BOOL alignedTray = bottom.size.height >= 44.0 && bottom.size.height <= 110.0 &&
+        FQXVideoBackdropSameCGRect(bottom, CGRectMake(CGRectGetMinX(viewport), CGRectGetMaxY(viewport),
+                                                      viewport.size.width, bottom.size.height), 0.75);
+    if (hud && tray && alignedTray) {
+        objc_setAssociatedObject(owner, FQXDetailOwnerTrayRectKey,
+                                 [NSValue valueWithCGRect:bottom], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL knownSeriesDetail = (hud != nil) || FQXVideoBackdropSingleList(owner) ||
+        (objc_getAssociatedObject(owner, FQXDetailOwnerTrayRectKey) != nil);
+    BOOL fills = knownSeriesDetail && (alignedTray || CGRectIsEmpty(bottom)) &&
+        [self fillPortraitInCanvas:canvas viewport:viewport full:canvas.bounds boundary:canvas active:active];
+    [self restorePortraitExcept:active];
+    if (fills) {
+        for (UIView *child in player.subviews) {
+            if (child.class != UIView.class || child.subviews.count < 4 ||
+                !FQXVideoBackdropSameCGRect(child.frame, viewport, 0.75)) continue;
+            if (corners) { corners = nil; break; }
+            corners = child;
+        }
+        [self updateCornerImages:corners.subviews frame:corners.bounds];
+        FQXAudioClearBackground(FQXObjGet(player, "playerViewMaskView"), YES);
+        FQXAudioClearBackground(FQXObjGet(canvas, "playerScaleBackgroundView"), YES);
+        FQXAudioSetHiddenTracked(FQXObjGet(canvas, "leftBottomCorRadiusImageView"), YES);
+        FQXAudioSetHiddenTracked(FQXObjGet(canvas, "rightBottomCorRadiusImageView"), YES);
+        if (self.detailTray != tray || !alignedTray) [self restoreDetailTray];
+        UIColor *paint = alignedTray ? tray.backgroundColor : nil;
+        if (paint && ![paint isEqual:UIColor.clearColor]) {
+            self.detailTray = tray;
+            self.detailTrayPaint = paint;
+            tray.backgroundColor = UIColor.clearColor;
+        }
+    } else {
+        FQXAudioSetHiddenTracked(FQXObjGet(canvas, "leftBottomCorRadiusImageView"), NO);
+        FQXAudioSetHiddenTracked(FQXObjGet(canvas, "rightBottomCorRadiusImageView"), NO);
+        [self restoreCornerImages];
+        [self restoreDetailTray];
+    }
+    self.refreshing = NO;
+}
+
+- (void)refreshFeed {
+    if (self.refreshing) return;
+    self.refreshing = YES;
+    [self updateFeed];
+    self.refreshing = NO;
+}
+@end
+
+static NSHashTable<FQXVideoBackdrop *> *FQXTrackedVideoBackdrops(void) {
+    static NSHashTable<FQXVideoBackdrop *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static FQXVideoBackdrop *FQXEnsureFeedVideoBackdrop(UIScrollView *scroll) {
+    Class feedCls = objc_lookUpClass("FQVCollectionView");
+    if (!feedCls || ![scroll isKindOfClass:feedCls] || ![scroll isKindOfClass:UICollectionView.class]) return nil;
+    UICollectionView *feed = (UICollectionView *)scroll;
+    FQXVideoBackdropLink *link = objc_getAssociatedObject(feed, FQXVideoBackdropLinkKey);
+    if (link.owner) return link.owner;
+    if (!FQXGlassEnabled() || !feed.window) return nil;
+
+    UIViewController *owner = FQXVideoBackdropOwner(feed);
+    if (!owner) return nil;
+    Class tbcCls = objc_lookUpClass("SSTabBarController");
+    Class tabBarCls = objc_lookUpClass("SSTabBar");
+    UIView *root = nil, *bar = nil;
+    for (UIResponder *resp = feed.nextResponder; resp; resp = resp.nextResponder) {
+        if (tbcCls && [resp isKindOfClass:tbcCls]) {
+            UIViewController *tbc = (UIViewController *)resp;
+            root = tbc.viewIfLoaded;
+            UIView *candBar = FQXObjGet(tbc, "customTabBar");
+            if (tabBarCls && [candBar isKindOfClass:tabBarCls]) bar = candBar;
+            break;
+        }
+    }
+    if (!root || !bar || !FQXVideoBackdropFeedGeometry(feed, owner, root, bar)) return nil;
+    FQXVideoBackdrop *backdrop = [FQXVideoBackdrop new];
+    backdrop.feed = feed;
+    backdrop.root = root;
+    backdrop.bar = bar;
+    backdrop.owner = owner;
+    FQXVideoBackdropLink *newLink = [FQXVideoBackdropLink new];
+    newLink.owner = backdrop;
+    /* Retain backdrop via feed's associated object so it lives precisely as long as feed */
+    static const char kStrongBackdropKey = 0;
+    objc_setAssociatedObject(feed, &kStrongBackdropKey, backdrop, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(feed, FQXVideoBackdropLinkKey, newLink, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [FQXTrackedVideoBackdrops() addObject:backdrop];
+    return backdrop;
+}
+
+static void FQXRefreshVideoBackdropForFeed(UIScrollView *feed) {
+    if (!NSThread.isMainThread || !feed) return;
+    FQXVideoBackdrop *backdrop = FQXEnsureFeedVideoBackdrop(feed);
+    if (!backdrop) return;
+    if (FQXGlassEnabled()) [backdrop refreshFeed];
+    else [backdrop restore];
+}
+
+static void FQXScheduleFeedLayoutRefresh(UIScrollView *feed) {
+    if (!NSThread.isMainThread || !feed.window || !FQXGlassEnabled() ||
+        objc_getAssociatedObject(feed, FQXFeedDeferredRefreshKey)) return;
+    objc_setAssociatedObject(feed, FQXFeedDeferredRefreshKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak UIScrollView *weakFeed = feed;
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+        UIScrollView *current = weakFeed;
+        if (!current) return;
+        objc_setAssociatedObject(current, FQXFeedDeferredRefreshKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (current.window) FQXRefreshVideoBackdropForFeed(current);
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+static UIScrollView *FQXVideoBackdropPlayerFeed(UIView *view) {
+    Class feedClass = objc_lookUpClass("FQVCollectionView");
+    for (UIView *node = view.superview; node; node = node.superview) {
+        if (feedClass && [node isKindOfClass:feedClass] && [node isKindOfClass:UICollectionView.class]) {
+            return (UIScrollView *)node;
+        }
+    }
+    return nil;
+}
+
+static void FQXRefreshVideoBackdropForPlayer(UIView *view) {
+    if (!NSThread.isMainThread || !view) return;
+    UIScrollView *feed = FQXVideoBackdropPlayerFeed(view);
+    UIView *canvas = FQXDetailVideoBackdropCanvas(view);
+    FQXVideoBackdrop *detail = canvas ? objc_getAssociatedObject(canvas, FQXDetailVideoBackdropKey) : nil;
+    FQXVideoBackdropLink *feedLink = feed ? objc_getAssociatedObject(feed, FQXVideoBackdropLinkKey) : nil;
+    if (feedLink.owner ||
+        (feed.window && feed.superview && CGRectGetMaxY(feed.frame) < CGRectGetMaxY(feed.superview.bounds) - 20.0)) {
+        [detail restore];
+        if (!FQXPlayerIsTransferring(view)) {
+            FQXRefreshVideoBackdropForFeed(feed);
+        }
+        FQXScheduleFeedLayoutRefresh(feed);
+        return;
+    }
+    if (!canvas) return;
+    if (!detail) {
+        BOOL hasDetailControls = NO;
+        for (UIView *child in canvas.subviews) {
+            if (FQXIsSeriesDetailControl(child)) { hasDetailControls = YES; break; }
+        }
+        UIViewController *owner = FQXVideoBackdropOwner(canvas);
+        if (!FQXGlassEnabled() ||
+            (!hasDetailControls && !FQXVideoBackdropSingleList(owner) &&
+             !objc_getAssociatedObject(owner, FQXDetailOwnerTrayRectKey))) return;
+        detail = [FQXVideoBackdrop new];
+        objc_setAssociatedObject(canvas, FQXDetailVideoBackdropKey, detail, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [FQXTrackedVideoBackdrops() addObject:detail];
+    }
+    [detail refreshDetail:canvas];
+}
+
+static void FQXVideoBackdropPrepareRendererTransfer(UIView *view) {
+    if (!NSThread.isMainThread || !view) return;
+    UIView *canvas = FQXDetailVideoBackdropCanvas(view);
+    FQXVideoBackdrop *detail = canvas ? objc_getAssociatedObject(canvas, FQXDetailVideoBackdropKey) : nil;
+    [detail prepareRendererTransfer:view];
+    UIScrollView *feed = FQXVideoBackdropPlayerFeed(view);
+    if (feed) {
+        FQXVideoBackdropLink *link = objc_getAssociatedObject(feed, FQXVideoBackdropLinkKey);
+        [link.owner prepareRendererTransfer:view];
+    }
+}
+
+static void FQXRefreshVideoBackdropInController(UIViewController *vc) {
+    if (![vc isKindOfClass:UIViewController.class] || !vc.isViewLoaded) return;
+    Class feedCls = objc_lookUpClass("FQVCollectionView");
+    Class cellCls = objc_lookUpClass("FQVShortVideoPlayerCellView");
+    for (UIView *sub in vc.view.subviews) {
+        if (feedCls && [sub isKindOfClass:feedCls] && [sub isKindOfClass:UIScrollView.class]) {
+            FQXRefreshVideoBackdropForFeed((UIScrollView *)sub);
+            for (UIView *cell in sub.subviews) {
+                if (![cell isKindOfClass:UICollectionViewCell.class]) continue;
+                for (UIView *cv in ((UICollectionViewCell *)cell).contentView.subviews) {
+                    if (cellCls && [cv isKindOfClass:cellCls]) FQXRefreshVideoBackdropForPlayer(cv);
+                }
+            }
+        }
+    }
+}
+
+static void FQXRefreshAllVideoBackdropsInWindows(void) {
+    if (!NSThread.isMainThread) return;
+    for (FQXVideoBackdrop *bd in FQXTrackedVideoBackdrops().allObjects) {
+        if (!FQXGlassEnabled()) {
+            [bd restore];
+        } else if (bd.feed) {
+            [bd refreshFeed];
+        }
+    }
+}
+
+static void (*OrigPlayerCanvasLayout)(id, SEL);
+static void HookPlayerCanvasLayout(UIView *self, SEL cmd) {
+    if (OrigPlayerCanvasLayout) OrigPlayerCanvasLayout(self, cmd);
+    if (self.window) FQXRefreshVideoBackdropForPlayer(self);
 }
 
 static void (*OrigPlayerCanvasRefresh)(id, SEL);
 static void HookPlayerCanvasRefresh(UIView *self, SEL cmd) {
-    OrigPlayerCanvasRefresh(self, cmd);
-    FQXUpdateSeriesRenderCanvas(self);
+    if (OrigPlayerCanvasRefresh) OrigPlayerCanvasRefresh(self, cmd);
+    if (self.window) FQXRefreshVideoBackdropForPlayer(self);
+}
+
+static void (*OrigPlayerWillMoveSuperview)(id, SEL, id);
+static void HookPlayerWillMoveSuperview(UIView *self, SEL cmd, UIView *newSuper) {
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXVideoBackdropPrepareRendererTransfer(self);
+    if (OrigPlayerWillMoveSuperview) OrigPlayerWillMoveSuperview(self, cmd, newSuper);
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void (*OrigPlayerWillMoveWindow)(id, SEL, id);
+static void HookPlayerWillMoveWindow(UIView *self, SEL cmd, UIWindow *newWin) {
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXVideoBackdropPrepareRendererTransfer(self);
+    if (OrigPlayerWillMoveWindow) OrigPlayerWillMoveWindow(self, cmd, newWin);
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void (*OrigTTPlayerLayout)(id, SEL);
+static void HookTTPlayerLayout(UIView *self, SEL cmd) {
+    if (OrigTTPlayerLayout) OrigTTPlayerLayout(self, cmd);
+    if (self.window) FQXRefreshVideoBackdropForPlayer(self);
+}
+
+static void (*OrigTTPlayerDidAddSubview)(id, SEL, id);
+static void HookTTPlayerDidAddSubview(UIView *self, SEL cmd, UIView *sub) {
+    if (OrigTTPlayerDidAddSubview) OrigTTPlayerDidAddSubview(self, cmd, sub);
+    Class metalCls = objc_lookUpClass("TTMetalView");
+    if (self.window && metalCls && [sub isKindOfClass:metalCls]) FQXRefreshVideoBackdropForPlayer(self);
+}
+
+static void (*OrigTTPlayerWillMoveSuperview)(id, SEL, id);
+static void HookTTPlayerWillMoveSuperview(UIView *self, SEL cmd, UIView *newSuper) {
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXVideoBackdropPrepareRendererTransfer(self);
+    if (OrigTTPlayerWillMoveSuperview) OrigTTPlayerWillMoveSuperview(self, cmd, newSuper);
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void (*OrigTTPlayerWillMoveWindow)(id, SEL, id);
+static void HookTTPlayerWillMoveWindow(UIView *self, SEL cmd, UIWindow *newWin) {
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXVideoBackdropPrepareRendererTransfer(self);
+    if (OrigTTPlayerWillMoveWindow) OrigTTPlayerWillMoveWindow(self, cmd, newWin);
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void (*OrigTTPlayerDidMoveWindow)(id, SEL);
+static void HookTTPlayerDidMoveWindow(UIView *self, SEL cmd) {
+    objc_setAssociatedObject(self, FQXPlayerTransferFlagKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (OrigTTPlayerDidMoveWindow) OrigTTPlayerDidMoveWindow(self, cmd);
+    if (self.window) {
+        FQXRefreshVideoBackdropForPlayer(self);
+        FQXScheduleFeedLayoutRefresh(FQXVideoBackdropPlayerFeed(self));
+    }
+}
+
+static void (*OrigTTMetalLayout)(id, SEL);
+static void HookTTMetalLayout(UIView *self, SEL cmd) {
+    if (OrigTTMetalLayout) OrigTTMetalLayout(self, cmd);
+    Class renderCls = objc_lookUpClass("TTPlayerView");
+    if (self.window && renderCls && [self.superview isKindOfClass:renderCls]) {
+        FQXRefreshVideoBackdropForPlayer(self.superview);
+    }
+}
+
+static void (*OrigTTMetalSetFrame)(id, SEL, CGRect);
+static void HookTTMetalSetFrame(UIView *self, SEL cmd, CGRect frame) {
+    CGRect prev = self.frame;
+    if (OrigTTMetalSetFrame) OrigTTMetalSetFrame(self, cmd, frame);
+    Class renderCls = objc_lookUpClass("TTPlayerView");
+    if (self.window && !CGRectEqualToRect(prev, self.frame) && renderCls && [self.superview isKindOfClass:renderCls]) {
+        FQXRefreshVideoBackdropForPlayer(self.superview);
+    }
+}
+
+static void (*OrigCellLayoutSubviews)(id, SEL);
+static void HookCellLayoutSubviews(UIView *cell, SEL cmd) {
+    if (OrigCellLayoutSubviews) OrigCellLayoutSubviews(cell, cmd);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
 }
 
 static void (*OrigCellLayoutVideoView)(id, SEL);
 static void HookCellLayoutVideoView(UIView *cell, SEL cmd) {
-    OrigCellLayoutVideoView(cell, cmd);
-    FQXUpdateSeriesRenderCanvas(FQXObjGet(cell, "vPlayer"));
+    if (OrigCellLayoutVideoView) OrigCellLayoutVideoView(cell, cmd);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
+}
+
+static void (*OrigCellRefreshCoverImageView)(id, SEL);
+static void HookCellRefreshCoverImageView(UIView *cell, SEL cmd) {
+    if (OrigCellRefreshCoverImageView) OrigCellRefreshCoverImageView(cell, cmd);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
+}
+
+static void (*OrigCellRefreshBgColor)(id, SEL);
+static void HookCellRefreshBgColor(UIView *cell, SEL cmd) {
+    if (OrigCellRefreshBgColor) OrigCellRefreshBgColor(cell, cmd);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
 }
 
 static void (*OrigCellRefreshPlayFrame)(id, SEL, CGRect);
 static void HookCellRefreshPlayFrame(UIView *cell, SEL cmd, CGRect frame) {
-    OrigCellRefreshPlayFrame(cell, cmd, frame);
-    FQXUpdateSeriesRenderCanvas(FQXObjGet(cell, "vPlayer"));
+    if (OrigCellRefreshPlayFrame) OrigCellRefreshPlayFrame(cell, cmd, frame);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
 }
 
-static void (*OrigCellUpdatePlayerSuperLayout)(id, SEL);
-static void HookCellUpdatePlayerSuperLayout(UIView *cell, SEL cmd) {
-    OrigCellUpdatePlayerSuperLayout(cell, cmd);
-    FQXUpdateSeriesRenderCanvas(FQXObjGet(cell, "vPlayer"));
+static void (*OrigCellVPlayerReadyToDisplay)(id, SEL, id);
+static void HookCellVPlayerReadyToDisplay(UIView *cell, SEL cmd, UIView *player) {
+    /* Commit full-screen renderer transform BEFORE native delegate hides coverImageView! */
+    if (NSThread.isMainThread && cell.window) {
+        Class mediaCls = objc_lookUpClass("FQVPlayer");
+        UIView *media = (mediaCls && [player isKindOfClass:mediaCls]) ? player : FQXObjGet(cell, "vPlayer");
+        FQXRefreshVideoBackdropForPlayer((mediaCls && [media isKindOfClass:mediaCls] && [media isDescendantOfView:cell]) ? media : cell);
+    }
+    if (OrigCellVPlayerReadyToDisplay) OrigCellVPlayerReadyToDisplay(cell, cmd, player);
 }
 
-static void (*OrigCellRefreshPlayerSuperSize)(id, SEL, CGSize);
-static void HookCellRefreshPlayerSuperSize(UIView *cell, SEL cmd, CGSize size) {
-    OrigCellRefreshPlayerSuperSize(cell, cmd, size);
-    FQXUpdateSeriesRenderCanvas(FQXObjGet(cell, "vPlayer"));
+static void (*OrigCellSetModel)(id, SEL, id);
+static void HookCellSetModel(UIView *cell, SEL cmd, id model) {
+    if (FQXObjGet(cell, "model") != model) FQXVideoBackdropPrepareRendererTransfer(cell);
+    if (OrigCellSetModel) OrigCellSetModel(cell, cmd, model);
+    if (cell.window) FQXRefreshVideoBackdropForPlayer(cell);
 }
 
-#pragma mark - TikTok-Style Two-Finger Spread/Pinch Pure Clean Screen
+static void (*OrigCellResetToRecycle)(id, SEL);
+static void HookCellResetToRecycle(UIView *cell, SEL cmd) {
+    FQXVideoBackdropPrepareRendererTransfer(cell);
+    if (OrigCellResetToRecycle) OrigCellResetToRecycle(cell, cmd);
+}
+
+static void (*OrigControlSetPlayerViewFrame)(id, SEL, CGRect);
+static void HookControlSetPlayerViewFrame(UIView *hud, SEL cmd, CGRect frame) {
+    if (OrigControlSetPlayerViewFrame) OrigControlSetPlayerViewFrame(hud, cmd, frame);
+    if (hud.window) FQXRefreshVideoBackdropForPlayer(hud);
+}
+
+static void (*OrigControlHandleOutterClip)(id, SEL, BOOL);
+static void HookControlHandleOutterClip(UIView *hud, SEL cmd, BOOL clip) {
+    if (OrigControlHandleOutterClip) OrigControlHandleOutterClip(hud, cmd, clip);
+    if (clip && hud.window) FQXRefreshVideoBackdropForPlayer(hud);
+}
+
+static void (*OrigFQVCollectionLayout)(id, SEL);
+static void HookFQVCollectionLayout(UIScrollView *feed, SEL cmd) {
+    if (OrigFQVCollectionLayout) OrigFQVCollectionLayout(feed, cmd);
+    if (feed.window) FQXRefreshVideoBackdropForFeed(feed);
+}
+
+static void (*OrigFQVCollectionDidMoveWindow)(id, SEL);
+static void HookFQVCollectionDidMoveWindow(UIScrollView *feed, SEL cmd) {
+    if (OrigFQVCollectionDidMoveWindow) OrigFQVCollectionDidMoveWindow(feed, cmd);
+    if (feed.window) {
+        FQXRefreshVideoBackdropForFeed(feed);
+        FQXScheduleFeedLayoutRefresh(feed);
+    }
+}
+
+static void FQXHandleFeedScrollUpdate(id scroll) {
+    Class feedCls = objc_lookUpClass("FQVCollectionView");
+    if (feedCls && [scroll isKindOfClass:feedCls] && [scroll isKindOfClass:UIScrollView.class]) {
+        /* Synchronous 1:1 finger-tracking refresh during vertical swipes, plus post-unwind settle check */
+        FQXRefreshVideoBackdropForFeed((UIScrollView *)scroll);
+        FQXScheduleFeedLayoutRefresh((UIScrollView *)scroll);
+    }
+}
+
+static void (*OrigScrollCompDidScroll)(id, SEL, id);
+static void HookScrollCompDidScroll(id self, SEL cmd, id scrollView) {
+    if (OrigScrollCompDidScroll) OrigScrollCompDidScroll(self, cmd, scrollView);
+    FQXHandleFeedScrollUpdate(scrollView);
+}
+
+static void (*OrigScrollCompDidEndDecel)(id, SEL, id);
+static void HookScrollCompDidEndDecel(id self, SEL cmd, id scrollView) {
+    if (OrigScrollCompDidEndDecel) OrigScrollCompDidEndDecel(self, cmd, scrollView);
+    FQXHandleFeedScrollUpdate(scrollView);
+}
+
+static void (*OrigScrollCompDidEndAnim)(id, SEL, id);
+static void HookScrollCompDidEndAnim(id self, SEL cmd, id scrollView) {
+    if (OrigScrollCompDidEndAnim) OrigScrollCompDidEndAnim(self, cmd, scrollView);
+    FQXHandleFeedScrollUpdate(scrollView);
+}
+
+static void (*OrigScrollCompDidEndDrag)(id, SEL, id, BOOL);
+static void HookScrollCompDidEndDrag(id self, SEL cmd, id scrollView, BOOL decelerate) {
+    if (OrigScrollCompDidEndDrag) OrigScrollCompDidEndDrag(self, cmd, scrollView, decelerate);
+    if (!decelerate) FQXHandleFeedScrollUpdate(scrollView);
+}
+
+#pragma mark - TikTok-Style Two-Finger Spread/Pinch Pure Clean Screen (Session-Persistent Across Swipes)
 
 static BOOL FQXPinchPureCleanEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:PinchPureCleanPrefKey];
@@ -7532,30 +8551,119 @@ static NSHashTable<UIView *> *FQXPinchCleanControls(void) {
     return table;
 }
 
+static NSHashTable<id> *FQXPinchSessionOwners(void) {
+    static NSHashTable<id> *table;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        table = [NSHashTable weakObjectsHashTable];
+    });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXPinchMaskedViews(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        table = [NSHashTable weakObjectsHashTable];
+    });
+    return table;
+}
+
 @interface FQXPinchCleanViewState : NSObject {
 @public
     CALayer *_mask;
     CALayer *_originalMask;
     BOOL _interactive;
 }
-
 @end
 
 @implementation FQXPinchCleanViewState
 @end
 
-static void FQXHideViewForPinchClean(UIView *view, NSMapTable<UIView *, FQXPinchCleanViewState *> *views) {
-    if (![view isKindOfClass:UIView.class] || !view.window || view.hidden ||
-        view.alpha == 0.0 || [views objectForKey:view]) return;
-    FQXPinchCleanViewState *state = [FQXPinchCleanViewState new];
+static void FQXMaskViewForPinchClean(UIView *view) {
+    if (![view isKindOfClass:UIView.class] || view.hidden || view.alpha <= 0.001) return;
+    FQXPinchCleanViewState *state = objc_getAssociatedObject(view, FQXPinchViewCleanStateKey);
+    if (state) {
+        if (view.layer.mask != state->_mask) {
+            state->_originalMask = view.layer.mask;
+            view.layer.mask = state->_mask;
+        }
+        view.userInteractionEnabled = NO;
+        return;
+    }
+    state = [FQXPinchCleanViewState new];
     state->_originalMask = view.layer.mask;
     state->_mask = [CALayer layer];
     state->_mask.frame = CGRectZero;
     state->_interactive = view.userInteractionEnabled;
-    [views setObject:state forKey:view];
-    // The Dock layout uses hidden and alpha to decide whether to tear down the renderer.
+    objc_setAssociatedObject(view, FQXPinchViewCleanStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [FQXPinchMaskedViews() addObject:view];
     view.layer.mask = state->_mask;
     view.userInteractionEnabled = NO;
+}
+
+static void FQXUnmaskViewForPinchClean(UIView *view) {
+    if (![view isKindOfClass:UIView.class]) return;
+    FQXPinchCleanViewState *state = objc_getAssociatedObject(view, FQXPinchViewCleanStateKey);
+    if (!state) return;
+    objc_setAssociatedObject(view, FQXPinchViewCleanStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [FQXPinchMaskedViews() removeObject:view];
+    if (view.layer.mask == state->_mask) view.layer.mask = state->_originalMask;
+    if (![objc_getAssociatedObject(view, FQXDockHiddenByCommentKey) boolValue]) {
+        view.userInteractionEnabled = state->_interactive;
+    }
+}
+
+static id FQXPinchSessionOwnerForControl(UIView *control) {
+    if (![control isKindOfClass:UIView.class]) return nil;
+    Class seriesFeedCls = objc_lookUpClass("SSVideoSeriesFeedViewController");
+    Class listVCCls = objc_lookUpClass("FQVShortVideoListViewController");
+    UIViewController *nearestListVC = nil;
+    for (UIResponder *resp = control.nextResponder; resp; resp = resp.nextResponder) {
+        if (seriesFeedCls && [resp isKindOfClass:seriesFeedCls]) return resp;
+        if (!nearestListVC && listVCCls && [resp isKindOfClass:listVCCls]) {
+            nearestListVC = (UIViewController *)resp;
+        }
+    }
+    if (nearestListVC) {
+        for (UIViewController *p = nearestListVC.parentViewController; p; p = p.parentViewController) {
+            if (seriesFeedCls && [p isKindOfClass:seriesFeedCls]) return p;
+        }
+        return nearestListVC;
+    }
+    id hostContext = FQXObjGet(control, "hostContext");
+    id listContext = FQXObjGet(control, "listVCContext") ?: FQXObjGet(hostContext, "listVCContext");
+    if (listContext) {
+        UIViewController *vc = FQXObjGet(listContext, "viewController") ?: FQXObjGet(listContext, "listVC");
+        if ([vc isKindOfClass:UIViewController.class]) {
+            for (UIViewController *p = vc; p; p = p.parentViewController) {
+                if (seriesFeedCls && [p isKindOfClass:seriesFeedCls]) return p;
+            }
+            return vc;
+        }
+        return listContext;
+    }
+    return hostContext;
+}
+
+static BOOL FQXIsFeedPinchPureCleanActive(UIView *control) {
+    if (!FQXPinchPureCleanEnabled()) return NO;
+    id owner = FQXPinchSessionOwnerForControl(control);
+    return owner && [objc_getAssociatedObject(owner, FQXPinchPureCleanActiveKey) boolValue];
+}
+
+static BOOL FQXViewTreeContainsMediaSurface(UIView *root, NSInteger depth) {
+    if (![root isKindOfClass:UIView.class] || depth > 5) return NO;
+    Class p1 = objc_lookUpClass("FQVPlayer");
+    Class p2 = objc_lookUpClass("TTPlayerView");
+    Class p3 = objc_lookUpClass("TTMetalView");
+    if ((p1 && [root isKindOfClass:p1]) ||
+        (p2 && [root isKindOfClass:p2]) ||
+        (p3 && [root isKindOfClass:p3])) return YES;
+    for (UIView *sub in root.subviews) {
+        if (FQXViewTreeContainsMediaSurface(sub, depth + 1)) return YES;
+    }
+    return NO;
 }
 
 static UIView *FQXFindDramaDockForControl(UIView *control) {
@@ -7580,77 +8688,183 @@ static UIView *FQXFindDramaDockForControl(UIView *control) {
     return nil;
 }
 
-static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
+static void FQXApplyPinchPureCleanSharedChrome(UIView *control, BOOL enterClean) {
     if (![control isKindOfClass:UIView.class]) return;
-
-    if (enterClean) {
-        objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        NSMapTable<UIView *, FQXPinchCleanViewState *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
-        if (!hiddenSet) {
-            hiddenSet = [NSMapTable weakToStrongObjectsMapTable];
-            objc_setAssociatedObject(control, FQXPinchHiddenViewsKey, hiddenSet, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    id hostContext = FQXObjGet(control, "hostContext");
+    id context = FQXObjGet(control, "listVCContext") ?: FQXObjGet(hostContext, "listVCContext");
+    id navBarComp = context ? FQXObjGet(context, "navBarComponent") : nil;
+    UIView *navBar = navBarComp ? FQXObjGet(navBarComp, "navBar") : nil;
+    UIView *tabHeader = FQXObjGet(hostContext, "currentTabHeaderView");
+    UIView *seriesHeader = nil;
+    Class seriesFeedCls = objc_lookUpClass("SSVideoSeriesFeedViewController");
+    for (UIResponder *resp = control.nextResponder; resp; resp = resp.nextResponder) {
+        if (seriesFeedCls && [resp isKindOfClass:seriesFeedCls]) {
+            seriesHeader = FQXObjGet(resp, "headerView");
+            break;
         }
-
-        Class outerCls = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedControlView");
-        if (outerCls && [control isKindOfClass:outerCls]) {
-            // Use mounted ivars so clean-screen entry does not create controls through lazy getters.
-            const char *outerIvars[] = {
-                "_aboveProgressView", "_progressView", "_baseInfoView", "_bookCardView",
-                "_progressFloatView", "_playBtn", "_topGradientView", "_bottomGradientView"
-            };
-            for (size_t i = 0; i < sizeof(outerIvars) / sizeof(*outerIvars); ++i) {
-                FQXHideViewForPinchClean(FQXRawIvarObj(control, outerIvars[i]), hiddenSet);
-            }
-        } else {
-            const char *vPlayerKeys[] = {
-                "baseInfoView", "topGradientView", "bottomGradientView",
-                "playBtn", "muteBtnView", "fullscreenBtn",
-                "progressContainer", "progressFloatView", "bottomView",
-                "singleSeriesBottomView", "insertAboveProgressView",
-                "insertBelowVideoInfoContainerView", "insertAboveTopControlView",
-                "fastPlayTipView", "bottomFastPlayTipView",
-                "resolutionTipsView", "playRateTipsView",
-                "cleanScreenModeRightInteractionView", "cleanScreenModeRightInteractionSubView",
-                "cancelCleanScreenView"
-            };
-            for (size_t i = 0; i < sizeof(vPlayerKeys) / sizeof(vPlayerKeys[0]); ++i) {
-                FQXHideViewForPinchClean(FQXObjGet(control, vPlayerKeys[i]), hiddenSet);
-            }
+    }
+    UIView *dock = FQXFindDramaDockForControl(control);
+    NSMutableArray<UIView *> *sharedViews = [NSMutableArray arrayWithCapacity:6];
+    if ([navBar isKindOfClass:UIView.class]) [sharedViews addObject:navBar];
+    if ([tabHeader isKindOfClass:UIView.class]) [sharedViews addObject:tabHeader];
+    if ([seriesHeader isKindOfClass:UIView.class]) [sharedViews addObject:seriesHeader];
+    if ([dock isKindOfClass:UIView.class]) {
+        [sharedViews addObject:dock];
+        for (UIView *sib in dock.superview.subviews) {
+            if ([sib isKindOfClass:FQXDetachedDockButtonView.class]) [sharedViews addObject:sib];
         }
+    }
+    for (UIView *v in sharedViews) {
+        if (enterClean) FQXMaskViewForPinchClean(v);
+        else FQXUnmaskViewForPinchClean(v);
+    }
+}
 
-        id hostContext = FQXObjGet(control, "hostContext");
-        id context = FQXObjGet(control, "listVCContext") ?: FQXObjGet(hostContext, "listVCContext");
-        id navBarComp = context ? FQXObjGet(context, "navBarComponent") : nil;
-        FQXHideViewForPinchClean(navBarComp ? FQXObjGet(navBarComp, "navBar") : nil, hiddenSet);
-        FQXHideViewForPinchClean(FQXObjGet(hostContext, "currentTabHeaderView"), hiddenSet);
+static void FQXApplyPinchPureCleanToCellControl(UIView *control, BOOL enterClean) {
+    if (![control isKindOfClass:UIView.class]) return;
+    NSMutableSet<UIView *> *targets = [NSMutableSet setWithCapacity:24];
+    Class outerCls = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedControlView");
+    Class outerContentCls = objc_lookUpClass("SSShortVideoOutterMultiGenreContentView");
+    Class cellCls = objc_lookUpClass("FQVShortVideoPlayerCellView");
 
-        Class seriesFeedCls = objc_lookUpClass("SSVideoSeriesFeedViewController");
-        for (UIResponder *resp = control.nextResponder; resp; resp = resp.nextResponder) {
-            if (seriesFeedCls && [resp isKindOfClass:seriesFeedCls]) {
-                FQXHideViewForPinchClean(FQXObjGet(resp, "headerView"), hiddenSet);
+    if (outerCls && [control isKindOfClass:outerCls]) {
+        /* Read raw ivars ONLY so cold-launch / prebind never triggers lazy control construction */
+        const char *outerIvars[] = {
+            "_aboveProgressView", "_progressView", "_baseInfoView", "_bookCardView",
+            "_progressFloatView", "_playBtn", "_topGradientView", "_bottomGradientView",
+            "_errorView", "_loadingView"
+        };
+        for (size_t i = 0; i < sizeof(outerIvars) / sizeof(*outerIvars); ++i) {
+            UIView *v = FQXRawIvarObj(control, outerIvars[i]);
+            if ([v isKindOfClass:UIView.class]) [targets addObject:v];
+        }
+        for (UIView *sub in control.subviews) {
+            if (!FQXViewTreeContainsMediaSurface(sub, 0)) [targets addObject:sub];
+        }
+        for (UIView *anc = control.superview; anc; anc = anc.superview) {
+            if (outerContentCls && [anc isKindOfClass:outerContentCls]) {
+                UIImageView *cover = FQXVideoBackdropCover(anc);
+                for (UIView *sib in anc.subviews) {
+                    if (sib == control || [control isDescendantOfView:sib] || sib == cover ||
+                        (cover && [cover isDescendantOfView:sib]) ||
+                        FQXViewTreeContainsMediaSurface(sib, 0)) continue;
+                    [targets addObject:sib];
+                }
                 break;
             }
         }
-        FQXHideViewForPinchClean(FQXFindDramaDockForControl(control), hiddenSet);
     } else {
-        objc_setAssociatedObject(control, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        NSMapTable<UIView *, FQXPinchCleanViewState *> *hiddenSet = objc_getAssociatedObject(control, FQXPinchHiddenViewsKey);
-        objc_setAssociatedObject(control, FQXPinchHiddenViewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        for (UIView *view in hiddenSet.keyEnumerator.allObjects) {
-            FQXPinchCleanViewState *state = [hiddenSet objectForKey:view];
-            if (view.layer.mask == state->_mask) view.layer.mask = state->_originalMask;
-            if (![objc_getAssociatedObject(view, FQXDockHiddenByCommentKey) boolValue]) {
-                view.userInteractionEnabled = state->_interactive;
+        const char *vPlayerIvars[] = {
+            "_baseInfoView", "_topGradientView", "_bottomGradientView",
+            "_playBtn", "_muteBtnView", "_fullscreenBtn",
+            "_progressContainer", "_progressFloatView", "_bottomView",
+            "_singleSeriesBottomView", "_episodeNewInfoView",
+            "_insertAboveProgressView", "_insertBelowVideoInfoContainerView",
+            "_insertAboveTopControlView", "_fastPlayTipView", "_bottomFastPlayTipView",
+            "_resolutionTipsView", "_playRateTipsView",
+            "_cleanScreenModeRightInteractionView", "_cleanScreenModeRightInteractionSubView",
+            "_cancelCleanScreenView", "_playRateLabel", "_completionPageView"
+        };
+        for (size_t i = 0; i < sizeof(vPlayerIvars) / sizeof(vPlayerIvars[0]); ++i) {
+            UIView *v = FQXRawIvarObj(control, vPlayerIvars[i]);
+            if ([v isKindOfClass:UIView.class]) [targets addObject:v];
+        }
+        for (UIView *sub in control.subviews) {
+            if (!FQXViewTreeContainsMediaSurface(sub, 0)) [targets addObject:sub];
+        }
+        for (UIView *anc = control.superview; anc; anc = anc.superview) {
+            if (cellCls && [anc isKindOfClass:cellCls]) {
+                UIView *dec = FQXRawIvarObj(anc, "_decorationContentView") ?: FQXObjGet(anc, "decorationContentView");
+                if ([dec isKindOfClass:UIView.class]) {
+                    if (dec != control && ![control isDescendantOfView:dec]) {
+                        [targets addObject:dec];
+                    } else {
+                        for (UIView *sub in dec.subviews) {
+                            if (sub != control && ![control isDescendantOfView:sub] &&
+                                !FQXViewTreeContainsMediaSurface(sub, 0)) {
+                                [targets addObject:sub];
+                            }
+                        }
+                    }
+                }
+                break;
             }
         }
+    }
+
+    for (UIView *v in targets) {
+        if (enterClean) FQXMaskViewForPinchClean(v);
+        else FQXUnmaskViewForPinchClean(v);
+    }
+}
+
+static void FQXSyncCellControlWithPinchSession(UIView *control) {
+    if (![control isKindOfClass:UIView.class]) return;
+    UIWindow *win = control.window;
+    BOOL portraitWin = !win || (win.bounds.size.height > win.bounds.size.width);
+    id player = FQXObjGet(control, "vPlayer");
+    BOOL isFull = player && FQXBoolGet(player, "isFullScreen", NO);
+    BOOL sessionClean = FQXIsFeedPinchPureCleanActive(control);
+    if (FQXShouldApplyPinchCleanToIncomingCell(FQXPinchPureCleanEnabled() ? 1 : 0,
+                                               sessionClean ? 1 : 0,
+                                               portraitWin ? 1 : 0,
+                                               isFull ? 1 : 0)) {
+        FQXApplyPinchPureCleanToCellControl(control, YES);
+        if (win) FQXApplyPinchPureCleanSharedChrome(control, YES);
+    }
+}
+
+static void FQXHandleCellControlDepart(UIView *control, BOOL feedDisappearing) {
+    if (![control isKindOfClass:UIView.class]) return;
+    FQXApplyPinchPureCleanToCellControl(control, NO);
+    BOOL sessionClean = FQXIsFeedPinchPureCleanActive(control);
+    if (!FQXShouldKeepSharedChromeMaskedOnCellDepart(FQXPinchPureCleanEnabled() ? 1 : 0,
+                                                     sessionClean ? 1 : 0,
+                                                     feedDisappearing ? 1 : 0)) {
+        FQXApplyPinchPureCleanSharedChrome(control, NO);
+    }
+}
+
+static void FQXApplyPinchPureCleanState(UIView *control, BOOL enterClean) {
+    if (![control isKindOfClass:UIView.class]) return;
+    id owner = FQXPinchSessionOwnerForControl(control);
+    if (enterClean) {
+        if (owner) {
+            objc_setAssociatedObject(owner, FQXPinchPureCleanActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [FQXPinchSessionOwners() addObject:owner];
+        }
+        FQXApplyPinchPureCleanSharedChrome(control, YES);
+        FQXApplyPinchPureCleanToCellControl(control, YES);
+        for (UIView *other in FQXPinchCleanControls().allObjects) {
+            if (other != control && other.window && FQXPinchSessionOwnerForControl(other) == owner) {
+                FQXSyncCellControlWithPinchSession(other);
+            }
+        }
+    } else {
+        if (owner) {
+            objc_setAssociatedObject(owner, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [FQXPinchSessionOwners() removeObject:owner];
+        }
+        for (UIView *other in FQXPinchCleanControls().allObjects) {
+            if (!owner || FQXPinchSessionOwnerForControl(other) == owner) {
+                FQXApplyPinchPureCleanToCellControl(other, NO);
+            }
+        }
+        FQXApplyPinchPureCleanSharedChrome(control, NO);
     }
 }
 
 static void FQXResetPinchCleanStates(void) {
+    for (id owner in FQXPinchSessionOwners().allObjects) {
+        objc_setAssociatedObject(owner, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [FQXPinchSessionOwners() removeAllObjects];
     for (UIView *control in FQXPinchCleanControls().allObjects) {
-        if ([objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) {
-            FQXApplyPinchPureCleanState(control, NO);
-        }
+        FQXApplyPinchPureCleanToCellControl(control, NO);
+        FQXApplyPinchPureCleanSharedChrome(control, NO);
+    }
+    for (UIView *v in FQXPinchMaskedViews().allObjects) {
+        FQXUnmaskViewForPinchClean(v);
     }
 }
 
@@ -7663,7 +8877,8 @@ static void FQXRefreshAllPinchCleanStates(void) {
 @implementation FQXDramaPinchGestureRecognizer
 - (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)other {
     if ([other isKindOfClass:UIPanGestureRecognizer.class] ||
-        [other isKindOfClass:UILongPressGestureRecognizer.class]) return NO;
+        [other isKindOfClass:UILongPressGestureRecognizer.class] ||
+        [other isKindOfClass:UIPinchGestureRecognizer.class]) return NO;
     return [super canBePreventedByGestureRecognizer:other];
 }
 @end
@@ -7733,21 +8948,19 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         [self prepareHaptic];
     }
     if (pinch.state != UIGestureRecognizerStateEnded || !control.window || !FQXPinchPureCleanEnabled()) return;
-    BOOL clean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
-    BOOL spread = pinch.scale >= 1.10 || (pinch.scale > 1.03 && pinch.velocity > 0.35);
-    BOOL shrink = pinch.scale <= 0.90 || (pinch.scale < 0.97 && pinch.velocity < -0.35);
-    if ((!clean && spread) || (clean && shrink)) {
+    BOOL clean = FQXIsFeedPinchPureCleanActive(control);
+    int transition = FQXEvaluatePinchCleanTransition(clean ? 1 : 0, pinch.scale, pinch.velocity);
+    if (transition != 0) {
+        BOOL targetClean = (transition > 0);
         __weak UIView *weakControl = control;
         UIWindow *window = control.window;
-        id model = FQXObjGet(control, "contentModel");
         dispatch_async(dispatch_get_main_queue(), ^{
             UIView *current = weakControl;
-            if (current.window != window || !FQXPinchPureCleanEnabled() ||
-                FQXObjGet(current, "contentModel") != model ||
-                [objc_getAssociatedObject(current, FQXPinchPureCleanActiveKey) boolValue] != clean) return;
+            if (!current || current.window != window || !FQXPinchPureCleanEnabled() ||
+                FQXIsFeedPinchPureCleanActive(current) == targetClean) return;
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
-            FQXApplyPinchPureCleanState(current, !clean);
+            FQXApplyPinchPureCleanState(current, targetClean);
             [CATransaction commit];
             [self triggerHaptic];
         });
@@ -9022,6 +10235,7 @@ static void (*OrigVPlayerLayoutForSeriesPill)(id, SEL);
 static void HookVPlayerLayoutForSeriesPill(UIView *self, SEL _cmd) {
     if (OrigVPlayerLayoutForSeriesPill) OrigVPlayerLayoutForSeriesPill(self, _cmd);
     FQXSyncDramaSeriesPillForControl(self);
+    FQXSyncCellControlWithPinchSession(self);
 }
 
 static void (*OrigVPlayerWillDisplay)(id, SEL);
@@ -9030,24 +10244,38 @@ static void HookVPlayerWillDisplay(UIView *self, SEL _cmd) {
     FQXAttachDramaPinchIfNeeded(self);
     FQXFeatherDramaBottomGradientView(self);
     FQXSyncDramaSeriesPillForControl(self);
+    FQXSyncCellControlWithPinchSession(self);
 }
 
 static void (*OrigVPlayerWillEndDisplay)(id, SEL);
 static void HookVPlayerWillEndDisplay(UIView *self, SEL _cmd) {
-    if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(self, NO);
-    }
+    FQXHandleCellControlDepart(self, NO);
     FQXResetDramaInfoOverlayStateForControl(self);
     if (OrigVPlayerWillEndDisplay) OrigVPlayerWillEndDisplay(self, _cmd);
+}
+
+static void (*OrigVPlayerResetToRecycle)(id, SEL);
+static void HookVPlayerResetToRecycle(UIView *self, SEL _cmd) {
+    FQXHandleCellControlDepart(self, NO);
+    if (OrigVPlayerResetToRecycle) OrigVPlayerResetToRecycle(self, _cmd);
 }
 
 static void (*OrigVPlayerUpdateControlState)(id, SEL);
 static void HookVPlayerUpdateControlState(UIView *self, SEL _cmd) {
     if (OrigVPlayerUpdateControlState) OrigVPlayerUpdateControlState(self, _cmd);
-    if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(self, YES);
-    }
     FQXSyncDramaSeriesPillForControl(self);
+    FQXSyncCellControlWithPinchSession(self);
+}
+
+static UIView *(*OrigVPlayerHitTest)(id, SEL, CGPoint, UIEvent *);
+static UIView *HookVPlayerHitTest(UIView *self, SEL cmd, CGPoint point, UIEvent *event) {
+    UIView *hit = OrigVPlayerHitTest ? OrigVPlayerHitTest(self, cmd, point, event) : nil;
+    if (!hit && FQXIsFeedPinchPureCleanActive(self) &&
+        !self.hidden && self.alpha > 0.01 && self.userInteractionEnabled &&
+        [self pointInside:point withEvent:event]) {
+        return self;
+    }
+    return hit;
 }
 
 static BOOL FQXDoubleTapCommentEnabled(void) {
@@ -9146,13 +10374,17 @@ static void HookOuterControlLayout(UIView *self, SEL _cmd) {
     FQXAttachDramaPinchIfNeeded(self);
     FQXSyncOuterDoubleTapComment(self);
     FQXSyncDramaSeriesPillForControl(self);
+    FQXSyncCellControlWithPinchSession(self);
 }
 
 static void (*OrigOuterDidMoveToWindow)(id, SEL);
 static void HookOuterDidMoveToWindow(UIView *control, SEL cmd) {
-    OrigOuterDidMoveToWindow(control, cmd);
-    if (!control.window && [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) {
-        FQXApplyPinchPureCleanState(control, NO);
+    if (OrigOuterDidMoveToWindow) OrigOuterDidMoveToWindow(control, cmd);
+    if (!control.window) {
+        FQXHandleCellControlDepart(control, NO);
+    } else {
+        FQXAttachDramaPinchIfNeeded(control);
+        FQXSyncCellControlWithPinchSession(control);
     }
 }
 
@@ -9160,25 +10392,45 @@ static void (*OrigOuterBindContent)(id, SEL, id);
 static void HookOuterBindContent(UIView *self, SEL cmd, id model) {
     if (FQXObjGet(self, "contentModel") != model) {
         FQXResetDramaInfoOverlayStateForControl(self);
-        if ([objc_getAssociatedObject(self, FQXPinchPureCleanActiveKey) boolValue]) {
-            FQXApplyPinchPureCleanState(self, NO);
-        }
+        FQXApplyPinchPureCleanToCellControl(self, NO);
     }
-    OrigOuterBindContent(self, cmd, model);
+    if (OrigOuterBindContent) OrigOuterBindContent(self, cmd, model);
+    FQXAttachDramaPinchIfNeeded(self);
     FQXSyncDramaSeriesPillForControl(self);
+    FQXSyncCellControlWithPinchSession(self);
 }
 
-static BOOL FQXPinchOverOuterDramaControl(id component, UIGestureRecognizer *gesture) {
+static void (*OrigOuterResetToRecycle)(id, SEL);
+static void HookOuterResetToRecycle(UIView *self, SEL cmd) {
+    FQXHandleCellControlDepart(self, NO);
+    if (OrigOuterResetToRecycle) OrigOuterResetToRecycle(self, cmd);
+}
+
+static UIView *(*OrigOuterHitTest)(id, SEL, CGPoint, UIEvent *);
+static UIView *HookOuterHitTest(UIView *self, SEL cmd, CGPoint point, UIEvent *event) {
+    UIView *hit = OrigOuterHitTest ? OrigOuterHitTest(self, cmd, point, event) : nil;
+    if (!hit && FQXIsFeedPinchPureCleanActive(self) &&
+        !self.hidden && self.alpha > 0.01 && self.userInteractionEnabled &&
+        [self pointInside:point withEvent:event]) {
+        return self;
+    }
+    return hit;
+}
+
+static BOOL FQXPinchOverDramaControl(id component, UIGestureRecognizer *gesture) {
     UIWindow *window = gesture.view.window;
     if (!window || !FQXPinchPureCleanEnabled() ||
         CGRectGetWidth(window.bounds) >= CGRectGetHeight(window.bounds)) return NO;
     id context = FQXObjGet(component, "listVCContext");
-    if (!context) return NO;
     Class outerClass = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedControlView");
+    Class vPlayerClass = objc_lookUpClass("FQVShortVideoVPlayerControlView");
     for (UIView *control in FQXPinchCleanControls().allObjects) {
-        if (control.window != window || control.hidden || ![control isKindOfClass:outerClass] ||
-            !CGRectContainsPoint(control.bounds, [gesture locationInView:control])) continue;
-        if (FQXObjGet(FQXObjGet(control, "hostContext"), "listVCContext") == context) return YES;
+        if (control.window != window || control.hidden) continue;
+        BOOL isDramaCtrl = (outerClass && [control isKindOfClass:outerClass]) ||
+                           (vPlayerClass && [control isKindOfClass:vPlayerClass]);
+        if (!isDramaCtrl || !CGRectContainsPoint(control.bounds, [gesture locationInView:control])) continue;
+        id ctrlCtx = FQXObjGet(control, "listVCContext") ?: FQXObjGet(FQXObjGet(control, "hostContext"), "listVCContext");
+        if (!context || !ctrlCtx || ctrlCtx == context) return YES;
     }
     return NO;
 }
@@ -9186,9 +10438,29 @@ static BOOL FQXPinchOverOuterDramaControl(id component, UIGestureRecognizer *ges
 static BOOL (*OrigGestureCompShouldBegin)(id, SEL, id);
 static BOOL HookGestureCompShouldBegin(id self, SEL _cmd, UIGestureRecognizer *gesture) {
     if ([gesture isKindOfClass:UIPinchGestureRecognizer.class] &&
-        (FQXPinchOverOuterDramaControl(self, gesture) || FQXDramaPinchConflicts(gesture))) return NO;
+        (FQXPinchOverDramaControl(self, gesture) || FQXDramaPinchConflicts(gesture))) return NO;
     if ([gesture isKindOfClass:UILongPressGestureRecognizer.class] && FQXDramaPinchConflicts(gesture)) return NO;
     return OrigGestureCompShouldBegin ? OrigGestureCompShouldBegin(self, _cmd, gesture) : YES;
+}
+
+static void (*OrigGestureCompPinch)(id, SEL, id);
+static void HookGestureCompPinch(id self, SEL cmd, UIPinchGestureRecognizer *gesture) {
+    UIWindow *win = gesture.view.window;
+    if (FQXPinchPureCleanEnabled() && win && CGRectGetHeight(win.bounds) > CGRectGetWidth(win.bounds)) {
+        return;
+    }
+    if (OrigGestureCompPinch) OrigGestureCompPinch(self, cmd, gesture);
+}
+
+static void (*OrigSingleSeriesHandlePinch)(id, SEL, id);
+static void HookSingleSeriesHandlePinch(UIView *self, SEL cmd, UIPinchGestureRecognizer *gesture) {
+    UIWindow *win = self.window ?: gesture.view.window;
+    id player = FQXObjGet(self, "vPlayer");
+    BOOL isFull = player && FQXBoolGet(player, "isFullScreen", NO);
+    if (FQXPinchPureCleanEnabled() && !isFull && win && CGRectGetHeight(win.bounds) > CGRectGetWidth(win.bounds)) {
+        return;
+    }
+    if (OrigSingleSeriesHandlePinch) OrigSingleSeriesHandlePinch(self, cmd, gesture);
 }
 
 static BOOL (*OrigInnerPinchSeekShouldBegin)(id, SEL, id);
@@ -9209,19 +10481,21 @@ static BOOL HookDramaShouldPauseInBackground(id component, SEL cmd) {
     if (!FQXPinchPureCleanEnabled() || FQXBoolGet(component, "userInitiatedBackgroundPlayback", NO)) return NO;
     id context = FQXObjGet(component, "listVCContext");
     if (!context) return NO;
-    Class outerClass = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedControlView");
     for (UIView *control in FQXPinchCleanControls().allObjects) {
-        if (!control.window || ![control isKindOfClass:outerClass] ||
-            ![objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) continue;
-        if (FQXObjGet(FQXObjGet(control, "hostContext"), "listVCContext") == context) return YES;
+        if (!control.window || !FQXIsFeedPinchPureCleanActive(control)) continue;
+        id ctrlCtx = FQXObjGet(control, "listVCContext") ?: FQXObjGet(FQXObjGet(control, "hostContext"), "listVCContext");
+        if (ctrlCtx == context) return YES;
     }
     return NO;
 }
 
 static void FQXExitPinchCleanInViewController(UIViewController *vc) {
     if (!vc.isViewLoaded) return;
+    if ([objc_getAssociatedObject(vc, FQXPinchPureCleanActiveKey) boolValue]) {
+        objc_setAssociatedObject(vc, FQXPinchPureCleanActiveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [FQXPinchSessionOwners() removeObject:vc];
+    }
     for (UIView *control in [FQXPinchCleanControls() allObjects]) {
-        if (![objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue]) continue;
         for (UIView *cur = control; cur; cur = cur.superview) {
             if (cur == vc.view) {
                 FQXApplyPinchPureCleanState(control, NO);
@@ -9241,6 +10515,292 @@ static void (*OrigSeriesFeedWillDisappear)(id, SEL, BOOL);
 static void HookSeriesFeedWillDisappear(UIViewController *self, SEL _cmd, BOOL animated) {
     FQXExitPinchCleanInViewController(self);
     if (OrigSeriesFeedWillDisappear) OrigSeriesFeedWillDisappear(self, _cmd, animated);
+}
+
+#pragma mark - Short Drama / Comic Episode Selection Sheet Module Purification (3 Switches)
+
+static NSHashTable<UIViewController *> *FQXTrackedEpisodeCompositeVCs(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIViewController *> *FQXTrackedEpisodesVCs(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static void FQXSyncLegacyEpisodesPanelViews(UIViewController *vc) {
+    if (![vc isKindOfClass:UIViewController.class]) return;
+    BOOL hideAdapt = FQXDramaHideEpisodeAdaptationsEnabled();
+    BOOL hideSame = FQXDramaHideEpisodeSameSeriesEnabled();
+    UIView *relInfo = FQXRawIvarObj(vc, "_relatedInfoView");
+    UIView *moreRel = FQXRawIvarObj(vc, "_moreRelatedSectionView");
+    UIView *seriesSec = FQXRawIvarObj(vc, "_seriesSectionView");
+    if ([relInfo isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(relInfo, hideAdapt);
+    if ([moreRel isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(moreRel, hideAdapt);
+    if ([seriesSec isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(seriesSec, hideSame);
+}
+
+static void FQXRefreshAllEpisodePanels(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllEpisodePanels(); });
+        return;
+    }
+    SEL rebuildSel = sel_registerName("rebuildSectionsIfNeeded");
+    SEL refreshSecSel = sel_registerName("refreshSections");
+    SEL relayoutSel = sel_registerName("layoutHorizonEpisodeSelectStyleViewsAnimated:reloadSections:");
+    for (UIViewController *vc in FQXTrackedEpisodeCompositeVCs().allObjects) {
+        if (!vc.isViewLoaded) continue;
+        Method m1 = class_getInstanceMethod(object_getClass(vc), rebuildSel);
+        if (m1 && strcmp(method_getTypeEncoding(m1), "v16@0:8") == 0) {
+            ((void (*)(id, SEL))objc_msgSend)(vc, rebuildSel);
+        }
+        Method m2 = class_getInstanceMethod(object_getClass(vc), refreshSecSel);
+        if (m2 && strcmp(method_getTypeEncoding(m2), "v16@0:8") == 0) {
+            ((void (*)(id, SEL))objc_msgSend)(vc, refreshSecSel);
+        }
+        Method m3 = class_getInstanceMethod(object_getClass(vc), relayoutSel);
+        if (m3 && strcmp(method_getTypeEncoding(m3), "v24@0:8B16B20") == 0) {
+            ((void (*)(id, SEL, BOOL, BOOL))objc_msgSend)(vc, relayoutSel, NO, YES);
+        }
+        [vc.view setNeedsLayout];
+    }
+
+    SEL pubVisSel = sel_registerName("updatePublicContentVisibility");
+    for (UIViewController *vc in FQXTrackedEpisodesVCs().allObjects) {
+        if (!vc.isViewLoaded) continue;
+        FQXSyncLegacyEpisodesPanelViews(vc);
+        Method mp = class_getInstanceMethod(object_getClass(vc), pubVisSel);
+        if (mp && strcmp(method_getTypeEncoding(mp), "v16@0:8") == 0) {
+            ((void (*)(id, SEL))objc_msgSend)(vc, pubVisSel);
+        }
+        UICollectionView *cv = FQXObjGet(vc, "collectionView");
+        if ([cv isKindOfClass:UICollectionView.class]) [cv reloadData];
+        [vc.view setNeedsLayout];
+    }
+}
+
+static void (*OrigEpCompositeViewDidLoad)(id, SEL);
+static void HookEpCompositeViewDidLoad(UIViewController *self, SEL cmd) {
+    if (OrigEpCompositeViewDidLoad) OrigEpCompositeViewDidLoad(self, cmd);
+    [FQXTrackedEpisodeCompositeVCs() addObject:self];
+}
+
+static BOOL (*OrigEpCompositeShowRelatedWorks)(id, SEL);
+static BOOL HookEpCompositeShowRelatedWorks(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) return NO;
+    return OrigEpCompositeShowRelatedWorks ? OrigEpCompositeShowRelatedWorks(self, cmd) : NO;
+}
+
+static BOOL (*OrigEpCompositeShowRelateBook)(id, SEL);
+static BOOL HookEpCompositeShowRelateBook(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) return NO;
+    return OrigEpCompositeShowRelateBook ? OrigEpCompositeShowRelateBook(self, cmd) : NO;
+}
+
+static BOOL (*OrigEpCompositeShowDoubleCol)(id, SEL);
+static BOOL HookEpCompositeShowDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return NO;
+    return OrigEpCompositeShowDoubleCol ? OrigEpCompositeShowDoubleCol(self, cmd) : NO;
+}
+
+static BOOL (*OrigEpCompositeShowThreeCol)(id, SEL);
+static BOOL HookEpCompositeShowThreeCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return NO;
+    return OrigEpCompositeShowThreeCol ? OrigEpCompositeShowThreeCol(self, cmd) : NO;
+}
+
+static void (*OrigEpCompositeReqThreeCol)(id, SEL, id);
+static void HookEpCompositeReqThreeCol(id self, SEL cmd, id seriesId) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigEpCompositeReqThreeCol) OrigEpCompositeReqThreeCol(self, cmd, seriesId);
+}
+
+static double (*OrigEpRelatedWorksHeight)(id, SEL, double);
+static double HookEpRelatedWorksHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpRelatedWorksHeight ? OrigEpRelatedWorksHeight(self, cmd, width) : 0.0;
+}
+
+static double (*OrigEpBookSectionHeight)(id, SEL, double);
+static double HookEpBookSectionHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpBookSectionHeight ? OrigEpBookSectionHeight(self, cmd, width) : 0.0;
+}
+
+static double (*OrigEpMoreRelatedViewHeight)(id, SEL);
+static double HookEpMoreRelatedViewHeight(UIView *self, SEL cmd) {
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) {
+        FQXAudioSetHiddenTracked(self, YES);
+        return 0.0;
+    }
+    FQXAudioSetHiddenTracked(self, NO);
+    return OrigEpMoreRelatedViewHeight ? OrigEpMoreRelatedViewHeight(self, cmd) : 0.0;
+}
+
+static double (*OrigEpSeasonSubSectionHeight)(id, SEL, double);
+static double HookEpSeasonSubSectionHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpSeasonSubSectionHeight ? OrigEpSeasonSubSectionHeight(self, cmd, width) : 0.0;
+}
+
+static double (*OrigEpDoubleColHeight)(id, SEL, double);
+static double HookEpDoubleColHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeRecommendEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpDoubleColHeight ? OrigEpDoubleColHeight(self, cmd, width) : 0.0;
+}
+
+static double (*OrigEpGridSectionHeight)(id, SEL, double);
+static double HookEpGridSectionHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeRecommendEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpGridSectionHeight ? OrigEpGridSectionHeight(self, cmd, width) : 0.0;
+}
+
+static double (*OrigEpTitleSectionHeight)(id, SEL, double);
+static double HookEpTitleSectionHeight(id self, SEL cmd, double width) {
+    UIView *v = FQXObjGet(self, "sectionView");
+    if (FQXDramaHideEpisodeRecommendEnabled()) {
+        if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, YES);
+        return 0.0;
+    }
+    if ([v isKindOfClass:UIView.class]) FQXAudioSetHiddenTracked(v, NO);
+    return OrigEpTitleSectionHeight ? OrigEpTitleSectionHeight(self, cmd, width) : 0.0;
+}
+
+static void (*OrigEpisodesVCLayout)(id, SEL);
+static void HookEpisodesVCLayout(UIViewController *self, SEL cmd) {
+    [FQXTrackedEpisodesVCs() addObject:self];
+    if (OrigEpisodesVCLayout) OrigEpisodesVCLayout(self, cmd);
+    FQXSyncLegacyEpisodesPanelViews(self);
+}
+
+static void (*OrigEpisodesVCAddMoreRelated)(id, SEL);
+static void HookEpisodesVCAddMoreRelated(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeAdaptationsEnabled()) return;
+    if (OrigEpisodesVCAddMoreRelated) OrigEpisodesVCAddMoreRelated(self, cmd);
+}
+
+static BOOL (*OrigEpisodesVCEnableSameSeries)(id, SEL);
+static BOOL HookEpisodesVCEnableSameSeries(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return NO;
+    return OrigEpisodesVCEnableSameSeries ? OrigEpisodesVCEnableSameSeries(self, cmd) : NO;
+}
+
+static BOOL (*OrigEpisodesVCDisplayLegacySeries)(id, SEL);
+static BOOL HookEpisodesVCDisplayLegacySeries(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return NO;
+    return OrigEpisodesVCDisplayLegacySeries ? OrigEpisodesVCDisplayLegacySeries(self, cmd) : NO;
+}
+
+static void (*OrigEpisodesVCReqLegacySeries)(id, SEL);
+static void HookEpisodesVCReqLegacySeries(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return;
+    if (OrigEpisodesVCReqLegacySeries) OrigEpisodesVCReqLegacySeries(self, cmd);
+}
+
+static void (*OrigEpisodesVCShowSeriesTab)(id, SEL, id);
+static void HookEpisodesVCShowSeriesTab(id self, SEL cmd, id list) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return;
+    if (OrigEpisodesVCShowSeriesTab) OrigEpisodesVCShowSeriesTab(self, cmd, list);
+}
+
+static BOOL (*OrigSeriesSectionHasData)(id, SEL);
+static BOOL HookSeriesSectionHasData(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return NO;
+    return OrigSeriesSectionHasData ? OrigSeriesSectionHasData(self, cmd) : NO;
+}
+
+static double (*OrigSeriesSectionViewHeight)(id, SEL, double);
+static double HookSeriesSectionViewHeight(UIView *self, SEL cmd, double width) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) {
+        FQXAudioSetHiddenTracked(self, YES);
+        return 0.0;
+    }
+    FQXAudioSetHiddenTracked(self, NO);
+    return OrigSeriesSectionViewHeight ? OrigSeriesSectionViewHeight(self, cmd, width) : 0.0;
+}
+
+static BOOL (*OrigSeriesTabShouldShow)(id, SEL, id);
+static BOOL HookSeriesTabShouldShow(id cls, SEL cmd, id info) {
+    if (FQXDramaHideEpisodeSameSeriesEnabled()) return NO;
+    return OrigSeriesTabShouldShow ? OrigSeriesTabShouldShow(cls, cmd, info) : NO;
+}
+
+static BOOL (*OrigEpisodesVCEnableDoubleCol)(id, SEL);
+static BOOL HookEpisodesVCEnableDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return NO;
+    return OrigEpisodesVCEnableDoubleCol ? OrigEpisodesVCEnableDoubleCol(self, cmd) : NO;
+}
+
+static void (*OrigEpisodesVCAddDoubleCol)(id, SEL);
+static void HookEpisodesVCAddDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigEpisodesVCAddDoubleCol) OrigEpisodesVCAddDoubleCol(self, cmd);
+}
+
+static void (*OrigEpisodesVCAddMoreVideo)(id, SEL);
+static void HookEpisodesVCAddMoreVideo(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigEpisodesVCAddMoreVideo) OrigEpisodesVCAddMoreVideo(self, cmd);
+}
+
+static BOOL (*OrigEpSubVCEnableDoubleCol)(id, SEL);
+static BOOL HookEpSubVCEnableDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return NO;
+    return OrigEpSubVCEnableDoubleCol ? OrigEpSubVCEnableDoubleCol(self, cmd) : NO;
+}
+
+static void (*OrigEpSubVCAddDoubleCol)(id, SEL);
+static void HookEpSubVCAddDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigEpSubVCAddDoubleCol) OrigEpSubVCAddDoubleCol(self, cmd);
+}
+
+static BOOL (*OrigSeriesSubVCEnableDoubleCol)(id, SEL);
+static BOOL HookSeriesSubVCEnableDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return NO;
+    return OrigSeriesSubVCEnableDoubleCol ? OrigSeriesSubVCEnableDoubleCol(self, cmd) : NO;
+}
+
+static void (*OrigSeriesSubVCAddDoubleCol)(id, SEL);
+static void HookSeriesSubVCAddDoubleCol(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigSeriesSubVCAddDoubleCol) OrigSeriesSubVCAddDoubleCol(self, cmd);
+}
+
+static void (*OrigSeriesSubVCAddGridMore)(id, SEL);
+static void HookSeriesSubVCAddGridMore(id self, SEL cmd) {
+    if (FQXDramaHideEpisodeRecommendEnabled()) return;
+    if (OrigSeriesSubVCAddGridMore) OrigSeriesSubVCAddGridMore(self, cmd);
 }
 
 #pragma mark - Reader Top-Left Back Button Optical Centering & Inline Paragraph Comment Bubbles
@@ -14876,20 +16436,71 @@ static CGFloat HookSidebarFunctionListHeight(id cls, SEL cmd, NSArray *models) {
     return OrigSidebarFunctionListHeight(cls, cmd, visible.count == models.count ? models : [models objectsAtIndexes:visible]);
 }
 
-static BOOL FQXSidebarHidesMessages(id controller, NSIndexPath *path) {
-    if (FQXSidebarPrefEnabled(@"FanqieX.SidebarMessages.1")) return NO;
+static const char FQXK_SidebarRawComponentsKey = 0;
+#define SidebarRawComponentsKey ((const void *)&FQXK_SidebarRawComponentsKey)
+
+static NSArray *FQXSidebarFilteredComponents(NSArray *raw) {
+    if (![raw isKindOfClass:NSArray.class]) return raw;
+    if (FQXSidebarPrefEnabled(@"FanqieX.SidebarGames.1")) return raw;
+    NSMutableArray *filtered = nil;
+    for (id item in raw) {
+        if ([item isKindOfClass:NSString.class] &&
+            ([(NSString *)item isEqualToString:@"SSMyUser621SideBarGameContainerCell"] ||
+             [(NSString *)item isEqualToString:@"SSMyUser621SideBarGameSkeletonCell"])) {
+            if (!filtered) {
+                filtered = [NSMutableArray arrayWithCapacity:raw.count];
+                for (id prev in raw) {
+                    if (prev == item) break;
+                    [filtered addObject:prev];
+                }
+            }
+            continue;
+        }
+        if (filtered) [filtered addObject:item];
+    }
+    return filtered ? filtered.copy : raw;
+}
+
+static void (*OrigSidebarSetComponentsLayout)(id, SEL, NSArray *);
+static void HookSidebarSetComponentsLayout(UIViewController *controller, SEL cmd, NSArray *layout) {
+    if ([layout isKindOfClass:NSArray.class]) {
+        objc_setAssociatedObject(controller, SidebarRawComponentsKey, layout.copy, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+    if (OrigSidebarSetComponentsLayout) {
+        OrigSidebarSetComponentsLayout(controller, cmd, FQXSidebarFilteredComponents(layout));
+    }
+}
+
+static BOOL (*OrigDramaSidebarV725ShowsGame)(id, SEL);
+static BOOL HookDramaSidebarV725ShowsGame(id self, SEL cmd) {
+    if (!FQXSidebarPrefEnabled(@"FanqieX.SidebarGames.1")) return NO;
+    return OrigDramaSidebarV725ShowsGame ? OrigDramaSidebarV725ShowsGame(self, cmd) : YES;
+}
+
+static BOOL FQXSidebarHidesComponentCell(id controller, NSIndexPath *path) {
     SEL selector = sel_registerName("btd_indexPathForComponent:");
     Method method = class_getInstanceMethod(object_getClass(controller), selector);
     if (!method || strcmp(method_getTypeEncoding(method), "@24@0:8@16") != 0) return NO;
-    NSIndexPath *message = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector,
-        @"SSMyUser621SideBarMessageContainerCell");
-    return [message isEqual:path];
+    if (!FQXSidebarPrefEnabled(@"FanqieX.SidebarMessages.1")) {
+        NSIndexPath *message = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector,
+            @"SSMyUser621SideBarMessageContainerCell");
+        if ([message isEqual:path]) return YES;
+    }
+    if (!FQXSidebarPrefEnabled(@"FanqieX.SidebarGames.1")) {
+        NSIndexPath *game1 = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector,
+            @"SSMyUser621SideBarGameContainerCell");
+        if ([game1 isEqual:path]) return YES;
+        NSIndexPath *game2 = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector,
+            @"SSMyUser621SideBarGameSkeletonCell");
+        if ([game2 isEqual:path]) return YES;
+    }
+    return NO;
 }
 
 static CGSize (*OrigSidebarItemSize)(id, SEL, UICollectionView *, UICollectionViewLayout *, NSIndexPath *);
 static CGSize HookSidebarItemSize(UIViewController *controller, SEL cmd, UICollectionView *list,
                                   UICollectionViewLayout *layout, NSIndexPath *path) {
-    if (FQXSidebarHidesMessages(controller, path)) return CGSizeZero;
+    if (FQXSidebarHidesComponentCell(controller, path)) return CGSizeZero;
     UIViewController *previous = FQXSidebarSizingController;
     FQXSidebarSizingController = controller;
     CGSize size = OrigSidebarItemSize(controller, cmd, list, layout, path);
@@ -14910,6 +16521,11 @@ static void FQXRefreshAllMineSidebars(void) {
         return;
     }
     for (UIViewController *controller in FQXTrackedMineSidebars().allObjects) {
+        NSArray *raw = objc_getAssociatedObject(controller, SidebarRawComponentsKey);
+        if ([raw isKindOfClass:NSArray.class] && OrigSidebarSetComponentsLayout) {
+            OrigSidebarSetComponentsLayout(controller, sel_registerName("setComponentsLayout:"),
+                                           FQXSidebarFilteredComponents(raw));
+        }
         UICollectionView *list = FQXObjGet(controller, "collectionView");
         [list.collectionViewLayout invalidateLayout];
         [list reloadData];
@@ -15390,6 +17006,18 @@ static void HookMineUnlimitedRefresh(UIViewController *controller, SEL cmd, BOOL
         return;
     }
     if (OrigMineUnlimitedRefresh) OrigMineUnlimitedRefresh(controller, cmd, trigger, animated);
+}
+
+static void (*OrigMineHelperUnlimitedRefresh)(id, SEL, BOOL, BOOL);
+static void HookMineHelperUnlimitedRefresh(id helper, SEL cmd, BOOL trigger, BOOL animated) {
+    UIViewController *controller = FQXObjGet(helper, "vc");
+    UIScrollView *list = FQXObjGet(controller, "collectionView");
+    if ([controller isKindOfClass:UIViewController.class] &&
+        [list isKindOfClass:UIScrollView.class] && list.adjustedContentInset.top > 20.0) {
+        FQXResetMineScrollToTop(controller);
+        return;
+    }
+    if (OrigMineHelperUnlimitedRefresh) OrigMineHelperUnlimitedRefresh(helper, cmd, trigger, animated);
 }
 
 static const char FQXK_DramaComposerGlassKey = 0;
@@ -22673,6 +24301,7 @@ void FQXInstallMotionAndAudioHooks(void) {
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v20@0:8i16", OrigMineTabBarCurrentTap, HookMineTabBarCurrentTap);
         HOOK_INST("SSMyUser621ViewController", "tabbarControllerCurrentBtnDidTapAt:", "v24@0:8q16", OrigMineTabBarCurrentTap64, HookMineTabBarCurrentTap64);
         HOOK_INST("SSMyUser621ViewController", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineUnlimitedRefresh, HookMineUnlimitedRefresh);
+        HOOK_INST("SSMyUserUnlimitedHelper", "unlimitedBeginRefreshing:animated:", "v24@0:8B16B20", OrigMineHelperUnlimitedRefresh, HookMineHelperUnlimitedRefresh);
 
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                         object:nil
@@ -22706,12 +24335,7 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQVShortVideoListVCPlayerComponent", "preparePlayer:model:async:", "v36@0:8@16@24B32", OrigPreparePlayerAsync, HookPreparePlayerAsync);
             HOOK_INST("FQVPlayer", "videoEngineReadyToPlay:", "v24@0:8@16", OrigPlayerReadyToPlay, HookPlayerReadyToPlay);
 
-            // Inner drama Episode 1/2 full-episode bottom black mask removal & full-height portrait canvas
-            HOOK_INST("FQVShortVideoListVCPlayerComponent", "playerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigPlayerViewSizeWithModel, HookPlayerViewSizeWithModel);
-            HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitPlayerViewSizeWithModel:", "{CGSize=dd}24@0:8@16", OrigScaleAspectFitPlayerViewSizeWithModel, HookScaleAspectFitPlayerViewSizeWithModel);
-            HOOK_INST("FQVShortVideoListVCPlayerComponent", "portraitPlayerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigPortraitPlayerViewFrameWithModel, HookPortraitPlayerViewFrameWithModel);
-            HOOK_INST("FQVShortVideoListVCPlayerComponent", "scaleAspectFitContainerViewFrameWithModel:", "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8@16", OrigScaleAspectFitContainerViewFrameWithModel, HookScaleAspectFitContainerViewFrameWithModel);
-            HOOK_INST("FQVShortVideoListVCPlayerComponent", "maxPlayerViewHeightWithModel:", "d24@0:8@16", OrigMaxPlayerViewHeightWithModel, HookMaxPlayerViewHeightWithModel);
+            // Short-Video Fullscreen & Vertical Feed Anti-Jitter Backdrop + Bottom Mask Cleanup
             HOOK_INST("SSShortVideoBottomInsertView", "setupBottomSubviews", "v16@0:8", OrigBottomInsertSetup, HookBottomInsertSetup);
             HOOK_INST("SSShortVideoBottomInsertView", "refreshLayoutForResizing", "v16@0:8", OrigBottomInsertResize, HookBottomInsertResize);
             HOOK_INST("SSShortVideoSingleBottomInsertView", "setupViews", "v16@0:8", OrigSingleBottomInsertSetup, HookSingleBottomInsertSetup);
@@ -22722,25 +24346,90 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "updatePlayerBottomViewAlpha:", "v24@0:8d16", OrigSingleSeriesBottomAlpha, HookSingleSeriesBottomAlpha);
             HOOK_INST("FQVPlayer", "layoutSubviews", "v16@0:8", OrigPlayerCanvasLayout, HookPlayerCanvasLayout);
             HOOK_INST("FQVPlayer", "refreshPlayerViewLayout", "v16@0:8", OrigPlayerCanvasRefresh, HookPlayerCanvasRefresh);
+            HOOK_INST("FQVPlayer", "willMoveToSuperview:", "v24@0:8@16", OrigPlayerWillMoveSuperview, HookPlayerWillMoveSuperview);
+            HOOK_INST("FQVPlayer", "willMoveToWindow:", "v24@0:8@16", OrigPlayerWillMoveWindow, HookPlayerWillMoveWindow);
+            HOOK_INST("TTPlayerView", "layoutSubviews", "v16@0:8", OrigTTPlayerLayout, HookTTPlayerLayout);
+            HOOK_INST("TTPlayerView", "didAddSubview:", "v24@0:8@16", OrigTTPlayerDidAddSubview, HookTTPlayerDidAddSubview);
+            HOOK_INST("TTPlayerView", "willMoveToSuperview:", "v24@0:8@16", OrigTTPlayerWillMoveSuperview, HookTTPlayerWillMoveSuperview);
+            HOOK_INST("TTPlayerView", "willMoveToWindow:", "v24@0:8@16", OrigTTPlayerWillMoveWindow, HookTTPlayerWillMoveWindow);
+            HOOK_INST("TTPlayerView", "didMoveToWindow", "v16@0:8", OrigTTPlayerDidMoveWindow, HookTTPlayerDidMoveWindow);
+            HOOK_INST("TTMetalView", "layoutSubviews", "v16@0:8", OrigTTMetalLayout, HookTTMetalLayout);
+            HOOK_INST("TTMetalView", "setFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigTTMetalSetFrame, HookTTMetalSetFrame);
+            HOOK_INST("FQVShortVideoPlayerCellView", "layoutSubviews", "v16@0:8", OrigCellLayoutSubviews, HookCellLayoutSubviews);
             HOOK_INST("FQVShortVideoPlayerCellView", "layoutVideoView", "v16@0:8", OrigCellLayoutVideoView, HookCellLayoutVideoView);
+            HOOK_INST("FQVShortVideoPlayerCellView", "refreshCoverImageView", "v16@0:8", OrigCellRefreshCoverImageView, HookCellRefreshCoverImageView);
+            HOOK_INST("FQVShortVideoPlayerCellView", "refreshBgColor", "v16@0:8", OrigCellRefreshBgColor, HookCellRefreshBgColor);
             HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigCellRefreshPlayFrame, HookCellRefreshPlayFrame);
-            HOOK_INST("FQVShortVideoPlayerCellView", "updatePlayerSuperViewLayout", "v16@0:8", OrigCellUpdatePlayerSuperLayout, HookCellUpdatePlayerSuperLayout);
-            HOOK_INST("FQVShortVideoPlayerCellView", "refreshUIWithPlayerSuperViewSize:", "v32@0:8{CGSize=dd}16", OrigCellRefreshPlayerSuperSize, HookCellRefreshPlayerSuperSize);
+            HOOK_INST("FQVShortVideoPlayerCellView", "vPlayerReadyToDisPlay:", "v24@0:8@16", OrigCellVPlayerReadyToDisplay, HookCellVPlayerReadyToDisplay);
+            HOOK_INST("FQVShortVideoPlayerCellView", "setModel:", "v24@0:8@16", OrigCellSetModel, HookCellSetModel);
+            HOOK_INST("FQVShortVideoPlayerCellView", "resetToRecycle", "v16@0:8", OrigCellResetToRecycle, HookCellResetToRecycle);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "setPlayerViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigControlSetPlayerViewFrame, HookControlSetPlayerViewFrame);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "handleOutterFeedClipBounds:", "v20@0:8B16", OrigControlHandleOutterClip, HookControlHandleOutterClip);
+            HOOK_INST("FQVCollectionView", "layoutSubviews", "v16@0:8", OrigFQVCollectionLayout, HookFQVCollectionLayout);
+            HOOK_INST("FQVCollectionView", "didMoveToWindow", "v16@0:8", OrigFQVCollectionDidMoveWindow, HookFQVCollectionDidMoveWindow);
+            HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidScroll:", "v24@0:8@16", OrigScrollCompDidScroll, HookScrollCompDidScroll);
+            HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidEndDecelerating:", "v24@0:8@16", OrigScrollCompDidEndDecel, HookScrollCompDidEndDecel);
+            HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidEndScrollingAnimation:", "v24@0:8@16", OrigScrollCompDidEndAnim, HookScrollCompDidEndAnim);
+            HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidEndDragging:willDecelerate:", "v28@0:8@16B24", OrigScrollCompDidEndDrag, HookScrollCompDidEndDrag);
 
             // TikTok-style two-finger spread/pinch pure clean screen, double-tap, exit interrupt & progress bar
             HOOK_INST("FQVShortVideoVPlayerControlView", "setupGestures", "v16@0:8", OrigVPlayerSetupGestures, HookVPlayerSetupGestures);
             HOOK_INST("FQVShortVideoVPlayerControlView", "doubleTapGesture:", "v24@0:8@16", OrigVPlayerDoubleTap, HookVPlayerDoubleTap);
             HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillDisplay", "v16@0:8", OrigVPlayerWillDisplay, HookVPlayerWillDisplay);
             HOOK_INST("FQVShortVideoVPlayerControlView", "controlViewWillEndDisplay", "v16@0:8", OrigVPlayerWillEndDisplay, HookVPlayerWillEndDisplay);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "resetToRecycle", "v16@0:8", OrigVPlayerResetToRecycle, HookVPlayerResetToRecycle);
             HOOK_INST("FQVShortVideoVPlayerControlView", "updateControlState", "v16@0:8", OrigVPlayerUpdateControlState, HookVPlayerUpdateControlState);
+            HOOK_INST("FQVShortVideoVPlayerControlView", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigVPlayerHitTest, HookVPlayerHitTest);
             HOOK_INST("FQVShortVideoVPlayerControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigInnerPinchSeekShouldBegin, HookInnerPinchSeekShouldBegin);
             HOOK_INST("FQVShortVideoVPlayerControlView", "didMoveToWindow", "v16@0:8", OrigDramaControlDidMoveWindow, HookDramaControlDidMoveWindow);
+            HOOK_INST("FQVShortVideoVPlayerSingleSeriesControlView", "handlePinchGesture:", "v24@0:8@16", OrigSingleSeriesHandlePinch, HookSingleSeriesHandlePinch);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "layoutSubviews", "v16@0:8", OrigOuterControlLayout, HookOuterControlLayout);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "didMoveToWindow", "v16@0:8", OrigOuterDidMoveToWindow, HookOuterDidMoveToWindow);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "bindContentModel:", "v24@0:8@16", OrigOuterBindContent, HookOuterBindContent);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "resetToRecycle", "v16@0:8", OrigOuterResetToRecycle, HookOuterResetToRecycle);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigOuterHitTest, HookOuterHitTest);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigOuterPinchSeekShouldBegin, HookOuterPinchSeekShouldBegin);
             HOOK_INST("FQVShortVideoListVCBackgroundPlaybackComponent", "shouldPauseInBackground", "B16@0:8", OrigDramaShouldPauseInBackground, HookDramaShouldPauseInBackground);
             HOOK_INST("FQVShortVideoListVCGestureComponent", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigGestureCompShouldBegin, HookGestureCompShouldBegin);
+            HOOK_INST("FQVShortVideoListVCGestureComponent", "pinchGesture:", "v24@0:8@16", OrigGestureCompPinch, HookGestureCompPinch);
+
+            // Episode Selection Sheet 3 Module Switches ("原著和更多改编" / "同系列剧" / "底部推荐视频")
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "viewDidLoad", "v16@0:8", OrigEpCompositeViewDidLoad, HookEpCompositeViewDidLoad);
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "showRelatedWorksSectionIfNeed", "B16@0:8", OrigEpCompositeShowRelatedWorks, HookEpCompositeShowRelatedWorks);
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "showRelateBookCardIfNeed", "B16@0:8", OrigEpCompositeShowRelateBook, HookEpCompositeShowRelateBook);
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "showDoubleColRecommendIfNeed", "B16@0:8", OrigEpCompositeShowDoubleCol, HookEpCompositeShowDoubleCol);
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "showThreeColRecommendIfNeed", "B16@0:8", OrigEpCompositeShowThreeCol, HookEpCompositeShowThreeCol);
+            HOOK_INST("SSShortVideoEpisodeCompositeSubViewController", "requestThreeColumnRecommendForSeriesId:", "v24@0:8@16", OrigEpCompositeReqThreeCol, HookEpCompositeReqThreeCol);
+            HOOK_INST("SSShortVideoEpisodeRelatedWorksSectionController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpRelatedWorksHeight, HookEpRelatedWorksHeight);
+            HOOK_INST("SSShortVideoEpisodeBookSectionController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpBookSectionHeight, HookEpBookSectionHeight);
+            HOOK_INST("SSShortVideoEpisodeMoreRelatedSectionView", "viewHeight", "d16@0:8", OrigEpMoreRelatedViewHeight, HookEpMoreRelatedViewHeight);
+            HOOK_INST("SSShortVideoEpisodeSeasonSubscribeSectionViewController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpSeasonSubSectionHeight, HookEpSeasonSubSectionHeight);
+            HOOK_INST("SSShortVideoEpisodeDoubleColSectionController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpDoubleColHeight, HookEpDoubleColHeight);
+            HOOK_INST("SSShortVideoEpisodeGridSectionController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpGridSectionHeight, HookEpGridSectionHeight);
+            HOOK_INST("SSShortVideoEpisodeTitleSectionController", "sectionHeightForWidth:", "d24@0:8d16", OrigEpTitleSectionHeight, HookEpTitleSectionHeight);
+            HOOK_INST("SSShortVideoEpisodesViewController", "viewDidLayoutSubviews", "v16@0:8", OrigEpisodesVCLayout, HookEpisodesVCLayout);
+            HOOK_INST("SSShortVideoEpisodesViewController", "addMoreRelatedItem", "v16@0:8", OrigEpisodesVCAddMoreRelated, HookEpisodesVCAddMoreRelated);
+            HOOK_INST("SSShortVideoEpisodesViewController", "episodePanelEnableSameSeriesVideos", "B16@0:8", OrigEpisodesVCEnableSameSeries, HookEpisodesVCEnableSameSeries);
+            HOOK_INST("SSShortVideoEpisodesViewController", "shouldDisplayLegacySeriesSection", "B16@0:8", OrigEpisodesVCDisplayLegacySeries, HookEpisodesVCDisplayLegacySeries);
+            HOOK_INST("SSShortVideoEpisodesViewController", "requestLegacySeriesDataIfNeeded", "v16@0:8", OrigEpisodesVCReqLegacySeries, HookEpisodesVCReqLegacySeries);
+            HOOK_INST("SSShortVideoEpisodesViewController", "showSeriesTabWithVideoDataList:", "v24@0:8@16", OrigEpisodesVCShowSeriesTab, HookEpisodesVCShowSeriesTab);
+            HOOK_INST("SSShortVideoEpisodesViewController", "episodePanelEnableDoubleColRecommend", "B16@0:8", OrigEpisodesVCEnableDoubleCol, HookEpisodesVCEnableDoubleCol);
+            HOOK_INST("SSShortVideoEpisodesViewController", "addDoubleColMoreVideo", "v16@0:8", OrigEpisodesVCAddDoubleCol, HookEpisodesVCAddDoubleCol);
+            HOOK_INST("SSShortVideoEpisodesViewController", "addMoreVideoItem", "v16@0:8", OrigEpisodesVCAddMoreVideo, HookEpisodesVCAddMoreVideo);
+            HOOK_INST("SSShortVideoEpisodesSeriesSectionView", "hasSeriesData", "B16@0:8", OrigSeriesSectionHasData, HookSeriesSectionHasData);
+            HOOK_INST("SSShortVideoEpisodesSeriesSectionView", "viewHeight:", "d24@0:8d16", OrigSeriesSectionViewHeight, HookSeriesSectionViewHeight);
+            {
+                Class _seriesTabCls = objc_lookUpClass("SSShortVideoEpisodesSeriesTab");
+                if (_seriesTabCls) {
+                    FQXInstallOwnedHook(_seriesTabCls, sel_registerName("shouldShowSeriesTab:"), YES, "B24@0:8@16",
+                                        (IMP)HookSeriesTabShouldShow, (IMP *)&OrigSeriesTabShouldShow);
+                }
+            }
+            HOOK_INST("SSShortVideoEpisodeSubViewController", "episodePanelEnableDoubleColRecommend", "B16@0:8", OrigEpSubVCEnableDoubleCol, HookEpSubVCEnableDoubleCol);
+            HOOK_INST("SSShortVideoEpisodeSubViewController", "addDoubleColMoreVideo", "v16@0:8", OrigEpSubVCAddDoubleCol, HookEpSubVCAddDoubleCol);
+            HOOK_INST("SSShortVideoSeriesSubViewController", "episodePanelEnableDoubleColRecommend", "B16@0:8", OrigSeriesSubVCEnableDoubleCol, HookSeriesSubVCEnableDoubleCol);
+            HOOK_INST("SSShortVideoSeriesSubViewController", "addDoubleColMoreVideo", "v16@0:8", OrigSeriesSubVCAddDoubleCol, HookSeriesSubVCAddDoubleCol);
+            HOOK_INST("SSShortVideoSeriesSubViewController", "addGridMoreVideo", "v16@0:8", OrigSeriesSubVCAddGridMore, HookSeriesSubVCAddGridMore);
             HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldInterruptWhenExitPlayer:exitScene:", "B32@0:8@16Q24", OrigExitInterruptShouldInterrupt, HookExitInterruptShouldInterrupt);
             HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "shouldShowCollectExitRetentioDialogOptWithContext:seriesId:", "B32@0:8@16@24", OrigExitInterruptShouldShowCollectOpt, HookExitInterruptShouldShowCollectOpt);
             HOOK_INST("SSShortVideoPlayerExitInterruptDelegate", "showAddBookShelfAlert:", "v24@0:8@16", OrigExitInterruptShowAddShelf, HookExitInterruptShowAddShelf);
@@ -22928,11 +24617,13 @@ void FQXInstallMotionAndAudioHooks(void) {
                                     (IMP)HookSidebarFunctionListHeight, &sidebarHeight)) {
                 OrigSidebarFunctionListHeight = (__typeof__(OrigSidebarFunctionListHeight))sidebarHeight;
             }
+            HOOK_INST("SSMyUser621SideBarViewController", "setComponentsLayout:", "v24@0:8@16", OrigSidebarSetComponentsLayout, HookSidebarSetComponentsLayout);
             HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:sizeForItemAtIndexPath:",
                       "{CGSize=dd}40@0:8@16@24@32", OrigSidebarItemSize, HookSidebarItemSize);
             HOOK_INST("SSMyUser621SideBarViewController", "collectionView:layout:referenceSizeForFooterInSection:",
                       "{CGSize=dd}40@0:8@16@24q32", OrigSidebarFooterSize, HookSidebarFooterSize);
             HOOK_INST("SSMyUser621SideBarViewController", "viewDidLoad", "v16@0:8", OrigSidebarViewDidLoad, HookSidebarViewDidLoad);
+            HOOK_INST("SSVideoSeriesFeedSideBarV725ViewController", "showsGameSection", "B16@0:8", OrigDramaSidebarV725ShowsGame, HookDramaSidebarV725ShowsGame);
 
             // Audio Play Page Liquid Glass, Refraction & Seamless Background
             HOOK_INST("SSNewAudioPlayNavigationView", "layoutSubviews", "v16@0:8", OrigAudioNavLayout, HookAudioNavLayout);

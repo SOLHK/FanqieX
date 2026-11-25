@@ -408,4 +408,151 @@ static inline int FQXShouldShowDramaOriginalNovelEntry(int showOriginalNovel,
     return (showOriginalNovel && hostWantsEntry) ? 1 : 0;
 }
 
+enum {
+    FQXLegacyAdDefaultOptionsMask = 0x57FFFu,
+    FQXLegacyAdBookstorePopupBit  = (1u << 6),  /* 0x00040: 书城广告和浮层 */
+    FQXLegacyAdAudioPatchBit      = (1u << 7),  /* 0x00080: 听书贴片广告 */
+    FQXLegacyAdAudioInfoFlowBit   = (1u << 8),  /* 0x00100: 听书信息流广告 */
+    FQXLegacyAdDramaFeedBit       = (1u << 9),  /* 0x00200: 短剧和视频信息流广告 */
+    FQXLegacyAdDramaPatchBit      = (1u << 10), /* 0x00400: 短剧和视频贴片广告 */
+    FQXLegacyAdWelfarePendantBit  = (1u << 17), /* 0x20000: 隐藏金币和福利挂件 */
+};
+
+static inline unsigned int FQXEffectiveLegacyAdOptionsMask(int hasStoredMask,
+                                                           unsigned int storedMask) {
+    return hasStoredMask ? storedMask : (unsigned int)FQXLegacyAdDefaultOptionsMask;
+}
+
+static inline int FQXShouldBlockShortVideoFeedAd(int hasLegacyMask,
+                                                 unsigned int legacyMask) {
+    unsigned int effective = FQXEffectiveLegacyAdOptionsMask(hasLegacyMask, legacyMask);
+    return (effective & FQXLegacyAdDramaFeedBit) != 0u ? 1 : 0;
+}
+
+static inline int FQXShouldBlockShortVideoPatchAd(int hasLegacyMask,
+                                                  unsigned int legacyMask) {
+    unsigned int effective = FQXEffectiveLegacyAdOptionsMask(hasLegacyMask, legacyMask);
+    return (effective & FQXLegacyAdDramaPatchBit) != 0u ? 1 : 0;
+}
+
+static inline int FQXShouldBlockBookstoreAndPopupAd(int hasLegacyMask,
+                                                    unsigned int legacyMask) {
+    unsigned int effective = FQXEffectiveLegacyAdOptionsMask(hasLegacyMask, legacyMask);
+    return (effective & FQXLegacyAdBookstorePopupBit) != 0u ? 1 : 0;
+}
+
+static inline int FQXShouldBlockAudioAdsAndDurationGate(int hasLegacyMask,
+                                                        unsigned int legacyMask,
+                                                        int audioAdsSpecialEnabled) {
+    if (audioAdsSpecialEnabled) return 1;
+    unsigned int effective = FQXEffectiveLegacyAdOptionsMask(hasLegacyMask, legacyMask);
+    return (effective & (FQXLegacyAdAudioPatchBit | FQXLegacyAdAudioInfoFlowBit)) != 0u ? 1 : 0;
+}
+
+static inline int FQXShouldSuppressWelfareListenPendant(int hasLegacyMask,
+                                                        unsigned int legacyMask,
+                                                        int listenPendantEnabled) {
+    if (listenPendantEnabled) return 1;
+    unsigned int effective = FQXEffectiveLegacyAdOptionsMask(hasLegacyMask, legacyMask);
+    return (effective & FQXLegacyAdWelfarePendantBit) != 0u ? 1 : 0;
+}
+
+static inline int FQXShouldSuppressReaderAudioDurationPendant(int hasLegacyMask,
+                                                              unsigned int legacyMask,
+                                                              int listenPendantEnabled,
+                                                              int audioAdsSpecialEnabled) {
+    if (FQXShouldSuppressWelfareListenPendant(hasLegacyMask, legacyMask, listenPendantEnabled)) {
+        return 1;
+    }
+    return FQXShouldBlockAudioAdsAndDurationGate(hasLegacyMask, legacyMask, audioAdsSpecialEnabled);
+}
+
+static inline int FQXShouldForceDisableAudioPlayIntercept(int hasLegacyMask,
+                                                          unsigned int legacyMask,
+                                                          int audioAdsSpecialEnabled,
+                                                          int isRemoteOrResumeSource) {
+    if (isRemoteOrResumeSource) return 1;
+    return FQXShouldBlockAudioAdsAndDurationGate(hasLegacyMask, legacyMask, audioAdsSpecialEnabled);
+}
+
+static inline int FQXVideoBackdropSameRect(double x1, double y1, double w1, double h1,
+                                           double x2, double y2, double w2, double h2,
+                                           double tol) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(w1) || !isfinite(h1) ||
+        !isfinite(x2) || !isfinite(y2) || !isfinite(w2) || !isfinite(h2) || tol < 0.0) {
+        return 0;
+    }
+    return (fabs(x1 - x2) <= tol &&
+            fabs(y1 - y2) <= tol &&
+            fabs((x1 + w1) - (x2 + w2)) <= tol &&
+            fabs((y1 + h1) - (y2 + h2)) <= tol) ? 1 : 0;
+}
+
+static inline int FQXVideoBackdropMatchesViewport(double candX, double candY, double candW, double candH,
+                                                  double vpX, double vpY, double vpW, double vpH) {
+    if (vpW <= 0.0 || vpH <= 0.0 || candW <= 0.0 || candH <= 0.0) return 0;
+    if (FQXVideoBackdropSameRect(candX, candY, candW, candH, vpX, vpY, vpW, vpH, 0.75)) return 1;
+    /* Host refreshCoverImageView sizes portrait posters with aspect-fill overscan centered
+       on the unexpanded viewport (e.g. (-24, 0, 488, 867) over (0, 0, 440, 867)). Matching
+       centered overscan ensures coverImageView shares TTMetalView's exact full-screen anchor. */
+    double candMidX = candX + candW * 0.5;
+    double candMidY = candY + candH * 0.5;
+    double vpMidX = vpX + vpW * 0.5;
+    double vpMidY = vpY + vpH * 0.5;
+    return (candW >= vpW - 1.5 &&
+            candH >= vpH - 1.5 &&
+            fabs(candMidX - vpMidX) <= 1.5 &&
+            fabs(candMidY - vpMidY) <= 1.5) ? 1 : 0;
+}
+
+static inline int FQXShouldUseCachedSingleSeriesTrayHeight(double trayH,
+                                                           double trayW,
+                                                           double trayMaxY,
+                                                           double canvasW,
+                                                           double canvasMaxY) {
+    if (!isfinite(trayH) || !isfinite(trayW) || !isfinite(trayMaxY) ||
+        !isfinite(canvasW) || !isfinite(canvasMaxY)) {
+        return 0;
+    }
+    return (trayH >= 44.0 && trayH <= 110.0 &&
+            fabs(trayW - canvasW) <= 0.75 &&
+            fabs(trayMaxY - canvasMaxY) <= 0.75) ? 1 : 0;
+}
+
+static inline int FQXEvaluatePinchCleanTransition(int currentlyClean,
+                                                  double scale,
+                                                  double velocity) {
+    if (!isfinite(scale) || !isfinite(velocity)) return 0;
+    int spread = (scale >= 1.10) || (scale > 1.03 && velocity > 0.35);
+    int shrink = (scale <= 0.90) || (scale < 0.97 && velocity < -0.35);
+    if (!currentlyClean && spread) return 1;
+    if (currentlyClean && shrink) return -1;
+    return 0;
+}
+
+static inline int FQXShouldApplyPinchCleanToIncomingCell(int featureEnabled,
+                                                         int sessionClean,
+                                                         int isPortraitWindow,
+                                                         int isFullscreenPlayer) {
+    return (featureEnabled && sessionClean && isPortraitWindow && !isFullscreenPlayer) ? 1 : 0;
+}
+
+static inline int FQXShouldKeepSharedChromeMaskedOnCellDepart(int featureEnabled,
+                                                              int sessionClean,
+                                                              int feedDisappearing) {
+    return (featureEnabled && sessionClean && !feedDisappearing) ? 1 : 0;
+}
+
+static inline int FQXShouldHideEpisodePanelAdaptations(int hideAdaptations) {
+    return hideAdaptations ? 1 : 0;
+}
+
+static inline int FQXShouldHideEpisodePanelSameSeries(int hideSameSeries) {
+    return hideSameSeries ? 1 : 0;
+}
+
+static inline int FQXShouldHideEpisodePanelRecommend(int hideRecommend) {
+    return hideRecommend ? 1 : 0;
+}
+
 #endif
