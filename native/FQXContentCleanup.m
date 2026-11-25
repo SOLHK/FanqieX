@@ -1980,15 +1980,19 @@ void FQXInstallContentCleanupHooks(void){
   InstallAudioBookSyncAndRemoteHooks();
 
   atomic_store_explicit(&sLastObservedGateStateMask, FQXCurrentPendantAndAudioGateStateMask(), memory_order_relaxed);
+  static atomic_flag refreshPending = ATOMIC_FLAG_INIT;
   [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
                                                   object:nil
-                                                   queue:NSOperationQueue.mainQueue
+                                                   queue:nil
                                               usingBlock:^(__unused NSNotification *note) {
-      int cur = FQXCurrentPendantAndAudioGateStateMask();
-      int prev = atomic_exchange_explicit(&sLastObservedGateStateMask, cur, memory_order_relaxed);
-      if (prev != cur) {
-          FQXRefreshReaderAndAudioPendants();
-      }
+      // During launch the main thread can be waiting on the queue writing defaults.
+      if (atomic_flag_test_and_set(&refreshPending)) return;
+      dispatch_async(dispatch_get_main_queue(), ^{
+          atomic_flag_clear(&refreshPending);
+          int cur = FQXCurrentPendantAndAudioGateStateMask();
+          int prev = atomic_exchange_explicit(&sLastObservedGateStateMask, cur, memory_order_relaxed);
+          if (prev != cur) FQXRefreshReaderAndAudioPendants();
+      });
   }];
 
   Bool0("SSBizAdImpl","isStoryAdEnable",NO,story);

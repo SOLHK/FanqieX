@@ -1000,13 +1000,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
         return;
     }
     UITextView *notes = [UITextView new];
-    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复短剧/漫剧双指清屏滑到下一集即失效：改为会话级清屏状态并在上下切集时无缝接管新视频浮层、保持共享顶栏与底栏隐藏，同时隔离宿主捏合手势抢占与清屏态捏合回退命中。\n"
-                  "• 修复短剧全屏播放与首页上下滑动画面抖动：识别居中超界竖屏封面与 TTMetalView 共享全屏锚点消除 +44.5pt 跳变，缓存单剧底栏高度实现切集第 0 帧对齐，并在滚动时 1:1 同步跟手刷新视频背景。\n"
-                  "• 新增短剧/漫剧选集面板三项净化开关：「隐藏选集原著和更多改编」「隐藏选集同系列剧」「隐藏选集底部推荐视频」（位于「短剧 › 页面内容」）。\n"
-                  "• 优化 FanqieX 设置顶栏视觉：增大左侧版本号胶囊字号与字重，右侧采用自绘圆润 iOS 风格最小化收起图标并置于液态玻璃表层之上。\n"
-                  "• 修复听书「看广告攒时长」强制拦截及阅读页右下角「听书时长」沙漏悬浮挂件净化失效，并补齐番茄 7.4.5 短剧直播/小游戏/后贴片/优惠券与侧栏游戏等适配。",
-                  FQXPluginVersion()];
+    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n修复 1.9.8beta2 注入后番茄小说无法打开的问题。", FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;
     notes.textColor = UIColor.labelColor;
