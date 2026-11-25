@@ -55,6 +55,7 @@ extern void FQXRefreshReaderAndAudioPendants(void);
     X(ShelfImport, "ShelfLocalImport", "显示书架本地书导入入口", "shelf", YES) \
     X(ShelfHistoryCard, "ShelfHistoryCard", "显示书架浏览历史入口", "shelf", YES) \
     X(ShelfComic, "ShelfMotionComicRecommendation", "显示书架漫剧推荐", "shelf", YES) \
+    X(ShelfAdaptationCard, "ShelfAdaptationCard", "显示小说改编剧推荐卡", "shelf", YES) \
     X(ShelfRecommendations, "ShelfRecommendations", "显示书架推荐内容", "shelf", YES) \
     X(ShelfTabBookshelf, "ShelfTabBookshelf", "显示书架「书架」标签", "shelf", YES) \
     X(ShelfTabHistory, "ShelfTabHistory", "显示书架「历史」标签", "shelf", YES) \
@@ -269,17 +270,52 @@ static BOOL IsMotionComicBanner(id banner) {
         ((int (*)(id, SEL))objc_msgSend)(video, contentType) == 1004;
 }
 
+static BOOL ShelfHidesAdaptationBanner(id banner) {
+    if (!banner || Option(ShelfAdaptationCardKey, YES)) return NO;
+    if ([banner isKindOfClass:objc_lookUpClass("SeriesOriginalBanner")]) {
+        id payload = HostObject(banner, @selector(payload));
+        return [@"你看过的小说上架改编剧了" isEqual:HostObject(payload, @selector(bannerTitle))];
+    }
+    // The 7.4.5 shelf renders type 13 as a previously read novel's adaptation.
+    SEL type = sel_registerName("chaseBookUpdateType");
+    if (!HostMethod(object_getClass(banner), type, "i16@0:8") ||
+        ((int (*)(id, SEL))objc_msgSend)(banner, type) != 13) return NO;
+    id video = HostObject(banner, @selector(videoData));
+    return ![@"interactive_game" isEqual:HostObject(video, @selector(videoCategoryType))];
+}
+
 static id (*NativeRelatedBanner)(id, SEL);
 static id RelatedBanner(id owner, SEL cmd) {
     id banner = NativeRelatedBanner(owner, cmd);
+    if (ShelfHidesAdaptationBanner(banner)) return nil;
     return !Option(ShelfComicKey, YES) && IsMotionComicBanner(banner) ? nil : banner;
+}
+
+static id (*NativeShelfVideoBanner)(id, SEL);
+static id ShelfVideoBanner(id owner, SEL cmd) {
+    id banner = NativeShelfVideoBanner(owner, cmd);
+    return ShelfHidesAdaptationBanner(banner) ? nil : banner;
+}
+
+static id (*NativeShelfIPBanner)(id, SEL);
+static id ShelfIPBanner(id owner, SEL cmd) {
+    id banner = NativeShelfIPBanner(owner, cmd);
+    return ShelfHidesAdaptationBanner(banner) ? nil : banner;
+}
+
+static BOOL (*NativeCanShowLegacyIPBanner)(id, SEL, id);
+static BOOL ShelfCanShowLegacyIPBanner(id owner, SEL cmd, id banner) {
+    return !ShelfHidesAdaptationBanner(banner) && NativeCanShowLegacyIPBanner(owner, cmd, banner);
 }
 
 static BOOL (*NativeHasUnconsumedBanner)(id, SEL);
 static BOOL HasUnconsumedBanner(id owner, SEL cmd) {
     if (!NativeHasUnconsumedBanner(owner, cmd)) return NO;
-    if (Option(ShelfComicKey, YES)) return YES;
-    return !IsMotionComicBanner(HostObject(owner, sel_registerName("unconsumedVideoBanner")));
+    BOOL showComic = Option(ShelfComicKey, YES);
+    if (showComic && Option(ShelfAdaptationCardKey, YES)) return YES;
+    SEL getter = sel_registerName("unconsumedVideoBanner");
+    id banner = NativeShelfVideoBanner ? NativeShelfVideoBanner(owner, getter) : HostObject(owner, getter);
+    return !ShelfHidesAdaptationBanner(banner) && (showComic || !IsMotionComicBanner(banner));
 }
 
 static __weak UIViewController *LastShelf;
@@ -1906,6 +1942,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         }
         REPLACE(NativeImportMenu, "SSBookShelfLocalBookHandler", "moreMenuItems", "@16@0:8", ImportMenu);
         REPLACE(NativeRelatedBanner, "SSBookShelfChaseBookModel", "bookEndRelateVideoBanner", "@16@0:8", RelatedBanner);
+        Class chaseModel = objc_lookUpClass("SSBookShelfChaseBookModel");
+        FQXInstallOwnedHook(chaseModel, sel_registerName("unconsumedVideoBanner"), NO, "@16@0:8",
+                            (IMP)ShelfVideoBanner, (IMP *)&NativeShelfVideoBanner);
+        FQXInstallOwnedHook(chaseModel, sel_registerName("unconsumedIpStableEntranceBanner"), NO, "@16@0:8",
+                            (IMP)ShelfIPBanner, (IMP *)&NativeShelfIPBanner);
+        FQXInstallOwnedHook(chaseModel, sel_registerName("canShowLegacyIpBanner:"), NO, "B24@0:8@16",
+                            (IMP)ShelfCanShowLegacyIPBanner, (IMP *)&NativeCanShowLegacyIPBanner);
         REPLACE(NativeHasUnconsumedBanner, "SSBookShelfChaseBookModel", "hasUnconsumedVideoBanner", "B16@0:8", HasUnconsumedBanner);
         REPLACE(NativeShelfShouldShowNotify, "SSBookShelfViewModel", "shouldShowNotify", "B16@0:8", ShelfShouldShowNotify);
         REPLACE(NativeHideDoubleColumnRecommend, "SSBookShelfSubVCOpenParams", "hideDoubleColumnRecommend", "B16@0:8", HideDoubleColumnRecommend);
@@ -2244,10 +2287,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         NativeBadge(UIApplication.sharedApplication, sel_registerName("setApplicationIconBadgeNumber:"), 0);
     } else if ([key isEqualToString:ShelfBannerKey] || [key isEqualToString:ShelfActivityNoticeKey] ||
                [key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey] ||
-               [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfRecommendationsKey]) {
+               [key isEqualToString:ShelfComicKey] || [key isEqualToString:ShelfAdaptationCardKey] ||
+               [key isEqualToString:ShelfRecommendationsKey]) {
         UIViewController *shelf = LastShelf;
-        if ([key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey]) {
+        BOOL utilityChanged = [key isEqualToString:ShelfImportKey] || [key isEqualToString:ShelfHistoryCardKey];
+        if (utilityChanged)
             ShelfUtilityResetController(shelf);
+        if (utilityChanged || [key isEqualToString:ShelfAdaptationCardKey]) {
             id vm = HostObject(shelf, sel_registerName("viewModel"));
             SEL rebuild = sel_registerName("rebuildShelfPipeline:");
             if (HostMethod(object_getClass(vm), rebuild, "v24@0:8@16")) {

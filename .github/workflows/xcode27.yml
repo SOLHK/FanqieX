@@ -58,6 +58,8 @@ jobs:
         run: python3 tests/run_logger_startup_smoke.py
       - name: Check background defaults notifications during launch
         run: python3 tests/test_pendant_startup_notification.py
+      - name: Check bookshelf adaptation card filtering
+        run: python3 tests/test_shelf_adaptation_card.py
       - name: Regenerate the shipped ARM64 glass component from reviewed Objective-C source
         run: |
           set -euo pipefail

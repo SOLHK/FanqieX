@@ -820,6 +820,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.ReaderChapterEndDrama.1":@"阅读底栏 改编剧场 改编剧入口",
             @"FanqieX.ReaderChapterEndActions.1":@"最新章节 三个按钮 最新章 章末",
             @"FanqieX.ShelfMotionComicRecommendation.1":@"书架 漫剧推荐 动态漫推荐",
+            @"FanqieX.ShelfAdaptationCard.1":@"书架 小说改编剧 改编短剧 推荐卡片",
             @"FanqieX.ShelfRecommendations.1":@"书架 推荐内容 展开全部 猜你喜欢 为你推荐 书架底部推荐 榜单推荐",
             @"FanqieX.ShelfLocalImport.1":@"书架本地书导入入口 本地图书 本地书导入 导入本地书 畅享免费听书",
             @"FanqieX.ShelfHistoryCard.1":@"书架 浏览历史 去浏览历史 看更多书籍 历史入口 卡片 隐藏",
@@ -1000,7 +1001,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
         return;
     }
     UITextView *notes = [UITextView new];
-    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n修复 1.9.8beta2 注入后番茄小说无法打开的问题。", FQXPluginVersion()];
+    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n修复 1.9.8beta2 启动时卡住的问题。\n\n书架净化新增「隐藏小说改编剧推荐卡」，可收起「你看过的小说上架改编剧了」卡片。", FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;
     notes.textColor = UIColor.labelColor;
