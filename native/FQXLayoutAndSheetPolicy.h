@@ -35,7 +35,26 @@ typedef struct {
 } FQXVisiblePagerPolicy;
 
 static inline double FQXDramaCapsuleOuterHorizontalPad(double scale) {
-    return round(fmax(7.0, fmin(16.0, 11.0 * scale)) * 2.0) / 2.0;
+    return round(fmax(8.0, fmin(16.0, 12.0 * scale)) * 2.0) / 2.0;
+}
+
+static inline double FQXDramaCompactedLeadingPad(double scale) {
+    return ceil(FQXDramaCapsuleOuterHorizontalPad(scale)) + 2.0;
+}
+
+static inline int FQXShouldSuppressDramaScrollMask(int fitsInHeader, int glassEnabled) {
+    return (glassEnabled && fitsInHeader) ? 1 : 0;
+}
+
+static inline double FQXResolveDramaItemAnchorX(double cellMinX,
+                                                double cellWidth,
+                                                int hasLabelCenter,
+                                                double labelCenterX) {
+    double fallback = cellMinX + cellWidth * 0.5;
+    if (hasLabelCenter && isfinite(labelCenterX) && fabs(labelCenterX - fallback) <= 6.0) {
+        return labelCenterX;
+    }
+    return fallback;
 }
 
 static inline double FQXDramaCapsulePillInsetY(double scale) {
@@ -209,6 +228,22 @@ static inline int FQXStepVisiblePagerIndex(size_t totalCount,
         }
     }
     return -1;
+}
+
+static inline int FQXShouldHideHistoryEdgeMask(int isRightMask,
+                                               int showFilter,
+                                               int showEdit,
+                                               int allowStripScroll,
+                                               int anyLeftVisible) {
+    if (!anyLeftVisible || !allowStripScroll) return 1;
+    if (isRightMask && !showFilter && !showEdit) return 1;
+    return 0;
+}
+
+static inline int FQXShouldUnlockShortVideoDanmaku(int unlockOptionEnabled,
+                                                   int isInListenMode,
+                                                   int isTeenagerMode) {
+    return (unlockOptionEnabled && !isInListenMode && !isTeenagerMode) ? 1 : 0;
 }
 
 #endif

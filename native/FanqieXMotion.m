@@ -4093,7 +4093,7 @@ static BOOL FQXComputeDramaCompactedRects(UICollectionViewLayout *layout,
         }
     }
 
-    CGFloat leadPad = round(MAX(8.0, MIN(14.0, 10.0 * scale)) * 2.0) / 2.0;
+    CGFloat leadPad = FQXDramaCompactedLeadingPad(scale);
     CGFloat cursorX = leadPad;
     BOOL placedAny = NO;
     for (NSInteger i = 0; i < count; ++i) {
@@ -4317,6 +4317,10 @@ static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, U
         objc_setAssociatedObject(layout, FQXDramaCompactLayoutActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(layout, FQXDramaCompactAppliedScaleKey, @(curScale), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(layout, FQXDramaCompactVisMaskKey, @(visMask), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (NSThread.isMainThread && !gFQXDramaCompactComputing) {
+            [layout invalidateLayout];
+            [cv layoutIfNeeded];
+        }
         if (![objc_getAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey) boolValue]) {
             objc_setAssociatedObject(layout, FQXDramaCompactRelayoutScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             __weak UICollectionViewLayout *weakLayout = layout;
@@ -4361,6 +4365,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 - (void)placePillAtRestingAnimated:(BOOL)animated;
 - (void)placePillAtIndex:(NSInteger)sel animated:(BOOL)animated;
 - (CGRect)itemRectForIndex:(NSInteger)index;
+- (CGFloat)anchorXForIndex:(NSInteger)index;
 - (CGRect)pillRectForAnchorX:(CGFloat)anchorX;
 - (void)updatePillForSwipeFromIndex:(NSInteger)leftIndex toIndex:(NSInteger)rightIndex ratio:(CGFloat)ratio;
 @end
@@ -4681,6 +4686,28 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     return (attr && CGRectGetWidth(attr.frame) >= 6.0) ? attr.frame : CGRectZero;
 }
 
+- (CGFloat)anchorXForIndex:(NSInteger)index {
+    CGRect itemRect = [self itemRectForIndex:index];
+    if (CGRectGetWidth(itemRect) < 6.0) return 0.0;
+    UICollectionView *cv = self->_collectionView;
+    int hasLabel = 0;
+    double labelMidX = 0.0;
+    if (cv && index >= 0 && [cv numberOfSections] > 0 && index < [cv numberOfItemsInSection:0]) {
+        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:[NSIndexPath indexPathForItem:index inSection:0]];
+        if (cell && !cell.hidden && cell.alpha > 0.05) {
+            UILabel *lbl = FQXObjGet(cell, "titleLabel");
+            if ([lbl isKindOfClass:UILabel.class] && lbl.superview && CGRectGetWidth(lbl.bounds) >= 6.0) {
+                CGPoint p = [lbl.superview convertPoint:lbl.center toView:cv];
+                if (isfinite(p.x)) {
+                    hasLabel = 1;
+                    labelMidX = p.x;
+                }
+            }
+        }
+    }
+    return (CGFloat)FQXResolveDramaItemAnchorX(CGRectGetMinX(itemRect), CGRectGetWidth(itemRect), hasLabel, labelMidX);
+}
+
 - (void)updatePillForSwipeFromIndex:(NSInteger)leftIndex toIndex:(NSInteger)rightIndex ratio:(CGFloat)ratio {
     if (!self->_pillGlass || !self->_outerGlass || !self->_collectionView) return;
     if (self->_mode != FQXTopCapsuleTouchIdle) return;
@@ -4737,13 +4764,13 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 
     CGFloat anchorX = 0.0;
     if (CGRectGetWidth(leftRect) >= 6.0 && CGRectGetWidth(rightRect) >= 6.0) {
-        CGFloat lx = CGRectGetMidX(leftRect);
-        CGFloat rx = CGRectGetMidX(rightRect);
+        CGFloat lx = [self anchorXForIndex:leftIndex];
+        CGFloat rx = [self anchorXForIndex:rightIndex];
         anchorX = lx + (rx - lx) * effectiveRatio;
     } else if (CGRectGetWidth(leftRect) >= 6.0) {
-        anchorX = CGRectGetMidX(leftRect);
+        anchorX = [self anchorXForIndex:leftIndex];
     } else {
-        anchorX = CGRectGetMidX(rightRect);
+        anchorX = [self anchorXForIndex:rightIndex];
     }
     self->_anchorX = anchorX;
     [self->_pillGlass.layer removeAllAnimations];
@@ -4760,7 +4787,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     }
     CGRect itemRect = [self itemRectForIndex:sel];
     if (CGRectGetWidth(itemRect) >= 6.0) {
-        self->_anchorX = CGRectGetMidX(itemRect);
+        self->_anchorX = [self anchorXForIndex:sel];
         [self placePill:[self pillRectForAnchorX:self->_anchorX] animated:animated];
         return;
     }
@@ -4801,7 +4828,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         self->_pendingTapExpiry = CACurrentMediaTime() + 0.35;
         self->_mode = FQXTopCapsuleTouchPressing;
         [self applyMaterialToOuter:self->_outerGlass isDark:[self currentResolvedDarkState]];
-        self->_anchorX = CGRectGetMidX(itemRect);
+        self->_anchorX = [self anchorXForIndex:idx];
         [self placePill:[self pillRectForAnchorX:self->_anchorX] animated:YES];
     } else if (gr.state == UIGestureRecognizerStateEnded ||
                gr.state == UIGestureRecognizerStateCancelled ||
@@ -5631,6 +5658,41 @@ static void FQXSyncDramaPagerScrollPolicyForFeed(id feedVC) {
 }
 
 static BOOL FQXDramaHeaderAlignInFlight = NO;
+static const char FQXK_DramaSavedScrollMaskKey = 0;
+#define FQXDramaSavedScrollMaskKey ((const void *)&FQXK_DramaSavedScrollMaskKey)
+
+static void FQXSetViewLayerMaskSuppressed(UIView *view, BOOL suppress) {
+    if (![view isKindOfClass:UIView.class]) return;
+    CALayer *curMask = view.layer.mask;
+    if (suppress) {
+        if (curMask) {
+            objc_setAssociatedObject(view, FQXDramaSavedScrollMaskKey, curMask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            view.layer.mask = nil;
+        }
+    } else {
+        CALayer *saved = objc_getAssociatedObject(view, FQXDramaSavedScrollMaskKey);
+        if (saved) {
+            if (!curMask) view.layer.mask = saved;
+            objc_setAssociatedObject(view, FQXDramaSavedScrollMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+}
+
+static void FQXSyncDramaScrollMaskSuppression(UIView *header, UIView *categories, UIView *tabs, BOOL suppress) {
+    FQXSetViewLayerMaskSuppressed(categories, suppress);
+    FQXSetViewLayerMaskSuppressed(tabs, suppress);
+    CALayer *hostMask = FQXObjGet(header, "scrollMaskLayer");
+    if ([hostMask isKindOfClass:CALayer.class] && [categories isKindOfClass:UIView.class]) {
+        if (suppress && categories.layer.mask == hostMask) {
+            objc_setAssociatedObject(categories, FQXDramaSavedScrollMaskKey, hostMask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            categories.layer.mask = nil;
+        } else if (!suppress && !categories.layer.mask &&
+                   objc_getAssociatedObject(categories, FQXDramaSavedScrollMaskKey) == hostMask) {
+            categories.layer.mask = hostMask;
+            objc_setAssociatedObject(categories, FQXDramaSavedScrollMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+}
 
 static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     if (FQXDramaHeaderAlignInFlight || !header || !header.window) return;
@@ -5712,11 +5774,20 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
     if (header.clipsToBounds) header.clipsToBounds = NO;
     if (categories.clipsToBounds) categories.clipsToBounds = NO;
     if (outer.clipsToBounds) outer.clipsToBounds = NO;
+    for (UIView *anc = categories.superview; anc && anc != header; anc = anc.superview) {
+        if (anc.clipsToBounds) anc.clipsToBounds = NO;
+    }
     CGFloat maxCapsuleW = CGRectGetWidth(headerBounds) - ((searchBtn && !searchBtn.hidden) ? (targetH + 32.0) : 24.0);
     if (maxCapsuleW < 100.0) maxCapsuleW = CGRectGetWidth(headerBounds) - 16.0;
+    BOOL fitsInHeader = NO;
     if ([headerCV isKindOfClass:UICollectionView.class]) {
         CGFloat contentW = headerCV.contentSize.width;
-        BOOL fitsInHeader = (contentW > 1.0 && contentW <= maxCapsuleW + 1.0);
+        fitsInHeader = (contentW > 1.0 && contentW <= maxCapsuleW + 1.0);
+        FQXSyncDramaScrollMaskSuppression(
+            header,
+            categories,
+            headerTabs,
+            FQXShouldSuppressDramaScrollMask(fitsInHeader ? 1 : 0, FQXGlassEnabled() ? 1 : 0) != 0);
         if (fitsInHeader) {
             if (headerCV.scrollEnabled) headerCV.scrollEnabled = NO;
             if (headerCV.clipsToBounds) headerCV.clipsToBounds = NO;
@@ -5776,6 +5847,11 @@ static void FQXAlignDramaHeaderCapsuleAndSearch(UIView *header) {
                 desiredLeft = round((mid - desiredW * 0.5) * 2.0) / 2.0;
             }
             if (desiredW >= 30.0 && desiredW <= CGRectGetWidth(headerBounds) - 12.0) {
+                if (fitsInHeader && CGRectGetWidth(categories.bounds) + 0.5 < desiredLeft + desiredW + 2.0) {
+                    CGRect catFrame = categories.frame;
+                    catFrame.size.width = ceil(MAX(CGRectGetWidth(catFrame), desiredLeft + desiredW + 2.0));
+                    categories.frame = catFrame;
+                }
                 if (fabs(of.origin.x - desiredLeft) > 0.5 || fabs(of.size.width - desiredW) > 0.5) {
                     of.origin.x = desiredLeft;
                     of.size.width = desiredW;
@@ -5888,6 +5964,7 @@ static void FQXSyncDramaTopCapsuleForHeader(UIView *header) {
     if (!header) return;
     if (!FQXGlassEnabled()) {
         UIView *tabs = FQXObjGet(FQXObjGet(header, "delegate"), "simpleTabView");
+        FQXSyncDramaScrollMaskSuppression(header, FQXObjGet(header, "tabContainer"), tabs, NO);
         FQXDramaTopCapsuleInteraction *interaction = objc_getAssociatedObject(tabs, FQXDramaTopCapsuleKey);
         [interaction invalidate];
         return;
@@ -5909,6 +5986,73 @@ static void (*OrigDramaHeaderLayoutForCapsule)(id, SEL);
 static void HookDramaHeaderLayoutForCapsule(UIView *header, SEL cmd) {
     if (OrigDramaHeaderLayoutForCapsule) OrigDramaHeaderLayoutForCapsule(header, cmd);
     FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaHeaderSetupForCapsule)(id, SEL);
+static void HookDramaHeaderSetupForCapsule(UIView *header, SEL cmd) {
+    if (OrigDramaHeaderSetupForCapsule) OrigDramaHeaderSetupForCapsule(header, cmd);
+    FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaHeaderSetBoundsForCapsule)(id, SEL, CGRect);
+static void HookDramaHeaderSetBoundsForCapsule(UIView *header, SEL cmd, CGRect bounds) {
+    if (OrigDramaHeaderSetBoundsForCapsule) OrigDramaHeaderSetBoundsForCapsule(header, cmd, bounds);
+    FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaHeaderScrollMaskForCapsule)(id, SEL);
+static void HookDramaHeaderScrollMaskForCapsule(UIView *header, SEL cmd) {
+    if (OrigDramaHeaderScrollMaskForCapsule) OrigDramaHeaderScrollMaskForCapsule(header, cmd);
+    FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedAppearedForCapsule)(id, SEL, BOOL);
+static void HookDramaFeedAppearedForCapsule(id feed, SEL cmd, BOOL animated) {
+    if (OrigDramaFeedAppearedForCapsule) OrigDramaFeedAppearedForCapsule(feed, cmd, animated);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedRelayoutHeaderForCapsule)(id, SEL);
+static void HookDramaFeedRelayoutHeaderForCapsule(id feed, SEL cmd) {
+    if (OrigDramaFeedRelayoutHeaderForCapsule) OrigDramaFeedRelayoutHeaderForCapsule(feed, cmd);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedFinalizeTabForCapsule)(id, SEL, id);
+static void HookDramaFeedFinalizeTabForCapsule(id feed, SEL cmd, id model) {
+    if (OrigDramaFeedFinalizeTabForCapsule) OrigDramaFeedFinalizeTabForCapsule(feed, cmd, model);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedContentBgForCapsule)(id, SEL, id);
+static void HookDramaFeedContentBgForCapsule(id feed, SEL cmd, id model) {
+    if (OrigDramaFeedContentBgForCapsule) OrigDramaFeedContentBgForCapsule(feed, cmd, model);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedSetupModelsForCapsule)(id, SEL, id, NSInteger, BOOL, NSInteger);
+static void HookDramaFeedSetupModelsForCapsule(id feed, SEL cmd, id models, NSInteger index, BOOL report, NSInteger reason) {
+    if (OrigDramaFeedSetupModelsForCapsule) OrigDramaFeedSetupModelsForCapsule(feed, cmd, models, index, report, reason);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedRefreshModelsForCapsule)(id, SEL, id, NSInteger, NSInteger);
+static void HookDramaFeedRefreshModelsForCapsule(id feed, SEL cmd, id models, NSInteger index, NSInteger reason) {
+    if (OrigDramaFeedRefreshModelsForCapsule) OrigDramaFeedRefreshModelsForCapsule(feed, cmd, models, index, reason);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
+}
+
+static void (*OrigDramaFeedRefreshSelectedForCapsule)(id, SEL, id, NSInteger);
+static void HookDramaFeedRefreshSelectedForCapsule(id feed, SEL cmd, id models, NSInteger index) {
+    if (OrigDramaFeedRefreshSelectedForCapsule) OrigDramaFeedRefreshSelectedForCapsule(feed, cmd, models, index);
+    UIView *header = FQXObjGet(feed, "headerView");
+    if ([header isKindOfClass:UIView.class]) FQXSyncDramaTopCapsuleForHeader(header);
 }
 
 static void (*OrigDramaHeaderDidMoveWindow)(id, SEL);
@@ -5978,7 +6122,7 @@ static void HookDramaCommitTabIndex(id owner, SEL cmd, NSInteger index, int type
         NSInteger finalIdx = (resolved != NSNotFound) ? resolved : index;
         BOOL indexChanged = (interaction->_lastSelectedIndex != NSNotFound && finalIdx != interaction->_lastSelectedIndex);
         interaction->_lastSelectedIndex = finalIdx;
-        CGRect target = [interaction pillRectForAnchorX:CGRectGetMidX([interaction itemRectForIndex:finalIdx])];
+        CGRect target = [interaction pillRectForAnchorX:[interaction anchorXForIndex:finalIdx]];
         BOOL alreadyNear = fabs(CGRectGetMinX(interaction->_pillGlass.frame) - CGRectGetMinX(target)) <= 3.0;
         if (wasPaging || alreadyNear) {
             [interaction->_pillGlass.layer removeAllAnimations];
@@ -12708,32 +12852,63 @@ static void FQXScanHistoryTopBarDepth(UIView *node,
     }
 }
 
+static const char FQXK_HistoryLayerHiddenByUsKey = 0;
+#define FQXHistoryLayerHiddenByUsKey ((const void *)&FQXK_HistoryLayerHiddenByUsKey)
+
+static void FQXApplyHistoryLayerHidden(CALayer *layer, BOOL hide) {
+    if (![layer isKindOfClass:CALayer.class]) return;
+    if (hide) {
+        if (!layer.hidden) {
+            objc_setAssociatedObject(layer, FQXHistoryLayerHiddenByUsKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            layer.hidden = YES;
+        }
+    } else if ([objc_getAssociatedObject(layer, FQXHistoryLayerHiddenByUsKey) boolValue]) {
+        layer.hidden = NO;
+        objc_setAssociatedObject(layer, FQXHistoryLayerHiddenByUsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static BOOL FQXViewHasGradientLayer(UIView *view) {
+    if (![view isKindOfClass:UIView.class]) return NO;
+    if ([view.layer isKindOfClass:CAGradientLayer.class]) return YES;
+    for (CALayer *sub in view.layer.sublayers) {
+        if ([sub isKindOfClass:CAGradientLayer.class]) return YES;
+    }
+    return NO;
+}
+
 static void FQXCollectHistoryDividersDepth(UIView *node,
                                            UIView *vcView,
                                            UIScrollView *mainScroll,
                                            CGFloat vcW,
                                            CGFloat rowMidY,
                                            NSMutableArray<UIView *> *outDividers,
+                                           NSMutableArray<UIView *> *outRightMasks,
                                            NSInteger depth) {
     if (!node || !vcView || depth > 6) return;
     if (mainScroll && (node == mainScroll || [node isDescendantOfView:mainScroll])) return;
     CGRect inVC = [node convertRect:node.bounds toView:vcView];
     if (depth > 0 && CGRectGetMinY(inVC) > 200.0) return;
-    if (depth > 0 && ![node isKindOfClass:UILabel.class] && ![node isKindOfClass:UIControl.class]) {
+    if (depth > 0 && ![node isKindOfClass:UILabel.class] && ![node isKindOfClass:UIControl.class] &&
+        ![node isKindOfClass:UICollectionView.class] && ![node isKindOfClass:UICollectionViewCell.class]) {
         CGFloat w = CGRectGetWidth(inVC);
         CGFloat h = CGRectGetHeight(inVC);
-        if (w >= 0.3 && w <= 4.0 && h >= 6.0 && h <= 32.0 &&
-            CGRectGetMinX(inVC) >= vcW * 0.45 &&
-            fabs(CGRectGetMidY(inVC) - rowMidY) <= 16.0) {
-            NSString *clsName = NSStringFromClass(node.class) ?: @"";
-            if (![clsName containsString:@"ScrollIndicator"] && ![outDividers containsObject:node]) {
-                [outDividers addObject:node];
+        NSString *clsName = NSStringFromClass(node.class) ?: @"";
+        if (![clsName containsString:@"ScrollIndicator"] && fabs(CGRectGetMidY(inVC) - rowMidY) <= 18.0) {
+            if (w >= 0.3 && w <= 4.0 && h >= 6.0 && h <= 36.0 && CGRectGetMinX(inVC) >= vcW * 0.45) {
+                if (![outDividers containsObject:node]) [outDividers addObject:node];
+                return;
+            }
+            if (outRightMasks && w > 4.0 && w <= 36.0 && h >= 14.0 && h <= 56.0 &&
+                CGRectGetMinX(inVC) >= vcW * 0.40 && node.subviews.count == 0 &&
+                ([node isKindOfClass:UIImageView.class] || FQXViewHasGradientLayer(node))) {
+                if (![outRightMasks containsObject:node]) [outRightMasks addObject:node];
                 return;
             }
         }
     }
     for (UIView *sub in node.subviews) {
-        FQXCollectHistoryDividersDepth(sub, vcView, mainScroll, vcW, rowMidY, outDividers, depth + 1);
+        FQXCollectHistoryDividersDepth(sub, vcView, mainScroll, vcW, rowMidY, outDividers, outRightMasks, depth + 1);
     }
 }
 
@@ -12799,6 +12974,8 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
     UIScrollView *mainScroll = FQXFindMainHistoryContentScroll(vcView, nil, 0);
     if (!anyHidden) {
         FQXSyncShelfHistoryPager(historyVC, category, FQXObjGet(category, "collectionView"), anyLeft);
+        FQXApplyHistoryLayerHidden(FQXRawIvarObj(historyVC, "_rightMaskLayer"), NO);
+        FQXApplyHistoryLayerHidden(FQXRawIvarObj(historyVC, "_leftMaskLayer"), NO);
         for (UIView *bar in FQXTrackedHistoryBarViews().allObjects) {
             if (!bar.superview || ![bar isDescendantOfView:vcView]) continue;
             FQXShelfApplyControlHidden(bar, FQXHistoryBarHiddenByUsKey, NO);
@@ -12851,8 +13028,27 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
         rowMidY = CGRectGetMidY([leftAnchor convertRect:leftAnchor.bounds toView:vcView]);
     }
     NSMutableArray<UIView *> *dividers = [NSMutableArray array];
+    NSMutableArray<UIView *> *rightEdgeMasks = [NSMutableArray array];
     if (rowMidY >= 0.0) {
-        FQXCollectHistoryDividersDepth(vcView, vcView, mainScroll, vcW, rowMidY, dividers, 0);
+        FQXCollectHistoryDividersDepth(vcView, vcView, mainScroll, vcW, rowMidY, dividers, rightEdgeMasks, 0);
+    }
+    UIView *ivarFilterLine = FQXRawIvarObj(historyVC, "_filterLineView");
+    UIView *ivarModeLine = FQXRawIvarObj(historyVC, "_modeLineView");
+    if ([ivarFilterLine isKindOfClass:UIView.class] && ![dividers containsObject:ivarFilterLine]) {
+        [dividers addObject:ivarFilterLine];
+    }
+    if ([ivarModeLine isKindOfClass:UIView.class] && ![dividers containsObject:ivarModeLine]) {
+        [dividers addObject:ivarModeLine];
+    }
+    UIView *ivarRightMask = FQXObjGet(historyVC, "rightMaskView") ?: FQXRawIvarObj(historyVC, "_rightMaskView");
+    UIView *ivarRightGrad = FQXObjGet(historyVC, "rightGradientView") ?: FQXRawIvarObj(historyVC, "_rightGradientView");
+    UIView *ivarLeftMask = FQXObjGet(historyVC, "leftMaskView") ?: FQXRawIvarObj(historyVC, "_leftMaskView");
+    UIView *ivarLeftGrad = FQXObjGet(historyVC, "leftGradientView") ?: FQXRawIvarObj(historyVC, "_leftGradientView");
+    if ([ivarRightMask isKindOfClass:UIView.class] && ![rightEdgeMasks containsObject:ivarRightMask]) {
+        [rightEdgeMasks addObject:ivarRightMask];
+    }
+    if ([ivarRightGrad isKindOfClass:UIView.class] && ![rightEdgeMasks containsObject:ivarRightGrad]) {
+        [rightEdgeMasks addObject:ivarRightGrad];
     }
 
     UIView *fullRowWrapper = (leftAnchor && rightAnchor)
@@ -13052,6 +13248,28 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
         }
     }
 
+    // 2b. Sync History scroll-edge fade masks (rightMaskView / rightGradientView / leftMaskView / leftGradientView)
+    //     so hiding 筛选 & 编辑 never leaves the 18pt dark vertical gradient stripe stranded in mid-row.
+    BOOL allowHistoryStripScroll = leftCV ? leftCV.scrollEnabled : NO;
+    BOOL hideRightMasks = FQXShouldHideHistoryEdgeMask(
+        1, showFilter ? 1 : 0, showEdit ? 1 : 0, allowHistoryStripScroll ? 1 : 0, anyLeft ? 1 : 0) != 0;
+    BOOL hideLeftMasks = FQXShouldHideHistoryEdgeMask(
+        0, showFilter ? 1 : 0, showEdit ? 1 : 0, allowHistoryStripScroll ? 1 : 0, anyLeft ? 1 : 0) != 0;
+    for (UIView *rm in rightEdgeMasks) {
+        [FQXTrackedHistoryBarViews() addObject:rm];
+        FQXShelfApplyControlHidden(rm, FQXHistoryBarHiddenByUsKey, hideRightMasks);
+    }
+    if ([ivarLeftMask isKindOfClass:UIView.class]) {
+        [FQXTrackedHistoryBarViews() addObject:ivarLeftMask];
+        FQXShelfApplyControlHidden(ivarLeftMask, FQXHistoryBarHiddenByUsKey, hideLeftMasks);
+    }
+    if ([ivarLeftGrad isKindOfClass:UIView.class]) {
+        [FQXTrackedHistoryBarViews() addObject:ivarLeftGrad];
+        FQXShelfApplyControlHidden(ivarLeftGrad, FQXHistoryBarHiddenByUsKey, hideLeftMasks);
+    }
+    FQXApplyHistoryLayerHidden(FQXRawIvarObj(historyVC, "_rightMaskLayer"), hideRightMasks);
+    FQXApplyHistoryLayerHidden(FQXRawIvarObj(historyVC, "_leftMaskLayer"), hideLeftMasks);
+
     // 3. Full-row collapse & book-grid upward shift ONLY when all 6 controls are hidden
     if (fullRowWrapper) {
         [FQXTrackedHistoryBarViews() addObject:fullRowWrapper];
@@ -13142,6 +13360,24 @@ static void FQXSyncShelfHistoryFilterBar(UIViewController *historyVC) {
 static void (*OrigShelfHistoryVCDidLayout)(id, SEL);
 static void HookShelfHistoryVCDidLayout(UIViewController *self, SEL _cmd) {
     if (OrigShelfHistoryVCDidLayout) OrigShelfHistoryVCDidLayout(self, _cmd);
+    FQXSyncShelfHistoryFilterBar(self);
+}
+
+static void (*OrigShelfHistoryCategoryLayout)(id, SEL);
+static void HookShelfHistoryCategoryLayout(UIViewController *self, SEL _cmd) {
+    if (OrigShelfHistoryCategoryLayout) OrigShelfHistoryCategoryLayout(self, _cmd);
+    FQXSyncShelfHistoryFilterBar(self);
+}
+
+static void (*OrigShelfHistoryLoadMaskView)(id, SEL, double);
+static void HookShelfHistoryLoadMaskView(UIViewController *self, SEL _cmd, double top) {
+    if (OrigShelfHistoryLoadMaskView) OrigShelfHistoryLoadMaskView(self, _cmd, top);
+    FQXSyncShelfHistoryFilterBar(self);
+}
+
+static void (*OrigShelfHistoryLayoutRightButtons)(id, SEL);
+static void HookShelfHistoryLayoutRightButtons(UIViewController *self, SEL _cmd) {
+    if (OrigShelfHistoryLayoutRightButtons) OrigShelfHistoryLayoutRightButtons(self, _cmd);
     FQXSyncShelfHistoryFilterBar(self);
 }
 
@@ -21859,10 +22095,20 @@ static void FQXInstallPostGlassHooks(void) {
 
         // Short Drama header capsule & search button alignment (runs after AlignedGlass)
         POST_HOOK("SSVideoSeriesFeedHeaderView", "layoutSubviews", "v16@0:8", OrigDramaHeaderLayoutForCapsule, HookDramaHeaderLayoutForCapsule);
+        POST_HOOK("SSVideoSeriesFeedHeaderView", "setupSubViews", "v16@0:8", OrigDramaHeaderSetupForCapsule, HookDramaHeaderSetupForCapsule);
+        POST_HOOK("SSVideoSeriesFeedHeaderView", "setBounds:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigDramaHeaderSetBoundsForCapsule, HookDramaHeaderSetBoundsForCapsule);
+        POST_HOOK("SSVideoSeriesFeedHeaderView", "updateScrollMaskLayer", "v16@0:8", OrigDramaHeaderScrollMaskForCapsule, HookDramaHeaderScrollMaskForCapsule);
         POST_HOOK("SSVideoSeriesFeedHeaderView", "didMoveToWindow", "v16@0:8", OrigDramaHeaderDidMoveWindow, HookDramaHeaderDidMoveWindow);
         POST_HOOK("SSVideoSeriesFeedHeaderView", "finishSearchIconVisibilityTransition:", "v20@0:8B16", OrigDramaHeaderSearchTransition, HookDramaHeaderSearchTransition);
         POST_HOOK("SSVideoSeriesFeedHeaderView", "updateTabViewWithContentSize:", "v32@0:8{CGSize=dd}16", OrigDramaHeaderUpdateTabs, HookDramaHeaderUpdateTabs);
         POST_HOOK("SSVideoSeriesFeedHeaderView", "layoutTabContainerWithDesiredWidth:baseWidth:reserveSearchButton:", "v36@0:8d16d24B32", OrigDramaHeaderTabGeometry, HookDramaHeaderTabGeometry);
+        POST_HOOK("SSVideoSeriesFeedViewController", "viewDidAppear:", "v20@0:8B16", OrigDramaFeedAppearedForCapsule, HookDramaFeedAppearedForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "relayoutHeaderView", "v16@0:8", OrigDramaFeedRelayoutHeaderForCapsule, HookDramaFeedRelayoutHeaderForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "finalizeTabSelectionUIStateWithTabModel:", "v24@0:8@16", OrigDramaFeedFinalizeTabForCapsule, HookDramaFeedFinalizeTabForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "updateContentBackgroundColorWithTabModel:", "v24@0:8@16", OrigDramaFeedContentBgForCapsule, HookDramaFeedContentBgForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "setupDataWithTabModels:serverSelectedIndex:reportFirstScreenDataFinish:reason:", "v44@0:8@16q24B32q36", OrigDramaFeedSetupModelsForCapsule, HookDramaFeedSetupModelsForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "refreshSingleTabViewWithTabModels:serverSelectedIndex:reason:", "v40@0:8@16q24q32", OrigDramaFeedRefreshModelsForCapsule, HookDramaFeedRefreshModelsForCapsule);
+        POST_HOOK("SSVideoSeriesFeedViewController", "refreshSelectedTabModelWithTabModels:serverSelectedIndex:", "v32@0:8@16q24", OrigDramaFeedRefreshSelectedForCapsule, HookDramaFeedRefreshSelectedForCapsule);
         POST_HOOK("SSHGBookStoreCategoryTitleView", "layoutSubviews", "v16@0:8", OrigDramaTabsLayoutForCapsule, HookDramaTabsLayoutForCapsule);
         POST_HOOK("SSHGBookStoreCategoryTitleView", "refreshDataSource", "v16@0:8", OrigDramaTabsRefreshDataSource, HookDramaTabsRefreshDataSource);
         POST_HOOK("SSHGBookStoreCategoryTitleView", "refreshCellModel:index:", "v32@0:8@16q24", OrigDramaTabsRefreshCellModel, HookDramaTabsRefreshCellModel);
@@ -21927,6 +22173,9 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelfFilterMixRowCollectionView", "layoutSubviews", "v16@0:8", OrigShelfFilterMixRowLayout, HookShelfFilterMixRowLayout);
         POST_HOOK("SSBookShelfFilter541Cell", "layoutSubviews", "v16@0:8", OrigShelfFilter541CellLayout, HookShelfFilter541CellLayout);
         POST_HOOK("SSBookHistorySubViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelfHistoryVCDidLayout, HookShelfHistoryVCDidLayout);
+        POST_HOOK("SSBookHistorySubViewController", "categoryLayout", "v16@0:8", OrigShelfHistoryCategoryLayout, HookShelfHistoryCategoryLayout);
+        POST_HOOK("SSBookHistorySubViewController", "loadMaskView:", "v24@0:8d16", OrigShelfHistoryLoadMaskView, HookShelfHistoryLoadMaskView);
+        POST_HOOK("SSBookHistorySubViewController", "layoutCategoryRightButtons", "v16@0:8", OrigShelfHistoryLayoutRightButtons, HookShelfHistoryLayoutRightButtons);
         POST_HOOK("SSBookHistorySubViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfHistoryVCWillAppear, HookShelfHistoryVCWillAppear);
         POST_HOOK("SSBookHistorySubViewController", "viewDidAppear:", "v20@0:8B16", OrigShelfHistoryVCDidAppear, HookShelfHistoryVCDidAppear);
         POST_HOOK("SSBookHistorySubViewController", "categoryView:canClickItemAtIndex:", "B32@0:8@16q24", OrigShelfHistoryCanSelect, HookShelfHistoryCanSelect);

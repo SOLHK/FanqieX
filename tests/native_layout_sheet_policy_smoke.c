@@ -16,7 +16,22 @@ static void test_drama_top_capsule_alignment(void) {
            Concentric capsule requires pill left inset == pill top/bottom inset (insetY). */
         double leftInset = padX - extraW * 0.5;
         assert(fabs(leftInset - insetY) < 1e-6);
+
+        /* 1b. Cross-device non-negative capsule origin: compacted leadPad always exceeds padX by >= 2pt
+               so outer.frame.origin.x inside tabContainer is never < 0 (preventing left cap clipping). */
+        double leadPad = FQXDramaCompactedLeadingPad(scale);
+        assert(leadPad - padX >= 2.0 - 1e-6);
     }
+
+    /* 1c. Scroll-fade mask (SSVideoFeedTabScrollMaskLayer) detaches whenever compact tabs fit in header */
+    assert(FQXShouldSuppressDramaScrollMask(1, 1) == 1);
+    assert(FQXShouldSuppressDramaScrollMask(0, 1) == 0);
+    assert(FQXShouldSuppressDramaScrollMask(1, 0) == 0);
+
+    /* 1d. Realized glyph center anchor tracks asymmetric titleLabel center within cell bounds */
+    assert(fabs(FQXResolveDramaItemAnchorX(14.0, 36.0, 1, 33.5) - 33.5) < 1e-6);
+    assert(fabs(FQXResolveDramaItemAnchorX(14.0, 36.0, 0, 0.0) - 32.0) < 1e-6);
+    assert(fabs(FQXResolveDramaItemAnchorX(14.0, 36.0, 1, 99.0) - 32.0) < 1e-6);
 
     /* 2. iPhone 16 Pro vertical safe-area clamp shifts categories container (keeping text & capsule together) */
     double shiftY = FQXDramaCapsuleCategoriesShiftY(
@@ -92,6 +107,21 @@ static void test_shelf_and_history_compaction_and_pager(void) {
     assert(singlePol.redirectIndex == -1);
     assert(FQXStepVisiblePagerIndex(7, singleMask, 3, +1) == -1);
     assert(FQXStepVisiblePagerIndex(7, singleMask, 3, -1) == -1);
+
+    /* History right/left scroll-edge fade masks (rightMaskView / rightGradientView) hide when
+       筛选 & 编辑 are hidden or when visible pills fit without scrolling (eliminating dark vertical band) */
+    assert(FQXShouldHideHistoryEdgeMask(1, 0, 0, 1, 1) == 1);
+    assert(FQXShouldHideHistoryEdgeMask(1, 1, 1, 0, 1) == 1);
+    assert(FQXShouldHideHistoryEdgeMask(0, 1, 1, 0, 1) == 1);
+    assert(FQXShouldHideHistoryEdgeMask(1, 1, 1, 1, 1) == 0);
+    assert(FQXShouldHideHistoryEdgeMask(1, 1, 0, 1, 1) == 0);
+    assert(FQXShouldHideHistoryEdgeMask(1, 1, 1, 1, 0) == 1);
+
+    /* Danmaku unlock policy enables AB gate while respecting ListenMode & TeenagerMode */
+    assert(FQXShouldUnlockShortVideoDanmaku(1, 0, 0) == 1);
+    assert(FQXShouldUnlockShortVideoDanmaku(1, 1, 0) == 0);
+    assert(FQXShouldUnlockShortVideoDanmaku(1, 0, 1) == 0);
+    assert(FQXShouldUnlockShortVideoDanmaku(0, 0, 0) == 0);
 }
 
 int main(void) {

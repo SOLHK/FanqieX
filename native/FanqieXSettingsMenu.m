@@ -737,6 +737,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.DramaShowLike.1":@"短剧 右侧 点赞 爱心 红心 互动按钮 隐藏",
             @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
             @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
+            @"FanqieX.DramaUnlockDanmaku.1":@"短剧 漫剧 动态漫 弹幕 弹幕开关 弹幕设置 弹幕按钮 解锁 开启 显示 长按倍速面板",
             @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原版默认 玻璃 外观",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 纯图标 语速 下载 章评 目录 定时",
@@ -940,9 +941,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     }
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复短剧顶栏胶囊与文字偏高错位，选中底框四边同心对齐。\n"
-                  "• 修复液态玻璃与模糊玻璃面板调节模糊度无效的问题（支持跟随 Dock 与独立额外模糊实时生效）。\n"
-                  "• 修复书架与历史隐藏标签后筛选栏留白裁切及仍可横滑切入空白页的问题。",
+                  "• 修复书架历史页隐藏右侧筛选/编辑按钮后残留的黑色竖向阴影条。\n"
+                  "• 修复不同机型短剧顶栏胶囊左侧圆角被滚动遮罩裁切及文字底框错位问题。\n"
+                  "• 解锁短剧与漫剧弹幕及弹幕设置面板入口（可在「短剧 › 播放设置」中开关控制）。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;

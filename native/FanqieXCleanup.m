@@ -5,6 +5,7 @@
 #import <pthread.h>
 #include <stdatomic.h>
 #import "FQXHookInstaller.h"
+#import "FQXLayoutAndSheetPolicy.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
 extern void FQXInstallContentCleanupHooks(void);
@@ -98,6 +99,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaShowLike, "DramaShowLike", "显示点赞按钮", "dramaActions", YES) \
     X(DramaShowShare, "DramaShowShare", "显示分享按钮", "dramaActions", YES) \
     X(DramaAutoplay, "DramaAutoplay", "关闭短剧进入自动播放", "drama", NO) \
+    X(DramaUnlockDanmaku, "DramaUnlockDanmaku", "解锁短剧与漫剧弹幕功能", "drama", YES) \
     X(ReaderRatingInvite, "ReaderRatingInvite", "关闭阅读评价邀请", "readerFeatures", NO) \
     X(ExcerptWidgetGuide, "ExcerptWidgetGuide", "隐藏书摘小组件提醒", "readerFeatures", NO) \
     X(ContentWidgetGuide, "ContentWidgetGuide", "隐藏内容小组件提醒", "readerFeatures", NO) \
@@ -1520,6 +1522,64 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
     }
 }
 
+static NSInteger (*NativeDanmakuABStyle)(id, SEL);
+static NSInteger HookDanmakuABStyle(id cls, SEL cmd) {
+    NSInteger orig = NativeDanmakuABStyle ? NativeDanmakuABStyle(cls, cmd) : 0;
+    if (FQXShouldUnlockShortVideoDanmaku(Option(DramaUnlockDanmakuKey, YES) ? 1 : 0, 0, 0) && orig <= 0) {
+        return 1;
+    }
+    return orig;
+}
+
+static NSDictionary *(*NativeDanmakuConfig)(id, SEL);
+static NSDictionary *HookDanmakuConfig(id cls, SEL cmd) {
+    NSDictionary *cfg = NativeDanmakuConfig ? NativeDanmakuConfig(cls, cmd) : nil;
+    if (!FQXShouldUnlockShortVideoDanmaku(Option(DramaUnlockDanmakuKey, YES) ? 1 : 0, 0, 0)) {
+        return cfg;
+    }
+    if ([cfg isKindOfClass:NSDictionary.class]) {
+        id disabled = cfg[@"disable_comic_video_danmaku"];
+        if ([disabled respondsToSelector:@selector(boolValue)] && [disabled boolValue]) {
+            NSMutableDictionary *patched = [cfg mutableCopy];
+            patched[@"disable_comic_video_danmaku"] = @NO;
+            return [patched copy];
+        }
+        return cfg;
+    }
+    return @{@"disable_comic_video_danmaku": @NO};
+}
+
+static BOOL (*NativeEnableNewGenreDanmaku)(id, SEL);
+static BOOL HookEnableNewGenreDanmaku(id self, SEL cmd) {
+    BOOL orig = NativeEnableNewGenreDanmaku ? NativeEnableNewGenreDanmaku(self, cmd) : NO;
+    if (FQXShouldUnlockShortVideoDanmaku(Option(DramaUnlockDanmakuKey, YES) ? 1 : 0, 0, 0) &&
+        UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
+        return YES;
+    }
+    return orig;
+}
+
+static NSNumber *(*NativeDanmakuSupportAll)(id, SEL);
+static NSNumber *HookDanmakuSupportAll(id self, SEL cmd) {
+    if (FQXShouldUnlockShortVideoDanmaku(Option(DramaUnlockDanmakuKey, YES) ? 1 : 0, 0, 0)) {
+        return @YES;
+    }
+    return NativeDanmakuSupportAll ? NativeDanmakuSupportAll(self, cmd) : @NO;
+}
+
+static void InstallDramaDanmakuUnlockHooks(void) {
+    Class cls = objc_lookUpClass("FQCShortVideoDanmakuABSetting");
+    if (!cls) return;
+    FQXInstallOwnedHook(cls, sel_registerName("shortVideoDanmakuABStyle"), YES, "q16@0:8",
+                        (IMP)HookDanmakuABStyle, (IMP *)&NativeDanmakuABStyle);
+    FQXInstallOwnedHook(cls, sel_registerName("danmakuConfig"), YES, "@16@0:8",
+                        (IMP)HookDanmakuConfig, (IMP *)&NativeDanmakuConfig);
+    FQXInstallOwnedHook(cls, sel_registerName("enableNewGenreDanmaku"), NO, "B16@0:8",
+                        (IMP)HookEnableNewGenreDanmaku, (IMP *)&NativeEnableNewGenreDanmaku);
+    FQXInstallOwnedHook(cls, sel_registerName("supportAll"), NO, "@16@0:8",
+                        (IMP)HookDanmakuSupportAll, (IMP *)&NativeDanmakuSupportAll);
+}
+
 static void RefreshMineViewsInSubtree(UIView *view) {
     if (![view isKindOfClass:UIView.class]) return;
     Class barCls = objc_lookUpClass("SSMyUserBar");
@@ -1881,6 +1941,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             InstallDramaActionVisibility(@"SSShortVideoHostRightInteractionCommentView", DramaShowCommentKey);
             InstallDramaActionVisibility(@"SSShortVideoRightInteractionLikeView", DramaShowLikeKey);
             InstallDramaActionVisibility(@"SSShortVideoRightInteractionShareView", DramaShowShareKey);
+            InstallDramaDanmakuUnlockHooks();
         });
 
         // Phase 3 (post-first-frame): Reader chapter-end, AutoRead & Audiobook hooks.

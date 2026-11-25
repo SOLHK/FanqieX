@@ -68,6 +68,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaHideSeriesTag.1": @NO,
         @"FanqieX.DramaHideTitleBadge.1": @NO,
         @"FanqieX.DramaHideGenreTags.1": @NO,
+        @"FanqieX.DramaUnlockDanmaku.1": @YES,
         @"FanqieX.CommentMaterialStyle.1": @0,
         @"FanqieX.CommentAppearanceMode.1": @0,
         @"FanqieX.CommentComposerStyle.1": @1,
