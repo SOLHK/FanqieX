@@ -941,9 +941,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     }
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复书架历史页隐藏右侧筛选/编辑按钮后残留的黑色竖向阴影条。\n"
-                  "• 修复不同机型短剧顶栏胶囊左侧圆角被滚动遮罩裁切及文字底框错位问题。\n"
-                  "• 解锁短剧与漫剧弹幕及弹幕设置面板入口（可在「短剧 › 播放设置」中开关控制）。",
+                  "• 修复点击底栏「短剧」按钮闪退：解除短剧顶栏滚动遮罩 KVO 回调触发的同步全量重排死递归，修正胶囊层级查找导致的可见掩码与深浅色抖动，并移除继承 setBounds: 钩子与加固弹幕配置返回类型。\n"
+                  "• 修复底栏关闭「底栏点击震动」后仍会震动：除拦截宿主震动外，同步抑制 iOS 26/27 原生液态玻璃 UITabBar 点击与滑动时的系统触感反馈，并确保开关状态与持久化一致。\n"
+                  "• 修复暗黑/浅色模式切换及点击书架顶栏「历史 / 收藏 / 圈子」时因历史筛选栏子布局重入触发的主线程死循环卡死，并消除书架筛选/标签流布局同步刷新冲突。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;
@@ -1331,6 +1331,10 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
                     NSString *modName = [lbl substringFromIndex:BottomEntryTitlePrefix.length];
                     BOOL allowed = FQXDockIsModuleAllowedByBottomPrefs(modName);
                     if (sw.on != allowed) sw.on = allowed;
+                } else {
+                    id storedHaptics = [NSUserDefaults.standardUserDefaults objectForKey:@"FanqieX.BottomHaptics.1"];
+                    BOOL hapticsOn = [storedHaptics respondsToSelector:@selector(boolValue)] ? [storedHaptics boolValue] : YES;
+                    if (sw.on != hapticsOn) sw.on = hapticsOn;
                 }
                 SEL original = sel_registerName(entry ? "fqx176_toggle:" : "fqx178_bottomOptionChanged:");
                 // The visible menu owns one event route. Forward the native
@@ -1419,8 +1423,14 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     BOOL entry = [toggle.accessibilityLabel hasPrefix:BottomEntryTitlePrefix];
     id target = entry ? self.router : self.settingsOwner;
     SEL action = sel_registerName(entry ? "fqx176_toggle:" : "fqx178_bottomOptionChanged:");
-    if (![target respondsToSelector:action]) return;
-    ((void (*)(id, SEL, id))objc_msgSend)(target, action, toggle);
+    if ([target respondsToSelector:action]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(target, action, toggle);
+    } else if (!entry && [toggle.accessibilityLabel isEqualToString:@"底栏点击震动"]) {
+        [NSUserDefaults.standardUserDefaults setBool:toggle.isOn forKey:@"FanqieX.BottomHaptics.1"];
+        return;
+    } else {
+        return;
+    }
     if (!entry) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         Class dockMotion = objc_lookUpClass("FQXDockMotion");

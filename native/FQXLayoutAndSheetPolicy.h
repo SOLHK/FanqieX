@@ -246,4 +246,68 @@ static inline int FQXShouldUnlockShortVideoDanmaku(int unlockOptionEnabled,
     return (unlockOptionEnabled && !isInListenMode && !isTeenagerMode) ? 1 : 0;
 }
 
+static inline int FQXShouldRunShelfTabTapRecovery(int reflowApplied,
+                                                  double cellX,
+                                                  double layoutX,
+                                                  double cellWidth,
+                                                  double layoutWidth) {
+    if (reflowApplied) return 1;
+    if (!isfinite(cellX) || !isfinite(layoutX) || !isfinite(cellWidth) || !isfinite(layoutWidth)) return 0;
+    if (fabs(cellX - layoutX) > 1.0 || fabs(cellWidth - layoutWidth) > 1.0) return 1;
+    return 0;
+}
+
+static inline int FQXShouldCaptureHistorySavedFrame(double width, double height) {
+    return (isfinite(width) && isfinite(height) && width >= 40.0 && height >= 16.0) ? 1 : 0;
+}
+
+static inline double FQXResolveHistoryExpandedWidth(double baseWidth,
+                                                    double currentWidth,
+                                                    double desiredWidth) {
+    if (!isfinite(baseWidth) || !isfinite(currentWidth) || !isfinite(desiredWidth)) return 0.0;
+    if (baseWidth < 40.0 || desiredWidth <= baseWidth + 2.0) return 0.0;
+    double target = round(desiredWidth);
+    if (fabs(currentWidth - target) <= 0.5) return 0.0;
+    return target;
+}
+
+static inline int FQXShouldRunHistoryFullSync(int inFlight,
+                                              int isViewLoaded,
+                                              double vcWidth,
+                                              double vcHeight,
+                                              int isReentrantSublayoutHook) {
+    if (inFlight || !isViewLoaded || isReentrantSublayoutHook) return 0;
+    if (!isfinite(vcWidth) || !isfinite(vcHeight) || vcWidth < 180.0 || vcHeight < 180.0) return 0;
+    return 1;
+}
+
+static inline int FQXShouldRunDramaCapsuleFullSync(int isMainThread,
+                                                   int inFlight,
+                                                   int hasWindow,
+                                                   int glassEnabled,
+                                                   int isScrollMaskKVO) {
+    if (!isMainThread || inFlight || isScrollMaskKVO) return 0;
+    if (glassEnabled && !hasWindow) return 0;
+    return 1;
+}
+
+static inline int FQXShouldCommitDramaCompactVisMask(int resolvedHeaderOwner,
+                                                     unsigned int prevMask,
+                                                     unsigned int nextMask,
+                                                     int hasPrevMask) {
+    if (!resolvedHeaderOwner && hasPrevMask) return 0;
+    if (!hasPrevMask) return 1;
+    return (prevMask != nextMask) ? 1 : 0;
+}
+
+static inline int FQXShouldSuppressDockFeedbackGenerator(int bottomHapticsEnabled,
+                                                         int belongsToDockView,
+                                                         int hasSpecificNonDockView,
+                                                         int dockTouchActive) {
+    if (bottomHapticsEnabled) return 0;
+    if (belongsToDockView) return 1;
+    if (!hasSpecificNonDockView && dockTouchActive) return 1;
+    return 0;
+}
+
 #endif

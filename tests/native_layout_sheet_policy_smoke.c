@@ -122,6 +122,62 @@ static void test_shelf_and_history_compaction_and_pager(void) {
     assert(FQXShouldUnlockShortVideoDanmaku(1, 1, 0) == 0);
     assert(FQXShouldUnlockShortVideoDanmaku(1, 0, 1) == 0);
     assert(FQXShouldUnlockShortVideoDanmaku(0, 0, 0) == 0);
+
+    /* Main-thread freeze prevention policies:
+       1. Shelf tab tap recovery never races native UIKit selection when no reflow/offset exists. */
+    assert(FQXShouldRunShelfTabTapRecovery(0, 223.7, 223.7, 46.0, 46.0) == 0);
+    assert(FQXShouldRunShelfTabTapRecovery(0, 223.7, 224.2, 46.0, 46.0) == 0);
+    assert(FQXShouldRunShelfTabTapRecovery(1, 223.7, 223.7, 46.0, 46.0) == 1);
+    assert(FQXShouldRunShelfTabTapRecovery(0, 120.0, 223.7, 46.0, 46.0) == 1);
+    assert(FQXShouldRunShelfTabTapRecovery(0, 223.7, 223.7, 30.0, 46.0) == 1);
+
+    /* 2. History saved-frame capture rejects premature zero/tiny frames during early viewDidLoad/loadMaskView. */
+    assert(FQXShouldCaptureHistorySavedFrame(0.0, 0.0) == 0);
+    assert(FQXShouldCaptureHistorySavedFrame(24.0, 32.0) == 0);
+    assert(FQXShouldCaptureHistorySavedFrame(240.0, 10.0) == 0);
+    assert(FQXShouldCaptureHistorySavedFrame(240.0, 32.0) == 1);
+
+    /* 3. History expanded-width resolver converges monotonically with zero redundant frame writes. */
+    assert(fabs(FQXResolveHistoryExpandedWidth(240.0, 240.0, 416.2) - 416.0) < 1e-6);
+    assert(fabs(FQXResolveHistoryExpandedWidth(240.0, 416.0, 416.2) - 0.0) < 1e-6);
+    assert(fabs(FQXResolveHistoryExpandedWidth(240.0, 240.0, 241.0) - 0.0) < 1e-6);
+    assert(fabs(FQXResolveHistoryExpandedWidth(0.0, 0.0, 416.0) - 0.0) < 1e-6);
+
+    /* 4. History full sync is blocked re-entrantly and blocked inside sub-layout hooks (categoryLayout /
+          loadMaskView: / layoutCategoryRightButtons), allowing only O(1) edge-mask sync there. */
+    assert(FQXShouldRunHistoryFullSync(0, 1, 440.0, 956.0, 0) == 1);
+    assert(FQXShouldRunHistoryFullSync(1, 1, 440.0, 956.0, 0) == 0);
+    assert(FQXShouldRunHistoryFullSync(0, 1, 440.0, 956.0, 1) == 0);
+    assert(FQXShouldRunHistoryFullSync(0, 0, 440.0, 956.0, 0) == 0);
+    assert(FQXShouldRunHistoryFullSync(0, 1, 120.0, 956.0, 0) == 0);
+
+    /* 5. Drama top capsule crash prevention: never run full capsule sync off-main, re-entrantly,
+          before window mount (when glass is on), or inside updateScrollMaskLayer KVO callbacks. */
+    assert(FQXShouldRunDramaCapsuleFullSync(1, 0, 1, 1, 0) == 1);
+    assert(FQXShouldRunDramaCapsuleFullSync(0, 0, 1, 1, 0) == 0);
+    assert(FQXShouldRunDramaCapsuleFullSync(1, 1, 1, 1, 0) == 0);
+    assert(FQXShouldRunDramaCapsuleFullSync(1, 0, 0, 1, 0) == 0);
+    assert(FQXShouldRunDramaCapsuleFullSync(1, 0, 1, 1, 1) == 0);
+    assert(FQXShouldRunDramaCapsuleFullSync(1, 0, 0, 0, 0) == 1);
+
+    /* 6. Unresolved header owner (e.g. simpleHeader lacking delegate) must never clobber an
+          existing Drama compact visMask and trigger a 0x03000007 <-> 0x03000000 relayout loop. */
+    assert(FQXShouldCommitDramaCompactVisMask(1, 0x03000007u, 0x03000007u, 1) == 0);
+    assert(FQXShouldCommitDramaCompactVisMask(1, 0x03000007u, 0x03000005u, 1) == 1);
+    assert(FQXShouldCommitDramaCompactVisMask(0, 0x03000007u, 0x03000000u, 1) == 0);
+    assert(FQXShouldCommitDramaCompactVisMask(0, 0u, 0x03000000u, 0) == 1);
+
+    /* 7. Dock haptic suppression policy: when BottomHaptics is off, suppress any feedback
+          generator owned by Dock views OR anonymous/window-bound UIKit feedback during active
+          Dock touch/drag, while never suppressing haptics when enabled or on unrelated controls. */
+    assert(FQXShouldSuppressDockFeedbackGenerator(1, 1, 0, 1) == 0);
+    assert(FQXShouldSuppressDockFeedbackGenerator(1, 0, 0, 1) == 0);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 1, 0, 0) == 1);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 1, 0, 1) == 1);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 0, 1) == 1);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 0, 0) == 0);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 1, 1) == 0);
+    assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 1, 0) == 0);
 }
 
 int main(void) {

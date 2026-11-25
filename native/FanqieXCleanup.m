@@ -1522,6 +1522,8 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
     }
 }
 
+static BOOL gFQXDanmakuIsPhone = YES;
+
 static NSInteger (*NativeDanmakuABStyle)(id, SEL);
 static NSInteger HookDanmakuABStyle(id cls, SEL cmd) {
     NSInteger orig = NativeDanmakuABStyle ? NativeDanmakuABStyle(cls, cmd) : 0;
@@ -1542,18 +1544,18 @@ static NSDictionary *HookDanmakuConfig(id cls, SEL cmd) {
         if ([disabled respondsToSelector:@selector(boolValue)] && [disabled boolValue]) {
             NSMutableDictionary *patched = [cfg mutableCopy];
             patched[@"disable_comic_video_danmaku"] = @NO;
-            return [patched copy];
+            return patched;
         }
         return cfg;
     }
-    return @{@"disable_comic_video_danmaku": @NO};
+    return [@{@"disable_comic_video_danmaku": @NO} mutableCopy];
 }
 
 static BOOL (*NativeEnableNewGenreDanmaku)(id, SEL);
 static BOOL HookEnableNewGenreDanmaku(id self, SEL cmd) {
     BOOL orig = NativeEnableNewGenreDanmaku ? NativeEnableNewGenreDanmaku(self, cmd) : NO;
     if (FQXShouldUnlockShortVideoDanmaku(Option(DramaUnlockDanmakuKey, YES) ? 1 : 0, 0, 0) &&
-        UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
+        gFQXDanmakuIsPhone) {
         return YES;
     }
     return orig;
@@ -1568,6 +1570,7 @@ static NSNumber *HookDanmakuSupportAll(id self, SEL cmd) {
 }
 
 static void InstallDramaDanmakuUnlockHooks(void) {
+    gFQXDanmakuIsPhone = (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone);
     Class cls = objc_lookUpClass("FQCShortVideoDanmakuABSetting");
     if (!cls) return;
     FQXInstallOwnedHook(cls, sel_registerName("shortVideoDanmakuABStyle"), YES, "q16@0:8",
