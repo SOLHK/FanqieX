@@ -4,13 +4,17 @@
 
 ## FanqieX 2.0
 
+- [下载 2.0 安装包（ZIP）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0.zip)
+- [直接下载 2.0 插件（dylib）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0.dylib)
+- [2.0 发布页与校验文件](https://github.com/SOLHK/FanqieX/releases/tag/v2.0)
+
 本版修复 1.9.8beta2 在启动时处理设置通知引起的卡死，并在「书架净化 → 推荐与导入」增加「隐藏小说改编剧推荐卡」开关。插件文件为 `FanqieX-2.0.dylib`，设置首页和诊断日志显示 `2.0`，Mach-O 构建标识为 `0x20000`。
 
 - [2.0 安装和启动验收](docs/REPAIR_2.0.md)
 - [1.9.8beta2 历史更新](docs/REPAIR_1.9.8beta2.md)
 - [测试版本与分支规范](TESTING.md)
 
-## FanqieX 1.76
+## FanqieX 1.76 历史版本
 
 本版修复短剧悬浮底栏的遮罩、视频透出和全集入口重叠，并让底栏按当前页面的明暗自动适配玻璃与文字颜色。
 横屏播放保留原始画面比例，使用原生动态背景填充剩余区域；阅读页深色背景与应用外部主题独立。
@@ -18,11 +22,7 @@
 
 - [修复说明和设备观察点](docs/REPAIR_1.76.md)
 - [逆向材料核对证据](docs/REVERSE_ARCHIVE_174_EVIDENCE.json)
-- [插件](https://github.com/SOLHK/FanqieX/releases/download/v1.76/FanqieX-1.76.dylib)
-- [插件包](https://github.com/SOLHK/FanqieX/releases/download/v1.76/FanqieX-1.76.zip)
-- [SHA-256 校验值](https://github.com/SOLHK/FanqieX/releases/download/v1.76/SHA256SUMS.txt)
-- [验证记录](https://github.com/SOLHK/FanqieX/releases/download/v1.76/VERIFICATION.json)
-- [GitHub Release](https://github.com/SOLHK/FanqieX/releases/tag/v1.76)
+- [1.76 历史发布页](https://github.com/SOLHK/FanqieX/releases/tag/v1.76)
 - [GitHub Actions](https://github.com/SOLHK/FanqieX/actions)
 
 宿主身份已按本次上传的 IPA 逆向 ZIP 重新核对：
