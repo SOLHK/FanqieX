@@ -6,6 +6,9 @@
 
 - [下载 2.0 安装包（ZIP）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0.zip)
 - [直接下载 2.0 插件（dylib）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0.dylib)
+- [下载 2.0 有根越狱包（rootful DEB）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0-rootful.deb)
+- [下载 2.0 无根越狱包（rootless DEB）](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0-rootless.deb)
+- [下载 2.0 Framework ZIP](https://github.com/SOLHK/FanqieX/releases/download/v2.0/FanqieX-2.0.framework.zip)
 - [2.0 发布页与校验文件](https://github.com/SOLHK/FanqieX/releases/tag/v2.0)
 
 本版修复 1.9.8beta2 在启动时处理设置通知引起的卡死，并在「书架净化 → 推荐与导入」增加「隐藏小说改编剧推荐卡」开关。插件文件为 `FanqieX-2.0.dylib`，设置首页和诊断日志显示 `2.0`，Mach-O 构建标识为 `0x20000`。
