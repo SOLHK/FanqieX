@@ -250,6 +250,8 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     if ([title containsString:@"启动"]) row.keywords = [row.keywords stringByAppendingString:@" 默认页 首页 书架 短剧 书城 冷启动"];
     if ([title containsString:@"分类"]) row.keywords = [row.keywords stringByAppendingString:@" 顶部分类 顶部胶囊 推荐 看剧 漫剧 最近 收藏 频道"];
     if ([title containsString:@"玻璃"]) row.keywords = [row.keywords stringByAppendingString:@" 液态玻璃 毛玻璃 透明 材质 外观"];
+    if ([title containsString:@"作者声明"]) row.keywords = [row.keywords stringByAppendingString:@" 短剧 漫剧 作者声明 AI生成 内容由AI生成 声明 隐藏 关闭"];
+    if ([title containsString:@"阅读原著"]) row.keywords = [row.keywords stringByAppendingString:@" 短剧 漫剧 原著 阅读原著 同名小说 底部栏 进度条上方 隐藏 关闭"];
     [menu.catalog addObject:row];
 }
 
@@ -710,7 +712,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             row.path = @"书架净化/筛选栏标签";
         if ([option[@"key"] hasPrefix:@"FanqieX.ShelfFavorites"])
             row.path = @"书架净化/收藏页";
-        if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1"] containsObject:option[@"key"]])
+        if ([@[@"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1", @"FanqieX.DramaShowDanmakuButton.1"] containsObject:option[@"key"]])
             row.path = @"短剧/页面内容";
         if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"])
             row.path = @"外观/玻璃与尺寸";
@@ -738,6 +740,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.DramaShowShare.1":@"短剧 右侧 分享 转发 互动按钮 隐藏",
             @"FanqieX.DramaAutoplay.1":@"短剧 自动播放 进入播放 暂停 视频",
             @"FanqieX.DramaUnlockDanmaku.1":@"短剧 漫剧 动态漫 弹幕 弹幕开关 弹幕设置 弹幕按钮 解锁 开启 显示 长按倍速面板",
+            @"FanqieX.DramaShowDanmakuButton.1":@"短剧 漫剧 动态漫 左下角 弹幕 弹幕按钮 弹 按钮 显示 隐藏 关闭 开关",
             @"FanqieX.AudioLiquidGlass.1":@"听书 液态玻璃 听书液态玻璃 液态玻璃听书 听书按钮 朗读液态玻璃 听书界面 朗读界面 原版默认 玻璃 外观",
             @"FanqieX.AudioRecommendations.1":@"听书 智能朗读 朗读页 听书页 底部推荐 推荐内容 猜你喜欢 瀑布流 移除",
             @"FanqieX.AudioControlIconsOnly.1":@"听书 隐藏文字 仅图标 纯图标 语速 下载 章评 目录 定时",
@@ -941,9 +944,11 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     }
     UITextView *notes = [UITextView new];
     notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n"
-                  "• 修复点击底栏「短剧」按钮闪退：解除短剧顶栏滚动遮罩 KVO 回调触发的同步全量重排死递归，修正胶囊层级查找导致的可见掩码与深浅色抖动，并移除继承 setBounds: 钩子与加固弹幕配置返回类型。\n"
-                  "• 修复底栏关闭「底栏点击震动」后仍会震动：除拦截宿主震动外，同步抑制 iOS 26/27 原生液态玻璃 UITabBar 点击与滑动时的系统触感反馈，并确保开关状态与持久化一致。\n"
-                  "• 修复暗黑/浅色模式切换及点击书架顶栏「历史 / 收藏 / 圈子」时因历史筛选栏子布局重入触发的主线程死循环卡死，并消除书架筛选/标签流布局同步刷新冲突。",
+                  "• 修复「我的」页快捷入口卡片在出现「继续追漫 / 历史外露」等附着横条时，4 个圆形快捷按钮向下错位并与横条重叠的问题。\n"
+                  "• 修复书架「收藏」页关闭「显示『查看短剧浏览历史』卡片」后仍显示该卡片的问题（修正宿主枚举判断并补充进入页面时的策略同步）。\n"
+                  "• 新增「短剧 › 页面内容 › 显示左下角弹幕按钮」开关（默认开启）：关闭后隐藏短剧/漫剧左下角「弹✓」按钮并自然收起空行，不影响弹幕播放与长按面板弹幕设置。\n"
+                  "• 修复「显示阅读原著」关闭后在剧集播放页与外流推荐页仍显示进度条上方「原著《…》」条、推荐理由原著胶囊、选集原著入口及浮层书卡的问题，并支持即时生效。\n"
+                  "• 修复「显示作者声明」关闭后在剧集播放页与外流推荐页仍显示「作者声明：内容由AI生成」的问题（覆盖 AI 声明视图判断、文案与隐藏状态，并在设置切换时即时刷新）。",
                   FQXPluginVersion()];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;

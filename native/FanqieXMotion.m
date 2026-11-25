@@ -116,6 +116,9 @@ static NSString *const AudioRecsPrefKey = @"FanqieX.AudioRecommendations.1";
 static NSString *const AudioIconsOnlyPrefKey = @"FanqieX.AudioControlIconsOnly.1";
 static NSString *const AudioLiquidGlassPrefKey = @"FanqieX.AudioLiquidGlass.1";
 static NSString *const BottomHapticsPrefKey = @"FanqieX.BottomHaptics.1";
+static NSString *const DramaShowDanmakuButtonPrefKey = @"FanqieX.DramaShowDanmakuButton.1";
+static NSString *const DramaAuthorDeclarationPrefKey = @"FanqieX.DramaAuthorDeclaration.1";
+static NSString *const DramaOriginalNovelPrefKey = @"FanqieX.DramaOriginalNovel.1";
 static NSString *const FQXCTForegroundColorAttr = @"CTForegroundColor";
 static const CGFloat AudioNavigationButtonDiameter = 42.0;
 static const CGFloat AudioBookArrowDiameter = 28.0;
@@ -169,6 +172,9 @@ typedef struct {
     BOOL commentSearchEntrance;
     BOOL readerHotCommentBadge;
     BOOL bottomHaptics;
+    BOOL dramaShowDanmakuButton;
+    BOOL dramaAuthorDeclaration;
+    BOOL dramaOriginalNovel;
 } FQXHotPrefsCache;
 
 static pthread_mutex_t gFQXHotPrefsLock = PTHREAD_MUTEX_INITIALIZER;
@@ -247,6 +253,12 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     fresh.readerHotCommentBadge = hotObj ? [hotObj boolValue] : YES;
     id hapticsObj = [ud objectForKey:BottomHapticsPrefKey];
     fresh.bottomHaptics = [hapticsObj respondsToSelector:@selector(boolValue)] ? [hapticsObj boolValue] : YES;
+    id danmakuBtnObj = [ud objectForKey:DramaShowDanmakuButtonPrefKey];
+    fresh.dramaShowDanmakuButton = [danmakuBtnObj respondsToSelector:@selector(boolValue)] ? [danmakuBtnObj boolValue] : YES;
+    id authorDeclObj = [ud objectForKey:DramaAuthorDeclarationPrefKey];
+    fresh.dramaAuthorDeclaration = [authorDeclObj respondsToSelector:@selector(boolValue)] ? [authorDeclObj boolValue] : YES;
+    id origNovelObj = [ud objectForKey:DramaOriginalNovelPrefKey];
+    fresh.dramaOriginalNovel = [origNovelObj respondsToSelector:@selector(boolValue)] ? [origNovelObj boolValue] : YES;
 
     pthread_mutex_lock(&gFQXHotPrefsLock);
     if (atomic_load_explicit(&gFQXHotPrefsGen, memory_order_acquire) == gen) {
@@ -263,6 +275,18 @@ static BOOL FQXShelfEditButtonEnabled(void) {
 
 static BOOL FQXBottomHapticsEnabled(void) {
     return FQXHotPrefsSnapshot().bottomHaptics;
+}
+
+static BOOL FQXDramaShowDanmakuButtonEnabled(void) {
+    return FQXHotPrefsSnapshot().dramaShowDanmakuButton;
+}
+
+static BOOL FQXDramaAuthorDeclarationEnabled(void) {
+    return FQXHotPrefsSnapshot().dramaAuthorDeclaration;
+}
+
+static BOOL FQXDramaOriginalNovelEnabled(void) {
+    return FQXHotPrefsSnapshot().dramaOriginalNovel;
 }
 
 static CFTimeInterval gFQXDockTouchGraceUntil = 0.0;
@@ -6362,11 +6386,31 @@ static void HookDramaListContainerLayout(UIView *container, SEL cmd) {
     }
 }
 
+static void FQXRefreshAllDramaControlsInWindows(void);
+static void FQXRefreshAllDramaSeriesPills(void);
+
 static volatile int FQXDramaDefaultsRefreshScheduled = 0;
 static void FQXScheduleDramaHeadersAndPagersRefresh(void) {
     if (!__sync_bool_compare_and_swap(&FQXDramaDefaultsRefreshScheduled, 0, 1)) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         __sync_lock_release(&FQXDramaDefaultsRefreshScheduled);
+        FQXHotPrefsCache prefs = FQXHotPrefsSnapshot();
+        static BOOL sDramaVisInit = NO;
+        static BOOL sLastDanmakuBtn = YES;
+        static BOOL sLastAuthorDecl = YES;
+        static BOOL sLastOrigNovel = YES;
+        BOOL dramaVisChanged = !sDramaVisInit ||
+            sLastDanmakuBtn != prefs.dramaShowDanmakuButton ||
+            sLastAuthorDecl != prefs.dramaAuthorDeclaration ||
+            sLastOrigNovel != prefs.dramaOriginalNovel;
+        sDramaVisInit = YES;
+        sLastDanmakuBtn = prefs.dramaShowDanmakuButton;
+        sLastAuthorDecl = prefs.dramaAuthorDeclaration;
+        sLastOrigNovel = prefs.dramaOriginalNovel;
+        if (dramaVisChanged) {
+            FQXRefreshAllDramaSeriesPills();
+            FQXRefreshAllDramaControlsInWindows();
+        }
         for (UIView *header in FQXTrackedDramaHeaders().allObjects) {
             if (!header) continue;
             id owner = FQXObjGet(header, "delegate");
@@ -7773,12 +7817,47 @@ static BOOL FQXDramaHideGenreTagsEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaHideGenreTags.1"];
 }
 
-static BOOL FQXDramaAuthorDeclarationEnabled(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:@"FanqieX.DramaAuthorDeclaration.1"];
-    return stored ? [stored boolValue] : YES;
-}
+static const char FQXK_FQXDanmakuHostHiddenKey = 0;
+#define FQXDanmakuHostHiddenKey ((const void *)&FQXK_FQXDanmakuHostHiddenKey)
+static const char FQXK_FQXAiUsageHostHiddenKey = 0;
+#define FQXAiUsageHostHiddenKey ((const void *)&FQXK_FQXAiUsageHostHiddenKey)
 
 static NSHashTable<id> *FQXTrackedBelowLeftManagers(void) {
+    static NSHashTable<id> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXTrackedAiUsageViews(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<id> *FQXTrackedAboveLeftManagers(void) {
+    static NSHashTable<id> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<id> *FQXTrackedDanmakuLeftManagers(void) {
+    static NSHashTable<id> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<UIView *> *FQXTrackedDanmakuButtonViews(void) {
+    static NSHashTable<UIView *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static NSHashTable<id> *FQXTrackedAboveProgressManagers(void) {
     static NSHashTable<id> *table;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
@@ -7789,8 +7868,206 @@ static BOOL (*OrigBelowLeftShouldAddAiUsage)(id, SEL);
 static BOOL HookBelowLeftShouldAddAiUsage(id self, SEL _cmd) {
     BOOL orig = OrigBelowLeftShouldAddAiUsage ? OrigBelowLeftShouldAddAiUsage(self, _cmd) : NO;
     if (self) [FQXTrackedBelowLeftManagers() addObject:self];
-    if (!orig) return NO;
-    return FQXDramaAuthorDeclarationEnabled();
+    return FQXShouldShowDramaAuthorDeclaration(FQXDramaAuthorDeclarationEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigBelowLeftEnableAiUsageTag)(id, SEL);
+static BOOL HookBelowLeftEnableAiUsageTag(id self, SEL _cmd) {
+    BOOL orig = OrigBelowLeftEnableAiUsageTag ? OrigBelowLeftEnableAiUsageTag(self, _cmd) : NO;
+    if (self) [FQXTrackedBelowLeftManagers() addObject:self];
+    return FQXShouldShowDramaAuthorDeclaration(FQXDramaAuthorDeclarationEnabled(), orig) ? YES : NO;
+}
+
+static id (*OrigAiUsageString)(id, SEL);
+static id HookAiUsageString(UIView *self, SEL _cmd) {
+    if ([self isKindOfClass:UIView.class]) [FQXTrackedAiUsageViews() addObject:self];
+    if (!FQXDramaAuthorDeclarationEnabled()) return nil;
+    return OrigAiUsageString ? OrigAiUsageString(self, _cmd) : nil;
+}
+
+static void (*OrigAiUsageSetHidden)(id, SEL, BOOL);
+static void HookAiUsageSetHidden(UIView *self, SEL _cmd, BOOL hidden) {
+    if ([self isKindOfClass:UIView.class]) {
+        [FQXTrackedAiUsageViews() addObject:self];
+        objc_setAssociatedObject(self, FQXAiUsageHostHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL effectiveHidden = FQXDramaAuthorDeclarationEnabled() ? hidden : YES;
+    if (OrigAiUsageSetHidden) OrigAiUsageSetHidden(self, _cmd, effectiveHidden);
+}
+
+static void (*OrigAiUsageLayout)(id, SEL);
+static void HookAiUsageLayout(UIView *self, SEL _cmd) {
+    if (OrigAiUsageLayout) OrigAiUsageLayout(self, _cmd);
+    if (![self isKindOfClass:UIView.class]) return;
+    [FQXTrackedAiUsageViews() addObject:self];
+    if (!FQXDramaAuthorDeclarationEnabled() && !self.hidden) {
+        if (OrigAiUsageSetHidden) OrigAiUsageSetHidden(self, @selector(setHidden:), YES);
+        else self.hidden = YES;
+    }
+}
+
+static BOOL (*OrigDanmakuLeftAboveIsShowing)(id, SEL);
+static BOOL HookDanmakuLeftAboveIsShowing(id self, SEL _cmd) {
+    BOOL orig = OrigDanmakuLeftAboveIsShowing ? OrigDanmakuLeftAboveIsShowing(self, _cmd) : NO;
+    if (self) [FQXTrackedDanmakuLeftManagers() addObject:self];
+    return FQXShouldShowDramaDanmakuButton(FQXDramaShowDanmakuButtonEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigDanmakuLeftAboveEntranceVisible)(id, SEL);
+static BOOL HookDanmakuLeftAboveEntranceVisible(id self, SEL _cmd) {
+    BOOL orig = OrigDanmakuLeftAboveEntranceVisible ? OrigDanmakuLeftAboveEntranceVisible(self, _cmd) : NO;
+    if (self) [FQXTrackedDanmakuLeftManagers() addObject:self];
+    return FQXShouldShowDramaDanmakuButton(FQXDramaShowDanmakuButtonEnabled(), orig) ? YES : NO;
+}
+
+static id (*OrigAboveLeftTopActionView)(id, SEL, BOOL, BOOL, BOOL);
+static id HookAboveLeftTopActionView(id self, SEL _cmd, BOOL danmaku, BOOL followUpdate, BOOL landingMute) {
+    if (self) [FQXTrackedAboveLeftManagers() addObject:self];
+    BOOL effectiveDanmaku = FQXShouldShowDramaDanmakuButton(FQXDramaShowDanmakuButtonEnabled(), danmaku) ? YES : NO;
+    if (!effectiveDanmaku && !followUpdate && !landingMute) {
+        return nil;
+    }
+    return OrigAboveLeftTopActionView
+        ? OrigAboveLeftTopActionView(self, _cmd, effectiveDanmaku, followUpdate, landingMute)
+        : nil;
+}
+
+static id (*OrigAboveLeftOrderedViews)(id, SEL);
+static id HookAboveLeftOrderedViews(id self, SEL _cmd) {
+    if (self) [FQXTrackedAboveLeftManagers() addObject:self];
+    NSArray *views = OrigAboveLeftOrderedViews ? OrigAboveLeftOrderedViews(self, _cmd) : nil;
+    if (![views isKindOfClass:NSArray.class] || views.count == 0) return views;
+
+    BOOL showDanmakuBtn = FQXDramaShowDanmakuButtonEnabled();
+    BOOL showOrigNovel = FQXDramaOriginalNovelEnabled();
+    if (showDanmakuBtn && showOrigNovel) return views;
+
+    UIView *danmakuDecor = nil;
+    Class danmakuLeftCls = objc_lookUpClass("SSShortVideoDanmakuLeftAboveView");
+    Class danmakuEntCls = objc_lookUpClass("FQCShortVideoDanmakuEntranceView");
+    if (!showDanmakuBtn) {
+        id dm = FQXObjGet(self, "danmakuManager");
+        id dv = FQXObjGet(dm, "decorationView");
+        if ([dv isKindOfClass:UIView.class]) danmakuDecor = (UIView *)dv;
+    }
+
+    UIView *novelDecor = nil;
+    if (!showOrigNovel) {
+        id reasonMgr = FQXObjGet(self, "rcmdReasonViewManager");
+        Class reasonMgrCls = objc_lookUpClass("SSShortVideoRcmdReasonViewManager");
+        if (reasonMgrCls && [reasonMgr isKindOfClass:reasonMgrCls] && FQXBoolGet(reasonMgr, "isRelateNovelReason", NO)) {
+            id nv = FQXObjGet(reasonMgr, "decorationView");
+            if ([nv isKindOfClass:UIView.class]) novelDecor = (UIView *)nv;
+        }
+    }
+
+    NSMutableArray *filtered = nil;
+    for (NSUInteger i = 0; i < views.count; ++i) {
+        id item = views[i];
+        BOOL drop = NO;
+        if (!showDanmakuBtn) {
+            if ((danmakuDecor && item == danmakuDecor) ||
+                (danmakuLeftCls && [item isKindOfClass:danmakuLeftCls]) ||
+                (danmakuEntCls && [item isKindOfClass:danmakuEntCls])) {
+                drop = YES;
+            }
+        }
+        if (!drop && !showOrigNovel && novelDecor && item == novelDecor) {
+            drop = YES;
+        }
+        if (drop) {
+            if (!filtered) {
+                filtered = [NSMutableArray arrayWithCapacity:views.count];
+                for (NSUInteger j = 0; j < i; ++j) [filtered addObject:views[j]];
+            }
+        } else if (filtered) {
+            [filtered addObject:item];
+        }
+    }
+    return filtered ?: views;
+}
+
+static void (*OrigDanmakuLeftAboveViewSetHidden)(id, SEL, BOOL);
+static void HookDanmakuLeftAboveViewSetHidden(UIView *self, SEL _cmd, BOOL hidden) {
+    if ([self isKindOfClass:UIView.class]) {
+        [FQXTrackedDanmakuButtonViews() addObject:self];
+        objc_setAssociatedObject(self, FQXDanmakuHostHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL effectiveHidden = FQXDramaShowDanmakuButtonEnabled() ? hidden : YES;
+    if (OrigDanmakuLeftAboveViewSetHidden) OrigDanmakuLeftAboveViewSetHidden(self, _cmd, effectiveHidden);
+}
+
+static void (*OrigDanmakuEntranceSetHidden)(id, SEL, BOOL);
+static void HookDanmakuEntranceSetHidden(UIView *self, SEL _cmd, BOOL hidden) {
+    if ([self isKindOfClass:UIView.class]) {
+        [FQXTrackedDanmakuButtonViews() addObject:self];
+        objc_setAssociatedObject(self, FQXDanmakuHostHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL effectiveHidden = FQXDramaShowDanmakuButtonEnabled() ? hidden : YES;
+    if (OrigDanmakuEntranceSetHidden) OrigDanmakuEntranceSetHidden(self, _cmd, effectiveHidden);
+}
+
+static void (*OrigAboveProgressConfigDistView)(id, SEL, id);
+static void HookAboveProgressConfigDistView(id self, SEL _cmd, id model) {
+    if (self) [FQXTrackedAboveProgressManagers() addObject:self];
+    if (OrigAboveProgressConfigDistView) OrigAboveProgressConfigDistView(self, _cmd, model);
+}
+
+static NSUInteger (*OrigAboveProgressDecideDistType)(id, SEL);
+static NSUInteger HookAboveProgressDecideDistType(id self, SEL _cmd) {
+    if (self) [FQXTrackedAboveProgressManagers() addObject:self];
+    NSUInteger orig = OrigAboveProgressDecideDistType ? OrigAboveProgressDecideDistType(self, _cmd) : 0;
+    return (NSUInteger)FQXResolveDramaAboveProgressDistributionType(FQXDramaOriginalNovelEnabled(), (unsigned long long)orig);
+}
+
+static BOOL (*OrigAboveProgressCheckCanShowBook)(id, SEL);
+static BOOL HookAboveProgressCheckCanShowBook(id self, SEL _cmd) {
+    if (self) [FQXTrackedAboveProgressManagers() addObject:self];
+    BOOL orig = OrigAboveProgressCheckCanShowBook ? OrigAboveProgressCheckCanShowBook(self, _cmd) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigAboveProgressCheckCanShowNovelEntrance)(id, SEL);
+static BOOL HookAboveProgressCheckCanShowNovelEntrance(id self, SEL _cmd) {
+    if (self) [FQXTrackedAboveProgressManagers() addObject:self];
+    BOOL orig = OrigAboveProgressCheckCanShowNovelEntrance ? OrigAboveProgressCheckCanShowNovelEntrance(self, _cmd) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigTagListShouldShowRelateBook)(id, SEL, id);
+static BOOL HookTagListShouldShowRelateBook(id self, SEL _cmd, id model) {
+    BOOL orig = OrigTagListShouldShowRelateBook ? OrigTagListShouldShowRelateBook(self, _cmd, model) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static void (*OrigTagListUpdateWithRelateBook)(id, SEL, id, BOOL);
+static void HookTagListUpdateWithRelateBook(id self, SEL _cmd, id model, BOOL hasRelateBook) {
+    BOOL effective = FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), hasRelateBook) ? YES : NO;
+    if (OrigTagListUpdateWithRelateBook) OrigTagListUpdateWithRelateBook(self, _cmd, model, effective);
+}
+
+static BOOL (*OrigBookCardShouldShow)(id, SEL);
+static BOOL HookBookCardShouldShow(id self, SEL _cmd) {
+    BOOL orig = OrigBookCardShouldShow ? OrigBookCardShouldShow(self, _cmd) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigOutterBookCardShouldShowTime)(id, SEL, double);
+static BOOL HookOutterBookCardShouldShowTime(id self, SEL _cmd, double playbackTime) {
+    BOOL orig = OrigOutterBookCardShouldShowTime ? OrigOutterBookCardShouldShowTime(self, _cmd, playbackTime) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigOutterBookCardShouldShowNow)(id, SEL);
+static BOOL HookOutterBookCardShouldShowNow(id self, SEL _cmd) {
+    BOOL orig = OrigOutterBookCardShouldShowNow ? OrigOutterBookCardShouldShowNow(self, _cmd) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
+}
+
+static BOOL (*OrigRightRelateBookShouldShow)(id, SEL);
+static BOOL HookRightRelateBookShouldShow(id self, SEL _cmd) {
+    BOOL orig = OrigRightRelateBookShouldShow ? OrigRightRelateBookShouldShow(self, _cmd) : NO;
+    return FQXShouldShowDramaOriginalNovelEntry(FQXDramaOriginalNovelEnabled(), orig) ? YES : NO;
 }
 
 static NSHashTable<UIView *> *FQXTrackedDramaSeriesControls(void) {
@@ -8102,13 +8379,20 @@ static void FQXScanDramaInfoLabelsDepth(UIView *node,
                                         CGFloat ctrlH,
                                         FQXDramaInfoScanResult *outRes,
                                         NSInteger depth) {
-    if (!node || depth > 8) return;
+    if (!node || depth > 14) return;
     if (depth > 0 && FQXDramaClassShouldSkipInfoScan(node)) return;
+
+    Class aiUsageCls = objc_lookUpClass("SSShortVideoAiUsageView");
+    if (aiUsageCls && [node isKindOfClass:aiUsageCls] && !outRes->authorLabel) {
+        outRes->authorLabel = node;
+        return;
+    }
 
     CGRect inCtrl = [node convertRect:node.bounds toView:control];
     if (depth > 0 && CGRectGetHeight(inCtrl) >= 10.0 && CGRectGetMaxY(inCtrl) >= ctrlH * 0.42 &&
         CGRectGetMinX(inCtrl) <= ctrlW * 0.72) {
         BOOL isTextLeaf = [node isKindOfClass:UILabel.class] ||
+                          [node isKindOfClass:UIButton.class] ||
                           ([node respondsToSelector:sel_registerName("textLayout")] &&
                            [node respondsToSelector:sel_registerName("setTextLayout:")]);
         if (isTextLeaf) {
@@ -8118,6 +8402,7 @@ static void FQXScanDramaInfoLabelsDepth(UIView *node,
                     outRes->authorLabel = node;
                     return;
                 }
+                if ([node isKindOfClass:UIButton.class]) return;
                 if (([t containsString:@"展开"] || [t containsString:@"热评"] ||
                      FQXDramaStringStartsWithEpisodePrefix(t)) &&
                     ![t containsString:@"观看完整"] && ![t containsString:@"选集"]) {
@@ -8665,12 +8950,68 @@ static void FQXRefreshAllDramaSeriesPills(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ FQXRefreshAllDramaSeriesPills(); });
         return;
     }
+    BOOL showAuthor = FQXDramaAuthorDeclarationEnabled();
+    BOOL showDanmakuBtn = FQXDramaShowDanmakuButtonEnabled();
+    BOOL showOrigNovel = FQXDramaOriginalNovelEnabled();
+
+    for (UIView *aiView in FQXTrackedAiUsageViews().allObjects) {
+        if (![aiView isKindOfClass:UIView.class]) continue;
+        NSNumber *hostHidden = objc_getAssociatedObject(aiView, FQXAiUsageHostHiddenKey);
+        BOOL targetHidden = showAuthor ? (hostHidden ? hostHidden.boolValue : NO) : YES;
+        if (OrigAiUsageSetHidden) OrigAiUsageSetHidden(aiView, @selector(setHidden:), targetHidden);
+        else aiView.hidden = targetHidden;
+    }
     SEL updateSubSel = sel_registerName("updateSubViews");
     for (id mgr in FQXTrackedBelowLeftManagers().allObjects) {
         if ([mgr respondsToSelector:updateSubSel]) {
             ((void (*)(id, SEL))objc_msgSend)(mgr, updateSubSel);
         }
     }
+
+    Class danmakuLeftCls = objc_lookUpClass("SSShortVideoDanmakuLeftAboveView");
+    Class danmakuEntCls = objc_lookUpClass("FQCShortVideoDanmakuEntranceView");
+    for (UIView *dmView in FQXTrackedDanmakuButtonViews().allObjects) {
+        if (![dmView isKindOfClass:UIView.class]) continue;
+        NSNumber *hostHidden = objc_getAssociatedObject(dmView, FQXDanmakuHostHiddenKey);
+        BOOL targetHidden = showDanmakuBtn ? (hostHidden ? hostHidden.boolValue : NO) : YES;
+        if (danmakuLeftCls && [dmView isKindOfClass:danmakuLeftCls] && OrigDanmakuLeftAboveViewSetHidden) {
+            OrigDanmakuLeftAboveViewSetHidden(dmView, @selector(setHidden:), targetHidden);
+        } else if (danmakuEntCls && [dmView isKindOfClass:danmakuEntCls] && OrigDanmakuEntranceSetHidden) {
+            OrigDanmakuEntranceSetHidden(dmView, @selector(setHidden:), targetHidden);
+        } else {
+            dmView.hidden = targetHidden;
+        }
+    }
+    SEL updateAboveSel = sel_registerName("updateLayoutForContainerView");
+    for (id mgr in FQXTrackedAboveLeftManagers().allObjects) {
+        if ([mgr respondsToSelector:updateAboveSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(mgr, updateAboveSel);
+        }
+    }
+
+    SEL updateBookCardSel = sel_registerName("updateBookCardViewStatus:allowSubscribed:");
+    SEL hideDistSel = sel_registerName("hideDistributionView");
+    for (id mgr in FQXTrackedAboveProgressManagers().allObjects) {
+        if (!showOrigNovel && FQXIntGet(mgr, "distributionType", 0) == 3) {
+            Method hm = class_getInstanceMethod(object_getClass(mgr), hideDistSel);
+            if (hm && strcmp(method_getTypeEncoding(hm), "v16@0:8") == 0) {
+                ((void (*)(id, SEL))objc_msgSend)(mgr, hideDistSel);
+            }
+        }
+        Method bm = class_getInstanceMethod(object_getClass(mgr), updateBookCardSel);
+        if (bm && strcmp(method_getTypeEncoding(bm), "v24@0:8B16B20") == 0) {
+            BOOL bookCardShowing = FQXBoolGet(mgr, "bookCardIsShowing", NO);
+            ((void (*)(id, SEL, BOOL, BOOL))objc_msgSend)(mgr, updateBookCardSel, bookCardShowing, YES);
+        } else {
+            id model = FQXObjGet(mgr, "videoDataModel");
+            SEL cfgSel = sel_registerName("configDistributionView:");
+            Method cm = model ? class_getInstanceMethod(object_getClass(mgr), cfgSel) : NULL;
+            if (cm && strcmp(method_getTypeEncoding(cm), "v24@0:8@16") == 0) {
+                ((void (*)(id, SEL, id))objc_msgSend)(mgr, cfgSel, model);
+            }
+        }
+    }
+
     for (UIView *ctrl in FQXTrackedDramaSeriesControls().allObjects) {
         FQXSyncDramaSeriesPillForControl(ctrl);
         if (ctrl.window) [ctrl setNeedsLayout];
@@ -10458,6 +10799,24 @@ static NSArray<UICollectionViewLayoutAttributes *> *HookMineFoldRectAttributes(
     return attributes;
 }
 
+static double FQXSafeLayoutDoubleProp(id obj, const char *selName) {
+    if (!obj || !selName) return 0.0;
+    SEL sel = sel_registerName(selName);
+    Method m = class_getInstanceMethod(object_getClass(obj), sel);
+    if (!m || strcmp(method_getTypeEncoding(m), "d16@0:8") != 0) return 0.0;
+    double v = ((double (*)(id, SEL))objc_msgSend)(obj, sel);
+    return isfinite(v) ? v : 0.0;
+}
+
+static CGSize FQXSafeLayoutSizeProp(id obj, const char *selName) {
+    if (!obj || !selName) return CGSizeZero;
+    SEL sel = sel_registerName(selName);
+    Method m = class_getInstanceMethod(object_getClass(obj), sel);
+    const char *enc = m ? method_getTypeEncoding(m) : NULL;
+    if (!enc || strncmp(enc, "{CGSize=dd}16@0:8", 17) != 0) return CGSizeZero;
+    return ((CGSize (*)(id, SEL))objc_msgSend)(obj, sel);
+}
+
 static BOOL FQXUpdateMineFoldFirstPageBand(UICollectionView *collection, UIView *fold) {
     NSValue *previous = objc_getAssociatedObject(collection, &FQXMineFoldFirstPageBandKey);
     CGRect oldBand = previous ? previous.CGRectValue : CGRectNull;
@@ -10467,18 +10826,50 @@ static BOOL FQXUpdateMineFoldFirstPageBand(UICollectionView *collection, UIView 
         CGPoint offset = collection.bounds.origin;
         CGRect card = CGRectOffset([fold convertRect:fold.bounds toView:collection], -offset.x, -offset.y);
         CGFloat radius = 27.0;
-        CGFloat centerY = CGRectGetMidY(card);
         UIView *indicator = FQXMinePageControl(fold, fold);
-        if (indicator && !indicator.hidden && indicator.alpha > 0.05) {
+        BOOL hasDots = (indicator && !indicator.hidden && indicator.alpha > 0.05);
+        double dotsMinY = 0.0;
+        if (hasDots) {
             CGRect dots = [indicator convertRect:indicator.bounds toView:collection];
-            centerY = MIN(centerY, CGRectGetMinY(dots) - offset.y - radius - 2.0);
+            dotsMinY = CGRectGetMinY(dots) - offset.y;
         }
-        if (CGRectGetWidth(card) > 0.0) {
-            band = CGRectMake(CGRectGetMinX(card), CGRectGetMinY(card), CGRectGetWidth(card), 0.0);
-            if (centerY >= CGRectGetMinY(card) + radius) {
-                band.origin.y = centerY - radius;
-                band.size.height = radius * 2.0;
+        id rawAttach = FQXObjGet(fold, "attachView");
+        UIView *attachView = [rawAttach isKindOfClass:UIView.class] ? (UIView *)rawAttach : nil;
+        BOOL attachVisible = (attachView != nil && !attachView.hidden && attachView.alpha > 0.01);
+        double attachmentHeight = FQXSafeLayoutDoubleProp(collection.collectionViewLayout, "attachmentHeight");
+        if (attachmentHeight <= 0.5 && attachVisible && CGRectGetHeight(attachView.bounds) > 4.0) {
+            attachmentHeight = CGRectGetHeight(attachView.bounds);
+        }
+        BOOL hasAttachment = (attachVisible || attachmentHeight > 0.5);
+        BOOL hasAttachRect = NO;
+        double attachMinY = 0.0;
+        if (attachVisible && attachView.superview && CGRectGetHeight(attachView.bounds) > 4.0 &&
+            [attachView isDescendantOfView:fold]) {
+            CGRect attRect = CGRectOffset([attachView convertRect:attachView.bounds toView:collection],
+                                          -offset.x, -offset.y);
+            if (CGRectGetHeight(attRect) > 4.0) {
+                hasAttachRect = YES;
+                attachMinY = CGRectGetMinY(attRect);
             }
+        }
+        CGSize layoutItemSize = FQXSafeLayoutSizeProp(collection.collectionViewLayout, "itemSize");
+        if (CGRectGetWidth(card) > 0.0) {
+            double bandY = CGRectGetMinY(card);
+            double bandH = 0.0;
+            FQXComputeMineFoldFirstPageBandY(
+                CGRectGetMinY(card),
+                CGRectGetMaxY(card),
+                hasDots ? 1 : 0,
+                dotsMinY,
+                hasAttachment ? 1 : 0,
+                hasAttachRect ? 1 : 0,
+                attachMinY,
+                attachmentHeight,
+                layoutItemSize.height,
+                radius,
+                &bandY,
+                &bandH);
+            band = CGRectMake(CGRectGetMinX(card), bandY, CGRectGetWidth(card), bandH);
             // The fold grows on the second page; keep the first row at its folded height while swiping.
             if (previous && offset.x > 0.5 && fabs(oldBand.size.width - band.size.width) < 0.25) {
                 band.origin.y = oldBand.origin.y;
@@ -10492,7 +10883,7 @@ static BOOL FQXUpdateMineFoldFirstPageBand(UICollectionView *collection, UIView 
     } else {
         if (previous && fabs(oldBand.origin.x - band.origin.x) < 0.25 &&
             fabs(oldBand.origin.y - band.origin.y) < 0.25 && fabs(oldBand.size.width - band.size.width) < 0.25 &&
-            oldBand.size.height == band.size.height) return NO;
+            fabs(oldBand.size.height - band.size.height) < 0.25) return NO;
         objc_setAssociatedObject(collection, &FQXMineFoldFirstPageBandKey, [NSValue valueWithCGRect:band],
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -10879,6 +11270,22 @@ static void HookScrollFoldLayout(UIView *self, SEL _cmd) {
         FQXSyncMineContainerUniversal(self);
         [FQXMineShortcutViewport applyToView:self enabled:clipEnabled];
         FQXMineViewportSyncInFlight = NO;
+    }
+}
+
+static void (*OrigScrollFoldAttachView)(id, SEL, id, NSInteger);
+static void HookScrollFoldAttachView(UIView *self, SEL _cmd, id attachView, NSInteger attachType) {
+    if (OrigScrollFoldAttachView) OrigScrollFoldAttachView(self, _cmd, attachView, attachType);
+    if (FQXIsInsideMineSidebar(self)) return;
+    id rawCV = FQXObjGet(self, "collectionView");
+    if ([rawCV isKindOfClass:UICollectionView.class]) {
+        UICollectionView *cv = (UICollectionView *)rawCV;
+        Class foldLayoutClass = objc_lookUpClass("SSFuncLayout");
+        if (foldLayoutClass && [cv.collectionViewLayout isKindOfClass:foldLayoutClass]) {
+            if (FQXUpdateMineFoldFirstPageBand(cv, self)) {
+                [cv.collectionViewLayout invalidateLayout];
+            }
+        }
     }
 }
 
@@ -13787,6 +14194,16 @@ static BOOL FQXIsShelfFavoritesController(id controller) {
     if (![FQXObjGet(controller, "delegate") isKindOfClass:shelfClass]) {
         UIViewController *parent = [controller parentViewController];
         while (parent && ![parent isKindOfClass:shelfClass]) parent = parent.parentViewController;
+        if (!parent && [controller isKindOfClass:UIViewController.class] &&
+            ((UIViewController *)controller).isViewLoaded) {
+            UIView *v = ((UIViewController *)controller).view;
+            for (NSInteger depth = 0; v && depth < 8 && !parent; ++depth, v = v.superview) {
+                UIResponder *resp = v.nextResponder;
+                if ([resp isKindOfClass:shelfClass]) {
+                    parent = (UIViewController *)resp;
+                }
+            }
+        }
         if (!parent) return NO;
     }
     FQXTrackShelfFavoritesController(controller);
@@ -13813,12 +14230,29 @@ static id HookShelfBuildFavoritesController(UIViewController *shelf, SEL cmd, id
     return controller;
 }
 
+static void (*OrigShelfFavoritesWillAppear)(id, SEL, BOOL);
+static void HookShelfFavoritesWillAppear(UIViewController *controller, SEL cmd, BOOL animated) {
+    if (OrigShelfFavoritesWillAppear) OrigShelfFavoritesWillAppear(controller, cmd, animated);
+    if (!FQXIsShelfFavoritesController(controller)) return;
+    NSUInteger policy = FQXShelfFavoritesRowsPolicy();
+    if (FQXShelfFavoritesAppliedRowsPolicy(controller) != policy) {
+        objc_setAssociatedObject(controller, &ShelfFavoritesRowsPolicyKey, @(policy), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        UICollectionView *collection = FQXObjGet(controller, "collectionView");
+        if ([collection isKindOfClass:UICollectionView.class]) {
+            [collection reloadData];
+        }
+    }
+}
+
 static NSInteger (*OrigShelfFavoritesDisplayCount)(id, SEL, BOOL);
 static NSInteger HookShelfFavoritesDisplayCount(UIViewController *controller, SEL cmd, BOOL includeExtra) {
     if (includeExtra && FQXIsShelfFavoritesController(controller) && (FQXShelfFavoritesAppliedRowsPolicy(controller) & 2u)) {
         id model = FQXObjGet(controller, "viewModel");
-        // The native extra cell style 1 opens bookshelf_video_history; style 0 opens the store category.
-        if (FQXIntGet(model, "videoCollectAddCellStyle", -1) == 1) includeExtra = NO;
+        // Verified against SSVideoCollectEmptyCell (-updateWithCellStyle:uiConfigParams:) and
+        // SSVideoCollectViewModel (-addCellStyleString): style 0 is "bookshelf_more_history"
+        // ("查看短剧浏览历史"); style 1 is "video_goto_bookstore" ("前往首页").
+        NSInteger style = FQXIntGet(model, "videoCollectAddCellStyle", -1);
+        if (FQXShouldHideShelfFavoritesExtraCell(0, (long long)style)) includeExtra = NO;
     }
     return OrigShelfFavoritesDisplayCount(controller, cmd, includeExtra);
 }
@@ -22602,6 +23036,7 @@ static void FQXInstallPostGlassHooks(void) {
 
         // Mine 4-button shortcut enforcement (runs after AlignedGlass)
         POST_HOOK("SSScrollFoldFuncView", "layoutSubviews", "v16@0:8", OrigScrollFoldLayout, HookScrollFoldLayout);
+        POST_HOOK("SSScrollFoldFuncView", "attachView:forType:", "v32@0:8@16q24", OrigScrollFoldAttachView, HookScrollFoldAttachView);
         POST_HOOK("SSMyUserShortcutCell", "layoutSubviews", "v16@0:8", OrigMineShortcutCardLayout, HookMineShortcutCardLayout);
         POST_HOOK("SSMyUserCollectionView1Cell", "layoutSubviews", "v16@0:8", OrigMineCard1Layout, HookMineCard1Layout);
         POST_HOOK("SSMyUserCollectionViewFunCell", "layoutSubviews", "v16@0:8", OrigMineFunCellLayoutForBadge, HookMineFunCellLayoutForBadge);
@@ -22627,6 +23062,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelf525ViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelf525DidLayoutSubviews, HookShelf525DidLayoutSubviews);
         POST_HOOK("SSBookShelf525ViewController", "categoryView:canClickItemAtIndex:", "B32@0:8@16q24", OrigShelfRootCanSelect, HookShelfRootCanSelect);
         POST_HOOK("SSBookShelf525ViewController", "buildTabVCWithModel:", "@24@0:8@16", OrigShelfBuildFavoritesController, HookShelfBuildFavoritesController);
+        POST_HOOK("SSVideoCollectViewController", "viewWillAppear:", "v20@0:8B16", OrigShelfFavoritesWillAppear, HookShelfFavoritesWillAppear);
         POST_HOOK("SSVideoCollectViewController", "displayItemCountWithExtraCell:", "q20@0:8B16", OrigShelfFavoritesDisplayCount, HookShelfFavoritesDisplayCount);
         POST_HOOK("SSVideoCollectViewController", "collectionView:numberOfItemsInSection:", "q32@0:8@16q24", OrigShelfFavoritesNumberOfItems, HookShelfFavoritesNumberOfItems);
         POST_HOOK("SSVideoCollectViewController", "collectionView:cellForItemAtIndexPath:", "@32@0:8@16@24", OrigShelfFavoritesCell, HookShelfFavoritesCell);
@@ -22665,6 +23101,28 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookHistorySubViewController", "categoryView:canClickItemAtIndex:", "B32@0:8@16q24", OrigShelfHistoryCanSelect, HookShelfHistoryCanSelect);
         POST_HOOK("FQVShortVideoVPlayerControlView", "layoutSubviews", "v16@0:8", OrigVPlayerLayoutForSeriesPill, HookVPlayerLayoutForSeriesPill);
         POST_HOOK("SSShortVideoBelowLeftContainerViewManager", "shouldAddAiUsageView", "B16@0:8", OrigBelowLeftShouldAddAiUsage, HookBelowLeftShouldAddAiUsage);
+        POST_HOOK("SSShortVideoBelowLeftContainerViewManager", "enableShowAiUsageTag", "B16@0:8", OrigBelowLeftEnableAiUsageTag, HookBelowLeftEnableAiUsageTag);
+        POST_HOOK("SSShortVideoAiUsageView", "aiUsageString", "@16@0:8", OrigAiUsageString, HookAiUsageString);
+        POST_HOOK("SSShortVideoAiUsageView", "setHidden:", "v20@0:8B16", OrigAiUsageSetHidden, HookAiUsageSetHidden);
+        POST_HOOK("SSShortVideoAiUsageView", "layoutSubviews", "v16@0:8", OrigAiUsageLayout, HookAiUsageLayout);
+
+        // Short Drama bottom-left Danmaku button toggle & Original Novel visibility (episode player + main feed)
+        POST_HOOK("SSShortVideoDanmakuLeftAboveManager", "isViewShowing", "B16@0:8", OrigDanmakuLeftAboveIsShowing, HookDanmakuLeftAboveIsShowing);
+        POST_HOOK("SSShortVideoDanmakuLeftAboveManager", "isCurrentEntranceVisible", "B16@0:8", OrigDanmakuLeftAboveEntranceVisible, HookDanmakuLeftAboveEntranceVisible);
+        POST_HOOK("SSShortVideoAboveLeftContainerViewManager", "topActionContainerViewWithDanmaku:followUpdate:landingMute:", "@28@0:8B16B20B24", OrigAboveLeftTopActionView, HookAboveLeftTopActionView);
+        POST_HOOK("SSShortVideoAboveLeftContainerViewManager", "orderedAboveLeftViewsForCurrentState", "@16@0:8", OrigAboveLeftOrderedViews, HookAboveLeftOrderedViews);
+        POST_HOOK("SSShortVideoDanmakuLeftAboveView", "setHidden:", "v20@0:8B16", OrigDanmakuLeftAboveViewSetHidden, HookDanmakuLeftAboveViewSetHidden);
+        POST_HOOK("FQCShortVideoDanmakuEntranceView", "setHidden:", "v20@0:8B16", OrigDanmakuEntranceSetHidden, HookDanmakuEntranceSetHidden);
+        POST_HOOK("SSShortVideoAboveProgressViewManager", "configDistributionView:", "v24@0:8@16", OrigAboveProgressConfigDistView, HookAboveProgressConfigDistView);
+        POST_HOOK("SSShortVideoAboveProgressViewManager", "decideDistributionType", "Q16@0:8", OrigAboveProgressDecideDistType, HookAboveProgressDecideDistType);
+        POST_HOOK("SSShortVideoAboveProgressViewManager", "checkCanShowBook", "B16@0:8", OrigAboveProgressCheckCanShowBook, HookAboveProgressCheckCanShowBook);
+        POST_HOOK("SSShortVideoAboveProgressViewManager", "checkCanShowNovelRelatedEntrance", "B16@0:8", OrigAboveProgressCheckCanShowNovelEntrance, HookAboveProgressCheckCanShowNovelEntrance);
+        POST_HOOK("SSShortVideoTagListBottomInsertView", "shouldShowRelateBookInEpisodeInfo:", "B24@0:8@16", OrigTagListShouldShowRelateBook, HookTagListShouldShowRelateBook);
+        POST_HOOK("SSShortVideoTagListBottomInsertView", "updateTagListWithShortVideoModel:hasRelateBook:", "v28@0:8@16B24", OrigTagListUpdateWithRelateBook, HookTagListUpdateWithRelateBook);
+        POST_HOOK("SSShortVideoBookCardManager", "shouldShowBookCard", "B16@0:8", OrigBookCardShouldShow, HookBookCardShouldShow);
+        POST_HOOK("SSShortVideoOutterBookCardManager", "shouldShowBookCardWithPlaybackTime:", "B24@0:8d16", OrigOutterBookCardShouldShowTime, HookOutterBookCardShouldShowTime);
+        POST_HOOK("SSShortVideoOutterBookCardManager", "shouldShowBookCardImmediately", "B16@0:8", OrigOutterBookCardShouldShowNow, HookOutterBookCardShouldShowNow);
+        POST_HOOK("SSShortVideoRightInteractionRelateBookManager", "showRelateBook", "B16@0:8", OrigRightRelateBookShouldShow, HookRightRelateBookShouldShow);
 
 #undef POST_HOOK
     });

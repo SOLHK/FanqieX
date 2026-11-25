@@ -310,4 +310,102 @@ static inline int FQXShouldSuppressDockFeedbackGenerator(int bottomHapticsEnable
     return 0;
 }
 
+static inline void FQXComputeMineFoldFirstPageBandY(double cardMinY,
+                                                    double cardMaxY,
+                                                    int hasDots,
+                                                    double dotsMinY,
+                                                    int hasAttachment,
+                                                    int hasAttachRect,
+                                                    double attachMinY,
+                                                    double attachmentHeight,
+                                                    double itemHeight,
+                                                    double radius,
+                                                    double *outBandMinY,
+                                                    double *outBandHeight) {
+    if (!outBandMinY || !outBandHeight) return;
+    *outBandMinY = cardMinY;
+    *outBandHeight = 0.0;
+    if (!isfinite(cardMinY) || !isfinite(cardMaxY) || cardMaxY <= cardMinY || !isfinite(radius) || radius <= 0.0) {
+        return;
+    }
+    if (!hasAttachment) {
+        double centerY = (cardMinY + cardMaxY) * 0.5;
+        if (hasDots && isfinite(dotsMinY)) {
+            centerY = fmin(centerY, dotsMinY - radius - 2.0);
+        }
+        if (centerY >= cardMinY + radius) {
+            *outBandMinY = centerY - radius;
+            *outBandHeight = radius * 2.0;
+        }
+        return;
+    }
+    double ceilingY = cardMaxY;
+    if (hasDots && isfinite(dotsMinY) && dotsMinY > cardMinY) {
+        ceilingY = fmin(ceilingY, dotsMinY);
+    }
+    if (hasAttachRect && isfinite(attachMinY) && attachMinY > cardMinY + 24.0) {
+        ceilingY = fmin(ceilingY, attachMinY);
+    }
+    if (isfinite(attachmentHeight) && attachmentHeight > 0.5) {
+        if (isfinite(itemHeight) && itemHeight > 20.0) {
+            ceilingY = fmin(ceilingY, itemHeight + 6.0);
+        } else if (!hasAttachRect) {
+            double estBase = (hasDots && isfinite(dotsMinY) && dotsMinY > cardMinY) ? fmin(cardMaxY, dotsMinY) : cardMaxY;
+            double estCeiling = estBase - attachmentHeight - 6.0;
+            if (estCeiling > cardMinY + 24.0) {
+                ceilingY = fmin(ceilingY, estCeiling);
+            }
+        }
+    }
+    double zoneTop = fmax(cardMinY, 0.0);
+    double minNeeded = (isfinite(itemHeight) && itemHeight > 20.0) ? itemHeight : 32.0;
+    double zoneBottom = ceilingY - 2.0;
+    if (zoneBottom - zoneTop < minNeeded) {
+        zoneBottom = ceilingY;
+    }
+    if (zoneBottom - zoneTop >= minNeeded) {
+        *outBandMinY = zoneTop;
+        *outBandHeight = zoneBottom - zoneTop;
+    } else {
+        *outBandMinY = zoneTop;
+        *outBandHeight = 0.0;
+    }
+}
+
+static inline int FQXShouldHideShelfFavoritesExtraCell(int showHistoryCard,
+                                                       long long addCellStyle) {
+    /* Verified in SSVideoCollectEmptyCell (-updateWithCellStyle:uiConfigParams:) and
+       SSVideoCollectViewModel (-addCellStyleString):
+       style 0 = bookshelf_more_history ("查看短剧浏览历史");
+       style 1 = video_goto_bookstore ("前往首页"). */
+    return (!showHistoryCard && addCellStyle == 0) ? 1 : 0;
+}
+
+static inline int FQXShouldShowDramaDanmakuButton(int showDanmakuButton,
+                                                  int hostWantsDanmaku) {
+    return (showDanmakuButton && hostWantsDanmaku) ? 1 : 0;
+}
+
+static inline int FQXShouldShowDramaAuthorDeclaration(int showAuthorDeclaration,
+                                                      int hostWantsAiUsage) {
+    return (showAuthorDeclaration && hostWantsAiUsage) ? 1 : 0;
+}
+
+static inline unsigned long long FQXResolveDramaAboveProgressDistributionType(int showOriginalNovel,
+                                                                              unsigned long long hostDistributionType) {
+    /* Verified in SSShortVideoAboveProgressViewManager -decideDistributionType & -distributionViewDidClick:
+       distributionType == 3 is exclusively the Original Book ("原著《...》") bar above the progress bar.
+       Non-book bars (1 = series/观看完整漫剧, 2 = recommend/game, 4 = playlist, 6/14 = follow update, 9 = same kind)
+       remain unaffected. */
+    if (!showOriginalNovel && hostDistributionType == 3ULL) {
+        return 0ULL;
+    }
+    return hostDistributionType;
+}
+
+static inline int FQXShouldShowDramaOriginalNovelEntry(int showOriginalNovel,
+                                                       int hostWantsEntry) {
+    return (showOriginalNovel && hostWantsEntry) ? 1 : 0;
+}
+
 #endif

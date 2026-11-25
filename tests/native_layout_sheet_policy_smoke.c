@@ -178,6 +178,66 @@ static void test_shelf_and_history_compaction_and_pager(void) {
     assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 0, 0) == 0);
     assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 1, 1) == 0);
     assert(FQXShouldSuppressDockFeedbackGenerator(0, 0, 1, 0) == 0);
+
+    /* 8. Mine shortcut fold first-page vertical band: without attachment preserve centered band;
+          with attached continue-watching/history banner (attachmentHeight > 0 or attachView rect),
+          confine band strictly above the attachment so circular icons never overlap the banner. */
+    {
+        double by = 0.0, bh = 0.0;
+        /* No attachment: card [-12, 84] (midY = 36), dots at 72 -> centered at 36, height 54. */
+        FQXComputeMineFoldFirstPageBandY(-12.0, 84.0, 1, 72.0, 0, 0, 0.0, 0.0, 47.0, 27.0, &by, &bh);
+        assert(fabs(by - 9.0) < 1e-6 && fabs(bh - 54.0) < 1e-6);
+
+        /* With mounted attachment at y=64 (itemHeight=58, attachHeight=56, card=[-12,148], dots=132):
+           band stays in [0, 62] (midY=31, cell [2, 60]), zero overlap with attachMinY=64. */
+        FQXComputeMineFoldFirstPageBandY(-12.0, 148.0, 1, 132.0, 1, 1, 64.0, 56.0, 58.0, 27.0, &by, &bh);
+        assert(fabs(by - 0.0) < 1e-6 && fabs(bh - 62.0) < 1e-6);
+        assert(by + bh <= 64.0 - 1.5);
+
+        /* First layout pass before attachView is mounted (hasAttachRect=0, attachmentHeight=56, itemHeight=47):
+           ceiling derived from itemHeight+6=53 -> band [0, 51], zero overlap with 53. */
+        FQXComputeMineFoldFirstPageBandY(-12.0, 140.0, 1, 124.0, 1, 0, 0.0, 56.0, 47.0, 27.0, &by, &bh);
+        assert(fabs(by - 0.0) < 1e-6 && fabs(bh - 51.0) < 1e-6);
+        assert(by + bh <= 53.0 - 1.5);
+
+        /* Tight/degenerate attachment ceiling below itemHeight: fall back to bh=0 (keep native y=0). */
+        FQXComputeMineFoldFirstPageBandY(-12.0, 120.0, 1, 108.0, 1, 1, 44.0, 56.0, 58.0, 27.0, &by, &bh);
+        assert(fabs(bh - 0.0) < 1e-6);
+    }
+
+    /* 9. Shelf Favorites extra history card suppression: style 0 is "查看短剧浏览历史",
+          style 1 is "前往首页" (store_video_category). */
+    assert(FQXShouldHideShelfFavoritesExtraCell(0, 0) == 1);
+    assert(FQXShouldHideShelfFavoritesExtraCell(0, 1) == 0);
+    assert(FQXShouldHideShelfFavoritesExtraCell(0, -1) == 0);
+    assert(FQXShouldHideShelfFavoritesExtraCell(1, 0) == 0);
+    assert(FQXShouldHideShelfFavoritesExtraCell(1, 1) == 0);
+
+    /* 10. Short drama bottom-left Danmaku button, Author AI declaration, and Original Novel visibility policies. */
+    assert(FQXShouldShowDramaDanmakuButton(1, 1) == 1);
+    assert(FQXShouldShowDramaDanmakuButton(1, 0) == 0);
+    assert(FQXShouldShowDramaDanmakuButton(0, 1) == 0);
+    assert(FQXShouldShowDramaDanmakuButton(0, 0) == 0);
+
+    assert(FQXShouldShowDramaAuthorDeclaration(1, 1) == 1);
+    assert(FQXShouldShowDramaAuthorDeclaration(1, 0) == 0);
+    assert(FQXShouldShowDramaAuthorDeclaration(0, 1) == 0);
+    assert(FQXShouldShowDramaAuthorDeclaration(0, 0) == 0);
+
+    assert(FQXResolveDramaAboveProgressDistributionType(1, 3ULL) == 3ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 3ULL) == 0ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 1ULL) == 1ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 2ULL) == 2ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 4ULL) == 4ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 6ULL) == 6ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 9ULL) == 9ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 14ULL) == 14ULL);
+    assert(FQXResolveDramaAboveProgressDistributionType(0, 0ULL) == 0ULL);
+
+    assert(FQXShouldShowDramaOriginalNovelEntry(1, 1) == 1);
+    assert(FQXShouldShowDramaOriginalNovelEntry(1, 0) == 0);
+    assert(FQXShouldShowDramaOriginalNovelEntry(0, 1) == 0);
+    assert(FQXShouldShowDramaOriginalNovelEntry(0, 0) == 0);
 }
 
 int main(void) {

@@ -100,6 +100,7 @@ extern void FQXInstallMotionAndAudioHooks(void);
     X(DramaShowShare, "DramaShowShare", "显示分享按钮", "dramaActions", YES) \
     X(DramaAutoplay, "DramaAutoplay", "关闭短剧进入自动播放", "drama", NO) \
     X(DramaUnlockDanmaku, "DramaUnlockDanmaku", "解锁短剧与漫剧弹幕功能", "drama", YES) \
+    X(DramaShowDanmakuButton, "DramaShowDanmakuButton", "显示左下角弹幕按钮", "drama", YES) \
     X(ReaderRatingInvite, "ReaderRatingInvite", "关闭阅读评价邀请", "readerFeatures", NO) \
     X(ExcerptWidgetGuide, "ExcerptWidgetGuide", "隐藏书摘小组件提醒", "readerFeatures", NO) \
     X(ContentWidgetGuide, "ContentWidgetGuide", "隐藏内容小组件提醒", "readerFeatures", NO) \
@@ -2099,7 +2100,9 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
                [key isEqualToString:DramaHideSeriesTagKey] ||
                [key isEqualToString:DramaHideTitleBadgeKey] ||
                [key isEqualToString:DramaHideGenreTagsKey] ||
-               [key isEqualToString:@"FanqieX.DramaAuthorDeclaration.1"]) {
+               [key isEqualToString:DramaShowDanmakuButtonKey] ||
+               [key isEqualToString:@"FanqieX.DramaAuthorDeclaration.1"] ||
+               [key isEqualToString:@"FanqieX.DramaOriginalNovel.1"]) {
         Class motion = objc_lookUpClass("FQXDockMotion");
         SEL refresh = sel_registerName("refreshDramaControls");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
