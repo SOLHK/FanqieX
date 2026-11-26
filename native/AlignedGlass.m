@@ -2351,7 +2351,7 @@ static B DramaAlignWithDockFrame(Obj view,Rect alignment,double inset) {
     if (parent && VisibleRect(alignment)) {
         Rect bounds=Bounds(parent);
         Rect target={alignment.x-inset,before.y,alignment.width+2*inset,before.height};
-        if (VisibleRect(target) && alignment.width>=bounds.width*0.5 &&
+        if (VisibleRect(target) && alignment.width>=88 &&
             target.x>=bounds.x && target.x+target.width<=bounds.x+bounds.width) {
             BottomApplyFrame178(view,target,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
             return !BottomSameFrame178(before,target);
@@ -2360,12 +2360,6 @@ static B DramaAlignWithDockFrame(Obj view,Rect alignment,double inset) {
     BottomRestoreFrame178(view,DramaDockAlignedStockKey,DramaDockAlignedFrameKey);
     return !BottomSameFrame178(before,Frame(view));
 }
-static B DramaAlignWithDock(Obj view,Obj dock,double inset) {
-    Obj parent=Get(view,"superview");
-    Rect alignment=parent && dock ? Convert(dock,Bounds(dock),parent) : (Rect){0};
-    return DramaAlignWithDockFrame(view,alignment,inset);
-}
-
 static void RemoveDramaGlass(Obj owner) {
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
     if (!glass) return;
@@ -3103,9 +3097,35 @@ static void DramaDanmakuRefreshIcon(Obj self,Sel cmd) {
     if (objc_getAssociatedObject(toggle,DramaGlassKey)) DramaDanmakuGlyph(self,Enabled() && !Flag(self,"combinedStyle"));
 }
 
+static void DramaFullscreenPaintMaskKey(void) {}
+static void DramaFullscreenStockMaskKey(void) {}
+
 static void DramaFullscreenButtonApply178R11(Obj self) {
     Obj button=Get(self,"fullscreenBtn");
-    DramaSmallGlass(button,Kind(button,"UIButton") && Belongs(button,self));
+    B belongs=Kind(button,"UIButton") && Belongs(button,self);
+    Obj defaults=O0(Lookup("NSUserDefaults"),"standardUserDefaults");
+    B hide=belongs && Flag(O1(defaults,"objectForKey:",Text("FanqieX.DramaHideFullscreenButton.1")),"boolValue");
+    Obj paintMask=objc_getAssociatedObject(button,DramaFullscreenPaintMaskKey);
+    if (hide || paintMask) {
+        // Mask the rendered button while leaving UIKit's native hit target intact.
+        Obj layer=Get(button,"layer"), current=Get(layer,"mask");
+        if (hide) {
+            if (!paintMask) {
+                paintMask=O0(Lookup("CALayer"),"layer");
+                objc_setAssociatedObject(button,DramaFullscreenPaintMaskKey,paintMask,1);
+            }
+            if (current!=paintMask) {
+                objc_setAssociatedObject(button,DramaFullscreenStockMaskKey,current,1);
+                V1(layer,"setMask:",paintMask);
+            }
+        } else {
+            if (current==paintMask)
+                V1(layer,"setMask:",objc_getAssociatedObject(button,DramaFullscreenStockMaskKey));
+            objc_setAssociatedObject(button,DramaFullscreenPaintMaskKey,0,1);
+            objc_setAssociatedObject(button,DramaFullscreenStockMaskKey,0,1);
+        }
+    }
+    DramaSmallGlass(button,belongs && !hide);
 }
 static void DramaFullscreenButtonLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVShortVideoVPlayerControlView","fqx178r8_originalFullscreenButtonLayout"))(self,cmd);
@@ -4690,7 +4710,7 @@ static void DramaSpacingScan178R2(Obj view,Obj root,Obj insert,int depth,int *bu
             Obj candidate=Get(view,i ? "progressBarBackgroundView" : "customizedProgressBarBackgroundView");
             if (Get(candidate,"superview")!=view || !DramaSpacingVisible178R2(candidate)) continue;
             Rect frame=Convert(candidate,Bounds(candidate),root);
-            if (VisibleRect(frame) && frame.width>=bounds.width*0.5 && frame.height<=8 &&
+            if (VisibleRect(frame) && frame.width>=Bounds(view).width*0.5 && frame.height<=8 &&
                 frame.y>bounds.y+bounds.height*0.6 && frame.y<bounds.y+bounds.height) {
                 *progress=candidate;
                 *track=frame;
@@ -4857,11 +4877,12 @@ void FQHDramaSpacing178R2(Obj root) {
             !Belongs(rail,root)) rail=0;
     }
     if (rail!=previousRail) {
-        if (previousRail) DramaAlignWithDock(previousRail,0,16);
+        if (previousRail && DramaAlignWithDockFrame(previousRail,(Rect){0},16))
+            V0(previousRail,"setNeedsLayout");
         objc_setAssociatedObject(root,DramaDockProgressKey,rail,1);
     }
     // Both native rail types draw and update their fill in a 16-point inset.
-    if (rail && DramaAlignWithDock(rail,dock,16)) {
+    if (rail && DramaAlignWithDockFrame(rail,BottomDramaEpisodeDockFrame(rail),16)) {
         V0(rail,"setNeedsLayout");
         V0(rail,"layoutIfNeeded");
     }
@@ -4882,7 +4903,7 @@ void FQHDramaSpacing178R2(Obj root) {
             double height=((double(*)(Obj,Sel))Message)(progress,sel_registerName("progressBarHeight"));
             double y=((double(*)(Obj,Sel,double))Message)(progress,sel_registerName("progressBarYWithHeight:"),height);
             track=Convert(progress,(Rect){16,y,width,height},root);
-            if (VisibleRect(track) && width>=b.width*0.5 && height<=8) {
+            if (VisibleRect(track) && width>=Bounds(progress).width*0.5 && height<=8) {
                 glass=DramaEpisodeMaterial(entry);
                 seekOwner=progress;
                 anchor=DramaSpacingAnchor(entry,seekOwner,root,1);
@@ -8062,6 +8083,8 @@ static void BottomProxyBox178Key(void) {}
 static void BottomButtons178Key(void) {}
 static void BottomBars178Key(void) {}
 static void BottomWindowBarKey(void) {}
+static void BottomDramaGeometryKey(void) {}
+static void BottomDramaGeometryPageKey(void) {}
 static void BottomCompact178Key(void) {}
 static void BottomSelectedBox178Key(void) {}
 static void BottomDragStart178R7Key(void) {}
@@ -8647,16 +8670,48 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact) {
         BottomPixel178(BottomClamp178(base.y+base.height-height,available.y,
             bottom-height),scale),BottomPixel178(width,scale),BottomPixel178(height,scale)};
 }
+static Rect BottomDramaDockFrameInBar(Obj bar,Obj proxy) {
+    if (BottomCompactActive178R7(bar)) {
+        // Keep both playback controls at the expanded width during auto-collapse.
+        Obj base=objc_getAssociatedObject(proxy,BottomBaseFrame178Key);
+        U count=TabCount(objc_getAssociatedObject(proxy,BottomButtons178Key));
+        if (base && count) return BottomTarget178R5(bar,UnboxRect(base),count,0);
+    } else {
+        Obj motion=Lookup("FQXDockMotion");
+        if (Responds(motion,"renderedDockFrameForProxy:")) {
+            Rect rendered=((Rect(*)(Obj,Sel,Obj))Message)(motion,
+                sel_registerName("renderedDockFrameForProxy:"),proxy);
+            if (BottomRect178(rendered)) return rendered;
+        }
+    }
+    return Convert(proxy,Bounds(proxy),bar);
+}
 static Rect BottomDramaEpisodeDockFrame(Obj view) {
     if (!BottomFlag178(37)) return (Rect){0};
     Obj dock=BottomDramaCapsuleForView(view), parent=Get(view,"superview");
     if (!dock || !parent) return (Rect){0};
     Obj bar=Get(dock,"superview");
-    if (!BottomCompactActive178R7(bar)) return Convert(dock,Bounds(dock),parent);
-    Obj base=objc_getAssociatedObject(dock,BottomBaseFrame178Key);
-    if (!base) return (Rect){0};
-    U count=TabCount(objc_getAssociatedObject(dock,BottomButtons178Key));
-    return Convert(bar,BottomTarget178R5(bar,UnboxRect(base),count,0),parent);
+    return Convert(bar,BottomDramaDockFrameInBar(bar,dock),parent);
+}
+static void BottomPublishDramaGeometry(Obj bar,Obj proxy) {
+    Obj owner=Get(bar,"delegate");
+    Obj page=BottomIsDrama178(owner) ? Get(owner,"selectedViewController") : (Obj)0;
+    if (!page) {
+        BottomSetWeak178(bar,BottomDramaGeometryPageKey,0);
+        return;
+    }
+    Obj window=Get(bar,"window");
+    if (!window) return;
+    Rect frame=proxy && Enabled() && BottomFlag178(37) &&
+        !Get(owner,"presentedViewController") && BottomVisible178(proxy,window) ?
+        Convert(bar,BottomDramaDockFrameInBar(bar,proxy),window) : (Rect){0};
+    Obj previous=objc_getAssociatedObject(bar,BottomDramaGeometryKey);
+    if (BottomWeakValue178(bar,BottomDramaGeometryPageKey)==page && previous &&
+        BottomSameFrame178(UnboxRect(previous),frame)) return;
+    BottomSetWeak178(bar,BottomDramaGeometryPageKey,page);
+    objc_setAssociatedObject(bar,BottomDramaGeometryKey,RectBox(frame),1);
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"invalidateDramaDockPage:")) V1(motion,"invalidateDramaDockPage:",page);
 }
 static void BottomRememberRect178R5(Obj view,const void *key,Rect rect) {
     Obj saved=objc_getAssociatedObject(view,key);
@@ -8905,12 +8960,13 @@ static void BottomSyncMotion178(Obj bar,Obj proxy,Obj buttons,Obj native,Obj len
 
 void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
     if (lens) BottomSyncMotion178(0,proxy,0,native,lens);
+    Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
+    if (bar) BottomPublishDramaGeometry(bar,proxy);
     Rect frame=Frame(proxy);
     Obj lastFrame=objc_getAssociatedObject(proxy,BottomVisualFrame178R7Key);
     Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
-    B compact=BottomCompactActive178R7(BottomWeakValue178(proxy,BottomBarBox178Key));
+    B compact=BottomCompactActive178R7(bar);
     if (lastFrame && lastCompact && BoolProp(lastCompact,"boolValue")!=compact) {
-        Obj bar=BottomWeakValue178(proxy,BottomBarBox178Key);
         Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
         ((void(*)(Obj,Sel,Obj,Rect,B,Obj))Message)(Lookup("FQXDockMotion"),
             sel_registerName("animateDock:fromFrame:compact:button:"),proxy,UnboxRect(lastFrame),compact,button);
@@ -9123,6 +9179,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
 }
 void FQHBottomReset178(Obj bar,Obj proxy) {
     BottomSyncMotion178(bar,proxy,0,0,0);
+    BottomPublishDramaGeometry(bar,0);
     BottomSetCompact178(bar,0);
     BottomSetWeak178(bar,BottomSelectedBox178Key,0);
     BottomCompactPresentation178R7(bar,proxy,0,0);

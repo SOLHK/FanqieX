@@ -92,6 +92,7 @@ extern void FQXRefreshReaderAndAudioPendants(void);
     X(DramaDoubleTapComment, "DramaDoubleTapComment", "双击打开评论区（关闭双击点赞）", "drama", NO) \
     X(DramaCommentNoVideoShift, "DramaCommentNoVideoShift", "打开评论区短剧画面不上移", "drama", NO) \
     X(DramaExitCollectAlert, "DramaExitCollectAlert", "隐藏短剧退出收藏弹窗", "drama", NO) \
+    X(DramaHideFullscreenButton, "DramaHideFullscreenButton", "隐藏「全屏观看」按钮", "drama", NO) \
     X(DramaHideSeriesTag, "DramaHideSeriesTag", "隐藏短剧系列剧追剧标签", "drama", NO) \
     X(DramaHideTitleBadge, "DramaHideTitleBadge", "隐藏短剧标题角标（上新/爆款）", "drama", NO) \
     X(DramaHideGenreTags, "DramaHideGenreTags", "隐藏短剧题材与季数标签", "drama", NO) \
@@ -2144,6 +2145,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshPinchSel);
         }
     } else if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
+               [key isEqualToString:DramaHideFullscreenButtonKey] ||
                [key isEqualToString:DramaHideSeriesTagKey] ||
                [key isEqualToString:DramaHideTitleBadgeKey] ||
                [key isEqualToString:DramaHideGenreTagsKey] ||

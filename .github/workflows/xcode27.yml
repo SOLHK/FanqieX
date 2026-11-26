@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '2.0'
+        run: test "$(cat VERSION)" = '2.0.1beta1'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -71,15 +71,16 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 2.0
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 2.0.1beta1
       - name: Build FanqieX with integrated export and settings modules
-        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-2.0.dylib --output build/xcode27/integrated
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-2.0.1beta1.dylib --output build/xcode27/integrated
       - name: Exercise export formats and local chapter sources on real Foundation
         run: python3 tests/run_book_export_formats.py --output build/xcode27
       - name: Exercise settings backup and video container recognition
         shell: bash
         run: |
           set -euo pipefail
+          python3 tests/test_settings_backup_store.py
           xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror -I native tests/native_settings_backup_smoke.c native/FanqieXSettingsCodec.c -lz -o build/xcode27/settings-backup-smoke
           build/xcode27/settings-backup-smoke | tee build/xcode27/settings-backup-run.log
           xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tests/native_video_container_smoke.c -o build/xcode27/video-container-smoke

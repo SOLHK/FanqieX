@@ -1,4 +1,4 @@
-name: Verify FanqieX 2.0
+name: Verify FanqieX 2.0.1beta1
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
 
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '2.0'
+        run: test "$(cat VERSION)" = '2.0.1beta1'
 
       - name: Check the runner's preinstalled LLVM and Clang
         shell: bash
@@ -64,13 +64,13 @@ jobs:
             run_id="$(gh run list --workflow xcode27.yml --branch "$GITHUB_REF_NAME" --limit 30 --json databaseId,headSha,status,conclusion | jq -r --arg sha "$GITHUB_SHA" '.[] | select(.headSha == $sha and .status == "completed" and .conclusion == "success") | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then
               gh run download "$run_id" --name "xcode27-build-$GITHUB_SHA" --dir build/xcode27-artifact
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.dylib
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.validation.json
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.composed.s
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.preextend
-              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.extension.bin
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.dylib
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.validation.json
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.composed.s
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.preextend
+              test -s build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.extension.bin
               test -s build/xcode27-artifact/build/xcode27/xcode-build-report.json
-              test -s build/xcode27-artifact/build/xcode27/integrated/FanqieX-2.0.dylib
+              test -s build/xcode27-artifact/build/xcode27/integrated/FanqieX-2.0.1beta1.dylib
               test -s build/xcode27-artifact/build/xcode27/integrated/book-export-build-report.json
               test -s build/xcode27-artifact/build/xcode27/book-export-smoke.json
               exit 0
@@ -81,7 +81,7 @@ jobs:
           exit 1
 
       - name: Rebuild twice and verify the exact bytes
-        run: python3 scripts/verify162.py --version 2.0 --output build/ci20 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-2.0.dylib
+        run: python3 scripts/verify162.py --version 2.0.1beta1 --output build/ci201beta1 --xcode-candidate build/xcode27-artifact/build/xcode27/FanqieX-2.0.1beta1.dylib
 
       - name: Upload verification reports and logs
         if: always()
@@ -89,8 +89,8 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            build/ci20/*.json
-            build/ci20/logs/
+            build/ci201beta1/*.json
+            build/ci201beta1/logs/
           if-no-files-found: warn
           retention-days: 30
 
@@ -99,18 +99,18 @@ jobs:
         run: |
           set -euo pipefail
           # Rebuild the committed distribution from this run after verification.
-          rm -rf dist/2.0 verification/2.0
-          python3 scripts/package162.py --version 2.0 --verification-dir build/ci20 --export-dir build/xcode27-artifact/build/xcode27
+          rm -rf dist/2.0.1beta1 verification/2.0.1beta1
+          python3 scripts/package162.py --version 2.0.1beta1 --verification-dir build/ci201beta1 --export-dir build/xcode27-artifact/build/xcode27
 
       - name: Upload the verified plugin
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: FanqieX-2.0
+          name: FanqieX-2.0.1beta1
           path: |
-            dist/2.0/FanqieX-2.0.dylib
-            dist/2.0/FanqieX-2.0.zip
-            dist/2.0/SHA256SUMS.txt
-            dist/2.0/VERIFICATION.json
+            dist/2.0.1beta1/FanqieX-2.0.1beta1.dylib
+            dist/2.0.1beta1/FanqieX-2.0.1beta1.zip
+            dist/2.0.1beta1/SHA256SUMS.txt
+            dist/2.0.1beta1/VERIFICATION.json
           if-no-files-found: error
           retention-days: 30

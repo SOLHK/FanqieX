@@ -3,15 +3,20 @@
 #import <math.h>
 #import <objc/message.h>
 
+#import "FQXLayoutAndSheetPolicy.h"
 #import "FanqieXSettingsCodec.h"
 
 static NSString *const DramaPreferencePrefix = @"FanqieX.DramaCategory.";
 static NSString *const HiddenBookstoreCategories = @"FanqieX.BookstoreHiddenCategories.1";
 static NSString *const ReaderThemePreset = @"FanqieX.ReaderThemePreset.1";
+static NSString *const BottomDisplayMode = @"FanqieX.BottomDisplayMode.1";
+static NSString *const BottomIconsOnly = @"FanqieX.BottomIconsOnly.1";
+static NSString *const CommentMaterialStyle = @"FanqieX.CommentMaterialStyle.1";
+static NSString *const CommentComposerStyle = @"FanqieX.CommentComposerStyle.1";
 
 static NSDictionary<NSString *, id> *BuiltInSettings(void) {
     NSMutableDictionary<NSString *, id> *defaults = [@{
-        @"FanqieAdBlock.Options.1": @0x3FFFF,
+        @"FanqieAdBlock.Options.1": @(FQXLegacyAdDefaultOptionsMask),
         @"FanqieAdBlock.GlassDisabled.1": @NO,
         @"FanqieX.DiagnosticsEnabled": @YES,
         @"FanqieX.EnhancedDiagnostics.1": @NO,
@@ -20,8 +25,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomBookshelf.1": @YES,
         @"FanqieX.BottomMine.1": @YES,
         @"FanqieX.BottomMall.1": @YES,
-        @"FanqieX.BottomIconsOnly.1": @NO,
-        @"FanqieX.BottomDisplayMode.1": @0,
+        BottomIconsOnly: @NO,
+        BottomDisplayMode: @0,
         @"FanqieX.DockMaterial.1": @0,
         @"FanqieX.GlassDarkTint.1": @NO,
         @"FanqieX.DockDetachedEnabled.1": @NO,
@@ -73,9 +78,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaHideEpisodeRecommend.1": @NO,
         @"FanqieX.DramaUnlockDanmaku.1": @YES,
         @"FanqieX.DramaShowDanmakuButton.1": @YES,
-        @"FanqieX.CommentMaterialStyle.1": @0,
+        CommentMaterialStyle: @0,
         @"FanqieX.CommentAppearanceMode.1": @0,
-        @"FanqieX.CommentComposerStyle.1": @1,
+        CommentComposerStyle: @0,
         @"FanqieX.AudioLiquidGlass.1": @NO,
         @"FanqieX.CommentActivityBanner.1": @YES,
         @"FanqieX.CommentSearchEntrance.1": @YES,
@@ -174,16 +179,16 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.ShareBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
         [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
-        [key isEqualToString:@"FanqieX.BottomDisplayMode.1"] ||
-        [key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
+        [key isEqualToString:BottomDisplayMode] ||
+        [key isEqualToString:CommentMaterialStyle] ||
         [key isEqualToString:@"FanqieX.CommentAppearanceMode.1"] ||
-        [key isEqualToString:@"FanqieX.CommentComposerStyle.1"] ||
+        [key isEqualToString:CommentComposerStyle] ||
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"] ||
         [key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
         if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 3;
-        if ([key isEqualToString:@"FanqieX.CommentMaterialStyle.1"] ||
+        if ([key isEqualToString:CommentMaterialStyle] ||
             [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"]) {
             maximum = 4;
             if (number == 3) return @0;
@@ -214,9 +219,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
 static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     NSDictionary<NSString *, id> *defaults = BuiltInSettings();
     NSMutableDictionary<NSString *, id> *snapshot = [NSMutableDictionary dictionary];
-    // Until explicitly set, these switches inherit the existing per-type
-    // setting. Omit the unset overrides so older choices survive export/import.
-    NSArray *inherited = @[@"FanqieX.DramaWatchTab.1", @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"];
+    NSArray *inherited = @[BottomDisplayMode, CommentComposerStyle, @"FanqieX.DramaWatchTab.1",
+        @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"];
     [defaults enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
         (void)stop;
         if ([inherited containsObject:key]) return;
@@ -230,6 +234,12 @@ static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
         id normalized = ValidSetting(key, value, defaults, &known);
         if (normalized) snapshot[key] = normalized;
     }];
+    // Resolve the legacy Dock layout and the composer’s material-dependent default.
+    if (!snapshot[BottomDisplayMode]) snapshot[BottomDisplayMode] = @([snapshot[BottomIconsOnly] boolValue] ? 1 : 0);
+    if (!snapshot[CommentComposerStyle]) {
+        NSInteger material = [snapshot[CommentMaterialStyle] integerValue];
+        snapshot[CommentComposerStyle] = @(material == 1 || material == 2 || material == 4 ? 1 : 0);
+    }
     for (id row in [storage arrayForKey:@"FanqieX.DramaCategoryTitles.1"]) {
         if (![row isKindOfClass:NSDictionary.class] || ![row[@"type"] isKindOfClass:NSNumber.class]) continue;
         NSString *key = [NSString stringWithFormat:@"%@%@.1", DramaPreferencePrefix, row[@"type"]];
@@ -238,21 +248,33 @@ static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     return snapshot;
 }
 
-static BOOL ApplySettings(NSDictionary<NSString *, id> *settings, BOOL replace) {
+static BOOL ApplySettings(NSUserDefaults *storage, NSString *domainName,
+                          NSDictionary<NSString *, id> *settings, BOOL replace) {
+    if (!domainName.length) return NO;
+    NSDictionary<NSString *, id> *current = [storage persistentDomainForName:domainName];
     NSMutableArray<NSString *> *removals = [NSMutableArray array];
     if (replace) {
         NSDictionary<NSString *, id> *defaults = BuiltInSettings();
-        for (NSString *key in NSUserDefaults.standardUserDefaults.dictionaryRepresentation) {
+        for (NSString *key in current) {
             if (!settings[key] && (defaults[key] || [key isEqualToString:ReaderThemePreset] || IsDramaPreference(key))) {
                 [removals addObject:key];
             }
         }
     }
-    // Apply only the validated keys and removals in one domain update, so
-    // unrelated settings written by the host are never overwritten.
-    CFPreferencesSetMultiple((__bridge CFDictionaryRef)settings, (__bridge CFArrayRef)removals,
-                             kCFPreferencesCurrentApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    return CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+    // Use the same store and change notifications as the settings controls.
+    for (NSString *key in removals) [storage removeObjectForKey:key];
+    for (NSString *key in settings) {
+        if (![current[key] isEqual:settings[key]]) [storage setObject:settings[key] forKey:key];
+    }
+
+    NSDictionary<NSString *, id> *saved = [storage persistentDomainForName:domainName];
+    for (NSString *key in removals) {
+        if (saved[key]) return NO;
+    }
+    for (NSString *key in settings) {
+        if (![saved[key] isEqual:settings[key]] || ![[storage objectForKey:key] isEqual:settings[key]]) return NO;
+    }
+    return YES;
 }
 
 static NSString *CodecError(FQXSettingsCodecStatus status) {
@@ -264,6 +286,19 @@ static NSString *CodecError(FQXSettingsCodecStatus status) {
         case FQXSettingsCodecCompression: return @"备份文件的压缩数据无效。";
         default: return @"暂时无法处理备份文件。";
     }
+}
+
+static void AfterDismissal(UIViewController *controller, dispatch_block_t action) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!controller.presentingViewController) {
+            action();
+            return;
+        }
+        if (controller.isBeingDismissed &&
+            [controller.transitionCoordinator animateAlongsideTransition:nil
+                completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) { action(); }]) return;
+        [controller dismissViewControllerAnimated:YES completion:action];
+    });
 }
 
 @interface FQXSettingsBackup : UITableViewController <UIDocumentPickerDelegate>
@@ -376,9 +411,7 @@ static NSString *CodecError(FQXSettingsCodecStatus status) {
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
-    void (^process)(void) = ^{ [self processImportURL:url]; };
-    if (controller.presentingViewController) [controller dismissViewControllerAnimated:YES completion:process];
-    else process();
+    AfterDismissal(controller, ^{ [self processImportURL:url]; });
 }
 
 - (void)processImportURL:(NSURL *)url {
@@ -446,8 +479,8 @@ static NSString *CodecError(FQXSettingsCodecStatus status) {
 }
 
 - (void)applySettings:(NSDictionary<NSString *, id> *)settings replace:(BOOL)replace successTitle:(NSString *)title {
-    BOOL saved = ApplySettings(settings, replace);
-    void (^showResult)(void) = ^{
+    AfterDismissal(self.presentedViewController, ^{
+        BOOL saved = ApplySettings(NSUserDefaults.standardUserDefaults, NSBundle.mainBundle.bundleIdentifier, settings, replace);
         if (!saved) {
             [self showMessage:@"无法写入配置，请重试。" title:@"设置未保存"];
             return;
@@ -456,13 +489,10 @@ static NSString *CodecError(FQXSettingsCodecStatus status) {
             message:@"请完全退出并重新打开番茄小说。" preferredStyle:UIAlertControllerStyleAlert];
         [notice addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             (void)action;
-            dispatch_async(dispatch_get_main_queue(), ^{ [self closeSettings]; });
+            AfterDismissal(self.presentedViewController, ^{ [self closeSettings]; });
         }]];
         [self presentViewController:notice animated:YES completion:nil];
-    };
-    UIViewController *confirmation = self.presentedViewController;
-    if (confirmation) [confirmation dismissViewControllerAnimated:YES completion:showResult];
-    else showResult();
+    });
 }
 
 - (void)closeSettings {

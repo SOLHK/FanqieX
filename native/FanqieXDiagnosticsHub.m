@@ -10,7 +10,10 @@
 
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
-static NSString *const kFQXHubPluginVersion = @"2.0";
+#ifndef FQX_BUILD_VERSION
+#define FQX_BUILD_VERSION "2.0.1beta1"
+#endif
+static NSString *const kFQXHubPluginVersion = @FQX_BUILD_VERSION;
 
 NSString *FQXPluginVersion(void) {
     return kFQXHubPluginVersion;
