@@ -49,7 +49,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.ReaderHotCommentBadge.1": @YES,
         @"FanqieX.BottomHaptics.1": @YES,
         @"FanqieX.BottomDramaCompact.1": @NO,
-        @"FanqieX.BottomDramaCompactPosition.1": @0,
+        @"FanqieX.BottomDramaCompactPosition.1": @2,
         @"FanqieX.BottomLengthScale.1": @100,
         @"FanqieX.BottomHeightScale.1": @100,
         @"FanqieX.BottomButtonWidthScale.1": @100,

@@ -14,8 +14,7 @@
 
 static const char FQXK_DockSnapshotKey = 0;
 #define DockSnapshotKey ((const void *)&FQXK_DockSnapshotKey)
-static const char FQXK_DockAnimatorKey = 0;
-#define DockAnimatorKey ((const void *)&FQXK_DockAnimatorKey)
+static const char FQXDockCompactKey = 0;
 static const char FQXK_TabInteractionKey = 0;
 #define TabInteractionKey ((const void *)&FQXK_TabInteractionKey)
 static const char FQXK_AudioGlassSurfaceKey = 0;
@@ -88,7 +87,6 @@ static const char FQXK_FQXDoubleTapCommentGestureKey = 0;
 #define FQXDoubleTapCommentGestureKey ((const void *)&FQXK_FQXDoubleTapCommentGestureKey)
 static const char FQXK_AudioToneStockInsetKey = 0;
 #define AudioToneStockInsetKey ((const void *)&FQXK_AudioToneStockInsetKey)
-static NSString *const DockContentAnimation = @"FanqieX.dock.content";
 static NSString *const GlassDisabledPrefKey = @"FanqieAdBlock.GlassDisabled.1";
 static NSString *const HighestQualityPrefKey = @"FanqieX.DramaHighestQuality.1";
 static NSString *const PinchPureCleanPrefKey = @"FanqieX.DramaPinchPureClean.1";
@@ -2191,18 +2189,7 @@ static UIImage *FQXDockIconCaptionImage(UIImage *icon, NSString *title, UIColor 
     return [img imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
 }
 
-static UIImage *FQXDockItemImage(NSString *title,
-                                 UIButton *sourceButton,
-                                 NSInteger displayMode,
-                                 CGFloat iconPointSize,
-                                 BOOL selected,
-                                 UIColor *color) {
-    // displayMode: 0 = icon + text, 1 = icons only, 2 = text only
-    if (displayMode == 2) {
-        return FQXDockTitleImage(title, color, selected);
-    }
-    BOOL iconsOnly = (displayMode == 1);
-    CGFloat symPt = iconsOnly ? MAX(16.0, MIN(26.0, iconPointSize * 0.72)) : 19.0;
+static UIImage *FQXDockGlyph(NSString *title, UIButton *sourceButton, CGFloat symPt, BOOL selected, UIColor *color) {
     NSString *symName = FQXDockSymbolNameForTitle(title, selected);
     UIImage *icon = nil;
     if (symName) {
@@ -2224,6 +2211,22 @@ static UIImage *FQXDockItemImage(NSString *title,
                 imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
         }
     }
+    return icon;
+}
+
+static UIImage *FQXDockItemImage(NSString *title,
+                                 UIButton *sourceButton,
+                                 NSInteger displayMode,
+                                 CGFloat iconPointSize,
+                                 BOOL selected,
+                                 UIColor *color) {
+    // displayMode: 0 = icon + text, 1 = icons only, 2 = text only
+    if (displayMode == 2) {
+        return FQXDockTitleImage(title, color, selected);
+    }
+    BOOL iconsOnly = (displayMode == 1);
+    CGFloat symPt = iconsOnly ? MAX(16.0, MIN(26.0, iconPointSize * 0.72)) : 19.0;
+    UIImage *icon = FQXDockGlyph(title, sourceButton, symPt, selected, color);
     if (iconsOnly) {
         return icon ?: FQXDockTitleImage(title, color, selected);
     }
@@ -2431,6 +2434,7 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     NSHashTable<UIControl *> *_wiredControls;
     UITabBar *_nativeDockBar;
     UIStackView *_dockTitleOverlay;
+    UIStackView *_dockIconOverlay;
     UITapGestureRecognizer *_dockTapRescueGesture;
     FQXDetachedDockButtonView *_detachedButton;
     NSArray<NSNumber *> *_capsuleHostIndices;
@@ -2447,6 +2451,7 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     CGFloat _dockPlatterMidOffsetY;
     CGFloat _dockLastBarWidth;
     CGRect _dockLastProxyFrame;
+    CGSize _expandedDockFraction;
     CGRect _dockRenderedPlatterRectInBar;
     CGFloat _lastDockLiftY;
     CFTimeInterval _lastNativeTabSelectTime;
@@ -2496,11 +2501,33 @@ static BOOL FQXHasVisibleActiveDockInWindow(UIWindow *window) {
     return NO;
 }
 
+static NSString *const FQXDockGeometryAnimation = @"FanqieX.dock.geometry";
+
+static CGPoint FQXPointInDisplayedDock(UIView *view, UIView *bar, CGPoint point) {
+    if ([view.layer animationForKey:FQXDockGeometryAnimation]) {
+        CALayer *live = view.layer.presentationLayer, *parent = bar.layer.presentationLayer;
+        if (live && parent) return [live convertPoint:point fromLayer:parent];
+    }
+    return [view convertPoint:point fromView:bar];
+}
+
+static CGRect FQXDisplayedDockRect(UIView *view, UIView *bar, CGRect target) {
+    if ([view.layer animationForKey:FQXDockGeometryAnimation]) {
+        CALayer *live = view.layer.presentationLayer, *parent = bar.layer.presentationLayer;
+        if (live && parent) {
+            CGRect local = [view.layer convertRect:target fromLayer:bar.layer];
+            return [live convertRect:local toLayer:parent];
+        }
+    }
+    return target;
+}
+
 static BOOL FQXPointIsInDockBottomEdgeStrip(FQXTabBarInteraction *inter, CGPoint pointInBar) {
     if (!inter || !inter->_nativeDockActive || CGRectIsEmpty(inter->_dockRenderedPlatterRectInBar)) return NO;
-    CGFloat maxInteractiveY = CGRectGetMaxY(inter->_dockRenderedPlatterRectInBar) + 3.0;
+    CGFloat maxInteractiveY = CGRectGetMaxY(FQXDisplayedDockRect(inter->_nativeDockBar, inter->_bar,
+                                                                inter->_dockRenderedPlatterRectInBar)) + 3.0;
     if (inter->_detachedHostIndex != NSNotFound && inter->_detachedButton && !inter->_detachedButton.hidden) {
-        maxInteractiveY = MAX(maxInteractiveY, CGRectGetMaxY(inter->_detachedButton.frame) + 3.0);
+        maxInteractiveY = MAX(maxInteractiveY, CGRectGetMaxY(FQXDisplayedDockRect(inter->_detachedButton, inter->_bar, inter->_detachedButton.frame)) + 3.0);
     }
     return pointInBar.y > maxInteractiveY;
 }
@@ -2509,7 +2536,7 @@ static UITabBar *FQXNativeDockAtPoint(FQXTabBarInteraction *interaction, UIView 
     UITabBar *dock = interaction ? interaction->_nativeDockBar : nil;
     if (!dock || !bar.window || bar.hidden || bar.alpha <= 0.01 || !bar.userInteractionEnabled ||
         dock.superview != bar || dock.hidden || dock.alpha <= 0.01 || !dock.userInteractionEnabled) return nil;
-    return CGRectContainsPoint(interaction->_dockRenderedPlatterRectInBar, point) ? dock : nil;
+    return CGRectContainsPoint(FQXDisplayedDockRect(dock, bar, interaction->_dockRenderedPlatterRectInBar), point) ? dock : nil;
 }
 
 static BOOL (*OrigSSTabBarPointInside)(id, SEL, CGPoint, id);
@@ -2519,13 +2546,14 @@ static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent
         if (inter->_detachedHostIndex != NSNotFound) {
             FQXDetachedDockButtonView *det = inter->_detachedButton;
             if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
-                CGPoint ptInDet = [det convertPoint:point fromView:bar];
+                CGPoint ptInDet = FQXPointInDisplayedDock(det, bar, point);
                 if ([det pointInside:ptInDet withEvent:event]) {
                     return YES;
                 }
             }
         }
         if (FQXNativeDockAtPoint(inter, bar, point)) return YES;
+        if ([objc_getAssociatedObject(inter->_proxy, &FQXDockCompactKey) boolValue]) return NO;
         // Prevent UITabBar's invisible bottom overhang below the rendered platter from claiming
         // touches inside the iOS Home Indicator edge strip.
         if (FQXPointIsInDockBottomEdgeStrip(inter, point)) {
@@ -2542,7 +2570,7 @@ static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent 
         if (inter->_detachedHostIndex != NSNotFound) {
             FQXDetachedDockButtonView *det = inter->_detachedButton;
             if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
-                CGPoint ptInDet = [det convertPoint:point fromView:bar];
+                CGPoint ptInDet = FQXPointInDisplayedDock(det, bar, point);
                 if ([det pointInside:ptInDet withEvent:event]) {
                     UIView *resolved = [det hitTest:ptInDet withEvent:event] ?: (det.hitButton ?: det);
                     if (event && resolved) FQXMarkDockTouchActivity(0.35);
@@ -2569,12 +2597,13 @@ static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent 
         }
         UITabBar *dock = FQXNativeDockAtPoint(inter, bar, point);
         if (dock) {
-            UIView *hit = [dock hitTest:[dock convertPoint:point fromView:bar] withEvent:event];
+            UIView *hit = [dock hitTest:FQXPointInDisplayedDock(dock, bar, point) withEvent:event];
             if (hit) {
                 if (event) FQXMarkDockTouchActivity(0.35);
                 return hit;
             }
         }
+        if ([objc_getAssociatedObject(inter->_proxy, &FQXDockCompactKey) boolValue]) return nil;
     }
     UIView *fallbackHit = OrigSSTabBarHitTest ? OrigSSTabBarHitTest(bar, cmd, point, event) : nil;
     if (event && fallbackHit) FQXMarkDockTouchActivity(0.35);
@@ -2736,9 +2765,14 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         UIStackView *titles = self->_dockTitleOverlay;
         CGRect platter = self->_dockRenderedPlatterRectInBar;
         if (titles && self->_nativeDockActive && !CGRectIsEmpty(platter)) {
-            CGFloat scale = tabBar.transform.a;
-            CGFloat fontSize = 15.5 * scale;
-            CGRect frame = CGRectInset(platter, 4.0 * scale, 0.0);
+            CGFloat scale = tabBar.transform.d;
+            BOOL captions = self->_dockIconOverlay != nil;
+            BOOL compact = [objc_getAssociatedObject(self->_proxy, &FQXDockCompactKey) boolValue];
+            CGFloat fontSize = (captions ? 10.5 : 15.5) * scale;
+            CGRect track = CGRectInset(platter, 4.0 * scale, 0.0);
+            CGRect frame = captions ? CGRectOffset(track, 0, (compact ? 6.0 : 11.5) * scale) : track;
+            CGFloat titleAlpha = captions && compact ? 0.0 : 1.0;
+            if (titles.alpha != titleAlpha) titles.alpha = titleAlpha;
             if (!CGRectEqualToRect(titles.frame, frame)) titles.frame = frame;
             if (titles.semanticContentAttribute != tabBar.semanticContentAttribute)
                 titles.semanticContentAttribute = tabBar.semanticContentAttribute;
@@ -2750,6 +2784,18 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             NSUInteger index = [siblings indexOfObjectIdenticalTo:titles];
             if (index == NSNotFound || index < [siblings indexOfObjectIdenticalTo:tabBar])
                 [bar insertSubview:titles aboveSubview:tabBar];
+            UIStackView *icons = self->_dockIconOverlay;
+            if (icons) {
+                CGFloat iconH = (compact ? 23.6 : 22.0) * scale;
+                CGRect iconFrame = CGRectMake(track.origin.x,
+                    CGRectGetMidY(track) - iconH * 0.5 - (compact ? 0.0 : 7.0) * scale,
+                    track.size.width, iconH);
+                if (!CGRectEqualToRect(icons.frame, iconFrame)) icons.frame = iconFrame;
+                icons.semanticContentAttribute = titles.semanticContentAttribute;
+                if (icons.superview != bar ||
+                    [bar.subviews indexOfObjectIdenticalTo:icons] < [bar.subviews indexOfObjectIdenticalTo:tabBar])
+                    [bar insertSubview:icons aboveSubview:tabBar];
+            }
         }
     }
 
@@ -2947,7 +2993,16 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         UIButton *btn = (hostIdx < buttons.count && [buttons[hostIdx] isKindOfClass:UIButton.class]) ? buttons[hostIdx] : nil;
         // Preserve UIKit's item footprint for hit testing and selection, with the
         // actual text above the lens so its moving highlight cannot obscure it.
-        if (textOnly) {
+        if (self->_dockIconOverlay) {
+            UIImageView *glyph = (UIImageView *)self->_dockIconOverlay.arrangedSubviews[i];
+            UIImage *normal = FQXDockGlyph(title, btn, 19.0, NO, normalInk);
+            glyph.image = normal ?: FQXDockTitleImage(title, normalInk, NO);
+            glyph.highlightedImage = FQXDockGlyph(title, btn, 19.0, YES, selectedInk)
+                                    ?: FQXDockTitleImage(title, selectedInk, YES);
+            UILabel *caption = (UILabel *)self->_dockTitleOverlay.arrangedSubviews[i];
+            caption.text = normal ? title : @"";
+        }
+        if (textOnly || self->_dockIconOverlay) {
             if (!item.image) {
                 UIImage *placeholder = FQXDockTitleImage(title, UIColor.clearColor, YES);
                 item.image = placeholder;
@@ -3004,7 +3059,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         : hostSel;
     NSUInteger slot = 0;
     for (UILabel *label in self->_dockTitleOverlay.arrangedSubviews) {
-        BOOL selected = slot++ == capPos;
+        BOOL selected = slot == capPos;
+        if (self->_dockIconOverlay) {
+            UIImageView *glyph = (UIImageView *)self->_dockIconOverlay.arrangedSubviews[slot];
+            glyph.highlighted = selected;
+        }
+        ++slot;
         if (label.highlighted != selected) {
             label.highlighted = selected;
             label.font = [UIFont systemFontOfSize:label.font.pointSize weight:selected ? UIFontWeightSemibold : UIFontWeightMedium];
@@ -3049,8 +3109,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     NSInteger detIdx = FQXDockDetachedResolveIndexWithReason(allTitles, &detachedReason);
     self->_detachedHostIndex = detIdx;
 
-    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|",
-                            (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx)];
+    NSUInteger selected = [self currentSelectedIndex];
+    NSString *current = selected < allTitles.count ? allTitles[selected] : nil;
+    BOOL captions = displayMode == 0 && ([current isEqualToString:@"短剧"] || [current isEqualToString:@"视频"]) &&
+        [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.BottomDramaCompact.1"];
+    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|captions=%d|",
+                            (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx), captions];
     NSMutableArray<NSString *> *capsuleTitles = [NSMutableArray arrayWithCapacity:allTitles.count];
     NSMutableArray<NSNumber *> *capsuleIndices = [NSMutableArray arrayWithCapacity:allTitles.count];
     for (NSUInteger i = 0; i < allTitles.count; ++i) {
@@ -3073,7 +3137,9 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         self->_dockSignature = [sig copy];
         [self->_dockTitleOverlay removeFromSuperview];
         self->_dockTitleOverlay = nil;
-        if (displayMode == 2) {
+        [self->_dockIconOverlay removeFromSuperview];
+        self->_dockIconOverlay = nil;
+        if (displayMode == 2 || captions) {
             UIStackView *titles = [[UIStackView alloc] initWithFrame:CGRectZero];
             titles.hidden = !self->_nativeDockActive;
             titles.userInteractionEnabled = NO;
@@ -3081,7 +3147,20 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             titles.axis = UILayoutConstraintAxisHorizontal;
             titles.distribution = UIStackViewDistributionFillEqually;
             titles.alignment = UIStackViewAlignmentCenter;
+            if (captions) {
+                UIStackView *icons = [[UIStackView alloc] initWithFrame:CGRectZero];
+                icons.hidden = titles.hidden;
+                icons.userInteractionEnabled = NO;
+                icons.accessibilityElementsHidden = YES;
+                icons.distribution = UIStackViewDistributionFillEqually;
+                self->_dockIconOverlay = icons;
+            }
             for (NSString *title in capsuleTitles) {
+                if (captions) {
+                    UIImageView *glyph = [UIImageView new];
+                    glyph.contentMode = UIViewContentModeScaleAspectFit;
+                    [self->_dockIconOverlay addArrangedSubview:glyph];
+                }
                 UILabel *label = [UILabel new];
                 label.text = title;
                 label.textAlignment = NSTextAlignmentCenter;
@@ -3167,7 +3246,10 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     BOOL hasDetached = (self->_detachedHostIndex != NSNotFound && self->_detachedButton != nil);
     NSUInteger itemCount = tabBar.items.count;
     CGFloat barW = CGRectGetWidth(bar.bounds);
+    BOOL compact = [objc_getAssociatedObject(proxy, &FQXDockCompactKey) boolValue];
     BOOL barWidthChanged = fabs(barW - self->_dockLastBarWidth) > 0.5;
+    if (barWidthChanged || hasDetached != self->_dockLastDetachedActive || itemCount != self->_dockLastItemCount)
+        self->_expandedDockFraction = CGSizeZero;
     if (forceMeasure || barWidthChanged || hasDetached != self->_dockLastDetachedActive || itemCount != self->_dockLastItemCount) {
         self->_dockPlatterMeasured = NO;
         self->_dockPlatterInset = 21.0;
@@ -3189,6 +3271,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
     }
 
+    if (compact && self->_expandedDockFraction.height > 0) liftY = self->_lastDockLiftY;
     BOOL geometryChanged = forceMeasure || !self->_dockPlatterMeasured || barWidthChanged ||
                            hasDetached != self->_dockLastDetachedActive ||
                            itemCount != self->_dockLastItemCount ||
@@ -3263,6 +3346,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     FQXApplyNativeDockMaterial(tabBar, platter, isDark);
 
     CGFloat finalScale = MAX(0.70, MIN(1.30, targetH / MAX(20.0, self->_dockPlatterHeight)));
+    // Small UITabBars stop growing at their intrinsic platter width. Anchor both
+    // compact axes to the previous *visible* group, including its optional circle.
+    CGFloat scaleX = finalScale;
+    if (compact && self->_expandedDockFraction.height > 0 && platter) {
+        CGRect measured = [platter convertRect:platter.bounds toView:tabBar];
+        if (measured.size.width > 0 && measured.size.height > 0) {
+            finalScale = targetH * self->_expandedDockFraction.height / measured.size.height;
+            CGFloat extra = hasDetached ? round(measured.size.height * finalScale) + gap : 0.0;
+            scaleX = MAX(1.0, targetW * self->_expandedDockFraction.width - extra) / measured.size.width;
+        }
+    }
     if (hasDetached) {
         CGRect pf = (platter && CGRectGetHeight(platter.bounds) > 10.0)
             ? [platter convertRect:platter.bounds toView:tabBar]
@@ -3271,7 +3365,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         // width (doing so caused the left capsule to physically collide with the right circle).
         CGFloat pfW = (CGRectGetWidth(pf) > 20.0) ? CGRectGetWidth(pf) : (availCapsuleW / finalScale);
         CGFloat pfH = (CGRectGetHeight(pf) > 10.0) ? CGRectGetHeight(pf) : MAX(20.0, self->_dockPlatterHeight);
-        CGFloat realCapsuleW = pfW * finalScale;
+        CGFloat realCapsuleW = pfW * scaleX;
         CGFloat realCapsuleH = pfH * finalScale;
         circleD = round(realCapsuleH);
 
@@ -3284,6 +3378,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             if (totalGroupW > maxGroupW && (pfW + pfH) > 1.0) {
                 CGFloat shrinkScale = (maxGroupW - gap) / (pfW + pfH);
                 finalScale = MAX(0.64, MIN(finalScale, shrinkScale));
+                scaleX = finalScale;
                 realCapsuleW = pfW * finalScale;
                 realCapsuleH = pfH * finalScale;
                 circleD = round(realCapsuleH);
@@ -3310,12 +3405,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         }
         CGFloat effectiveMidY = CGRectGetMidY(proxyFrame) - liftY;
         CGFloat capsuleMidX = groupMinX + realCapsuleW * 0.5;
-        CGPoint center = CGPointMake(capsuleMidX - self->_dockPlatterMidOffsetX * finalScale,
+        CGPoint center = CGPointMake(capsuleMidX - self->_dockPlatterMidOffsetX * scaleX,
                                      effectiveMidY - self->_dockPlatterMidOffsetY * finalScale);
         if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
             tabBar.center = center;
         }
-        CGAffineTransform xform = CGAffineTransformMakeScale(finalScale, finalScale);
+        CGAffineTransform xform = CGAffineTransformMakeScale(scaleX, finalScale);
         if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
             tabBar.transform = xform;
         }
@@ -3365,12 +3460,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             self->_detachedButton.hidden = YES;
         }
         CGFloat effectiveMidY = CGRectGetMidY(proxyFrame) - liftY;
-        CGPoint center = CGPointMake(CGRectGetMidX(proxyFrame) - self->_dockPlatterMidOffsetX * finalScale,
+        CGPoint center = CGPointMake(CGRectGetMidX(proxyFrame) - self->_dockPlatterMidOffsetX * scaleX,
                                      effectiveMidY - self->_dockPlatterMidOffsetY * finalScale);
         if (fabs(tabBar.center.x - center.x) > 0.25 || fabs(tabBar.center.y - center.y) > 0.25) {
             tabBar.center = center;
         }
-        CGAffineTransform xform = CGAffineTransformMakeScale(finalScale, finalScale);
+        CGAffineTransform xform = CGAffineTransformMakeScale(scaleX, finalScale);
         if (!CGAffineTransformEqualToTransform(tabBar.transform, xform)) {
             tabBar.transform = xform;
         }
@@ -3385,6 +3480,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     }
 
     [self syncSelectionExclusivityAnimated:NO];
+    if (!compact && targetW > 0 && targetH > 0) {
+        CGRect group = self->_dockRenderedPlatterRectInBar;
+        if (hasDetached) group = CGRectUnion(group, self->_detachedButton.frame);
+        self->_expandedDockFraction = CGSizeMake(group.size.width / targetW, group.size.height / targetH);
+    }
     self->_dockLastProxyFrame = proxyFrame;
     self->_lastDockLiftY = liftY;
     self->_dockLastItemCount = itemCount;
@@ -3417,6 +3517,8 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
             self->_nativeDockBar.hidden = !visible;
         if (self->_dockTitleOverlay && self->_dockTitleOverlay.hidden == visible)
             self->_dockTitleOverlay.hidden = !visible;
+        if (self->_dockIconOverlay && self->_dockIconOverlay.hidden == visible)
+            self->_dockIconOverlay.hidden = !visible;
         if (self->_detachedButton && self->_detachedButton.hidden == showDetached)
             self->_detachedButton.hidden = !showDetached;
         if (visible) [self ensureDockZOrderInBar:self->_bar];
@@ -3454,7 +3556,7 @@ static const char FQXDockTouchBeganKey = 0;
     NSNumber *touchBegan = objc_getAssociatedObject(gr, &FQXDockTouchBeganKey);
     if (!window || !touchBegan || gr.view != tabBar || tabBar.superview != bar) return;
 
-    CGRect platterRect = self->_dockRenderedPlatterRectInBar;
+    CGRect platterRect = FQXDisplayedDockRect(tabBar, bar, self->_dockRenderedPlatterRectInBar);
     if (CGRectGetWidth(platterRect) < 40.0 || CGRectGetHeight(platterRect) < 20.0) return;
     CGPoint ptInBar = [gr locationInView:bar];
     if (FQXNativeDockAtPoint(self, bar, ptInBar) != tabBar) return;
@@ -3564,6 +3666,8 @@ static const char FQXDockTouchBeganKey = 0;
         self->_nativeDockBar = nil;
         [self->_dockTitleOverlay removeFromSuperview];
         self->_dockTitleOverlay = nil;
+        [self->_dockIconOverlay removeFromSuperview];
+        self->_dockIconOverlay = nil;
         [self->_detachedButton removeFromSuperview];
         self->_detachedButton = nil;
         self->_capsuleHostIndices = nil;
@@ -3597,9 +3701,8 @@ static const char FQXDockTouchBeganKey = 0;
     }
     [self setLegacyDockOverlay:overlay];
 
-    BOOL compact = (overlay && overlay.hidden) || (proxy.contentView && proxy.contentView.hidden);
     BOOL hiddenProxy = proxy.hidden || CGRectGetWidth(proxy.frame) < 60.0 || CGRectGetHeight(proxy.frame) < 30.0;
-    if (compact || hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
+    if (hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
         [self setNativeDockVisible:NO restoreProxy:YES];
         FQXApplyDockProxyMaterial(bar, proxy, lens);
         if ([native isKindOfClass:UISegmentedControl.class]) {
@@ -3676,8 +3779,7 @@ static const char FQXDockTouchBeganKey = 0;
         }
     }
 
-    // Do NOT apply glass to proxy while expanded: nativeDockBar (+ detached circle) is the sole
-    // material owner. Proxy switches to FQXDockMaterialOwnerProxy cleanly on collapse/fallback.
+    // Keep the same material and navigation controls mounted in both feed sizes.
     if (self->_nativeDockActive) {
         [self layoutNativeDockInBar:bar proxy:proxy forceMeasure:itemsRebuilt];
         [self setNativeDockVisible:YES restoreProxy:NO];
@@ -3703,6 +3805,8 @@ static const char FQXDockTouchBeganKey = 0;
     self->_nativeDockBar = nil;
     [self->_dockTitleOverlay removeFromSuperview];
     self->_dockTitleOverlay = nil;
+    [self->_dockIconOverlay removeFromSuperview];
+    self->_dockIconOverlay = nil;
     [self->_detachedButton removeFromSuperview];
     self->_detachedButton = nil;
     self->_capsuleHostIndices = nil;
@@ -6492,7 +6596,8 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
 
 @interface FQXDockMotion : NSObject
 + (void)prepareDock:(UIView *)dock inBar:(UIView *)bar;
-+ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button;
++ (void)setDock:(UIView *)dock compact:(BOOL)compact;
++ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact;
 + (void)syncTabBar:(UIView *)bar
              proxy:(UIVisualEffectView *)proxy
            buttons:(NSArray<UIButton *> *)buttons
@@ -6594,99 +6699,168 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
     return [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 }
 
-+ (void)prepareDock:(UIView *)dock inBar:(UIView *)bar {
-    (void)bar;
-    UIViewPropertyAnimator *previous = objc_getAssociatedObject(dock, DockAnimatorKey);
-    if (previous) {
-        if (previous.state == UIViewAnimatingStateActive) [previous stopAnimation:YES];
-        objc_setAssociatedObject(dock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+// A native UITabBar can render a narrower platter than its view bounds.
+// Measure the visible anchor on its live layer, including in-flight reversal.
+static CGRect FQXDockAnchorRect(UIView *anchor, UIView *bar, BOOL presentation) {
+    CALayer *layer = anchor.layer;
+    CALayer *parent = bar.layer;
+    if (presentation && layer.presentationLayer && parent.presentationLayer) {
+        layer = layer.presentationLayer;
+        parent = parent.presentationLayer;
     }
-    if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) {
-        objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    // Capture live presentation geometry instead of a static raster screenshot so the real
-    // UIGlassEffect continues refracting live background content throughout collapse & expand.
-    CGRect liveFrame = dock.layer.presentationLayer ? dock.layer.presentationLayer.frame : dock.frame;
-    objc_setAssociatedObject(dock, DockSnapshotKey, [NSValue valueWithCGRect:liveFrame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return [layer convertRect:layer.bounds toLayer:parent];
 }
 
-+ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button {
-    if ([dock isKindOfClass:UIVisualEffectView.class]) {
-        UIVisualEffectView *proxy = (UIVisualEffectView *)dock;
-        if (compact) {
-            // Transfer material ownership cleanly to proxy before frame 0 of the collapse morph.
-            FQXSetDockMaterialOwner(dock.superview, proxy, FQXDockMaterialOwnerProxy, NO);
-            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
-        } else if (FQXGetDockMaterialOwner(proxy) != FQXDockMaterialOwnerNative) {
-            // Only style proxy when native UITabBar does NOT own the expanded Dock (e.g. fallback).
-            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
-        } else {
-            // Expanded Dock is owned by nativeDockBar; keep proxy neutralized so zero milky flash occurs.
-            FQXEnforceNativeProxyNeutralized(proxy);
-        }
+static void FQXEnumerateDockSurfaces(UIView *dock, void (^visit)(UIView *, UIView *)) {
+    FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    if (interaction && interaction->_nativeDockActive) {
+        UITabBar *tab = interaction->_nativeDockBar;
+        visit(tab, FQXFindDockPlatter(tab) ?: tab);
+        if (interaction->_dockTitleOverlay) visit(interaction->_dockTitleOverlay, interaction->_dockTitleOverlay);
+        if (interaction->_dockIconOverlay) visit(interaction->_dockIconOverlay, interaction->_dockIconOverlay);
+        if (interaction->_detachedButton && !interaction->_detachedButton.hidden)
+            visit(interaction->_detachedButton, interaction->_detachedButton);
+    } else {
+        visit(dock, dock);
+        if (interaction && interaction->_overlay && !interaction->_overlay.hidden)
+            visit(interaction->_overlay, interaction->_overlay);
     }
-    NSValue *captured = objc_getAssociatedObject(dock, DockSnapshotKey);
-    objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    UIViewPropertyAnimator *previous = objc_getAssociatedObject(dock, DockAnimatorKey);
-    if (previous) {
-        if (previous.state == UIViewAnimatingStateActive) [previous stopAnimation:YES];
-        objc_setAssociatedObject(dock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
-    CALayer *layer = dock.layer;
-    CALayer *presentation = layer.presentationLayer;
-    CGRect start = captured ? captured.CGRectValue : (presentation ? presentation.frame : frame);
-    CGRect target = dock.frame;
-    if (!compact) {
-        [button.layer removeAnimationForKey:@"FanqieX.dock.position"];
-        [button.layer removeAnimationForKey:DockContentAnimation];
-    }
-    if (reduceMotion || CGRectIsEmpty(start) || CGRectIsEmpty(target) || CGRectEqualToRect(start, target)) {
-        for (NSString *key in @[@"bounds", @"position", @"cornerRadius"]) {
-            NSString *animationKey = [@"FanqieX.dock." stringByAppendingString:key];
-            [layer removeAnimationForKey:animationKey];
-            [button.layer removeAnimationForKey:animationKey];
-        }
-        return;
-    }
+}
 
-    // Interruptible live UIKit Q-elastic spring morph directly on the UIGlassEffect surface:
-    // continuous optical edge refraction, zero opacity-0 blink, zero static snapshot ghost.
-    [UIView performWithoutAnimation:^{
-        dock.frame = start;
-        dock.layer.cornerRadius = MIN(CGRectGetWidth(start), CGRectGetHeight(start)) * 0.5;
-        if (compact && button) {
-            button.alpha = 0.0;
-            button.transform = CGAffineTransformMakeScale(0.76, 0.76);
+// Host fallback buttons can clear their title strings during layout. Keep only
+// their outgoing captions alive for the short fade, outside UIKit's title state.
+static const char FQXFallbackCaptionKey = 0;
+
+static NSArray<UILabel *> *FQXFallbackDockLabels(FQXTabBarInteraction *interaction) {
+    if (!interaction || interaction->_nativeDockActive || [interaction dockDisplayMode] != 0) return @[];
+    // The segmented renderer also draws its visible titles with these host
+    // buttons. Its own clear segment titles only supply accessibility labels.
+    NSMutableArray<UILabel *> *labels = [NSMutableArray arrayWithCapacity:interaction->_buttons.count];
+    for (UIButton *button in interaction->_buttons)
+        if ([button isKindOfClass:UIButton.class] && button.titleLabel) [labels addObject:button.titleLabel];
+    return labels;
+}
+
+static BOOL FQXDockLabelVisible(UILabel *label, UIView *bar) {
+    if (!label.text.length || !label.window) return NO;
+    UIColor *ink = nil;
+    if (label.attributedText.length)
+        ink = [label.attributedText attribute:NSForegroundColorAttributeName atIndex:0 effectiveRange:NULL];
+    if (!ink) ink = label.highlighted && label.highlightedTextColor ? label.highlightedTextColor : label.textColor;
+    if (ink && CGColorGetAlpha(ink.CGColor) < 0.01) return NO;
+    for (UIView *view = label; view && view != bar; view = view.superview)
+        if (view.hidden || view.layer.opacity < 0.01) return NO;
+    return YES;
+}
+
+static void FQXPrepareFallbackTitles(FQXTabBarInteraction *interaction, UIView *bar) {
+    for (UILabel *label in FQXFallbackDockLabels(interaction)) {
+        UIView *prior = objc_getAssociatedObject(label, &FQXFallbackCaptionKey);
+        if (prior || !FQXDockLabelVisible(label, bar)) continue;
+        UIView *copy = [label snapshotViewAfterScreenUpdates:NO];
+        if (!copy) continue;
+        copy.frame = label.frame;
+        copy.userInteractionEnabled = NO;
+        copy.accessibilityElementsHidden = YES;
+        copy.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
+                                UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+        copy.hidden = YES;
+        copy.alpha = (label.layer.presentationLayer ?: label.layer).opacity;
+        [label.superview addSubview:copy];
+        objc_setAssociatedObject(label, &FQXFallbackCaptionKey, copy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void FQXAnimateFallbackTitles(FQXTabBarInteraction *interaction, UIView *bar, BOOL compact) {
+    for (UILabel *label in FQXFallbackDockLabels(interaction)) {
+        UIView *copy = objc_getAssociatedObject(label, &FQXFallbackCaptionKey);
+        BOOL visible = FQXDockLabelVisible(label, bar);
+        if (compact && !visible && copy && !UIAccessibilityIsReduceMotionEnabled()) {
+            copy.hidden = NO;
+            [UIView animateWithDuration:0.10 delay:0.0 options:UIViewAnimationOptionBeginFromCurrentState
+                             animations:^{ copy.alpha = 0.0; }
+                             completion:^(__unused BOOL finished) {
+                [copy removeFromSuperview];
+                if (objc_getAssociatedObject(label, &FQXFallbackCaptionKey) == copy)
+                    objc_setAssociatedObject(label, &FQXFallbackCaptionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }];
+        } else {
+            CGFloat from = copy ? (copy.layer.presentationLayer ?: copy.layer).opacity : 0.0;
+            [copy removeFromSuperview];
+            objc_setAssociatedObject(label, &FQXFallbackCaptionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (!compact && visible && !UIAccessibilityIsReduceMotionEnabled() && from < label.layer.opacity) {
+                CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+                fade.fromValue = @(from);
+                fade.toValue = @(label.layer.opacity);
+                fade.duration = 0.13;
+                [label.layer addAnimation:fade forKey:@"FanqieX.dock.caption"];
+            }
         }
-    }];
-    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc]
-        initWithDampingRatio:compact ? 0.66 : 0.62];
-    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:0.48 timingParameters:timing];
-    __weak UIView *weakDock = dock;
-    __weak UIView *weakButton = button;
-    [animator addAnimations:^{
-        UIView *strongDock = weakDock;
-        UIView *strongBtn = weakButton;
-        if (strongDock) {
-            strongDock.frame = target;
-            strongDock.layer.cornerRadius = MIN(CGRectGetWidth(target), CGRectGetHeight(target)) * 0.5;
+    }
+}
+
++ (void)prepareDock:(UIView *)dock inBar:(UIView *)bar {
+    if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) return;
+    FQXPrepareFallbackTitles(objc_getAssociatedObject(dock, TabInteractionKey), bar);
+    NSMapTable *start = [NSMapTable weakToStrongObjectsMapTable];
+    FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
+        if (view.superview != bar) return;
+        CALayer *live = view.layer.presentationLayer ?: view.layer;
+        [start setObject:@[[NSValue valueWithCGRect:FQXDockAnchorRect(anchor, bar, YES)], @(live.opacity)] forKey:view];
+    });
+    objc_setAssociatedObject(dock, DockSnapshotKey, start, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
++ (void)setDock:(UIView *)dock compact:(BOOL)compact {
+    if ([objc_getAssociatedObject(dock, &FQXDockCompactKey) boolValue] != compact)
+        objc_setAssociatedObject(dock, &FQXDockCompactKey, compact ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
++ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact {
+    NSMapTable *start = objc_getAssociatedObject(dock, DockSnapshotKey);
+    objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIView *bar = dock.superview;
+    FQXAnimateFallbackTitles(objc_getAssociatedObject(dock, TabInteractionKey), bar, compact);
+    FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
+        if (view.superview != bar) return;
+        CALayer *layer = view.layer;
+        [layer removeAnimationForKey:FQXDockGeometryAnimation];
+        [layer removeAnimationForKey:@"FanqieX.dock.caption"];
+        if (!view.window || UIAccessibilityIsReduceMotionEnabled()) return;
+        NSArray *saved = [start objectForKey:view];
+        CGRect from = saved ? [saved[0] CGRectValue] : (view == dock ? frame : CGRectZero);
+        CGRect to = FQXDockAnchorRect(anchor, bar, NO);
+        if (CGRectIsEmpty(from) || CGRectIsEmpty(to)) return;
+        if (!CGRectEqualToRect(from, to)) {
+            CGFloat sx = from.size.width / to.size.width, sy = from.size.height / to.size.height;
+            CGPoint origin = CGPointMake(CGRectGetMidX(from) + (layer.position.x - CGRectGetMidX(to)) * sx,
+                                         CGRectGetMidY(from) + (layer.position.y - CGRectGetMidY(to)) * sy);
+            CGFloat frequency = compact ? 18.8 : 19.2;
+            CASpringAnimation *position = [CASpringAnimation animationWithKeyPath:@"position"];
+            position.mass = 1;
+            position.stiffness = frequency * frequency;
+            position.damping = 2 * (compact ? 0.74 : 0.75) * frequency;
+            position.duration = 0.45;
+            position.fromValue = [NSValue valueWithCGPoint:origin];
+            position.toValue = [NSValue valueWithCGPoint:layer.position];
+            CASpringAnimation *transform = [position copy];
+            transform.keyPath = @"transform";
+            transform.fromValue = [NSValue valueWithCATransform3D:CATransform3DScale(layer.transform, sx, sy, 1)];
+            transform.toValue = [NSValue valueWithCATransform3D:layer.transform];
+            CAAnimationGroup *group = [CAAnimationGroup animation];
+            group.duration = position.duration;
+            group.animations = @[position, transform];
+            [layer addAnimation:group forKey:FQXDockGeometryAnimation];
         }
-        if (compact && strongBtn) {
-            strongBtn.alpha = 1.0;
-            strongBtn.transform = CGAffineTransformIdentity;
+        if (saved && fabs([saved[1] doubleValue] - layer.opacity) > 0.01) {
+            CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+            fade.fromValue = saved[1];
+            fade.toValue = @(layer.opacity);
+            fade.duration = compact ? 0.10 : 0.13;
+            fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:fade forKey:@"FanqieX.dock.caption"];
         }
-    }];
-    [animator addCompletion:^(UIViewAnimatingPosition position) {
-        (void)position;
-        UIView *strongDock = weakDock;
-        if (strongDock && objc_getAssociatedObject(strongDock, DockAnimatorKey) == animator) {
-            objc_setAssociatedObject(strongDock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }];
-    objc_setAssociatedObject(dock, DockAnimatorKey, animator, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [animator startAnimation];
+    });
 }
 
 + (void)syncTabBar:(UIView *)bar

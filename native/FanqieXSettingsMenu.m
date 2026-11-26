@@ -388,6 +388,10 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         idx = (found != NSNotFound) ? (NSInteger)found : 0;
     } else if (row.popoverKind == 5) {
         idx = CurrentSavedCommentAppearanceMode();
+    } else if (row.popoverKind == 6) {
+        NSNumber *saved = [NSUserDefaults.standardUserDefaults objectForKey:CompactPositionKey];
+        NSUInteger found = [values indexOfObject:saved ?: @2];
+        idx = found == NSNotFound ? 1 : (NSInteger)found;
     } else if (row.popoverKind == 7) {
         StartupPopoverChoices(&options, &values);
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];

@@ -9,7 +9,7 @@ from arm64 import release_version, require
 from test_bottom_appearance178 import (
     BUTTON_WIDTH, COMPACT, HEIGHT, ICONS, LENGTH, PAGE_HOOK, DRAG_METHODS,
     NATIVE_ANIMATION_END, NATIVE_FEED_LAYOUT, NATIVE_FEED_WINDOW, NATIVE_INNER_FEED_TYPE, NATIVE_SETTLE,
-    bottom_labels, compact_button, host_geometry, page_drag, send_pan,
+    bottom_labels, check_compact_capsule, compact_button, host_geometry, page_drag, send_pan,
     settled_scroll_lifecycle, scroll_rejections, tap_expand,
 )
 from test_bottom_interaction178r5 import (
@@ -21,7 +21,7 @@ from test_native_orchestration162 import repair
 
 def observed_dock(data, labels):
     cases = []
-    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2")
+    drag_selection = release_version(data) in ('1.78R14', '1.78R15', '1.78R16', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3")
     for fallback in (False, True):
         for icons, minimum in ((False, 64), (True, 56)):
             cpu, rt, entries = fixture(data, labels, fallback=fallback)
@@ -82,9 +82,13 @@ def observed_video_delegate(data, labels):
     feed, _, _ = rt.add_feed()
     rt.defaults(**{COMPACT: True})
     repair(cpu, rt, entries)
+    expanded = rt.objects[rt.PROXY].state['frame']
     page_drag(cpu, rt, feed, 4, 5, decelerates=True)
     repair(cpu, rt, entries)
-    require(compact_button(rt), 'The actual FQV video paging delegate must compact after settling')
+    if release_version(data) == '2.0.1beta3':
+        check_compact_capsule(rt, expanded)
+    else:
+        require(compact_button(rt), 'The actual FQV video paging delegate must compact after settling')
     for selector, _, original in DRAG_METHODS:
         method = rt.get_method(rt.classes['FQFeedListView'], rt.sel(selector))
         require(method and rt.methods[method]['imp'] == original,
@@ -152,11 +156,12 @@ def native_scroll_completion_and_dock_position(data, labels):
 
 def native_pan_and_settled_offset(data, labels):
     cases = []
+    directional = release_version(data) == '2.0.1beta3'
     stock = (20., 0., 376., 56.)
     position_key = 'FanqieX.BottomDramaCompactPosition.1'
     for position, x in ((0, 336.), (1, 20.), (2, 190.)):
         cpu, rt, entries = fixture(data, labels, selected=1, stock=stock)
-        if release_version(data) in ('1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2"):
+        if release_version(data) in ('1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3"):
             # The selected outer tab is Short Drama even when its container
             # provider reports a recommendation category with another type.
             rt._add(rt.classes['SSTabBarController'], 'currentSelectedVCTabType', NATIVE_INNER_FEED_TYPE, 'i16@0:8')
@@ -184,23 +189,33 @@ def native_pan_and_settled_offset(data, labels):
             offset(y)
             cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
             repair(cpu, rt, entries)
-            require(not compact_button(rt), 'The released pan waits for an actual full-page position')
+            require(rt.objects[rt.PROXY].state['frame'] == stock and not compact_button(rt),
+                    'With no pan translation the dock waits for an actual full-page position')
 
         offset(956.)
         state['decelerating'] = True
         geometry = host_geometry(rt, (feed,))
         cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
         repair(cpu, rt, entries)
-        button = compact_button(rt)
-        expected = (x, 0., 60., 60.)
-        require(button and rt.objects[button].state['frame'] == expected and
-                rt.objects[rt.PROXY].state['frame'] == expected,
-                'Observed scrolling compacts at the saved position without private completion callbacks')
+        if directional:
+            expected = check_compact_capsule(rt, stock, position)
+        else:
+            button = compact_button(rt)
+            expected = (x, 0., 60., 60.)
+            require(button and rt.objects[button].state['frame'] == expected and
+                    rt.objects[rt.PROXY].state['frame'] == expected,
+                    'Observed scrolling compacts at the saved position without private completion callbacks')
         require(host_geometry(rt, (feed,)) == geometry, 'Compaction preserves verified viewport bounds and offset')
 
-        tap_expand(cpu, rt)
+        if directional:
+            state['decelerating'] = False
+            send_pan(cpu, rt, pan, 1)
+            send_pan(cpu, rt, pan, 2, (0., 16.))
+            send_pan(cpu, rt, pan, 3, (0., 16.))
+        else:
+            tap_expand(cpu, rt)
         repair(cpu, rt, entries)
-        require(rt.objects[rt.PROXY].state['frame'] == stock, 'The compact control restores its stock frame on tap')
+        require(rt.objects[rt.PROXY].state['frame'] == stock, 'Expansion restores the original frame')
         state['decelerating'] = False
         send_pan(cpu, rt, pan, 1)
         offset(1200.)
@@ -208,9 +223,11 @@ def native_pan_and_settled_offset(data, labels):
         offset(1912.)
         cpu.run(0xa5d4, args=(feed, rt.sel(NATIVE_FEED_LAYOUT[0])), max_steps=3000000)
         repair(cpu, rt, entries)
-        require(not compact_button(rt), 'A canceled gesture and unrelated programmatic paging cannot compact')
+        require(rt.objects[rt.PROXY].state['frame'] == stock and not compact_button(rt),
+                'A canceled gesture and unrelated programmatic paging cannot compact')
+        trigger = 'reverse_pan_expands' if directional else 'tap_expands'
         cases.append({'position': position, 'native_offsets': [0., 418.3333333333333, 956.],
-                      'compacted_frame': expected, 'tap_expands': True})
+                      'compacted_frame': expected, trigger: True})
     return cases
 
 
@@ -231,7 +248,7 @@ def main():
               'boundary': 'Actual candidate ARM64; explicit UIKit/Foundation boundary objects'}
     if release_version(data) == '1.78R22':
         report['native_scroll_completion'] = native_scroll_completion_and_dock_position(data, labels)
-    if release_version(data) in ('1.78R23', '1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2"):
+    if release_version(data) in ('1.78R23', '1.78R24', '1.78R25', "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3"):
         report['native_pan_and_settled_offset'] = native_pan_and_settled_offset(data, labels)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
