@@ -14,6 +14,11 @@
 
 static const char FQXK_DockSnapshotKey = 0;
 #define DockSnapshotKey ((const void *)&FQXK_DockSnapshotKey)
+static const char FQXK_DockAnimatorKey = 0;
+#define DockAnimatorKey ((const void *)&FQXK_DockAnimatorKey)
+static const char FQXScrollZoomSnapshotKey = 0;
+static const char FQXScrollZoomVelocityKey = 0;
+static const char FQXScrollZoomSpringKey = 0;
 static const char FQXDockCompactKey = 0;
 static const char FQXK_TabInteractionKey = 0;
 #define TabInteractionKey ((const void *)&FQXK_TabInteractionKey)
@@ -87,6 +92,7 @@ static const char FQXK_FQXDoubleTapCommentGestureKey = 0;
 #define FQXDoubleTapCommentGestureKey ((const void *)&FQXK_FQXDoubleTapCommentGestureKey)
 static const char FQXK_AudioToneStockInsetKey = 0;
 #define AudioToneStockInsetKey ((const void *)&FQXK_AudioToneStockInsetKey)
+static NSString *const DockContentAnimation = @"FanqieX.dock.content";
 static NSString *const GlassDisabledPrefKey = @"FanqieAdBlock.GlassDisabled.1";
 static NSString *const HighestQualityPrefKey = @"FanqieX.DramaHighestQuality.1";
 static NSString *const PinchPureCleanPrefKey = @"FanqieX.DramaPinchPureClean.1";
@@ -3112,7 +3118,7 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     NSUInteger selected = [self currentSelectedIndex];
     NSString *current = selected < allTitles.count ? allTitles[selected] : nil;
     BOOL captions = displayMode == 0 && ([current isEqualToString:@"短剧"] || [current isEqualToString:@"视频"]) &&
-        [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.BottomDramaCompact.1"];
+        [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaDockScrollZoom.1"];
     NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|captions=%d|",
                             (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx), captions];
     NSMutableArray<NSString *> *capsuleTitles = [NSMutableArray arrayWithCapacity:allTitles.count];
@@ -3702,7 +3708,8 @@ static const char FQXDockTouchBeganKey = 0;
     [self setLegacyDockOverlay:overlay];
 
     BOOL hiddenProxy = proxy.hidden || CGRectGetWidth(proxy.frame) < 60.0 || CGRectGetHeight(proxy.frame) < 30.0;
-    if (hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
+    BOOL circle = overlay.hidden || proxy.contentView.hidden;
+    if (circle || hiddenProxy || buttons.count < 2 || !FQXGlassEnabled() || [self usesNativeSegmentedSelector]) {
         [self setNativeDockVisible:NO restoreProxy:YES];
         FQXApplyDockProxyMaterial(bar, proxy, lens);
         if ([native isKindOfClass:UISegmentedControl.class]) {
@@ -6596,6 +6603,9 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
 
 @interface FQXDockMotion : NSObject
 + (void)prepareDock:(UIView *)dock inBar:(UIView *)bar;
++ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button;
++ (void)setScrollZoomVelocity:(CGFloat)screenHeightsPerSecond forDock:(UIView *)dock;
++ (void)prepareScrollZoomDock:(UIView *)dock inBar:(UIView *)bar;
 + (void)setDock:(UIView *)dock compact:(BOOL)compact;
 + (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact;
 + (void)syncTabBar:(UIView *)bar
@@ -6701,14 +6711,14 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
 
 // A native UITabBar can render a narrower platter than its view bounds.
 // Measure the visible anchor on its live layer, including in-flight reversal.
-static CGRect FQXDockAnchorRect(UIView *anchor, UIView *bar, BOOL presentation) {
+static CGRect FQXDockAnchorRect(UIView *anchor, CGRect rect, UIView *bar, BOOL presentation) {
     CALayer *layer = anchor.layer;
     CALayer *parent = bar.layer;
     if (presentation && layer.presentationLayer && parent.presentationLayer) {
         layer = layer.presentationLayer;
         parent = parent.presentationLayer;
     }
-    return [layer convertRect:layer.bounds toLayer:parent];
+    return [layer convertRect:rect toLayer:parent];
 }
 
 static void FQXEnumerateDockSurfaces(UIView *dock, void (^visit)(UIView *, UIView *)) {
@@ -6800,15 +6810,159 @@ static void FQXAnimateFallbackTitles(FQXTabBarInteraction *interaction, UIView *
 }
 
 + (void)prepareDock:(UIView *)dock inBar:(UIView *)bar {
-    if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) return;
-    FQXPrepareFallbackTitles(objc_getAssociatedObject(dock, TabInteractionKey), bar);
+    (void)bar;
+    UIViewPropertyAnimator *previous = objc_getAssociatedObject(dock, DockAnimatorKey);
+    if (previous) {
+        if (previous.state == UIViewAnimatingStateActive) [previous stopAnimation:YES];
+        objc_setAssociatedObject(dock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) {
+        objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    // Capture live presentation geometry instead of a static raster screenshot so the real
+    // UIGlassEffect continues refracting live background content throughout collapse & expand.
+    CGRect liveFrame = dock.layer.presentationLayer ? dock.layer.presentationLayer.frame : dock.frame;
+    objc_setAssociatedObject(dock, DockSnapshotKey, [NSValue valueWithCGRect:liveFrame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
++ (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button {
+    if ([dock isKindOfClass:UIVisualEffectView.class]) {
+        UIVisualEffectView *proxy = (UIVisualEffectView *)dock;
+        if (compact) {
+            // Transfer material ownership cleanly to proxy before frame 0 of the collapse morph.
+            FQXSetDockMaterialOwner(dock.superview, proxy, FQXDockMaterialOwnerProxy, NO);
+            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
+        } else if (FQXGetDockMaterialOwner(proxy) != FQXDockMaterialOwnerNative) {
+            // Only style proxy when native UITabBar does NOT own the expanded Dock (e.g. fallback).
+            FQXApplyDockProxyMaterial(dock.superview, proxy, nil);
+        } else {
+            // Expanded Dock is owned by nativeDockBar; keep proxy neutralized so zero milky flash occurs.
+            FQXEnforceNativeProxyNeutralized(proxy);
+        }
+    }
+    NSValue *captured = objc_getAssociatedObject(dock, DockSnapshotKey);
+    objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIViewPropertyAnimator *previous = objc_getAssociatedObject(dock, DockAnimatorKey);
+    if (previous) {
+        if (previous.state == UIViewAnimatingStateActive) [previous stopAnimation:YES];
+        objc_setAssociatedObject(dock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
+    CALayer *layer = dock.layer;
+    CALayer *presentation = layer.presentationLayer;
+    CGRect start = captured ? captured.CGRectValue : (presentation ? presentation.frame : frame);
+    CGRect target = dock.frame;
+    if (!compact) {
+        [button.layer removeAnimationForKey:@"FanqieX.dock.position"];
+        [button.layer removeAnimationForKey:DockContentAnimation];
+    }
+    if (reduceMotion || CGRectIsEmpty(start) || CGRectIsEmpty(target) || CGRectEqualToRect(start, target)) {
+        for (NSString *key in @[@"bounds", @"position", @"cornerRadius"]) {
+            NSString *animationKey = [@"FanqieX.dock." stringByAppendingString:key];
+            [layer removeAnimationForKey:animationKey];
+            [button.layer removeAnimationForKey:animationKey];
+        }
+        return;
+    }
+
+    // Interruptible live UIKit Q-elastic spring morph directly on the UIGlassEffect surface:
+    // continuous optical edge refraction, zero opacity-0 blink, zero static snapshot ghost.
+    [UIView performWithoutAnimation:^{
+        dock.frame = start;
+        dock.layer.cornerRadius = MIN(CGRectGetWidth(start), CGRectGetHeight(start)) * 0.5;
+        if (compact && button) {
+            button.alpha = 0.0;
+            button.transform = CGAffineTransformMakeScale(0.76, 0.76);
+        }
+    }];
+    UISpringTimingParameters *timing = [[UISpringTimingParameters alloc]
+        initWithDampingRatio:compact ? 0.66 : 0.62];
+    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:0.48 timingParameters:timing];
+    __weak UIView *weakDock = dock;
+    __weak UIView *weakButton = button;
+    [animator addAnimations:^{
+        UIView *strongDock = weakDock;
+        UIView *strongBtn = weakButton;
+        if (strongDock) {
+            strongDock.frame = target;
+            strongDock.layer.cornerRadius = MIN(CGRectGetWidth(target), CGRectGetHeight(target)) * 0.5;
+        }
+        if (compact && strongBtn) {
+            strongBtn.alpha = 1.0;
+            strongBtn.transform = CGAffineTransformIdentity;
+        }
+    }];
+    [animator addCompletion:^(UIViewAnimatingPosition position) {
+        (void)position;
+        UIView *strongDock = weakDock;
+        if (strongDock && objc_getAssociatedObject(strongDock, DockAnimatorKey) == animator) {
+            objc_setAssociatedObject(strongDock, DockAnimatorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }];
+    objc_setAssociatedObject(dock, DockAnimatorKey, animator, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [animator startAnimation];
+}
+
+// A reused host button may replace its UIImageView between icon+caption and icon-only.
+// Key by the button so its visible glyph can continue across that replacement.
+static void FQXEnumerateZoomGlyphs(FQXTabBarInteraction *interaction, UIView *surface,
+                                   void (^visit)(UIView *, UIImageView *)) {
+    if (!interaction) return;
+    if (surface == interaction->_dockIconOverlay) {
+        for (UIImageView *glyph in interaction->_dockIconOverlay.arrangedSubviews) visit(glyph, glyph);
+    } else if (!interaction->_nativeDockActive) {
+        for (UIButton *button in interaction->_buttons) {
+            if (![button isDescendantOfView:surface] || button.hidden) continue;
+            for (UIView *sub in button.subviews.reverseObjectEnumerator) {
+                if (![sub isKindOfClass:UIImageView.class] || sub.hidden || sub.alpha < 0.01) continue;
+                UIImageView *glyph = (UIImageView *)sub;
+                if (!glyph.image && !glyph.highlightedImage) continue;
+                visit(button, glyph);
+                break;
+            }
+        }
+    }
+}
+
+static CGRect FQXZoomGlyphRect(UIImageView *glyph, UIView *bar, BOOL live) {
+    CGRect box = glyph.bounds;
+    UIImage *image = (glyph.highlighted ? glyph.highlightedImage : nil) ?: glyph.image;
+    CGSize size = image.size;
+    if (size.width > 0 && size.height > 0 &&
+        (glyph.contentMode == UIViewContentModeScaleAspectFit || glyph.contentMode == UIViewContentModeCenter)) {
+        CGFloat scale = glyph.contentMode == UIViewContentModeCenter ? 1 :
+            MIN(box.size.width / size.width, box.size.height / size.height);
+        box = CGRectMake(CGRectGetMidX(box) - size.width * scale / 2,
+                         CGRectGetMidY(box) - size.height * scale / 2, size.width * scale, size.height * scale);
+    }
+    return FQXDockAnchorRect(glyph, box, bar, live);
+}
+
++ (void)setScrollZoomVelocity:(CGFloat)screenHeightsPerSecond forDock:(UIView *)dock {
+    if (dock) objc_setAssociatedObject(dock, &FQXScrollZoomVelocityKey, @(screenHeightsPerSecond), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
++ (void)prepareScrollZoomDock:(UIView *)dock inBar:(UIView *)bar {
+    NSNumber *speed = objc_getAssociatedObject(dock, &FQXScrollZoomVelocityKey);
+    objc_setAssociatedObject(dock, &FQXScrollZoomVelocityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) {
+        objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    FQXPrepareFallbackTitles(interaction, bar);
     NSMapTable *start = [NSMapTable weakToStrongObjectsMapTable];
+    if (speed) [start setObject:speed forKey:bar];
     FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
         if (view.superview != bar) return;
         CALayer *live = view.layer.presentationLayer ?: view.layer;
-        [start setObject:@[[NSValue valueWithCGRect:FQXDockAnchorRect(anchor, bar, YES)], @(live.opacity)] forKey:view];
+        [start setObject:@[[NSValue valueWithCGRect:FQXDockAnchorRect(anchor, anchor.bounds, bar, YES)], @(live.opacity)] forKey:view];
+        FQXEnumerateZoomGlyphs(interaction, view, ^(UIView *owner, UIImageView *glyph) {
+            [start setObject:[NSValue valueWithCGRect:FQXZoomGlyphRect(glyph, bar, YES)] forKey:owner];
+        });
     });
-    objc_setAssociatedObject(dock, DockSnapshotKey, start, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, start, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 + (void)setDock:(UIView *)dock compact:(BOOL)compact {
@@ -6816,43 +6970,134 @@ static void FQXAnimateFallbackTitles(FQXTabBarInteraction *interaction, UIView *
         objc_setAssociatedObject(dock, &FQXDockCompactKey, compact ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+typedef struct {
+    double startTime, from, target, velocity, omega, damping;
+} FQXZoomSpring;
+
+static const double FQXZoomDuration = 0.60;
+
+// Solve the underdamped spring in absolute expanded(0)..compact(1) coordinates.
+// Its derivative survives a reversal even when UIKit has already laid out the new endpoint.
+static double FQXZoomSpringValue(FQXZoomSpring spring, double seconds, double *velocity) {
+    double decay = spring.omega * spring.damping;
+    double frequency = sqrt(spring.omega * spring.omega - decay * decay);
+    double displacement = spring.from - spring.target;
+    double sineTerm = (spring.velocity + decay * displacement) / frequency;
+    double cosine = cos(frequency * seconds), sine = sin(frequency * seconds);
+    double offset = displacement * cosine + sineTerm * sine;
+    double envelope = exp(-decay * seconds);
+    if (velocity)
+        *velocity = envelope * (frequency * (sineTerm * cosine - displacement * sine) - decay * offset);
+    return spring.target + envelope * offset;
+}
+
+static NSArray<NSNumber *> *FQXZoomSamples(UIView *dock, BOOL compact, double speed, CFTimeInterval now) {
+    FQXZoomSpring spring = { now, compact ? 0 : 1, compact ? 1 : 0,
+        (compact ? 1 : -1) * MIN(3.5, MAX(0, speed)), compact ? 19.0 : 19.4, compact ? 0.67 : 0.65 };
+    NSValue *saved = objc_getAssociatedObject(dock, &FQXScrollZoomSpringKey);
+    if (saved) {
+        FQXZoomSpring prior;
+        [saved getValue:&prior size:sizeof(prior)];
+        double elapsed = now - prior.startTime;
+        if (prior.target != spring.target && elapsed >= 0 && elapsed < FQXZoomDuration) {
+            double velocity;
+            double live = FQXZoomSpringValue(prior, elapsed, &velocity);
+            if (fabs(spring.target - live) > 0.0001) {
+                spring.from = live;
+                spring.velocity = velocity;
+            }
+        }
+    }
+    objc_setAssociatedObject(dock, &FQXScrollZoomSpringKey, [NSValue valueWithBytes:&spring objCType:@encode(FQXZoomSpring)],
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSUInteger intervals = (NSUInteger)ceil(FQXZoomDuration * 120.0);
+    NSMutableArray *progress = [NSMutableArray arrayWithCapacity:intervals + 1];
+    for (NSUInteger i = 0; i <= intervals; i++) {
+        double value = FQXZoomSpringValue(spring, FQXZoomDuration * i / intervals, NULL);
+        [progress addObject:@(i == intervals ? 1.0 : (value - spring.from) / (spring.target - spring.from))];
+    }
+    return progress;
+}
+
+static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to,
+                               CGRect parentFrom, CGRect parentTo, NSArray<NSNumber *> *progress, CFTimeInterval now) {
+    CALayer *layer = view.layer;
+    [layer removeAnimationForKey:FQXDockGeometryAnimation];
+    if (!progress.count || CGRectIsEmpty(from) || CGRectIsEmpty(to)) return;
+    BOOL insideMovingSurface = !CGRectIsEmpty(parentFrom) && !CGRectIsEmpty(parentTo);
+    if (CGRectEqualToRect(from, to) && !insideMovingSurface) return;
+    CGPoint toCenter = CGPointMake(CGRectGetMidX(to), CGRectGetMidY(to));
+    UIView *parent = view.superview;
+    CGPoint anchor = [parent convertPoint:toCenter fromView:bar];
+    CGPoint axisX = [parent convertPoint:CGPointMake(toCenter.x + 1.0, toCenter.y) fromView:bar];
+    CGPoint axisY = [parent convertPoint:CGPointMake(toCenter.x, toCenter.y + 1.0) fromView:bar];
+    CGVector dx = CGVectorMake(axisX.x - anchor.x, axisX.y - anchor.y);
+    CGVector dy = CGVectorMake(axisY.x - anchor.x, axisY.y - anchor.y);
+    NSMutableArray *positions = [NSMutableArray arrayWithCapacity:progress.count];
+    NSMutableArray *transforms = [NSMutableArray arrayWithCapacity:progress.count];
+    for (NSNumber *sample in progress) {
+        double remaining = 1.0 - sample.doubleValue;
+        CGPoint center = CGPointMake(toCenter.x + remaining * (CGRectGetMidX(from) - toCenter.x),
+                                     toCenter.y + remaining * (CGRectGetMidY(from) - toCenter.y));
+        CGFloat sx = 1 + remaining * (from.size.width / to.size.width - 1);
+        CGFloat sy = 1 + remaining * (from.size.height / to.size.height - 1);
+        if (insideMovingSurface) {
+            // Remove the parent's in-flight stretch from the glyph. Its own optical
+            // size and center follow the spring exactly once, including on reversal.
+            CGFloat px = 1 + remaining * (parentFrom.size.width / parentTo.size.width - 1);
+            CGFloat py = 1 + remaining * (parentFrom.size.height / parentTo.size.height - 1);
+            CGFloat tx = CGRectGetMidX(parentTo), ty = CGRectGetMidY(parentTo);
+            center.x = tx + (center.x - tx - remaining * (CGRectGetMidX(parentFrom) - tx)) / px;
+            center.y = ty + (center.y - ty - remaining * (CGRectGetMidY(parentFrom) - ty)) / py;
+            sx /= px;
+            sy /= py;
+        }
+        CGFloat offsetX = center.x - toCenter.x, offsetY = center.y - toCenter.y;
+        CGPoint local = CGPointMake(anchor.x + dx.dx * offsetX + dy.dx * offsetY,
+                                    anchor.y + dx.dy * offsetX + dy.dy * offsetY);
+        CGPoint pos = CGPointMake(local.x + (layer.position.x - anchor.x) * sx,
+                                  local.y + (layer.position.y - anchor.y) * sy);
+        [positions addObject:[NSValue valueWithCGPoint:pos]];
+        [transforms addObject:[NSValue valueWithCATransform3D:CATransform3DScale(layer.transform, sx, sy, 1)]];
+    }
+    CAKeyframeAnimation *position = [CAKeyframeAnimation animationWithKeyPath:@"position"];
+    position.values = positions;
+    position.duration = FQXZoomDuration;
+    CAKeyframeAnimation *transform = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
+    transform.values = transforms;
+    transform.duration = FQXZoomDuration;
+    CAAnimationGroup *group = [CAAnimationGroup animation];
+    group.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    group.beginTime = [layer convertTime:now fromLayer:nil];
+    group.duration = FQXZoomDuration;
+    group.animations = @[position, transform];
+    [layer addAnimation:group forKey:FQXDockGeometryAnimation];
+}
+
 + (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact {
-    NSMapTable *start = objc_getAssociatedObject(dock, DockSnapshotKey);
-    objc_setAssociatedObject(dock, DockSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSMapTable *start = objc_getAssociatedObject(dock, &FQXScrollZoomSnapshotKey);
+    objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UIView *bar = dock.superview;
-    FQXAnimateFallbackTitles(objc_getAssociatedObject(dock, TabInteractionKey), bar, compact);
+    FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    FQXAnimateFallbackTitles(interaction, bar, compact);
+    CFTimeInterval now = CACurrentMediaTime();
+    NSArray *progress = dock.window && !UIAccessibilityIsReduceMotionEnabled() ?
+        FQXZoomSamples(dock, compact, [[start objectForKey:bar] doubleValue], now) : nil;
+    if (!progress) objc_setAssociatedObject(dock, &FQXScrollZoomSpringKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
         if (view.superview != bar) return;
         CALayer *layer = view.layer;
-        [layer removeAnimationForKey:FQXDockGeometryAnimation];
         [layer removeAnimationForKey:@"FanqieX.dock.caption"];
-        if (!view.window || UIAccessibilityIsReduceMotionEnabled()) return;
         NSArray *saved = [start objectForKey:view];
         CGRect from = saved ? [saved[0] CGRectValue] : (view == dock ? frame : CGRectZero);
-        CGRect to = FQXDockAnchorRect(anchor, bar, NO);
-        if (CGRectIsEmpty(from) || CGRectIsEmpty(to)) return;
-        if (!CGRectEqualToRect(from, to)) {
-            CGFloat sx = from.size.width / to.size.width, sy = from.size.height / to.size.height;
-            CGPoint origin = CGPointMake(CGRectGetMidX(from) + (layer.position.x - CGRectGetMidX(to)) * sx,
-                                         CGRectGetMidY(from) + (layer.position.y - CGRectGetMidY(to)) * sy);
-            CGFloat frequency = compact ? 18.8 : 19.2;
-            CASpringAnimation *position = [CASpringAnimation animationWithKeyPath:@"position"];
-            position.mass = 1;
-            position.stiffness = frequency * frequency;
-            position.damping = 2 * (compact ? 0.74 : 0.75) * frequency;
-            position.duration = 0.45;
-            position.fromValue = [NSValue valueWithCGPoint:origin];
-            position.toValue = [NSValue valueWithCGPoint:layer.position];
-            CASpringAnimation *transform = [position copy];
-            transform.keyPath = @"transform";
-            transform.fromValue = [NSValue valueWithCATransform3D:CATransform3DScale(layer.transform, sx, sy, 1)];
-            transform.toValue = [NSValue valueWithCATransform3D:layer.transform];
-            CAAnimationGroup *group = [CAAnimationGroup animation];
-            group.duration = position.duration;
-            group.animations = @[position, transform];
-            [layer addAnimation:group forKey:FQXDockGeometryAnimation];
-        }
-        if (saved && fabs([saved[1] doubleValue] - layer.opacity) > 0.01) {
+        CGRect to = FQXDockAnchorRect(anchor, anchor.bounds, bar, NO);
+        FQXAnimateZoomRect(view, bar, from, to, CGRectZero, CGRectZero, progress, now);
+        FQXEnumerateZoomGlyphs(interaction, view, ^(UIView *owner, UIImageView *glyph) {
+            NSValue *oldGlyph = [start objectForKey:owner];
+            FQXAnimateZoomRect(glyph, bar, oldGlyph ? oldGlyph.CGRectValue : CGRectZero, FQXZoomGlyphRect(glyph, bar, NO),
+                               from, to, progress, now);
+        });
+        if (progress && saved && fabs([saved[1] doubleValue] - layer.opacity) > 0.01) {
             CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
             fade.fromValue = saved[1];
             fade.toValue = @(layer.opacity);

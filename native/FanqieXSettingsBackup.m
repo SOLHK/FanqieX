@@ -9,6 +9,8 @@
 static NSString *const DramaPreferencePrefix = @"FanqieX.DramaCategory.";
 static NSString *const HiddenBookstoreCategories = @"FanqieX.BookstoreHiddenCategories.1";
 static NSString *const ReaderThemePreset = @"FanqieX.ReaderThemePreset.1";
+static NSString *const LegacyCompact = @"FanqieX.BottomDramaCompact.1";
+static NSString *const ScrollZoom = @"FanqieX.DramaDockScrollZoom.1";
 static NSString *const BottomDisplayMode = @"FanqieX.BottomDisplayMode.1";
 static NSString *const BottomIconsOnly = @"FanqieX.BottomIconsOnly.1";
 static NSString *const CommentMaterialStyle = @"FanqieX.CommentMaterialStyle.1";
@@ -48,8 +50,9 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DramaNaloiaShare.1": @NO,
         @"FanqieX.ReaderHotCommentBadge.1": @YES,
         @"FanqieX.BottomHaptics.1": @YES,
-        @"FanqieX.BottomDramaCompact.1": @NO,
-        @"FanqieX.BottomDramaCompactPosition.1": @2,
+        LegacyCompact: @NO,
+        ScrollZoom: @NO,
+        @"FanqieX.BottomDramaCompactPosition.1": @0,
         @"FanqieX.BottomLengthScale.1": @100,
         @"FanqieX.BottomHeightScale.1": @100,
         @"FanqieX.BottomButtonWidthScale.1": @100,
@@ -249,6 +252,7 @@ static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
         NSString *key = [NSString stringWithFormat:@"%@%@.1", DramaPreferencePrefix, row[@"type"]];
         if (IsDramaPreference(key) && !snapshot[key]) snapshot[key] = @YES;
     }
+    if ([snapshot[LegacyCompact] boolValue]) snapshot[ScrollZoom] = @NO;
     return snapshot;
 }
 
@@ -256,6 +260,16 @@ static BOOL ApplySettings(NSUserDefaults *storage, NSString *domainName,
                           NSDictionary<NSString *, id> *settings, BOOL replace) {
     if (!domainName.length) return NO;
     NSDictionary<NSString *, id> *current = [storage persistentDomainForName:domainName];
+    // A partial merge may select one mode while the other is already enabled.
+    // For a contradictory backup, preserve the original single-button mode.
+    BOOL legacy = settings[LegacyCompact] ? [settings[LegacyCompact] boolValue] : (!replace && [current[LegacyCompact] boolValue]);
+    BOOL zoom = settings[ScrollZoom] ? [settings[ScrollZoom] boolValue] : (!replace && [current[ScrollZoom] boolValue]);
+    if (legacy && zoom) {
+        NSString *other = [settings[ScrollZoom] boolValue] && ![settings[LegacyCompact] boolValue] ? LegacyCompact : ScrollZoom;
+        NSMutableDictionary *normalized = [settings mutableCopy];
+        normalized[other] = @NO;
+        settings = normalized;
+    }
     NSMutableArray<NSString *> *removals = [NSMutableArray array];
     if (replace) {
         NSDictionary<NSString *, id> *defaults = BuiltInSettings();

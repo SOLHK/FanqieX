@@ -3929,7 +3929,7 @@ static void DramaVisibilityApplySearch(Obj header,B visible) {
     DramaVisibilitySet(Get(search,"searchBgView"),0);
 }
 
-enum { BottomHapticTag=38, DramaWatchTag, DramaRecentTag, DramaFavoritesTag, DramaComicTag, DramaCategoryTagBase=1000 };
+enum { BottomHapticTag=38, DramaWatchTag, DramaRecentTag, DramaFavoritesTag, DramaComicTag, DramaDockZoomTag=48, DramaCategoryTagBase=1000 };
 
 static const char *DramaNamedCategoryTitle(I tag) {
     switch (tag) {
@@ -8263,12 +8263,15 @@ static void BottomDramaGeometryKey(void) {}
 static void BottomDramaGeometryPageKey(void) {}
 static void BottomCompact178Key(void) {}
 static void BottomSelectedBox178Key(void) {}
-static void BottomDragStart178R7Key(void) {}
-static void BottomDragReleasedKey(void) {}
-static void BottomDragTurningPointKey(void) {}
-static void BottomDragBeganCompactKey(void) {}
-static void BottomDragLightLiftKey(void) {}
-static void BottomDragAttachedKey(void) {}
+// These associated-object keys need distinct addresses, but no executable unwind entries.
+static const char *const BottomDragStart178R7Key = "FanqieX.Dock.BottomDragStart178R7Key";
+static const char *const BottomDragReleasedKey = "FanqieX.Dock.BottomDragReleasedKey";
+static const char *const BottomDragTurningPointKey = "FanqieX.Dock.BottomDragTurningPointKey";
+static const char *const BottomDragBeganCompactKey = "FanqieX.Dock.BottomDragBeganCompactKey";
+static const char *const BottomDragLightLiftKey = "FanqieX.Dock.BottomDragLightLiftKey";
+static const char *const BottomDragAttachedKey = "FanqieX.Dock.BottomDragAttachedKey";
+static const char *const BottomCompactButton178R7Key = "FanqieX.Dock.BottomCompactButton178R7Key";
+static const char *const BottomCompactOverlay178R7Key = "FanqieX.Dock.BottomCompactOverlay178R7Key";
 static void BottomSymbol178Key(void) {}
 static void BottomSymbolName178Key(void) {}
 static void BottomSymbolSize178Key(void) {}
@@ -8279,6 +8282,7 @@ static void BottomOptionsOwner178Key(void) {}
 static void BottomOptionValue178Key(void) {}
 static void BottomSettingViews178Key(void) {}
 static void SettingsCompactSwitchKey(void) {}
+static const char *const SettingsDockZoomSwitchKey = "FanqieX.Dock.SettingsDockZoomSwitchKey";
 static void BottomSettingsScroll178Key(void) {}
 static void BottomLayoutLog178Key(void) {}
 static void BottomTitles178R2Key(void) {}
@@ -8290,8 +8294,8 @@ static Obj BottomDefaults178(void) {
 enum { BottomCompactRight, BottomCompactLeft, BottomCompactCenter };
 static const char *BottomCompactPositionKey="FanqieX.BottomDramaCompactPosition.1";
 static I BottomCompactPosition(void) {
-    Obj saved=O1(BottomDefaults178(),"objectForKey:",Text(BottomCompactPositionKey));
-    return saved ? ((I(*)(Obj,Sel))Message)(saved,sel_registerName("integerValue")) : BottomCompactCenter;
+    return ((I(*)(Obj,Sel,Obj))Message)(BottomDefaults178(),sel_registerName("integerForKey:"),
+        Text(BottomCompactPositionKey));
 }
 static Obj BottomPreference178(I tag) {
     if (tag>=DramaWatchTag && tag<=DramaComicTag) return DramaNamedCategoryPreference(tag);
@@ -8323,6 +8327,7 @@ static Obj BottomPreference178(I tag) {
         case 36: return Text("FanqieX.ReaderScreenshotQuickShare.1");
         case 37: return Text("FanqieX.DramaFollowBottomWidth.1");
         case BottomHapticTag: return Text("FanqieX.BottomHaptics.1");
+        case DramaDockZoomTag: return Text("FanqieX.DramaDockScrollZoom.1");
     }
     return 0;
 }
@@ -8511,15 +8516,23 @@ static Obj BottomDramaWindowHit(Obj self,Sel cmd,Point point,Obj event) {
     }
     return hit;
 }
-static B BottomCompactActive178R7(Obj bar) {
-    return BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue");
+enum { BottomDockExpanded, BottomDockButton, BottomDockZoom };
+static I BottomConfiguredShape(void) {
+    if (BottomFlag178(2)) return BottomDockButton;
+    return BottomFlag178(DramaDockZoomTag) ? BottomDockZoom : BottomDockExpanded;
 }
+static I BottomDockShape(Obj bar) {
+    return (I)Double(objc_getAssociatedObject(bar,BottomCompact178Key));
+}
+static B BottomCompactActive178R7(Obj bar) { return BottomDockShape(bar)!=BottomDockExpanded; }
 static void BottomSetCompact178(Obj bar,B compact) {
-    if (BottomCompactActive178R7(bar)==compact) return;
+    I old=BottomDockShape(bar),shape=compact ? BottomConfiguredShape() : BottomDockExpanded;
+    if (old==shape) return;
     Obj proxy=BottomWeakValue178(bar,BottomProxyBox178Key);
+    const char *prepare=old==BottomDockZoom || shape==BottomDockZoom ? "prepareScrollZoomDock:inBar:" : "prepareDock:inBar:";
     ((void(*)(Obj,Sel,Obj,Obj))Message)(Lookup("FQXDockMotion"),
-        sel_registerName("prepareDock:inBar:"),proxy,bar);
-    objc_setAssociatedObject(bar,BottomCompact178Key,compact ? BoolBox(1) : (Obj)0,1);
+        sel_registerName(prepare),proxy,bar);
+    objc_setAssociatedObject(bar,BottomCompact178Key,shape ? Number(shape) : (Obj)0,1);
     if (FQDDiagnosticsEnabled()) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"compact",BoolBox(compact));
@@ -8531,7 +8544,7 @@ static void BottomSetCompact178(Obj bar,B compact) {
 static Obj BottomDramaPage178R7(Obj bar) {
     Obj owner=Get(bar,"delegate"), page=Get(owner,"selectedViewController");
     B pureClean=Get(objc_getAssociatedObject(bar,DramaPureCleanOwner178R13Key),"anyObject")!=0;
-    if (!Enabled() || !BottomFlag178(2) || !BottomIsDrama178(owner) ||
+    if (!Enabled() || !BottomConfiguredShape() || !BottomIsDrama178(owner) ||
         Get(owner,"presentedViewController") || (!pureClean && !BottomVisible178(bar,Get(bar,"window")))) return 0;
     return page;
 }
@@ -8595,8 +8608,8 @@ static void BottomDramaResolveDrag(Obj scroll) {
     Obj bar=BottomDramaScrollBar(scroll,&result);
     if (bar) {
         result=page>origin ? "next-page" : page<origin ? "previous-page" : "same-page";
-        if (page!=origin) BottomSetCompact178(bar,page>origin);
-        else if (lightLift) BottomSetCompact178(bar,0);
+        if (page>origin) BottomSetCompact178(bar,1);
+        else if (BottomConfiguredShape()==BottomDockZoom && (page<origin || lightLift)) BottomSetCompact178(bar,0);
     }
     BottomDramaDragLog("resolve",result,offset);
 }
@@ -8605,17 +8618,20 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
     I state=((I(*)(Obj,Sel))Message)(pan,sel_registerName("state"));
     if (state==1) {
         BottomDramaResetDrag(self);
-        if (!Enabled() || !BottomFlag178(2)) return;
+        I mode=BottomConfiguredShape();
+        if (!Enabled() || !mode) return;
         double offset=BottomDramaOffsetY(self);
         const char *result;
         Obj bar=BottomDramaScrollBar(self,&result);
         if (bar) {
             if (!__builtin_isfinite(offset)) result="invalid-offset";
+            else if (mode==BottomDockButton && BottomCompactActive178R7(bar)) result="already-compact";
             else {
                 result="tracking";
                 I page=BottomDramaPageAtOffset(offset,Bounds(self).height);
                 objc_setAssociatedObject(self,BottomDragStart178R7Key,Number(page),1);
-                objc_setAssociatedObject(self,BottomDragBeganCompactKey,BoolBox(BottomCompactActive178R7(bar)),1);
+                if (mode==BottomDockZoom)
+                    objc_setAssociatedObject(self,BottomDragBeganCompactKey,BoolBox(BottomCompactActive178R7(bar)),1);
             }
         }
         BottomDramaDragLog("begin",result,offset);
@@ -8623,15 +8639,17 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
     Obj start=objc_getAssociatedObject(self,BottomDragStart178R7Key);
     if (!start) return;
     const char *result;
+    Obj zoomStart=objc_getAssociatedObject(self,BottomDragBeganCompactKey);
     if (state==4 || state==5) {
-        Obj bar=BottomDramaScrollBar(self,&result);
-        if (bar) BottomSetCompact178(bar,Flag(objc_getAssociatedObject(self,BottomDragBeganCompactKey),"boolValue"));
+        Obj bar=zoomStart ? BottomDramaScrollBar(self,&result) : (Obj)0;
+        if (bar) BottomSetCompact178(bar,Flag(zoomStart,"boolValue"));
         BottomDramaResetDrag(self);
         return;
     }
     // Observe the feed's own pan. A reversal is measured from its latest extreme,
     // so the user need not drag all the way back past the original touch point.
-    Point delta=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),self);
+    if (!zoomStart && state!=3) return;
+    Point delta=zoomStart ? ((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),self) : (Point){0,0};
     B vertical=__builtin_fabs(delta.y)>__builtin_fabs(delta.x);
     Obj bar=BottomWeakValue178(Get(self,"window"),BottomWindowBarKey);
     double turning=Double(objc_getAssociatedObject(self,BottomDragTurningPointKey));
@@ -8640,6 +8658,12 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
         double reverse=compact ? delta.y-turning : turning-delta.y;
         if (reverse>=8) {
             if (BottomDramaScrollBar(self,&result)!=bar) { BottomDramaResetDrag(self); return; }
+            Obj motion=Lookup("FQXDockMotion");
+            if (Responds(motion,"setScrollZoomVelocity:forDock:")) {
+                Point velocity=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("velocityInView:"),self);
+                ((void(*)(Obj,Sel,double,Obj))Message)(motion,sel_registerName("setScrollZoomVelocity:forDock:"),
+                    __builtin_fabs(velocity.y)/Bounds(self).height,BottomWeakValue178(bar,BottomProxyBox178Key));
+            }
             BottomSetCompact178(bar,!compact);
         }
         if (reverse>=8 || reverse<0)
@@ -8649,7 +8673,7 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
         // An upward nudge and a forward flick can start identically. Only reveal
         // for a short nudge if UIKit finally settles on the original video.
         if (vertical && delta.y<=-8 && delta.y>=-32 && turning>=-32 &&
-            Flag(objc_getAssociatedObject(self,BottomDragBeganCompactKey),"boolValue"))
+            Flag(zoomStart,"boolValue"))
             objc_setAssociatedObject(self,BottomDragLightLiftKey,BoolBox(1),1);
         objc_setAssociatedObject(self,BottomDragReleasedKey,start,1);
         objc_setAssociatedObject(self,BottomDragStart178R7Key,0,1);
@@ -8669,7 +8693,7 @@ static void BottomDramaScrollWindow(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel,Obj,Sel))Message)(pan,sel_registerName("addTarget:action:"),self,
         sel_registerName("fqx_dramaScrollPan:"));
     objc_setAssociatedObject(self,BottomDragAttachedKey,BoolBox(1),1);
-    if (BottomFlag178(2)) BottomDramaDragLog("attach","native-pan",BottomDramaOffsetY(self));
+    if (BottomConfiguredShape()) BottomDramaDragLog("attach","native-pan",BottomDramaOffsetY(self));
 }
 static void BottomDramaScrollLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("FQVCollectionView","fqx_originalDramaScrollLayout"))(self,cmd);
@@ -8866,16 +8890,23 @@ static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact) {
     double height=BottomClamp178(base.height*BottomValue178(12)*0.01,__builtin_fmin(48,high),high);
     double x=available.x+(available.width-width)*0.5;
     double y=BottomClamp178(base.y+base.height-height,available.y,bottom-height);
-    if (compact) {
+    if (compact && BottomDockShape(bar)==BottomDockButton) {
+        width=__builtin_fmin(60,__builtin_fmin(maximum,high));
+        height=width;
+        x=available.x+(available.width-width)*0.5;
+        y=BottomClamp178(base.y+base.height-height,available.y,bottom-height);
+        I position=BottomCompactPosition();
+        if (position==BottomCompactLeft) x=__builtin_fmax(base.x,available.x+8);
+        else if (position!=BottomCompactCenter)
+            x=__builtin_fmin(base.x+base.width,available.x+available.width-8)-width;
+    } else if (compact) {
         // Start from the same expanded rect the host actually uses, including custom sizing.
         if (!BottomCustom178R5(0)) {
             x=base.x; y=base.y; width=base.width; height=base.height;
         }
         double smallWidth=__builtin_fmin(width,__builtin_fmax(44*count,width*0.806));
         double smallHeight=__builtin_fmin(height,__builtin_fmax(44,height*0.84));
-        I position=BottomCompactPosition();
-        if (position==BottomCompactRight) x+=width-smallWidth;
-        else if (position!=BottomCompactLeft) x+=(width-smallWidth)*0.5;
+        x+=(width-smallWidth)*0.5;
         y+=(height-smallHeight)*0.5;
         width=smallWidth; height=smallHeight;
     }
@@ -9179,15 +9210,22 @@ void FQHBottomPolish178R7(Obj proxy,Obj native,Obj lens) {
     Rect frame=Frame(proxy);
     Obj lastFrame=objc_getAssociatedObject(proxy,BottomVisualFrame178R7Key);
     Obj lastCompact=objc_getAssociatedObject(proxy,BottomVisualCompact178R7Key);
-    B compact=BottomCompactActive178R7(bar);
-    if (lastFrame && lastCompact && BoolProp(lastCompact,"boolValue")!=compact) {
-        ((void(*)(Obj,Sel,Obj,Rect,B))Message)(Lookup("FQXDockMotion"),
-            sel_registerName("animateDock:fromFrame:compact:"),proxy,UnboxRect(lastFrame),compact);
+    I shape=BottomDockShape(bar),lastShape=(I)Double(lastCompact);
+    if (lastFrame && lastCompact && lastShape!=shape) {
+        Obj motion=Lookup("FQXDockMotion");
+        if (shape==BottomDockZoom || (shape==BottomDockExpanded && lastShape==BottomDockZoom)) {
+            ((void(*)(Obj,Sel,Obj,Rect,B))Message)(motion,
+                sel_registerName("animateDock:fromFrame:compact:"),proxy,UnboxRect(lastFrame),shape==BottomDockZoom);
+        } else {
+            Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+            ((void(*)(Obj,Sel,Obj,Rect,B,Obj))Message)(motion,
+                sel_registerName("animateDock:fromFrame:compact:button:"),proxy,UnboxRect(lastFrame),shape==BottomDockButton,button);
+        }
     }
     if (!lastFrame || !SameRect(UnboxRect(lastFrame),frame))
         objc_setAssociatedObject(proxy,BottomVisualFrame178R7Key,RectBox(frame),1);
-    if (!lastCompact || BoolProp(lastCompact,"boolValue")!=compact)
-        objc_setAssociatedObject(proxy,BottomVisualCompact178R7Key,BoolBox(compact),1);
+    if (!lastCompact || lastShape!=shape)
+        objc_setAssociatedObject(proxy,BottomVisualCompact178R7Key,Number(shape),1);
     // The lifecycle installs the same adaptive Regular material for both
     // renderers. UIKit resolves the system palette against each page's traits.
     if (!Enabled() || !BottomFlag178(1)) return;
@@ -9235,7 +9273,8 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     objc_setAssociatedObject(proxy,BottomButtons178Key,buttons,1);
     V1(BottomBars178(),"addObject:",bar);
     Obj page=BottomDramaPage178R7(bar);
-    if (!page || BottomWeakValue178(bar,BottomSelectedBox178Key)!=page) {
+    if (!page || BottomWeakValue178(bar,BottomSelectedBox178Key)!=page ||
+        (BottomCompactActive178R7(bar) && BottomDockShape(bar)!=BottomConfiguredShape())) {
         BottomSetCompact178(bar,0);
         BottomSetWeak178(bar,BottomSelectedBox178Key,page);
     }
@@ -9282,20 +9321,84 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
         BottomApplyFrame178(button,frame,BottomButtonStock178Key,BottomButtonApplied178Key);
     }
 }
+static void BottomExpand178R7(Obj button,Sel cmd,Obj sender) {
+    (void)cmd; (void)sender;
+    Obj bar=BottomWeakValue178(button,BottomBarBox178Key);
+    if (bar && Get(button,"superview")==bar && objc_getAssociatedObject(bar,BottomCompactButton178R7Key)==button)
+        BottomSetCompact178(bar,0);
+}
+static Obj BottomCompactButton178R7(Obj bar) {
+    Obj button=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+    if (button) return button;
+    Obj cls=Lookup("FanqieXCompactBottomButton178R7");
+    if (!cls) {
+        cls=AllocateClass(Lookup("UIButton"),"FanqieXCompactBottomButton178R7",0);
+        if (!cls) return 0;
+        class_addMethod(cls,sel_registerName("fqx178R7_expandBottom:"),(Imp)BottomExpand178R7,"v24@0:8@16");
+        RegisterClass(cls);
+    }
+    Obj config=((Obj(*)(Obj,Sel,double,I,I))Message)(Lookup("UIImageSymbolConfiguration"),
+        sel_registerName("configurationWithPointSize:weight:scale:"),24.,5,2);
+    Obj image=((Obj(*)(Obj,Sel,Obj,Obj))Message)(Lookup("UIImage"),
+        sel_registerName("systemImageNamed:withConfiguration:"),Text("play.rectangle.fill"),config);
+    if (!image) return 0;
+    button=O0(cls,"new");
+    if (!button) return 0;
+    SetSpeechImage(button,image);
+    V1(button,"setTintColor:",O0(Lookup("UIColor"),"whiteColor"));
+    V1(button,"setAccessibilityLabel:",Text("展开底栏"));
+    BottomSetWeak178(button,BottomBarBox178Key,bar);
+    ((void(*)(Obj,Sel,Obj,Sel,U))Message)(button,sel_registerName("addTarget:action:forControlEvents:"),
+        button,sel_registerName("fqx178R7_expandBottom:"),64);
+    objc_setAssociatedObject(bar,BottomCompactButton178R7Key,button,1);
+    V0(button,"release");
+    return button;
+}
+static void BottomCompactPresentation178R7(Obj bar,Obj proxy,Obj buttons,Obj native) {
+    B compact=BottomDockShape(bar)==BottomDockButton;
+    Obj content=Get(proxy,"contentView"), overlay=0, button=0;
+    if (compact) {
+        button=BottomCompactButton178R7(bar);
+        if (!button) BottomSetCompact178(bar,0);
+        else if (!native) {
+            Obj parent=Get(At(buttons,0),"superview");
+            if (parent && parent!=proxy && Get(parent,"superview")==bar) overlay=parent;
+        }
+    }
+    Obj previous=BottomWeakValue178(bar,BottomCompactOverlay178R7Key);
+    if (previous!=overlay) {
+        BottomRestoreHidden178(previous);
+        BottomSetWeak178(bar,BottomCompactOverlay178R7Key,overlay);
+    }
+    if (!button) {
+        BottomRestoreHidden178(content);
+        Obj oldButton=objc_getAssociatedObject(bar,BottomCompactButton178R7Key);
+        if (Get(oldButton,"superview")==bar) V0(oldButton,"removeFromSuperview");
+        return;
+    }
+    // Keep the glass itself and the native selection objects mounted. The
+    // compact button alone receives touches until the original tabs expand.
+    BottomHide178(content);
+    BottomHide178(overlay);
+    Rect frame=Frame(proxy);
+    if (!SameRect(Frame(button),frame)) SetFrame(button,frame);
+    if (Get(button,"superview")!=bar) V1(bar,"addSubview:",button);
+    else if (Get(Get(bar,"subviews"),"lastObject")!=button) V1(bar,"bringSubviewToFront:",button);
+}
 void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     if (!Enabled()) { FQHBottomReset178(bar,proxy); return; }
     U count=TabCount(buttons);
     if (!count || count>8 || Get(proxy,"superview")!=bar) return;
-    B compact=BottomCompactActive178R7(bar);
+    B zoom=BottomDockShape(bar)==BottomDockZoom;
     B icons=BottomFlag178(1);
-    if (compact) {
+    if (zoom) {
         I display=((I(*)(Obj,Sel,Obj))Message)(BottomDefaults178(),sel_registerName("integerForKey:"),
             Text("FanqieX.BottomDisplayMode.1"));
         icons=display!=2;
     }
     if (icons) BottomNativeTitles178R2(native);
     Obj items=Get(bar,"items");
-    double size=BottomValue178(14);
+    double size=BottomValue178(14)*(zoom && icons ? 0.90 : 1.0);
     I style=((I(*)(Obj,Sel))Message)(proxy,sel_registerName("overrideUserInterfaceStyle"));
     for (U i=0;i<count;++i) {
         Obj button=At(buttons,i);
@@ -9309,13 +9412,14 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
             BottomSymbol178(button,TabCount(items)==count ? At(items,i) : (Obj)0,icons,size);
         }
     }
-    ((void(*)(Obj,Sel,Obj,B))Message)(Lookup("FQXDockMotion"),sel_registerName("setDock:compact:"),
-        proxy,compact);
+    BottomCompactPresentation178R7(bar,proxy,buttons,native);
+    ((void(*)(Obj,Sel,Obj,B))Message)(Lookup("FQXDockMotion"),sel_registerName("setDock:compact:"),proxy,zoom);
     BottomSyncMotion178(bar,proxy,buttons,native,0);
     if (FQDDiagnosticsEnabled() && (icons || BottomValue178(11)!=100 || BottomValue178(12)!=100 ||
-        BottomFlag178(2))) {
+        BottomConfiguredShape())) {
         Obj record=O0(Lookup("NSMutableDictionary"),"dictionary");
         Put(record,"iconsOnly",BoolBox(icons)); Put(record,"autoCompact",BoolBox(BottomFlag178(2)));
+        Put(record,"scrollZoom",BoolBox(BottomFlag178(DramaDockZoomTag)));
         if (icons) Put(record,"titleSuppression",Text("controlStates178R2"));
         Put(record,"compact",BoolBox(BoolProp(objc_getAssociatedObject(bar,BottomCompact178Key),"boolValue")));
         Put(record,"frame",RectArray(Frame(proxy))); Put(record,"iconPointSize",Number(size));
@@ -9325,7 +9429,7 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
         Put(record,"commentBlurPercent",Number(Double(O1(defaults,"objectForKey:",Text("FanqieX.CommentBlur.1")))));
         Put(record,"dramaHeaderBlurPercent",Number(Double(O1(defaults,"objectForKey:",Text("FanqieX.DramaHeaderBlur.1")))));
         Put(record,"renderer",Text(native ? "native" : "buttons"));
-        Put(record,"compactTrigger",Text("nativePanDirectionAndSettledPage"));
+        Put(record,"compactTrigger",Text(BottomFlag178(2) ? "nativePanAndSettledOffset" : "nativePanDirectionAndSettledPage"));
         Obj previous=objc_getAssociatedObject(proxy,BottomLayoutLog178Key);
         if (!previous || !((B(*)(Obj,Sel,Obj))Message)(previous,sel_registerName("isEqual:"),record)) {
             FQDRecord("bottomAppearance178",record);
@@ -9338,6 +9442,8 @@ void FQHBottomReset178(Obj bar,Obj proxy) {
     BottomPublishDramaGeometry(bar,0);
     BottomSetCompact178(bar,0);
     BottomSetWeak178(bar,BottomSelectedBox178Key,0);
+    BottomCompactPresentation178R7(bar,proxy,0,0);
+    objc_setAssociatedObject(bar,BottomCompactButton178R7Key,0,1);
     ((void(*)(Obj,Sel,Obj,B))Message)(Lookup("FQXDockMotion"),sel_registerName("setDock:compact:"),proxy,0);
     Obj buttons=objc_getAssociatedObject(proxy,BottomButtons178Key);
     U count=TabCount(buttons);
@@ -9360,7 +9466,7 @@ static void BottomRefresh178(void) {
     U count=TabCount(bars);
     for (U i=0;i<count;++i) {
         Obj bar=At(bars,i);
-        if (!BottomFlag178(2)) BottomSetCompact178(bar,0);
+        if (BottomCompactActive178R7(bar) && BottomDockShape(bar)!=BottomConfiguredShape()) BottomSetCompact178(bar,0);
         V0(bar,"setNeedsLayout");
     }
 }
@@ -9385,8 +9491,18 @@ void FQHBottomOptionChanged178(Obj self,Sel cmd,Obj sender) {
     if (tag==1 || tag==2 || tag>=21) {
         B value=BoolProp(sender,"isOn");
         changed=BottomFlag178(tag)!=value;
+        if (value && (tag==2 || tag==DramaDockZoomTag)) {
+            I other=tag==2 ? DramaDockZoomTag : 2;
+            if (BottomFlag178(other)) { SetDefault(BottomPreference178(other),0); changed=1; }
+        }
         if (changed || !O1(BottomDefaults178(),"objectForKey:",key)) SetDefault(key,value);
-        if (tag==2 && changed) SettingsUpdateCompactPosition(self);
+        if (tag==2 || tag==DramaDockZoomTag) {
+            if (changed) {
+                BottomRefresh178();
+                SettingsUpdateCompactPosition(self);
+            }
+            return;
+        }
         if (tag>=21) {
             if (tag>=DramaWatchTag && tag<=DramaComicTag) {
                 Obj rows=O1(DramaCategoryDefaults(),"objectForKey:",DramaCategoryListKey());
@@ -9446,13 +9562,14 @@ void FQHBottomOptionsReset178(Obj self,Sel cmd,Obj sender) {
         if (key) V1(defaults,"removeObjectForKey:",key);
     }
     V1(defaults,"removeObjectForKey:",BottomPreference178(37));
+    V1(defaults,"removeObjectForKey:",BottomPreference178(DramaDockZoomTag));
     V1(defaults,"removeObjectForKey:",Text(BottomCompactPositionKey));
     Obj controls=objc_getAssociatedObject(self,BottomSettingViews178Key);
     U count=TabCount(controls);
     for (U i=0;i<count;++i) {
         Obj control=At(controls,i);
         I tag=((I(*)(Obj,Sel))Message)(control,sel_registerName("tag"));
-        if (tag==37) {
+        if (tag==37 || tag==DramaDockZoomTag) {
             ((void(*)(Obj,Sel,B,B))Message)(control,sel_registerName("setOn:animated:"),0,1);
             continue;
         }
@@ -9493,6 +9610,7 @@ static void BottomSettingsSwitch178(Obj controller,Obj parent,double y,I tag,con
     V1(parent,"addSubview:",toggle);
     V1(objc_getAssociatedObject(controller,BottomSettingViews178Key),"addObject:",toggle);
     if (tag==2) objc_setAssociatedObject(controller,SettingsCompactSwitchKey,toggle,1);
+    if (tag==DramaDockZoomTag) objc_setAssociatedObject(controller,SettingsDockZoomSwitchKey,toggle,1);
     V0(toggle,"release");
 }
 static void BottomSettingsSlider178(Obj controller,Obj parent,double y,I tag,const char *title,float low,float high) {
@@ -9771,7 +9889,7 @@ static void SettingsOpenCompactPosition(Obj router,Sel cmd,Obj sender) {
     SetFrame(root,bounds);
     Obj card=SettingsPanel178R13(root,(Rect){20,16,bounds.width-40,144},1);
     I selected=BottomCompactPosition();
-    if (selected<BottomCompactRight || selected>BottomCompactCenter) selected=BottomCompactCenter;
+    if (selected<BottomCompactRight || selected>BottomCompactCenter) selected=BottomCompactRight;
     SettingsCompactPositionChoice(card,router,0,BottomCompactLeft,selected,"左侧","左侧  ✓");
     SettingsCompactPositionChoice(card,router,48,BottomCompactCenter,selected,"居中","居中  ✓");
     SettingsCompactPositionChoice(card,router,96,BottomCompactRight,selected,"右侧","右侧  ✓");
@@ -9866,6 +9984,10 @@ static void SettingsUpdateCompactPosition(Obj owner) {
     B enabled=BottomFlag178(2);
     if (BoolProp(toggle,"isOn")!=enabled)
         ((void(*)(Obj,Sel,B,B))Message)(toggle,sel_registerName("setOn:animated:"),enabled,0);
+    Obj zoom=objc_getAssociatedObject(owner,SettingsDockZoomSwitchKey);
+    B zoomEnabled=BottomConfiguredShape()==BottomDockZoom;
+    if (BoolProp(zoom,"isOn")!=zoomEnabled)
+        ((void(*)(Obj,Sel,B,B))Message)(zoom,sel_registerName("setOn:animated:"),zoomEnabled,0);
     SettingsSearchChanged178R13(objc_getAssociatedObject(owner,ToggleObserverKey),0,search,Get(search,"text"));
 }
 
@@ -10048,6 +10170,7 @@ static void SettingsInstall178R13(Obj controller) {
     SettingsToggle178R13(group,controller,router,BottomHapticTag,0,"底栏点击震动",0);
     group=SettingsGroup178R13(header,"短剧播放");
     SettingsToggle178R13(group,controller,router,2,0,"短剧滚动自动收缩",0);
+    SettingsToggle178R13(group,controller,router,DramaDockZoomTag,0,"刷视频时自动缩放 Dock",0);
     Obj position=OptionsEntry178(group,router,(Rect){0,0,Bounds(group).width,48},
         "收缩位置  ›","收缩位置","fqx_openCompactPosition:");
     V1(position,"setAccessibilityIdentifier:",Text("短剧滚动自动收缩位置 左侧 居中 右侧"));

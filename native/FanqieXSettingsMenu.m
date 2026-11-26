@@ -58,6 +58,7 @@
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
+static NSString *const ScrollZoomKey = @"FanqieX.DramaDockScrollZoom.1";
 static NSString *const CompactPositionKey = @"FanqieX.BottomDramaCompactPosition.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
 static NSString *const BottomEntryTitlePrefix = @"底栏显示：";
@@ -249,6 +250,7 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
     if (!title.length || [title isEqualToString:@"诊断与日志"] || [title isEqualToString:@"广告与福利"] ||
         [title isEqualToString:@"Telegram 频道"] || [title containsString:@"本地激励"] ||
         [title containsString:@"测试激励"] || [title containsString:@"评论区模糊液态玻璃"] ||
+        [title isEqualToString:@"短剧滚动自动收缩"] || [title isEqualToString:@"刷视频时自动缩放 Dock"] ||
         [title isEqualToString:@"底栏仅显示图标"] || [title isEqualToString:@"底栏纯图标"]) return;
     FQXSettingRow *row = [FQXSettingRow new];
     row.title = title;
@@ -287,7 +289,6 @@ static void AddView(FQXSettingsMenu *menu, UIView *view, NSString *group) {
         row.popoverKind = 7;
         row.height = 52;
     }
-    if ([title containsString:@"自动收缩"]) row.keywords = [row.keywords stringByAppendingString:@" 缩小 收起 折叠 底栏 dock 胶囊"];
     if ([title containsString:@"跟随底栏长度"]) row.keywords = [row.keywords stringByAppendingString:@" 查看全集 观看完整漫剧 进度条 底栏长度 胶囊长度 自动跟随 宽度"];
     if ([title containsString:@"时长"]) row.keywords = [row.keywords stringByAppendingString:@" 书架今日听读时长 阅读统计"];
     if ([title containsString:@"底栏"]) row.keywords = [row.keywords stringByAppendingString:@" dock dock栏 底部栏 导航栏 胶囊 图标 尺寸 大小 长度 高度"];
@@ -390,8 +391,8 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         idx = CurrentSavedCommentAppearanceMode();
     } else if (row.popoverKind == 6) {
         NSNumber *saved = [NSUserDefaults.standardUserDefaults objectForKey:CompactPositionKey];
-        NSUInteger found = [values indexOfObject:saved ?: @2];
-        idx = found == NSNotFound ? 1 : (NSInteger)found;
+        NSUInteger found = [values indexOfObject:saved ?: @0];
+        idx = found == NSNotFound ? 2 : (NSInteger)found;
     } else if (row.popoverKind == 7) {
         StartupPopoverChoices(&options, &values);
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
@@ -434,6 +435,20 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
     if (outOptions) *outOptions = options;
     if (outValues) *outValues = values;
     return idx;
+}
+
+static void AddDramaDockSwitch(FQXSettingsMenu *menu, NSString *key, NSString *path) {
+    BOOL zoom = [key isEqualToString:ScrollZoomKey];
+    FQXSettingRow *row = [FQXSettingRow new];
+    row.title = zoom ? @"刷视频时自动缩放 Dock" : @"短剧滚动自动收缩";
+    row.path = path;
+    row.option = @{@"key": key, @"default": @NO,
+                   @"detail": zoom ? @"保留全部入口，回看或轻提可展开" : @"收成一个圆按钮，点按可展开"};
+    row.keywords = [NSString stringWithFormat:@"%@ %@ 短剧 底栏 Dock 缩小 放大 收起 开关 %@",
+                    row.title, path, zoom ? @"多图标 动画 轻提 上滑 下滑 回看" : @"单圆按钮 收缩位置"];
+    row.hiddenFromSearch = zoom && [path isEqualToString:@"短剧/底栏收缩"];
+    row.height = 58;
+    [menu.catalog addObject:row];
 }
 
 static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
@@ -723,6 +738,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     menu.router = router;
     menu.adsOwner = ads;
     menu.path = @"";
+    AddDramaDockSwitch(menu, ScrollZoomKey, @"页面与导航/底栏入口");
+    AddDramaDockSwitch(menu, CompactKey, @"短剧/底栏收缩");
+    AddDramaDockSwitch(menu, ScrollZoomKey, @"短剧/底栏收缩");
     UIView *legacyHeader = legacy.tableHeaderView;
     UIView *legacyFooter = legacy.tableFooterView;
     for (UIView *group in legacyHeader.subviews) {
@@ -1149,17 +1167,16 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     FQXSettingsMenu *menu = MenuForController(owner);
     if (!menu) return NO;
     for (FQXSettingRow *row in menu.catalog) {
-        if ([row.title isEqualToString:@"短剧滚动自动收缩"]) {
-            for (UIView *control in row.content.subviews)
-                if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:[NSUserDefaults.standardUserDefaults boolForKey:CompactKey]];
-        } else if ([row.title isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
+        if ([row.title isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
             id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
             BOOL follow = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             for (UIView *control in row.content.subviews)
                 if ([control isKindOfClass:UISwitch.class]) [(UISwitch *)control setOn:follow];
         }
     }
-    [menu rebuild];
+    UIViewController *visible = menu.navigationController.topViewController;
+    FQXSettingsMenu *page = [visible isKindOfClass:FQXSettingsMenu.class] ? (FQXSettingsMenu *)visible : menu;
+    [page rebuild];
     return YES;
 }
 + (BOOL)isInstalledOnController:(UIViewController *)owner {
@@ -1469,15 +1486,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
         for (UIView *control in row.content.subviews) {
             if (![control isKindOfClass:UISwitch.class]) continue;
             UISwitch *sw = (UISwitch *)control;
-            if ([sw.accessibilityLabel isEqualToString:@"短剧滚动自动收缩"]) {
-                sw.on = [NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
-                // Never pass nil target to removeTarget:action:forControlEvents: — UIKit treats nil
-                // target as a wildcard that removes the settingsOwner's persistence action too!
-                for (id target in sw.allTargets.allObjects) {
-                    [sw removeTarget:target action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
-                }
-                [sw addTarget:self action:@selector(nativeToggleChanged:) forControlEvents:UIControlEventValueChanged];
-            } else if ([sw.accessibilityLabel isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
+            if ([sw.accessibilityLabel isEqualToString:@"查看全集与进度条跟随底栏长度"]) {
                 id stored = [NSUserDefaults.standardUserDefaults objectForKey:FollowWidthKey];
                 sw.on = [stored respondsToSelector:@selector(boolValue)] ? [stored boolValue] : NO;
             } else if ([row.path isEqualToString:@"页面与导航/底栏入口"]) {
@@ -1513,7 +1522,11 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             UISwitch *toggle = [[UISwitch alloc] init];
             id stored = row.option ? [NSUserDefaults.standardUserDefaults objectForKey:row.option[@"key"]] : nil;
             BOOL enabled = row.originalToggle ? row.originalToggle.on : (stored ? [stored boolValue] : [row.option[@"default"] boolValue]);
+            // Both preferences can be true only in externally edited or malformed older data.
+            if ([row.option[@"key"] isEqualToString:ScrollZoomKey] && [NSUserDefaults.standardUserDefaults boolForKey:CompactKey])
+                enabled = NO;
             toggle.on = row.inverted ? !enabled : enabled;
+            cell.detailTextLabel.text = row.option[@"detail"];
             toggle.accessibilityIdentifier = row.option[@"key"];
             toggle.accessibilityLabel = row.title;
             objc_setAssociatedObject(toggle, RowKey, row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -1565,17 +1578,6 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, key);
 }
 
-- (void)nativeToggleChanged:(UISwitch *)toggle {
-    BOOL isOn = toggle.isOn;
-    [NSUserDefaults.standardUserDefaults setBool:isOn forKey:CompactKey];
-    UIViewController *owner = self.settingsOwner;
-    SEL optionSel = sel_registerName("fqx178_bottomOptionChanged:");
-    if (owner && [owner respondsToSelector:optionSel]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(owner, optionSel, toggle);
-    }
-    dispatch_async(dispatch_get_main_queue(), ^{ [self rebuild]; });
-}
-
 - (void)bottomTabToggleChanged:(UISwitch *)toggle {
     BOOL entry = [toggle.accessibilityLabel hasPrefix:BottomEntryTitlePrefix];
     id target = entry ? self.router : self.settingsOwner;
@@ -1624,6 +1626,12 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 - (void)optionChanged:(UISwitch *)toggle {
     FQXSettingRow *row = objc_getAssociatedObject(toggle, RowKey);
     BOOL enabled = row.inverted ? !toggle.on : toggle.on;
+    if ([toggle.accessibilityIdentifier isEqualToString:CompactKey] || [toggle.accessibilityIdentifier isEqualToString:ScrollZoomKey]) {
+        // The core owns both preferences, their mutual exclusion and the live Dock refresh.
+        toggle.tag = [toggle.accessibilityIdentifier isEqualToString:CompactKey] ? 2 : 48;
+        ((void (*)(id, SEL, id))objc_msgSend)(self.settingsOwner, sel_registerName("fqx178_bottomOptionChanged:"), toggle);
+        return;
+    }
     if (row.originalToggle) {
         row.originalToggle.on = enabled;
         [row.originalToggle sendActionsForControlEvents:UIControlEventValueChanged];

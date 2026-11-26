@@ -78,6 +78,16 @@ int main(void) {
         assert(![storage objectForKey:category]);
         assert([[storage stringForKey:hostKey] isEqual:@"host value"]);
         assert([BackupSnapshot(storage)[CommentComposerStyle] isEqual:@0]);
+        assert(![storage boolForKey:LegacyCompact] && ![storage boolForKey:ScrollZoom]);
+        assert(ApplySettings(storage, domain, @{LegacyCompact: @YES}, YES));
+        assert([storage boolForKey:LegacyCompact] && ![storage boolForKey:ScrollZoom]);
+        assert(ApplySettings(storage, domain, @{ScrollZoom: @YES}, NO));
+        assert(![storage boolForKey:LegacyCompact] && [storage boolForKey:ScrollZoom]);
+        NSDictionary *zoomSnapshot = BackupSnapshot(storage);
+        assert([zoomSnapshot[ScrollZoom] isEqual:@YES] && [zoomSnapshot[LegacyCompact] isEqual:@NO]);
+        NSDictionary *conflict = @{LegacyCompact: @YES, ScrollZoom: @YES};
+        assert(ApplySettings(storage, domain, conflict, YES));
+        assert([storage boolForKey:LegacyCompact] && ![storage boolForKey:ScrollZoom]);
         [storage removePersistentDomainForName:domain];
     }
     return 0;
