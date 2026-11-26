@@ -99,6 +99,13 @@ def instructions():
         add("xtn v0.4h, v1.4s", {1: a})
         add("xtn v0.4h, v0.4s", {0: a})
         add("umaxv h2, v3.4h", {3: a})
+    for insn in ("fsub", "fmul", "fminnm", "fmaxnm", "fcmgt"):
+        for a, b, c, d in ((-3.5, 4., 7., -2.), (-0., 0., 0., -0.)):
+            add(f"{insn} v3.2d, v1.2d, v3.2d", {1: fp_pair(a, b), 3: fp_pair(c, d)})
+    for insn in ("bit", "bif", "cmeq"):
+        add(f"{insn} v2.16b, v0.16b, v1.16b", {
+            0: int("11223744" * 4, 16), 1: int("112f3740" * 4, 16), 2: rng.getrandbits(128)})
+    add("dup v4.16b, v4.b[0]", {4: int("00112233445566778899aabbccddeea5", 16)})
     return cases
 
 

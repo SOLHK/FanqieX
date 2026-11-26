@@ -24,7 +24,7 @@ class Boundary:
 class GeometrySIMD(unittest.TestCase):
     def test_independent_unicorn_vectors(self):
         fixture = json.loads((ROOT / "tests/fixtures/neon178_vectors.json").read_text())
-        self.assertGreaterEqual(len(fixture["vectors"]), 150)
+        self.assertGreaterEqual(len(fixture["vectors"]), 200)
         for row in fixture["vectors"]:
             with self.subTest(assembly=row["assembly"], inputs=row["inputs"]):
                 instruction = bytes.fromhex(row["opcode"])
@@ -58,6 +58,30 @@ class GeometrySIMD(unittest.TestCase):
                 cpu = CPU(struct.pack("<I", 0x6e62fc20), Boundary())
                 cpu.v[1] = int.from_bytes(struct.pack("<2d", 1., 2.), "little")
                 cpu.v[2] = int.from_bytes(struct.pack("<2d", divisor, 3.), "little")
+                with self.assertRaisesRegex(AssertionError, "Audited SIMD"):
+                    cpu.step()
+
+    def test_xcode_geometry_replicates_raw_64_bit_values(self):
+        # Apple object code at 0x3fd94/0x3fe24, with independent GPR and memory values.
+        raw = 0xfedcba9876543210
+        for op, dst, source in ((0x4d40cd02, 2, raw), (0x4e080d01, 1, 8)):
+            with self.subTest(op=hex(op)):
+                cpu = CPU(struct.pack("<I", op) + bytes(4) + struct.pack("<Q", raw), Boundary())
+                cpu.x[8] = 8
+                cpu.flags_imm(10)
+                originals, gprs, sp = cpu.v[:], cpu.x[:], cpu.sp
+                cpu.step()
+                originals[dst] = source | (source << 64)
+                self.assertEqual(cpu.v, originals)
+                self.assertEqual(cpu.x, gprs)
+                self.assertEqual(cpu.sp, sp)
+                self.assertEqual((cpu.n, cpu.z, cpu.c, cpu.overflow), (True, False, True, False))
+
+    def test_xcode_geometry_rejects_nonfinite_operands(self):
+        for op in (0x4ee2d462, 0x6e61dc00, 0x4ee5c443, 0x4e62c482, 0x6ee0e422):
+            with self.subTest(op=hex(op)):
+                cpu = CPU(struct.pack("<I", op), Boundary())
+                cpu.v[(op >> 5) & 31] = int.from_bytes(struct.pack("<2d", 1., float("nan")), "little")
                 with self.assertRaisesRegex(AssertionError, "Audited SIMD"):
                     cpu.step()
 

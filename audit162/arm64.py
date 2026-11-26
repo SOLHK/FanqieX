@@ -410,6 +410,17 @@ class CPU:
             value = (self.v[src] >> (((op >> 20) & 1) * 64)) & MASK64
             self.v[dst] = value if op & (1 << 28) else value | (value << 64)
             return True
+        if op & 0xfffffc00 == 0x4e010400:  # DUP Vd.16B, Vn.B[0]
+            self.v[dst] = (self.v[src] & 0xff) * (mask128 // 255)
+            return True
+        if op & 0xfffffc00 == 0x4e080c00:  # DUP Vd.2D, Xn
+            value = self.r(src)
+            self.v[dst] = value | (value << 64)
+            return True
+        if op & 0xfffffc00 == 0x4d40cc00:  # LD1R {Vd.2D}, [Xn|SP], no writeback
+            value = self.read(self.r(src, sp=True), 8)
+            self.v[dst] = value | (value << 64)
+            return True
         if op & 0xfff8fc00 == 0x6f00f400:  # FMOV Vd.2D, #imm
             imm = (((op >> 16) & 7) << 5) | ((op >> 5) & 31)
             sign, b6 = (imm >> 7) & 1, (imm >> 6) & 1
@@ -423,8 +434,18 @@ class CPU:
                            (~selection & self.v[rhs])) & mask128
             return True
         key = op & 0xffe0fc00
+        if key in (0x6ea01c00, 0x6ee01c00):  # BIT / BIF .16B
+            select = self.v[rhs] if key == 0x6ea01c00 else ~self.v[rhs]
+            self.v[dst] = (self.v[src] & select) | (self.v[dst] & ~select)
+            return True
+        if key == 0x6e208c00:  # CMEQ Vd.16B, Vn.16B, Vm.16B
+            difference = self.v[src] ^ self.v[rhs]
+            self.v[dst] = sum(0xff << shift for shift in range(0, 128, 8)
+                              if (difference >> shift) & 0xff == 0)
+            return True
         multiply_element = op & 0xffe0f400 == 0x4fc09000
-        if multiply_element or key in (0x4e60d400, 0x6e60fc00):  # FMUL/FADD/FDIV .2D
+        if multiply_element or key in (0x6e60dc00, 0x4e60d400, 0x4ee0d400, 0x6e60fc00,
+                                       0x4ee0c400, 0x4e60c400, 0x6ee0e400):
             lhs_bits, rhs_bits = self.v[src], self.v[rhs]
             result = 0
             for lane in range(2):
@@ -433,13 +454,22 @@ class CPU:
                 b = number(rhs_bits >> (index*64))
                 require(math.isfinite(a) and math.isfinite(b),
                         'Audited SIMD arithmetic uses finite FP operands')
-                if multiply_element:
+                if multiply_element or key == 0x6e60dc00:  # FMUL
                     value = a*b
-                elif key == 0x4e60d400:
+                elif key == 0x4e60d400:  # FADD
                     value = a+b
-                else:
+                elif key == 0x4ee0d400:  # FSUB
+                    value = a-b
+                elif key == 0x6e60fc00:  # FDIV
                     require(b != 0.0, 'Audited SIMD division has a nonzero divisor')
                     value = a/b
+                elif key == 0x6ee0e400:  # FCMGT, each comparison yields a full-width mask
+                    result |= (MASK64 if a > b else 0) << (lane*64)
+                    continue
+                elif key == 0x4ee0c400:  # FMINNM prefers -0 over +0
+                    value = number(bits(a) | bits(b)) if a == b else min(a, b)
+                else:  # FMAXNM prefers +0 over -0
+                    value = number(bits(a) & bits(b)) if a == b else max(a, b)
                 require(math.isfinite(value), 'Audited SIMD arithmetic has a finite result')
                 result |= bits(value) << (lane*64)
             self.v[dst] = result
