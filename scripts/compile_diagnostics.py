@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile runtime-only diagnostics into the existing relocation-free segment.
 
-This accepts function code, C strings and scalar read-only literal pools.
+This accepts function code, C strings and fixed-width read-only literal pools.
 Class/selector metadata, writable data, unknown imports, and unrecognized
 page-relative references fail the build.
 """
@@ -47,7 +47,8 @@ IMPORTS = {
 }
 SYMBOL = r'[A-Za-z_.$][A-Za-z0-9_.$]*'
 LITERAL_SECTIONS = {'__TEXT,__literal4,4byte_literals': 4,
-                    '__TEXT,__literal8,8byte_literals': 8}
+                    '__TEXT,__literal8,8byte_literals': 8,
+                    '__TEXT,__literal16,16byte_literals': 16}
 
 
 def without_comment(line: str) -> str:
@@ -64,21 +65,22 @@ def without_comment(line: str) -> str:
     return line.strip()
 
 
-def scalar_literal_definitions(lines: list[str]) -> dict[str, int]:
-    """Accept one bounded numeric word per local, read-only literal label.
+def literal_definitions(lines: list[str]) -> dict[str, int]:
+    """Accept scalar words or two quads for a 16-byte read-only vector.
 
     No symbols, expressions, aliases, writable sections or arbitrary assembler
     directives can enter the component through this constant-pool boundary.
     """
     width = 0
     pending = None
+    remaining = 0
     literals = {}
     for line in lines:
         if not line:
             continue
         if line.startswith('.section'):
             if pending is not None:
-                raise ValueError('Literal label has no value: ' + pending)
+                raise ValueError('Incomplete literal: ' + pending)
             section = re.sub(r'\s+', '', line.removeprefix('.section'))
             width = LITERAL_SECTIONS.get(section, 0)
             continue
@@ -89,6 +91,7 @@ def scalar_literal_definitions(lines: list[str]) -> dict[str, int]:
             if pending is not None:
                 raise ValueError('Literal aliases are unsupported: ' + line)
             pending = label.group(1)
+            remaining = width
             continue
         if re.fullmatch(r'\.p2align\s+' + str(width.bit_length() - 1) +
                         r'(?:,\s*(?:0|0x0))?', line):
@@ -98,15 +101,18 @@ def scalar_literal_definitions(lines: list[str]) -> dict[str, int]:
         directive = 'long' if width == 4 else 'quad'
         value = re.fullmatch(r'\.' + directive + r'\s+(-?(?:0x[0-9a-fA-F]+|[0-9]+))', line)
         if not value or pending is None:
-            raise ValueError('Unsupported scalar literal directive: ' + line)
+            raise ValueError('Unsupported literal directive: ' + line)
         token = value.group(1)
         number = int(token, 16 if 'x' in token else 10)
-        if not -(1 << (width * 8 - 1)) <= number < (1 << (width * 8)):
-            raise ValueError('Scalar literal does not fit its declared width: ' + line)
-        literals[pending] = width
-        pending = None
+        word_bytes = 4 if directive == 'long' else 8
+        if not -(1 << (word_bytes * 8 - 1)) <= number < (1 << (word_bytes * 8)):
+            raise ValueError('Literal word does not fit its declared width: ' + line)
+        remaining -= word_bytes
+        if remaining == 0:
+            literals[pending] = width
+            pending = None
     if pending is not None:
-        raise ValueError('Literal label has no value: ' + pending)
+        raise ValueError('Incomplete literal: ' + pending)
     return literals
 
 
@@ -117,7 +123,7 @@ def normalize_assembly(assembly: str) -> str:
     if len(labels) != len(set(labels)) or any(label in IMPORTS for label in labels):
         raise ValueError('Duplicate or conflicting diagnostic symbol')
     names = {label: 'LFQD_' + label.removeprefix('_') for label in labels}
-    literals = scalar_literal_definitions(lines)
+    literals = literal_definitions(lines)
 
     replacements = {}
     for index, line in enumerate(lines):
@@ -136,7 +142,7 @@ def normalize_assembly(assembly: str) -> str:
             replacements[index] = [f'adr {register}, {label}']
             replacements[following] = ['nop']
             continue
-        load = (re.fullmatch(r'ldr\s+([dswx])([0-9]+),\s*\[' +
+        load = (re.fullmatch(r'ldr\s+([qdswx])([0-9]+),\s*\[' +
                              re.escape(register) + r',\s*' + re.escape(label) +
                              r'@PAGEOFF\]', lines[following])
                 if following < len(lines) else None)
@@ -144,15 +150,15 @@ def normalize_assembly(assembly: str) -> str:
             next_line = lines[following] if following < len(lines) else '<end of component>'
             raise ValueError(f'Unsupported native page address pair: {line} followed by {next_line}')
         kind, number = load.groups()
-        width = 8 if kind in 'dx' else 4
-        if literals[label] != width or int(number) > (31 if kind in 'ds' else 30):
-            raise ValueError('Scalar literal load has incompatible width or register: ' + lines[following])
+        width = {'q': 16, 'd': 8, 's': 4, 'x': 8, 'w': 4}[kind]
+        if literals[label] != width or int(number) > (31 if kind in 'qds' else 30):
+            raise ValueError('Literal load has incompatible width or register: ' + lines[following])
         replacements[index] = [f'adr {register}, {label}']
         replacement = [f'ldr {kind}{number}, [{register}]']
         # ADRP leaves a page address in the base register. Preserve that state
         # even when later compiler instructions keep using the base. An integer
         # load into that same register intentionally replaces it with the value.
-        if kind in 'ds' or number != register[1:]:
+        if kind in 'qds' or number != register[1:]:
             replacement.append(f'and {register}, {register}, #0xfffffffffffff000')
         replacements[following] = replacement
     lines = [replacement for index, line in enumerate(lines)

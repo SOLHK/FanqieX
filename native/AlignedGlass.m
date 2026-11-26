@@ -8872,52 +8872,48 @@ static B BottomCustom178R5(B compact) {
 // The legacy layout calculates stock button frames before the capsule frame.
 // Convert at those existing write boundaries, so UIKit never observes a stock
 // size followed by a custom size during a single layout/tracking transaction.
-// Keep the original expanded and single-button geometry together. Zoom uses that
-// expanded rectangle, including custom sizing, before the final pixel alignment.
-static __attribute__((noinline)) Rect BottomConfiguredRect178(Rect base,Rect available,U count,B compact,
-                                                             double maximum,double high,double bottom) {
-    B icons=BottomFlag178(1);
-    double minimum=count*(icons ? 56 : 64)+8;
-    double width=compact ? __builtin_fmin(60,__builtin_fmin(maximum,high)) :
-        BottomClamp178(base.width*BottomValue178(11)*0.01,__builtin_fmin(minimum,maximum),maximum);
-    double height=compact ? width : BottomClamp178(base.height*BottomValue178(12)*0.01,
-        __builtin_fmin(48,high),high);
-    double x=available.x+(available.width-width)*0.5;
-    if (compact) {
-        I position=BottomCompactPosition();
-        if (position==BottomCompactLeft) x=__builtin_fmax(base.x,available.x+8);
-        else if (position!=BottomCompactCenter)
-            x=__builtin_fmin(base.x+base.width,available.x+available.width-8)-width;
-    }
-    return (Rect){x,BottomClamp178(base.y+base.height-height,available.y,bottom-height),width,height};
-}
-
 static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact) {
     Rect available=Bounds(bar);
     if (!BottomRect178(base) || !BottomRect178(available) || !count || count>8 ||
         !BottomCustom178R5(compact)) return base;
+    B icons=BottomFlag178(1);
     double maximum=__builtin_fmin(base.width,available.width-8);
+    // Once the dock reaches the top of its host bar, retain at least 12 pt
+    // of the original bottom clearance, or all of it on a tighter host.
     double stockGap=(available.y+available.height)-(base.y+base.height);
     double bottomGap=BottomClamp178(stockGap,0,12);
+    double bottom=available.y+available.height-bottomGap;
     double high=__builtin_fmin(70,available.height-bottomGap);
     if (maximum<=0 || high<44) return base;
-    B zoom=compact && BottomDockShape(bar)!=BottomDockButton;
-    Rect target=base;
-    if (!zoom || BottomCustom178R5(0)) {
-        target=BottomConfiguredRect178(base,available,count,compact && !zoom,maximum,high,
-                                      available.y+available.height-bottomGap);
-    }
-    if (zoom) {
-        double width=__builtin_fmin(target.width,__builtin_fmax(44*count,target.width*0.806));
-        double height=__builtin_fmin(target.height,__builtin_fmax(44,target.height*0.84));
-        target.x+=(target.width-width)*0.5;
-        target.y+=(target.height-height)*0.5;
-        target.width=width; target.height=height;
+    double minimum=count*(icons ? 56 : 64)+8;
+    double width=BottomClamp178(base.width*BottomValue178(11)*0.01,__builtin_fmin(minimum,maximum),maximum);
+    double height=BottomClamp178(base.height*BottomValue178(12)*0.01,__builtin_fmin(48,high),high);
+    double x=available.x+(available.width-width)*0.5;
+    double y=BottomClamp178(base.y+base.height-height,available.y,bottom-height);
+    if (compact && BottomDockShape(bar)==BottomDockButton) {
+        width=__builtin_fmin(60,__builtin_fmin(maximum,high));
+        height=width;
+        x=available.x+(available.width-width)*0.5;
+        y=BottomClamp178(base.y+base.height-height,available.y,bottom-height);
+        I position=BottomCompactPosition();
+        if (position==BottomCompactLeft) x=__builtin_fmax(base.x,available.x+8);
+        else if (position!=BottomCompactCenter)
+            x=__builtin_fmin(base.x+base.width,available.x+available.width-8)-width;
+    } else if (compact) {
+        // Start from the same expanded rect the host actually uses, including custom sizing.
+        if (!BottomCustom178R5(0)) {
+            x=base.x; y=base.y; width=base.width; height=base.height;
+        }
+        double smallWidth=__builtin_fmin(width,__builtin_fmax(44*count,width*0.806));
+        double smallHeight=__builtin_fmin(height,__builtin_fmax(44,height*0.84));
+        x+=(width-smallWidth)*0.5;
+        y+=(height-smallHeight)*0.5;
+        width=smallWidth; height=smallHeight;
     }
     double scale=((double(*)(Obj,Sel))Message)(Get(Get(bar,"window"),"screen"),sel_registerName("scale"));
     if (scale<1) scale=((double(*)(Obj,Sel))Message)(Get(bar,"traitCollection"),sel_registerName("displayScale"));
-    return (Rect){BottomPixel178(target.x,scale),BottomPixel178(target.y,scale),
-        BottomPixel178(target.width,scale),BottomPixel178(target.height,scale)};
+    return (Rect){BottomPixel178(x,scale),BottomPixel178(y,scale),
+        BottomPixel178(width,scale),BottomPixel178(height,scale)};
 }
 static Rect BottomDramaDockFrameInBar(Obj bar,Obj proxy) {
     if (BottomCompactActive178R7(bar)) {

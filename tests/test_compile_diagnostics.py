@@ -76,7 +76,7 @@ l_string:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 normalize_assembly(assembly)
 
-    def test_scalar_literal_loads_preserve_bits_base_register_and_flags(self):
+    def test_literal_loads_preserve_bits_base_register_and_flags(self):
         sys.path.insert(0, str(ROOT / 'repair162'))
         sys.path.insert(0, str(ROOT / 'audit162'))
         from macho_tools import assemble_object, sections
@@ -86,21 +86,26 @@ l_string:
             def handle(self, cpu, address):
                 return False
 
-        for width, kind, register in ((8, 'd', 0), (4, 's', 0),
+        for width, kind, register in ((16, 'q', 1), (16, 'q', 7), (8, 'd', 0), (4, 's', 0),
                                       (8, 'x', 9), (4, 'w', 9),
                                       (8, 'x', 8), (4, 'w', 8)):
+            base = 7 if kind == 'q' and register == 7 else 8
             bits = 0x3f847ae147ae147b if width == 8 else 0x3c23d70a
-            directive = 'quad' if width == 8 else 'long'
+            literal = ('.quad' if width == 8 else '.long') + f' {bits:#x}'
+            if width == 16:
+                low, high = 0x3fe9cac083126e98, 0x3feae147ae147ae1
+                bits = (high << 64) | low
+                literal = f'.quad {low:#x}\n.quad {high:#x}'
             source = f'''.section __TEXT,__literal{width},{width}byte_literals
 .p2align {width.bit_length() - 1}, 0x0
 lCPI0_0:
-.{directive} {bits:#x}
+{literal}
 .section __TEXT,__text,regular,pure_instructions
 _FQDProbe:
-adrp x8, lCPI0_0@PAGE
+adrp x{base}, lCPI0_0@PAGE
 Lloh0:
-ldr {kind}{register}, [x8, lCPI0_0@PAGEOFF]
-mov x0, x8
+ldr {kind}{register}, [x{base}, lCPI0_0@PAGEOFF]
+mov x0, x{base}
 ret
 '''
             component = normalize_assembly(source)
@@ -119,9 +124,9 @@ ret
                     cpu = CPU(payload, NoRuntime(), slide=slide)
                     cpu.flags(True, False, True, True)
                     result = cpu.run(0)
-                    overwritten = kind in 'xw' and register == 8
+                    overwritten = kind in 'xw' and register == base
                     self.assertEqual(result['result'], bits if overwritten else (slide + constant_at) & ~0xfff)
-                    if kind in 'ds':
+                    if kind in 'qds':
                         self.assertEqual(cpu.v[register], bits)
                     else:
                         self.assertEqual(cpu.x[register], bits)
@@ -143,7 +148,7 @@ ret
         valid = pool + code
         invalid = {
             'writable pool': valid.replace('__TEXT,__literal8', '__DATA,__literal8'),
-            'unreviewed pool width': valid.replace('__literal8,8byte_literals', '__literal16,16byte_literals'),
+            'incomplete vector pool': valid.replace('__literal8,8byte_literals', '__literal16,16byte_literals'),
             'symbolic word': valid.replace('.quad 0x3f847ae147ae147b', '.quad _external'),
             'symbol arithmetic': valid.replace('.quad 0x3f847ae147ae147b', '.quad lCPI0_0 + 8'),
             'wrong data width': valid.replace('.quad 0x3f847ae147ae147b', '.long 1'),
@@ -157,13 +162,25 @@ ret
             'label without value': valid.replace('.quad 0x3f847ae147ae147b\n', ''),
             'alias': valid.replace('lCPI0_0:\n', 'lCPI0_0:\nalias:\n'),
             'wrong load width': valid.replace('ldr d0,', 'ldr s0,'),
-            'unreviewed load type': valid.replace('ldr d0,', 'ldr q0,'),
+            'vector load from narrow scalar': valid.replace('ldr d0,', 'ldr q0,'),
             'wrong base register': valid.replace('[x8,', '[x9,'),
             'different pageoff target': valid.replace('lCPI0_0@PAGEOFF', '_FQDProbe@PAGEOFF'),
             'unknown target': valid.replace('lCPI0_0@PAGE', 'missing@PAGE'),
             'write to constant': valid.replace('ldr d0,', 'str d0,'),
             'second unresolved page use': valid.replace('ret\n', 'ldr d1, [x8, lCPI0_0@PAGEOFF]\nret\n'),
         }
+        wide = (valid.replace('__literal8,8byte_literals', '__literal16,16byte_literals')
+                .replace('.p2align 3', '.p2align 4').replace('ldr d0,', 'ldr q0,')
+                .replace('.quad 0x3f847ae147ae147b', '.quad 1\n.quad 2'))
+        invalid.update({
+            'half vector': wide.replace('.quad 2\n', ''),
+            'oversized vector': wide.replace('.quad 2', '.quad 2\n.quad 3'),
+            'symbolic vector lane': wide.replace('.quad 2', '.quad _external'),
+            'overflowing vector lane': wide.replace('.quad 2', '.quad 0x10000000000000000'),
+            'split vector': wide.replace('.quad 2', '.p2align 4\n.quad 2'),
+            'out-of-range Q register': wide.replace('ldr q0,', 'ldr q32,'),
+            'scalar load from vector': wide.replace('ldr q0,', 'ldr d0,'),
+        })
         for name, assembly in invalid.items():
             with self.subTest(case=name), self.assertRaises(ValueError):
                 normalize_assembly(assembly)
