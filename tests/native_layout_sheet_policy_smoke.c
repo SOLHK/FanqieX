@@ -99,6 +99,14 @@ static void test_shelf_and_history_compaction_and_pager(void) {
     assert(FQXStepVisiblePagerIndex(7, mask, 3, -1) == 0);
     assert(FQXStepVisiblePagerIndex(7, mask, 0, -1) == -1);
 
+    /* When only short story, comic and topic are shown, a hidden default must
+       move to short story before the history list container is initialized. */
+    unsigned int remaining = (1u << 4) | (1u << 5) | (1u << 6);
+    assert(FQXEvaluateVisiblePagerPolicy(7, remaining, 1, 0).redirectIndex == 4);
+    assert(FQXEvaluateVisiblePagerPolicy(7, remaining, 1, 3).redirectIndex == 4);
+    assert(FQXEvaluateVisiblePagerPolicy(7, remaining, 1, 5).redirectIndex == -1);
+    assert(FQXEvaluateVisiblePagerPolicy(7, 0, 1, 0).redirectIndex == -1);
+
     /* Single visible tab locks BOTH native scroll and step pan completely */
     unsigned int singleMask = (1u << 3);
     FQXVisiblePagerPolicy singlePol = FQXEvaluateVisiblePagerPolicy(7, singleMask, 1, 3);

@@ -4467,6 +4467,8 @@ static void FQXEnsureDramaCompactLayoutForCollectionView(UICollectionView *cv, U
 }
 
 static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__autoreleasing *outSource);
+static UIView *FQXFindDramaListContainerForFeed(id feedVC);
+static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
 
 @interface FQXDramaTopCapsuleInteraction : NSObject <UIGestureRecognizerDelegate> {
 @public
@@ -4477,6 +4479,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
     FQXFlexGlassView *_pillGlass;
     UILongPressGestureRecognizer *_pressGesture;
     UILongPressGestureRecognizer *_dragGesture;
+    UITapGestureRecognizer *_tapGesture;
     FQXTopCapsuleTouchMode _mode;
     NSInteger _lastSelectedIndex;
     BOOL _paging;
@@ -4932,41 +4935,52 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         if (CGRectGetWidth(itemRect) < 6.0) return;
         self->_paging = NO;
         self->_lastSwipeTime = 0.0;
-        self->_pendingTapIndex = idx;
-        self->_pendingTapExpiry = CACurrentMediaTime() + 0.35;
         self->_mode = FQXTopCapsuleTouchPressing;
         [self applyMaterialToOuter:self->_outerGlass isDark:[self currentResolvedDarkState]];
-        self->_anchorX = [self anchorXForIndex:idx];
-        [self placePill:[self pillRectForAnchorX:self->_anchorX] animated:YES];
     } else if (gr.state == UIGestureRecognizerStateEnded ||
                gr.state == UIGestureRecognizerStateCancelled ||
                gr.state == UIGestureRecognizerStateFailed) {
         if (self->_mode != FQXTopCapsuleTouchPressing) return;
-        BOOL endedCleanly = (gr.state == UIGestureRecognizerStateEnded);
-        if (!endedCleanly) {
-            self->_pendingTapIndex = NSNotFound;
-            self->_pendingTapExpiry = 0.0;
-        } else {
-            self->_pendingTapExpiry = CACurrentMediaTime() + 0.30;
-        }
         self->_mode = FQXTopCapsuleTouchIdle;
         [self applyMaterialToOuter:self->_outerGlass isDark:[self currentResolvedDarkState]];
-        if (!endedCleanly) {
-            [self placePillAtRestingAnimated:YES];
-            return;
-        }
-        __weak typeof(self) weakSelf = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            typeof(self) s = weakSelf;
-            if (!s || s->_mode != FQXTopCapsuleTouchIdle || s->_paging) return;
-            if (s->_pendingTapIndex != NSNotFound && CACurrentMediaTime() >= s->_pendingTapExpiry) {
-                s->_pendingTapIndex = NSNotFound;
-                s->_pendingTapExpiry = 0.0;
-                [s placePillAtRestingAnimated:YES];
-            }
-        });
+        [self placePillAtRestingAnimated:YES];
     }
+}
+
+- (void)handleTap:(UITapGestureRecognizer *)gr {
+    UICollectionView *cv = self->_collectionView;
+    UIView *tabs = self->_tabsView;
+    UIVisualEffectView *outer = self->_outerGlass;
+    if (gr.state != UIGestureRecognizerStateEnded || !cv.window || cv.isDragging ||
+        !outer || outer.hidden || !CGRectContainsPoint(outer.bounds, [gr locationInView:outer])) return;
+
+    NSInteger index = [self itemIndexAtCollectionX:[gr locationInView:cv].x];
+    id feed = FQXObjGet(FQXDramaHeaderForTabs(tabs), "delegate");
+    NSArray *models = FQXObjGet(feed, "tabModels");
+    if (![models isKindOfClass:NSArray.class] || index < 0 || index >= (NSInteger)models.count ||
+        !FQXDramaCategoryModelVisible(models[index])) return;
+    id targetModel = models[index];
+
+    // UIKit may miss a cell after its layout has been compacted. Give its normal selection
+    // the first chance to finish, then send the same native click for the visible target.
+    __weak typeof(self) weakSelf = self;
+    __weak id weakFeed = feed;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        typeof(self) interaction = weakSelf;
+        id owner = weakFeed;
+        if (!interaction || !owner || !cv.window || interaction->_collectionView != cv ||
+            interaction->_mode != FQXTopCapsuleTouchIdle || !FQXDramaCategoryMasterEnabled() ||
+            FQXObjGet(owner, "simpleTabView") != tabs) return;
+        NSArray *currentModels = FQXObjGet(owner, "tabModels");
+        if (![currentModels isKindOfClass:NSArray.class] || index >= (NSInteger)currentModels.count ||
+            currentModels[index] != targetModel || !FQXDramaCategoryModelVisible(targetModel)) return;
+
+        UIView *container = FQXFindDramaListContainerForFeed(owner);
+        if (FQXIntGet(owner, "curTabIndex", -1) == index ||
+            FQXIntGet(container, "currentIndex", -1) == index ||
+            [interaction currentHostSelectedIndex] == index) return;
+        FQXSelectDramaTabIndex(owner, index);
+    });
 }
 
 - (void)updateDragAtGesture:(UILongPressGestureRecognizer *)gr animated:(BOOL)animated {
@@ -5043,6 +5057,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
 - (void)invalidate {
     if (self->_pressGesture.view) [self->_pressGesture.view removeGestureRecognizer:self->_pressGesture];
     if (self->_dragGesture.view) [self->_dragGesture.view removeGestureRecognizer:self->_dragGesture];
+    if (self->_tapGesture.view) [self->_tapGesture.view removeGestureRecognizer:self->_tapGesture];
     [self releaseSelectionOwnership];
     [self->_pillGlass removeFromSuperview];
     self->_pillGlass = nil;
@@ -5111,6 +5126,7 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         self->_pressGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handlePress:)];
         self->_pressGesture.minimumPressDuration = 0.0;
         self->_pressGesture.cancelsTouchesInView = NO;
+        self->_pressGesture.delaysTouchesEnded = NO;
         self->_pressGesture.delegate = self;
     }
     if (self->_pressGesture.view != cv) {
@@ -5121,11 +5137,23 @@ static BOOL FQXDramaHeaderHostIsDark(UIView *header, UIView *tabs, NSString *__a
         self->_dragGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
         self->_dragGesture.minimumPressDuration = 0.22;
         self->_dragGesture.cancelsTouchesInView = NO;
+        self->_dragGesture.delaysTouchesEnded = NO;
         self->_dragGesture.delegate = self;
     }
     if (self->_dragGesture.view != cv) {
         [self->_dragGesture.view removeGestureRecognizer:self->_dragGesture];
         [cv addGestureRecognizer:self->_dragGesture];
+    }
+    if (!self->_tapGesture) {
+        self->_tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
+        self->_tapGesture.cancelsTouchesInView = NO;
+        self->_tapGesture.delaysTouchesEnded = NO;
+        self->_tapGesture.delegate = self;
+        [self->_tapGesture requireGestureRecognizerToFail:self->_dragGesture];
+    }
+    if (self->_tapGesture.view != cv) {
+        [self->_tapGesture.view removeGestureRecognizer:self->_tapGesture];
+        [cv addGestureRecognizer:self->_tapGesture];
     }
 
     UIView *header = FQXDramaHeaderForTabs(tabs);
@@ -8975,6 +9003,37 @@ static BOOL FQXDramaHideSeriesTagEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaHideSeriesTag.1"];
 }
 
+static BOOL FQXDramaHideTitleEntryEnabled(void) {
+    return [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaHideTitleEntry.1"];
+}
+
+static void FQXSetDramaTitleEntryHidden(UIView *container, BOOL hidden) {
+    FQXAudioSetHiddenTracked(FQXRawIvarObj(container, "_titleLabel"), hidden);
+    FQXAudioSetHiddenTracked(FQXRawIvarObj(container, "_arrowImageView"), hidden);
+}
+
+static void (*OrigDramaLeftContainerRender)(id, SEL);
+static void HookDramaLeftContainerRender(UIView *self, SEL cmd) {
+    // Restore stock visibility before the host renders a reused card.
+    FQXSetDramaTitleEntryHidden(self, NO);
+    OrigDramaLeftContainerRender(self, cmd);
+    if (FQXDramaHideTitleEntryEnabled()) FQXSetDramaTitleEntryHidden(self, YES);
+}
+
+static void (*OrigDramaLeftContainerTap)(id, SEL, UITapGestureRecognizer *);
+static void HookDramaLeftContainerTap(UIView *self, SEL cmd, UITapGestureRecognizer *tap) {
+    if (FQXDramaHideTitleEntryEnabled()) {
+        // The native card falls back to the title action outside the intro and comment regions.
+        CGPoint point = [tap locationInView:self];
+        SEL intro = sel_registerName("shouldTriggerIntroTapAtPoint:");
+        SEL comment = sel_registerName("shouldTriggerHotCommentTapAtPoint:");
+        BOOL (*matches)(id, SEL, CGPoint) = (void *)objc_msgSend;
+        if (!([self respondsToSelector:intro] && matches(self, intro, point)) &&
+            !([self respondsToSelector:comment] && matches(self, comment, point))) return;
+    }
+    OrigDramaLeftContainerTap(self, cmd, tap);
+}
+
 static BOOL FQXDramaHideTitleBadgeEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaHideTitleBadge.1"];
 }
@@ -10054,6 +10113,9 @@ static void FQXSyncDramaSeriesPillForControl(UIView *control) {
     if (![control isKindOfClass:UIView.class]) return;
     [FQXTrackedDramaSeriesControls() addObject:control];
     FQXSyncDramaInfoOverlaysForControl(control);
+    UIView *left = FQXRawIvarObj(FQXRawIvarObj(control, "_baseInfoView"), "_leftContainerView");
+    Class leftClass = objc_lookUpClass("SSShortVideoOutterMultiGenreFeedLeftContainerView");
+    if ([left isKindOfClass:leftClass]) FQXSetDramaTitleEntryHidden(left, FQXDramaHideTitleEntryEnabled());
     BOOL hide = FQXDramaHideSeriesTagEnabled();
     BOOL inPinchClean = [objc_getAssociatedObject(control, FQXPinchPureCleanActiveKey) boolValue];
     if (!hide) {
@@ -14243,6 +14305,34 @@ static NSString *FQXHistoryFilterKeyForTitle(NSString *title) {
     return nil;
 }
 
+static BOOL FQXHistoryCategoryVisible(NSString *title) {
+    NSString *key = FQXHistoryFilterKeyForTitle(title);
+    return !key || FQXShelfOptionEnabled(key);
+}
+
+static void (*OrigShelfHistoryLoadCategory)(id, SEL, double);
+static void HookShelfHistoryLoadCategory(UIViewController *self, SEL cmd, double height) {
+    FQXMigrateLegacyHistoryFilterBarPrefIfNeeded();
+    NSArray *tabs = FQXObjGet(self, "tabVCs");
+    NSInteger current = FQXIntGet(self, "currentVCIndex", -1);
+    if ([tabs isKindOfClass:NSArray.class] && tabs.count <= FQXMaxCompactStripItems &&
+        current >= 0 && (NSUInteger)current < tabs.count &&
+        !FQXHistoryCategoryVisible(FQXObjGet(tabs[(NSUInteger)current], "tabName"))) {
+        unsigned int visibleMask = 0;
+        for (NSUInteger i = 0; i < tabs.count; i++) {
+            if (FQXHistoryCategoryVisible(FQXObjGet(tabs[i], "tabName"))) visibleMask |= 1u << i;
+        }
+        int redirect = FQXEvaluateVisiblePagerPolicy(tabs.count, visibleMask, 1, (int)current).redirectIndex;
+        SEL setter = sel_registerName("setCurrentVCIndex:");
+        Method method = class_getInstanceMethod(object_getClass(self), setter);
+        if (redirect >= 0 && method && strcmp(method_getTypeEncoding(method), "v24@0:8q16") == 0) {
+            // The host copies this index into the category and its lazy list container during setup.
+            ((void (*)(id, SEL, NSInteger))objc_msgSend)(self, setter, redirect);
+        }
+    }
+    OrigShelfHistoryLoadCategory(self, cmd, height);
+}
+
 static NSString *FQXHistoryFilterKeyForCell(UIView *cell) {
     if (![cell isKindOfClass:UIView.class]) return nil;
     NSString *title = FQXHistoryDirectTextOfView(cell);
@@ -14300,8 +14390,8 @@ static void FQXSelectShelfCategoryIndex(UIViewController *ownerVC,
         CGFloat pageW = CGRectGetWidth(pagerScroll.bounds);
         if (pageW > 100.0 && !FQXBoolGet(pagerScroll, "isScrollAnimating", NO)) {
             CGFloat targetX = pageW * (CGFloat)target;
-            CGFloat maxContentX = MAX(targetX, pagerScroll.contentSize.width - pageW);
-            if (targetX >= 0.0 && targetX <= maxContentX + 1.0 &&
+            CGFloat maxContentX = pagerScroll.contentSize.width - pageW;
+            if ((isRootShelf || targetX <= maxContentX + 1.0) &&
                 fabs(pagerScroll.contentOffset.x - targetX) > 1.0) {
                 [pagerScroll setContentOffset:CGPointMake(targetX, pagerScroll.contentOffset.y) animated:NO];
             }
@@ -14357,8 +14447,7 @@ static unsigned int FQXShelfPagerMaskAndCount(UIViewController *ownerVC,
             id t = FQXObjGet(ds[i], "title") ?: FQXObjGet(ds[i], "name");
             if ([t isKindOfClass:NSString.class]) title = t;
         }
-        NSString *key = FQXHistoryFilterKeyForTitle(title);
-        if (!key || FQXShelfOptionEnabled(key)) mask |= (1u << i);
+        if (FQXHistoryCategoryVisible(title)) mask |= (1u << i);
     }
     if (outCount) *outCount = count;
     return mask;
@@ -14600,7 +14689,7 @@ static void FQXApplyShelfPagerPolicy(UIViewController *ownerVC,
         if (pageW > 100.0 && !FQXBoolGet(scroll, "isScrollAnimating", NO)) {
             CGFloat expectedX = pageW * (CGFloat)currentIndex;
             if (fabs(scroll.contentOffset.x - expectedX) > 1.0 &&
-                expectedX <= MAX(expectedX, scroll.contentSize.width - pageW + 1.0)) {
+                (isRootShelf || expectedX <= scroll.contentSize.width - pageW + 1.0)) {
                 [scroll setContentOffset:CGPointMake(expectedX, scroll.contentOffset.y) animated:NO];
             }
         }
@@ -24339,6 +24428,8 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "didMoveToWindow", "v16@0:8", OrigOuterDidMoveToWindow, HookOuterDidMoveToWindow);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "bindContentModel:", "v24@0:8@16", OrigOuterBindContent, HookOuterBindContent);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "resetToRecycle", "v16@0:8", OrigOuterResetToRecycle, HookOuterResetToRecycle);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedLeftContainerView", "renderViewModel", "v16@0:8", OrigDramaLeftContainerRender, HookDramaLeftContainerRender);
+            HOOK_INST("SSShortVideoOutterMultiGenreFeedLeftContainerView", "handleCardTap:", "v24@0:8@16", OrigDramaLeftContainerTap, HookDramaLeftContainerTap);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigOuterHitTest, HookOuterHitTest);
             HOOK_INST("SSShortVideoOutterMultiGenreFeedControlView", "gestureRecognizerShouldBegin:", "B24@0:8@16", OrigOuterPinchSeekShouldBegin, HookOuterPinchSeekShouldBegin);
             HOOK_INST("FQVShortVideoListVCBackgroundPlaybackComponent", "shouldPauseInBackground", "B16@0:8", OrigDramaShouldPauseInBackground, HookDramaShouldPauseInBackground);
@@ -24736,6 +24827,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSBookShelfFilterHeaderView", "layoutSubviews", "v16@0:8", OrigShelfFilterHeaderLayout, HookShelfFilterHeaderLayout);
         POST_HOOK("SSBookShelfFilterMixRowCollectionView", "layoutSubviews", "v16@0:8", OrigShelfFilterMixRowLayout, HookShelfFilterMixRowLayout);
         POST_HOOK("SSBookShelfFilter541Cell", "layoutSubviews", "v16@0:8", OrigShelfFilter541CellLayout, HookShelfFilter541CellLayout);
+        POST_HOOK("SSBookHistorySubViewController", "loadCategoryView:", "v24@0:8d16", OrigShelfHistoryLoadCategory, HookShelfHistoryLoadCategory);
         POST_HOOK("SSBookHistorySubViewController", "viewDidLayoutSubviews", "v16@0:8", OrigShelfHistoryVCDidLayout, HookShelfHistoryVCDidLayout);
         POST_HOOK("SSBookHistorySubViewController", "categoryLayout", "v16@0:8", OrigShelfHistoryCategoryLayout, HookShelfHistoryCategoryLayout);
         POST_HOOK("SSBookHistorySubViewController", "loadMaskView:", "v24@0:8d16", OrigShelfHistoryLoadMaskView, HookShelfHistoryLoadMaskView);

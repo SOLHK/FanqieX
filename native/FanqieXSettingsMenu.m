@@ -4,6 +4,55 @@
 #import "FQXBlurControl.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
+#import "FanqieXReleaseNotes.h"
+
+@interface FQXReleaseHistoryController : UITableViewController
+@end
+
+@implementation FQXReleaseHistoryController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"历代更新";
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+        initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closeHistory)];
+    [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"ReleaseNote"];
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+}
+
+- (void)closeHistory {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return sizeof(FQXReleaseNotes) / sizeof(FQXReleaseNotes[0]);
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ReleaseNote" forIndexPath:indexPath];
+    const FQXReleaseNote *entry = &FQXReleaseNotes[indexPath.row];
+    UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+    content.text = entry->version;
+    content.secondaryText = entry->summary;
+    content.secondaryTextProperties.numberOfLines = 0;
+    cell.contentConfiguration = content;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    return cell;
+}
+@end
+
+@interface FQXReleaseNotesController : UIViewController
+- (void)showHistory;
+@end
+
+@implementation FQXReleaseNotesController
+- (void)showHistory {
+    if (self.presentedViewController) return;
+    FQXReleaseHistoryController *history = [[FQXReleaseHistoryController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    UINavigationController *sheet = [[UINavigationController alloc] initWithRootViewController:history];
+    sheet.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+@end
 
 static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
@@ -766,7 +815,8 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             row.path = @"书架净化/筛选栏标签";
         if ([option[@"key"] hasPrefix:@"FanqieX.ShelfFavorites"])
             row.path = @"书架净化/收藏页";
-        if ([@[@"FanqieX.DramaHideFullscreenButton.1", @"FanqieX.DramaHideSeriesTag.1", @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1",
+        if ([@[@"FanqieX.DramaHideFullscreenButton.1", @"FanqieX.DramaHideTitleEntry.1", @"FanqieX.DramaHideSeriesTag.1",
+               @"FanqieX.DramaHideTitleBadge.1", @"FanqieX.DramaHideGenreTags.1",
                @"FanqieX.DramaHideEpisodeAdaptations.1", @"FanqieX.DramaHideEpisodeSameSeries.1", @"FanqieX.DramaHideEpisodeRecommend.1",
                @"FanqieX.DramaShowDanmakuButton.1"] containsObject:option[@"key"]])
             row.path = @"短剧/页面内容";
@@ -785,6 +835,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             @"FanqieX.DramaCommentNoVideoShift.1":@"短剧 评论区 画面不上移 视频不缩小 全屏 背景 透射 液态玻璃",
             @"FanqieX.DramaExitCollectAlert.1":@"短剧 退出 收藏 放入书架 是否放入书架 下次再说 弹窗 拦截 关闭",
             @"FanqieX.DramaHideFullscreenButton.1":@"短剧 漫剧 全屏观看 横屏播放 播放器 原位置 点击",
+            @"FanqieX.DramaHideTitleEntry.1":@"短剧 漫剧 剧名 标题 箭头 详情 入口 左下角",
             @"FanqieX.DramaHideSeriesTag.1":@"短剧 漫剧 系列剧 追剧 共 万人在追 在追 标签 入口 横幅 隐藏 关闭",
             @"FanqieX.DramaHideTitleBadge.1":@"短剧 漫剧 上新 爆款 热播 新剧 独播 角标 徽标 标题 标签 隐藏 关闭",
             @"FanqieX.DramaHideGenreTags.1":@"短剧 漫剧 题材 分类 季数 第1季 第2季 逆袭 都市日常 奇幻脑洞 重生 演员 标签 隐藏 关闭",
@@ -997,26 +1048,55 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 }
 
 - (void)showReleaseNotes:(UIButton *)sender {
-    if (self.presentedViewController) {
-        [self dismissViewControllerAnimated:YES completion:nil];
-        return;
+    if (self.presentedViewController) return;
+
+    NSString *version = FQXPluginVersion();
+    NSString *summary = nil;
+    for (NSUInteger i = 0; i < sizeof(FQXReleaseNotes) / sizeof(FQXReleaseNotes[0]); ++i) {
+        if ([version isEqualToString:FQXReleaseNotes[i].version]) {
+            summary = FQXReleaseNotes[i].summary;
+            break;
+        }
     }
+
+    FQXReleaseNotesController *page = [FQXReleaseNotesController new];
     UITextView *notes = [UITextView new];
-    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n短剧合集与进度条随 Dock 长度更新，修正顶部分类滑动和选中位置。\n\n减少底栏切换时的重复布局，修复可能卡住的问题。\n\n新增「隐藏全屏观看按钮」，开启后仍可点原位置进入全屏。\n\n修复设置备份导入后未恢复的问题。", FQXPluginVersion()];
+    notes.text = [NSString stringWithFormat:@"%@ 更新内容\n\n%@", version, summary ?: @"暂无更新说明"];
     notes.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     notes.adjustsFontForContentSizeCategory = YES;
     notes.textColor = UIColor.labelColor;
     notes.backgroundColor = UIColor.clearColor;
-    notes.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
+    notes.textContainerInset = UIEdgeInsetsMake(16, 16, 4, 16);
     notes.editable = NO;
     notes.selectable = NO;
+    [notes addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:page action:@selector(showHistory)]];
 
-    UIViewController *page = [UIViewController new];
-    page.view = notes;
+    UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
+    configuration.title = @"查看历代更新";
+    configuration.image = [UIImage systemImageNamed:@"chevron.forward"];
+    configuration.imagePlacement = NSDirectionalRectEdgeTrailing;
+    configuration.imagePadding = 8;
+    configuration.contentInsets = NSDirectionalEdgeInsetsMake(10, 21, 10, 21);
+    UIButton *history = [UIButton buttonWithConfiguration:configuration primaryAction:nil];
+    history.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    [history addTarget:page action:@selector(showHistory) forControlEvents:UIControlEventTouchUpInside];
+
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[notes, history]];
+    body.axis = UILayoutConstraintAxisVertical;
+    body.translatesAutoresizingMaskIntoConstraints = NO;
+    [page.view addSubview:body];
+    [NSLayoutConstraint activateConstraints:@[
+        [body.topAnchor constraintEqualToAnchor:page.view.topAnchor],
+        [body.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor],
+        [body.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor],
+        [body.bottomAnchor constraintEqualToAnchor:page.view.bottomAnchor],
+        [history.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+    ]];
     page.modalPresentationStyle = UIModalPresentationPopover;
     CGFloat width = MIN(312.0, CGRectGetWidth(self.view.bounds) - 32.0);
     CGSize contentSize = [notes sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-    page.preferredContentSize = CGSizeMake(width, MIN(300.0, ceil(contentSize.height)));
+    CGFloat historyHeight = MAX(44.0, [history sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)].height);
+    page.preferredContentSize = CGSizeMake(width, MIN(300.0, ceil(contentSize.height)) + historyHeight);
     UIPopoverPresentationController *popover = page.popoverPresentationController;
     popover.delegate = self;
     popover.sourceView = sender;
