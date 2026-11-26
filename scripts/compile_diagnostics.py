@@ -141,7 +141,8 @@ def normalize_assembly(assembly: str) -> str:
                              r'@PAGEOFF\]', lines[following])
                 if following < len(lines) else None)
         if not load or label not in literals:
-            raise ValueError('Unsupported native page address pair: ' + line)
+            next_line = lines[following] if following < len(lines) else '<end of component>'
+            raise ValueError(f'Unsupported native page address pair: {line} followed by {next_line}')
         kind, number = load.groups()
         width = 8 if kind in 'dx' else 4
         if literals[label] != width or int(number) > (31 if kind in 'ds' else 30):
