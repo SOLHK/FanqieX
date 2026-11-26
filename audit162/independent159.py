@@ -592,6 +592,8 @@ def version_word(version: str) -> int:
         return 0x15800
     if version == "1.9.8beta2":
         return 0x15802
+    if version == "2.0.1beta1":
+        return 0x20101
     if version == "1.9.7beta5":
         return 0x15705
     if version == "1.8R7":
