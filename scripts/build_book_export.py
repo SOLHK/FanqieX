@@ -28,7 +28,11 @@ VIDEO_EXPORT_FILES = ("native/FanqieXSettingsMenu.m", "native/FanqieXReleaseNote
                       "native/FanqieXVideoExport.m", "native/VideoContainer.h", "native/FanqieXMotion.m", "native/FQXContentCleanup.m",
                       "native/FanqieXDetachedDock.h", "native/FanqieXDetachedDock.m",
                       "native/FanqieXDiagnosticsHub.h", "native/FanqieXDiagnosticsHub.m",
-                      "native/FQXBlurControl.h", "native/FQXLayoutAndSheetPolicy.h", "native/FQXMineShortcutGeometry.h")
+                      "native/FQXBlurControl.h", "native/FQXLayoutAndSheetPolicy.h", "native/FQXMineShortcutGeometry.h",
+                      "native/FanqieXNaloia.m", "native/FanqieXNaloia.h", "native/FanqieXNaloiaPaths.inc",
+                      "native/FanqieXNaloiaScan.h",
+                      "assets/naloia/favorite.svg", "assets/naloia/comment.svg", "assets/naloia/like.svg",
+                      "assets/naloia/share.svg")
 FRAMEWORKS = ("Foundation", "UIKit", "CoreGraphics")
 
 

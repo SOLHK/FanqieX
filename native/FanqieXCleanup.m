@@ -1558,6 +1558,10 @@ static void InstallDramaActionVisibility(NSString *className, NSString *key) {
             [owners addObject:view];
             if (originalMoveWin) originalMoveWin(view, moveWinSel);
             if (view.window) ReflowDramaRightInteractionRailForAction(view);
+            Class style = objc_lookUpClass("FQXDramaActionStyle");
+            SEL update = sel_registerName("refreshOwner:");
+            if ([style respondsToSelector:update])
+                ((void (*)(id, SEL, id))objc_msgSend)(style, update, view);
         });
         if (!FQXInstallOwnedHook(cls, moveWinSel, NO, "v16@0:8", moveWinView, (IMP *)&originalMoveWin)) {
             imp_removeBlock(moveWinView);
@@ -2135,7 +2139,7 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
             EnsureDramaRailContainerHooked(railRoot);
             ReflowDramaRightInteractionRail(railRoot);
         }
-    } else if ([key isEqualToString:DramaOutlineActionsKey]) {
+    } else if ([key isEqualToString:DramaOutlineActionsKey] || [key hasPrefix:@"FanqieX.DramaNaloia"]) {
         Class style = objc_lookUpClass("FQXDramaActionStyle");
         SEL refresh = sel_registerName("refresh");
         if ([style respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(style, refresh);

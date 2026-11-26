@@ -27,6 +27,8 @@ ROLES = (('SSShortVideoRightInteractionCollectView', 'starIcon'),
 class Runtime(BaseRuntime):
     def __init__(self, data):
         super().__init__(data)
+        if 'NSThread' not in self.classes:
+            self._class('NSThread', 'NSObject')
         self._add(self.classes['UIView'], 'layoutSubviews', self.LAYOUT_IMP, 'v16@0:8')
         self._add(self.classes[PLAYER], 'controlViewDidDisplay', self.LAYOUT_IMP, 'v16@0:8')
         self._add(self.classes['UIImageView'], 'setImage:', self.LAYOUT_IMP, 'v24@0:8@16')
@@ -61,6 +63,11 @@ class Runtime(BaseRuntime):
         if pc - self.slide == 0xa5d4:
             receiver, selector, argument = cpu.x[:3]
             name = self.selector_names.get(selector)
+            if receiver == self.classes['NSThread']:
+                if name == 'respondsToSelector:':
+                    return self.finish(cpu, int(self.selector_names.get(argument) == 'isMainThread'))
+                if name == 'isMainThread':
+                    return self.finish(cpu, 1)
             if receiver == self.classes['UIImageSymbolConfiguration'] and name == 'configurationWithPointSize:weight:scale:':
                 return self.finish(cpu, self.obj('UIImageSymbolConfiguration', 'outline style', size=cpu.fp(0)))
             if receiver == self.classes['UIImage'] and name == 'systemImageNamed:withConfiguration:':

@@ -2421,6 +2421,8 @@ static double DramaActionDiameter178R11(void) {
 static void DramaActionGlyphKey(void) {}
 static void DramaActionInkKey(void) {}
 static void DramaActionTrackImageKey(void) {}
+// The control stores its bound glyph and the glyph stores the presenter.
+static void DramaNaloiaBindingKey(void) {}
 
 static void RestoreDramaActionInk(Obj glyph) {
     Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
@@ -2500,6 +2502,12 @@ static void DramaActionInk(Obj owner,Obj glyph,double factor,B stable,double max
 
 static void DramaActionImageChanged(Obj glyph,Sel cmd,Obj image) {
     ((void(*)(Obj,Sel,Obj))Original("UIImageView","fqx_originalSetDramaActionImage:"))(glyph,cmd,image);
+    Obj presenter=objc_getAssociatedObject(glyph,DramaNaloiaBindingKey);
+    if (presenter) {
+        if (BoolProp(Lookup("NSThread"),"isMainThread") && Responds(presenter,"imageDidChange:"))
+            V1(presenter,"imageDidChange:",glyph);
+        return;
+    }
     Obj sizing=objc_getAssociatedObject(glyph,DramaActionTrackImageKey);
     if (!sizing) return;
     Obj ink=objc_getAssociatedObject(glyph,DramaActionInkKey);
@@ -2517,7 +2525,66 @@ static double BottomValue178(I tag);
 static void DramaOutlineGlyphKey(void) {}
 static void DramaOutlinePaintKey(void) {}
 static void DramaOutlineStockMaskKey(void) {}
-static void DramaOutlineRestoreGlyph(Obj owner) {
+static void DramaActionRebindingKey(void) {}
+enum {
+    DramaNaloiaFavorite,
+    DramaNaloiaComment,
+    DramaNaloiaLike,
+    DramaNaloiaShare,
+};
+static I DramaNaloiaRole(Obj owner,Sel selector) {
+    if (selector==sel_registerName("starIcon") && Kind(owner,"SSShortVideoRightInteractionCollectView"))
+        return DramaNaloiaFavorite;
+    if (selector==sel_registerName("commentIcon") &&
+        (Kind(owner,"SSShortVideoRightInteractionCommentView") || Kind(owner,"SSShortVideoHostRightInteractionCommentView")))
+        return DramaNaloiaComment;
+    if (selector==sel_registerName("likeIcon") && Kind(owner,"SSShortVideoRightInteractionLikeView"))
+        return DramaNaloiaLike;
+    if (selector==sel_registerName("shareIcon") && Kind(owner,"SSShortVideoRightInteractionShareView"))
+        return DramaNaloiaShare;
+    return -1;
+}
+static inline __attribute__((always_inline)) Obj DramaNaloiaPresenter(I role) {
+    Obj presenter=Lookup("FQXNaloiaPresentation");
+    return Responds(presenter,"enabledForRole:") &&
+           Responds(presenter,"updateOwner:glyph:role:identity:selected:animate:") &&
+           ((B(*)(Obj,Sel,I))Message)(presenter,sel_registerName("enabledForRole:"),role) ? presenter : 0;
+}
+static inline __attribute__((always_inline)) void DramaNaloiaDetach(Obj owner) {
+    Obj glyph=objc_getAssociatedObject(owner,DramaNaloiaBindingKey);
+    if (!glyph) return;
+    Obj presenter=objc_getAssociatedObject(glyph,DramaNaloiaBindingKey);
+    objc_setAssociatedObject(glyph,DramaNaloiaBindingKey,0,1);
+    objc_setAssociatedObject(owner,DramaNaloiaBindingKey,0,1);
+    if (Responds(presenter,"detachOwner:")) V1(presenter,"detachOwner:",owner);
+}
+static void DramaNaloiaSync(Obj presenter,Obj owner,Obj glyph,I role,B animate) {
+    if (objc_getAssociatedObject(owner,DramaActionRebindingKey)) return;
+    if (!Kind(glyph,"UIImageView") || !Get(owner,"window")) { DramaNaloiaDetach(owner); return; }
+    Obj previous=objc_getAssociatedObject(owner,DramaNaloiaBindingKey);
+    if (previous!=glyph) {
+        DramaNaloiaDetach(owner);
+        objc_setAssociatedObject(owner,DramaNaloiaBindingKey,glyph,1);
+        objc_setAssociatedObject(glyph,DramaNaloiaBindingKey,presenter,1);
+    }
+    B selectedRole=role==DramaNaloiaFavorite || role==DramaNaloiaLike;
+    Obj model=selectedRole ? Get(owner,"model") : 0;
+    Obj identity=Get(model,"vid");
+    if (!model && !selectedRole) {
+        for (Obj parent=Get(owner,"superview"); parent; parent=Get(parent,"superview")) {
+            if (!Kind(parent,"FQVShortVideoPlayerCellView")) continue;
+            model=Get(parent,"model");
+            identity=Get(model,"videoModelTargetVid");
+            break;
+        }
+    }
+    if (!Kind(identity,"NSString") || !((U(*)(Obj,Sel))Message)(identity,sel_registerName("length"))) identity=model;
+    const char *state=role==DramaNaloiaFavorite ? "isCollected" : role==DramaNaloiaLike ? "isLiked" : 0;
+    B selected=state && (Responds(model,state) ? Flag(model,state) : BoolProp(owner,state));
+    ((void(*)(Obj,Sel,Obj,Obj,I,Obj,B,B))Message)(presenter,sel_registerName("updateOwner:glyph:role:identity:selected:animate:"),
+        owner,glyph,role,identity,selected,animate);
+}
+static inline __attribute__((always_inline)) void DramaOutlineRestoreGlyph(Obj owner) {
     Obj glyph=objc_getAssociatedObject(owner,DramaOutlineGlyphKey);
     if (!glyph) return;
     Obj layer=Get(glyph,"layer");
@@ -2526,7 +2593,7 @@ static void DramaOutlineRestoreGlyph(Obj owner) {
     objc_setAssociatedObject(owner,DramaOutlineGlyphKey,0,1);
     objc_setAssociatedObject(owner,DramaOutlineStockMaskKey,0,1);
 }
-static void DramaOutlineUpdateCollectTint(Obj owner,Obj outline) {
+static inline __attribute__((always_inline)) void DramaOutlineUpdateCollectTint(Obj owner,Obj outline) {
     Obj model=Get(owner,"model");
     B collected=Responds(model,"isCollected") ? Flag(model,"isCollected") : Flag(owner,"isCollected");
     Obj tint=O0(Lookup("UIColor"),collected ? "systemYellowColor" : "whiteColor");
@@ -2608,18 +2675,26 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
     return 1;
 }
 
-B FQHDramaGlyph(Obj owner,const char *selector) {
+static B DramaGlyph(Obj owner,const char *selector,B animate) {
     Sel glyphSelector=sel_registerName(selector);
-    if (!((glyphSelector==sel_registerName("starIcon") && Kind(owner,"SSShortVideoRightInteractionCollectView")) ||
-          (glyphSelector==sel_registerName("commentIcon") &&
-           (Kind(owner,"SSShortVideoRightInteractionCommentView") || Kind(owner,"SSShortVideoHostRightInteractionCommentView"))) ||
-          (glyphSelector==sel_registerName("likeIcon") && Kind(owner,"SSShortVideoRightInteractionLikeView")) ||
-          (glyphSelector==sel_registerName("shareIcon") && Kind(owner,"SSShortVideoRightInteractionShareView")))) return 0;
-    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return 0;
+    I role=DramaNaloiaRole(owner,glyphSelector);
+    if (role<0) return 0;
+    Obj presenter=DramaNaloiaPresenter(role);
     Obj glyph=Get(owner,selector);
-    Obj parent=Enabled() && Kind(glyph,"UIImageView") ? O0(glyph,"superview") : (Obj)0;
+    Obj nativeParent=Kind(glyph,"UIImageView") ? Get(glyph,"superview") : 0;
+    if (presenter && nativeParent && Get(owner,"window") && VisibleRect(Frame(glyph))) {
+        V1(DramaActionOwners178R11(),"addObject:",owner);
+        DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
+        DramaActionInk(owner,0,1,0,0);
+        DramaNaloiaSync(presenter,owner,glyph,role,animate);
+    } else {
+        DramaNaloiaDetach(owner);
+        presenter=0;
+    }
+    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return !!presenter;
+    Obj parent=Enabled() ? nativeParent : 0;
     Rect frame=parent ? Frame(glyph) : (Rect){0};
-    B share=glyphSelector==sel_registerName("shareIcon");
+    B share=role==DramaNaloiaShare;
     Obj window=share && parent ? Get(owner,"window") : (Obj)0;
     double width=window ? Bounds(window).width : 0;
     B compactShare=width>0 && width<420;
@@ -2632,7 +2707,7 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
         DramaActionInk(owner,0,1,0,0);
         double points=BottomValue178(16);
         if (compactShare) points=__builtin_fmin(points,__builtin_fmin(frame.width,frame.height)*0.70);
-        if (DramaOutlineApply(owner,glyph,parent,frame,selector,points)) {
+        if (presenter || DramaOutlineApply(owner,glyph,parent,frame,selector,points)) {
             RemoveDramaGlass(owner);
             return 1;
         }
@@ -2641,60 +2716,147 @@ B FQHDramaGlyph(Obj owner,const char *selector) {
     Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
     Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
     if (!glass) { DramaActionInk(owner,0,1,0,0); return 0; }
-    B stable=glyphSelector==sel_registerName("starIcon") || glyphSelector==sel_registerName("likeIcon") || compactShare;
-    DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
+    if (!presenter) {
+        B stable=role==DramaNaloiaFavorite || role==DramaNaloiaLike || compactShare;
+        DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
+    }
     B hidden=Flag(glyph,"isHidden");
     if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
     return 1;
+}
+B FQHDramaGlyph(Obj owner,const char *selector) {
+    return DramaGlyph(owner,selector,0);
+}
+static inline __attribute__((always_inline)) const char *DramaGlyphSelector(Obj owner) {
+    if (Kind(owner,"SSShortVideoRightInteractionCollectView")) return "starIcon";
+    if (Kind(owner,"SSShortVideoRightInteractionLikeView")) return "likeIcon";
+    if (Kind(owner,"SSShortVideoRightInteractionShareView")) return "shareIcon";
+    return "commentIcon";
 }
 void FQHRefreshDramaActions178R11(void) {
     Obj owners=Get(DramaActionOwners178R11(),"allObjects");
     U count=((U(*)(Obj,Sel))Message)(owners,sel_registerName("count"));
     for (U i=0;i<count;++i) {
         Obj owner=At(owners,i);
-        const char *selector=Kind(owner,"SSShortVideoRightInteractionCollectView") ? "starIcon" :
-            Kind(owner,"SSShortVideoRightInteractionLikeView") ? "likeIcon" :
-            Kind(owner,"SSShortVideoRightInteractionShareView") ? "shareIcon" : "commentIcon";
-        FQHDramaGlyph(owner,selector);
+        FQHDramaGlyph(owner,DramaGlyphSelector(owner));
     }
 }
 
+static void DramaRefreshActionOwner(Obj self,Sel cmd,Obj owner) {
+    (void)self; (void)cmd;
+    if (Get(owner,"window")) FQHDramaGlyph(owner,DramaGlyphSelector(owner));
+    else DramaNaloiaDetach(owner);
+}
 static void DramaRefreshStyle(Obj self,Sel cmd) {
     (void)self; (void)cmd;
     FQHRefreshDramaActions178R11();
 }
 static void DramaCollectModel(Obj self,Sel cmd,Obj model,B animated) {
+    B decorated=Get(self,"window") && DramaNaloiaPresenter(DramaNaloiaFavorite);
+    Obj previous=objc_getAssociatedObject(self,DramaActionRebindingKey);
+    if (decorated) objc_setAssociatedObject(self,DramaActionRebindingKey,BoolBox(1),1);
     ((void(*)(Obj,Sel,Obj,B))Original("SSShortVideoRightInteractionCollectView",
-        "fqx_originalCollectArtModel:animated:"))(self,cmd,model,animated);
-    FQHDramaGlyph(self,"starIcon");
+        "fqx_originalCollectArtModel:animated:"))(self,cmd,model,animated && !decorated);
+    if (decorated) objc_setAssociatedObject(self,DramaActionRebindingKey,previous,1);
+    DramaGlyph(self,"starIcon",1);
 }
-static void DramaCollectStateChanged(Obj model,Sel cmd,B collected) {
-    ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionCollectModel",
-        "fqx_originalSetDramaCollected:"))(model,cmd,collected);
+static inline __attribute__((always_inline)) void DramaSyncBoundSelection(Obj model,I role) {
+    B favorite=role==DramaNaloiaFavorite;
+    Obj presenter=DramaNaloiaPresenter(role);
+    if (!favorite && !presenter) return;
+    const char *className=favorite ? "SSShortVideoRightInteractionCollectView" : "SSShortVideoRightInteractionLikeView";
     Obj owners=Get(DramaActionOwners178R11(),"allObjects");
     for (U i=0,count=TabCount(owners);i<count;++i) {
         Obj owner=At(owners,i);
-        if (!Kind(owner,"SSShortVideoRightInteractionCollectView") || Get(owner,"model")!=model) continue;
-        Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
-        if (Get(outline,"superview")) DramaOutlineUpdateCollectTint(owner,outline);
+        if (!Kind(owner,className) || Get(owner,"model")!=model) continue;
+        if (presenter) DramaGlyph(owner,favorite ? "starIcon" : "likeIcon",1);
+        else {
+            Obj outline=objc_getAssociatedObject(owner,DramaOutlineViewKey);
+            if (Get(outline,"superview")) DramaOutlineUpdateCollectTint(owner,outline);
+        }
     }
 }
+static void DramaSyncActionModel(Obj self,Sel cmd,Obj model) {
+    (void)self; (void)cmd;
+    DramaSyncBoundSelection(model,Kind(model,"SSShortVideoRightInteractionCollectModel") ?
+        DramaNaloiaFavorite : DramaNaloiaLike);
+}
+static void DramaActionStateChanged(Obj model,Sel cmd,B selected) {
+    B favorite=cmd==sel_registerName("setIsCollected:");
+    const char *cls=favorite ? "SSShortVideoRightInteractionCollectModel" : "SSShortVideoRightInteractionLikeModel";
+    const char *alias=favorite ? "fqx_originalSetDramaCollected:" : "fqx_originalSetDramaLiked:";
+    ((void(*)(Obj,Sel,B))Original(cls,alias))(model,cmd,selected);
+    if (BoolProp(Lookup("NSThread"),"isMainThread")) {
+        DramaSyncBoundSelection(model,favorite ? DramaNaloiaFavorite : DramaNaloiaLike);
+        return;
+    }
+    Obj style=Lookup("FQXDramaActionStyle");
+    if (Responds(style,"syncActionModel:"))
+        ((void(*)(Obj,Sel,Sel,Obj,B))Message)(style,sel_registerName("performSelectorOnMainThread:withObject:waitUntilDone:"),
+            sel_registerName("syncActionModel:"),model,0);
+}
 static void DramaLikeModel(Obj self,Sel cmd,Obj model) {
+    B decorated=DramaNaloiaPresenter(DramaNaloiaLike)!=0;
+    Obj previous=objc_getAssociatedObject(self,DramaActionRebindingKey);
+    if (decorated) objc_setAssociatedObject(self,DramaActionRebindingKey,BoolBox(1),1);
     ((void(*)(Obj,Sel,Obj))Original("SSShortVideoRightInteractionLikeView",
         "fqx_originalLikeArtModel:"))(self,cmd,model);
-    FQHDramaGlyph(self,"likeIcon");
+    if (decorated) objc_setAssociatedObject(self,DramaActionRebindingKey,previous,1);
+    DramaGlyph(self,"likeIcon",1);
+}
+static void DramaNaloiaPressed(Obj self,Sel cmd) {
+    B favorite=cmd==sel_registerName("starBtnClicked");
+    Obj presenter=DramaNaloiaPresenter(favorite ? DramaNaloiaFavorite : DramaNaloiaLike);
+    if (Responds(presenter,"pressOwner:")) V1(presenter,"pressOwner:",self);
+    const char *cls=favorite ? "SSShortVideoRightInteractionCollectView" : "SSShortVideoRightInteractionLikeView";
+    const char *alias=favorite ? "fqx_originalDramaStarPressed" : "fqx_originalDramaLikePressed";
+    ((void(*)(Obj,Sel))Original(cls,alias))(self,cmd);
 }
 static void DramaCommentLayout(Obj self,Sel cmd) {
     ((void(*)(Obj,Sel))Original("SSShortVideoHostRightInteractionCommentView","fqx190_originalDramaCommentLayout"))(self,cmd);
     FQHDramaGlyph(self,"commentIcon");
 }
 
+// Marker on the rail control, or original opacity on the animation layer.
+static void DramaLikeStockEffectKey(void) {}
+static inline __attribute__((always_inline)) B DramaNaloiaLikeIsMounted(Obj owner) {
+    return objc_getAssociatedObject(owner,DramaNaloiaBindingKey) &&
+           DramaNaloiaPresenter(DramaNaloiaLike) && Get(owner,"window") && !Flag(owner,"isHidden");
+}
 static void DramaLikeVisibility(Obj self,Sel cmd,B hidden) {
+    if (hidden && objc_getAssociatedObject(self,DramaLikeStockEffectKey)) hidden=0;
     ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionLikeView","fqx190_originalDramaLikeVisibility:"))(self,cmd,hidden);
     Obj glass=objc_getAssociatedObject(self,DramaGlassKey);
     if (glass) VB(glass,"setHidden:",hidden);
     Obj outline=objc_getAssociatedObject(self,DramaOutlineViewKey);
     if (outline) VB(outline,"setHidden:",hidden);
+}
+static void DramaLikeStockEffect(Obj self,Sel cmd,B doubleTap,Obj completion) {
+    Obj owner=Get(self,"likeView");
+    B custom=!doubleTap && DramaNaloiaLikeIsMounted(owner);
+    // The manager hides the rail glyph only during its overlaid art. Keep the
+    // glyph visible and let the original animation call its own completion.
+    if (custom) objc_setAssociatedObject(owner,DramaLikeStockEffectKey,BoolBox(1),1);
+    ((void(*)(Obj,Sel,B,Obj))Original("SSShortVideoRightInteractionLikeViewManager",
+        "fqx_originalDramaLikeStockEffect:completion:"))(self,cmd,doubleTap,completion);
+    if (custom) objc_setAssociatedObject(owner,DramaLikeStockEffectKey,0,1);
+    Obj layer=Get(Get(self,"likeIconLottieAnimationView"),"layer");
+    if (!layer) return;
+    Obj opacity=objc_getAssociatedObject(layer,DramaLikeStockEffectKey);
+    if (custom && !opacity) {
+        float original=((float(*)(Obj,Sel))Message)(layer,sel_registerName("opacity"));
+        objc_setAssociatedObject(layer,DramaLikeStockEffectKey,Number(original),1);
+        ((void(*)(Obj,Sel,float))Message)(layer,sel_registerName("setOpacity:"),0);
+    } else if (!custom && opacity) {
+        ((void(*)(Obj,Sel,float))Message)(layer,sel_registerName("setOpacity:"),(float)Double(opacity));
+        objc_setAssociatedObject(layer,DramaLikeStockEffectKey,0,1);
+    }
+}
+static void DramaUnlikeStockEffect(Obj self,Sel cmd) {
+    // The native method only changes likeIcon.transform and has no callback.
+    if (!DramaNaloiaLikeIsMounted(Get(self,"likeView")))
+        ((void(*)(Obj,Sel))Original("SSShortVideoRightInteractionLikeViewManager",
+            "fqx_originalDramaUnlikeStockEffect"))(self,cmd);
 }
 
 static void DramaClearBackground(Obj view,B clear) {
@@ -7911,19 +8073,33 @@ void FQHPageInstall(void) {
     Hook("SSShortVideoRightInteractionCollectView","refreshUIWithModel:animated:",
          "fqx_originalCollectArtModel:animated:","v28@0:8@16B24",(Imp)DramaCollectModel);
     Hook("SSShortVideoRightInteractionCollectModel","setIsCollected:",
-         "fqx_originalSetDramaCollected:","v20@0:8B16",(Imp)DramaCollectStateChanged);
+         "fqx_originalSetDramaCollected:","v20@0:8B16",(Imp)DramaActionStateChanged);
+    Hook("SSShortVideoRightInteractionCollectView","starBtnClicked",
+         "fqx_originalDramaStarPressed","v16@0:8",(Imp)DramaNaloiaPressed);
     Hook("SSShortVideoRightInteractionLikeView","refreshUIWithModel:",
          "fqx_originalLikeArtModel:","v24@0:8@16",(Imp)DramaLikeModel);
+    Hook("SSShortVideoRightInteractionLikeModel","setIsLiked:",
+         "fqx_originalSetDramaLiked:","v20@0:8B16",(Imp)DramaActionStateChanged);
+    Hook("SSShortVideoRightInteractionLikeView","likeBtnClicked",
+         "fqx_originalDramaLikePressed","v16@0:8",(Imp)DramaNaloiaPressed);
     Hook("UIImageView","setImage:","fqx_originalSetDramaActionImage:","v24@0:8@16",(Imp)DramaActionImageChanged);
     Obj actionStyle=Lookup("FQXDramaActionStyle");
     if (!actionStyle) {
         actionStyle=AllocateClass(Lookup("NSObject"),"FQXDramaActionStyle",0);
         if (actionStyle) {
-            class_addMethod(object_getClass(actionStyle),sel_registerName("refresh"),(Imp)DramaRefreshStyle,"v16@0:8");
+            Obj metaclass=object_getClass(actionStyle);
+            class_addMethod(metaclass,sel_registerName("refresh"),(Imp)DramaRefreshStyle,"v16@0:8");
+            class_addMethod(metaclass,sel_registerName("refreshOwner:"),(Imp)DramaRefreshActionOwner,"v24@0:8@16");
+            class_addMethod(metaclass,sel_registerName("syncActionModel:"),(Imp)DramaSyncActionModel,"v24@0:8@16");
             RegisterClass(actionStyle);
         }
     }
     Hook("SSShortVideoRightInteractionLikeView","updateLikeIconHidden:","fqx190_originalDramaLikeVisibility:","v20@0:8B16",(Imp)DramaLikeVisibility);
+    if (Signature("SSShortVideoRightInteractionLikeView","fqx190_originalDramaLikeVisibility:","v20@0:8B16"))
+        Hook("SSShortVideoRightInteractionLikeViewManager","startLikeIconAnimation:completion:",
+             "fqx_originalDramaLikeStockEffect:completion:","v28@0:8B16@?20",(Imp)DramaLikeStockEffect);
+    Hook("SSShortVideoRightInteractionLikeViewManager","startUnLikeIconAnimation",
+         "fqx_originalDramaUnlikeStockEffect","v16@0:8",(Imp)DramaUnlikeStockEffect);
     Hook("SSShortVideoBottomDistributionView","layoutSubviews","fqx190_originalDramaWatchLayout","v16@0:8",(Imp)DramaWatchLayout);
     Hook("SSShortVideoBottomDistributionView","renderWithModel:","fqx190_originalDramaWatchRender:","v24@0:8@16",(Imp)DramaWatchRender);
     InstallInheritedLayoutHook("SSShortVideoAlbumSeriesBottomInsertView","fqx192_originalDramaWatchAlbumLayout",(Imp)DramaWatchAlbumLayout);

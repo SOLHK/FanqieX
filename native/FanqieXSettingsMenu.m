@@ -4,6 +4,7 @@
 #import "FQXBlurControl.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
+#import "FanqieXNaloia.h"
 #import "FanqieXReleaseNotes.h"
 
 @interface FQXReleaseHistoryController : UITableViewController
@@ -781,6 +782,20 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     albumTitle.popoverOptions = @[@"单行省略", @"双行显示"];
     albumTitle.height = 52;
     [menu.catalog addObject:albumTitle];
+
+    NSArray<NSString *> *actionIcons = @[@"收藏图标", @"评论图标", @"点赞图标", @"分享图标"];
+    NSArray<NSString *> *naloiaNames = @[@"Naloia · 大繁星", @"Naloia · 双语引号",
+                                        @"Naloia · 心弦爱心", @"Naloia · 折翼飞梭"];
+    for (FQXNaloiaRole role = FQXNaloiaFavorite; role < FQXNaloiaRoleCount; role++) {
+        FQXSettingRow *row = [FQXSettingRow new];
+        row.title = actionIcons[role];
+        row.path = @"短剧/右侧互动按钮";
+        row.popoverKey = FQXNaloiaPreferenceKey(role);
+        row.popoverOptions = @[@"跟随现有图标", naloiaNames[role]];
+        row.height = 52;
+        row.keywords = naloiaNames[role];
+        [menu.catalog addObject:row];
+    }
 
     NSArray *options = Invoke(objc_lookUpClass("FQXCleanup"), @"optionRows") ?: @[];
     NSDictionary *paths = @{@"reader":@"阅读/阅读页面净化/章末内容", @"mine":@"我的页面净化/内容卡片", @"sidebar":@"我的页面净化/侧栏", @"shelf":@"书架净化/推荐与导入", @"drama":@"短剧/播放设置", @"bookstore":@"书城/页面净化", @"ads":@"广告与福利/专项控制", @"readerFeatures":@"阅读/专项净化",

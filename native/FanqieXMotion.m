@@ -10,6 +10,7 @@
 #import "FQXMineShortcutGeometry.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
+#import "FanqieXNaloia.h"
 
 static const char FQXK_DockSnapshotKey = 0;
 #define DockSnapshotKey ((const void *)&FQXK_DockSnapshotKey)
@@ -20380,8 +20381,142 @@ static void FQXCompactRuntimeMemory(void) {
     FQXCompactWeakTable(FQXAudioPlayVCs());
 }
 
+@interface FQXNaloiaPanelSession : NSObject
+@property(nonatomic, weak) UIView *owner;
+@property(nonatomic, weak) UIWindow *window;
+@property(nonatomic, weak) id sourceModel;
+@property(nonatomic, copy) NSString *videoID;
+@property(nonatomic, weak) id sharePanel;
+@property(nonatomic) BOOL active;
+@end
+
+@implementation FQXNaloiaPanelSession
+@end
+
+static char FQXNaloiaCommentPanelSessionKey;
+static char FQXNaloiaSharePanelSessionKey;
+static FQXNaloiaPanelSession *FQXNaloiaCommentClickScope;
+
+static id FQXNaloiaPanelSourceModel(UIView *owner) {
+    id model = FQXObjGet(FQXObjGet(owner, "delegate"), "model");
+    if (model) return model;
+    Class cell = objc_lookUpClass("FQVShortVideoPlayerCellView");
+    for (UIView *parent = owner.superview; parent; parent = parent.superview) {
+        if ([parent isKindOfClass:cell]) return FQXObjGet(parent, "model");
+    }
+    return nil;
+}
+
+static NSString *FQXNaloiaPanelVideoID(id model) {
+    id value = FQXObjGet(model, "vid") ?: FQXObjGet(model, "videoModelTargetVid");
+    return [value isKindOfClass:NSString.class] && [value length] ? value : nil;
+}
+
+static FQXNaloiaPanelSession *FQXNaloiaCapturePanelTap(UIView *owner, FQXNaloiaRole role) {
+    if (!NSThread.isMainThread || !owner.window || !FQXNaloiaEnabled(role)) return nil;
+    id model = FQXNaloiaPanelSourceModel(owner);
+    if (!model) return nil;
+    FQXNaloiaPanelSession *session = [FQXNaloiaPanelSession new];
+    session.owner = owner;
+    session.window = owner.window;
+    session.sourceModel = model;
+    session.videoID = FQXNaloiaPanelVideoID(model);
+    return session;
+}
+
+static UIView *FQXNaloiaPanelOwner(FQXNaloiaPanelSession *session) {
+    UIView *owner = session.owner;
+    if (!owner.window || owner.window != session.window) return nil;
+    id model = FQXNaloiaPanelSourceModel(owner);
+    if (!model) return nil;
+    if (session.videoID) return [session.videoID isEqualToString:FQXNaloiaPanelVideoID(model)] ? owner : nil;
+    return session.sourceModel == model ? owner : nil;
+}
+
+static void (*OrigNaloiaCommentTap)(id, SEL);
+static void (*OrigNaloiaHostCommentTap)(id, SEL);
+static void FQXNaloiaWithCommentTap(UIView *view, SEL cmd, void (*original)(id, SEL)) {
+    if (!NSThread.isMainThread) {
+        original(view, cmd);
+        return;
+    }
+    FQXNaloiaPanelSession *previous = FQXNaloiaCommentClickScope;
+    FQXNaloiaPanelSession *session = FQXNaloiaCapturePanelTap(view, FQXNaloiaComment);
+    if (session) FQXNaloiaCommentClickScope = session;
+    original(view, cmd);
+    FQXNaloiaCommentClickScope = previous;
+}
+
+static void HookNaloiaCommentTap(UIView *view, SEL cmd) {
+    FQXNaloiaWithCommentTap(view, cmd, OrigNaloiaCommentTap);
+}
+
+static void HookNaloiaHostCommentTap(UIView *view, SEL cmd) {
+    FQXNaloiaWithCommentTap(view, cmd, OrigNaloiaHostCommentTap);
+}
+
+static void (*OrigNaloiaConfigCommentPanel)(id, SEL, id, id);
+static void HookNaloiaConfigCommentPanel(id self, SEL cmd, UIViewController *controller, id params) {
+    // The host binds its close callbacks to this same controller before presenting it.
+    FQXNaloiaPanelSession *session = NSThread.isMainThread ? FQXNaloiaCommentClickScope : nil;
+    if (session && [controller isKindOfClass:UIViewController.class]) {
+        FQXNaloiaPanelSession *existing = objc_getAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey);
+        if (!existing.active) {
+            objc_setAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    OrigNaloiaConfigCommentPanel(self, cmd, controller, params);
+}
+
+static void FQXNaloiaOpenCommentPanel(UIViewController *controller) {
+    if (!NSThread.isMainThread) return;
+    FQXNaloiaPanelSession *session = objc_getAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey);
+    if (!session) session = FQXNaloiaCommentClickScope;
+    UIView *owner = FQXNaloiaPanelOwner(session);
+    if (!owner || session.active) return;
+    session.active = YES;
+    objc_setAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    FQXNaloiaPanelDidOpen(owner, FQXNaloiaComment);
+}
+
+static void FQXNaloiaCloseCommentPanel(UIViewController *controller) {
+    if (!NSThread.isMainThread) return;
+    FQXNaloiaPanelSession *session = objc_getAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey);
+    if (!session) return;
+    objc_setAssociatedObject(controller, &FQXNaloiaCommentPanelSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!session.active) return;
+    session.active = NO;
+    UIView *owner = FQXNaloiaPanelOwner(session);
+    if (owner) FQXNaloiaPanelDidClose(owner, FQXNaloiaComment);
+}
+
+static void (*OrigNaloiaCommentListWillShow)(id, SEL);
+static void HookNaloiaCommentListWillShow(UIViewController *controller, SEL cmd) {
+    FQXNaloiaOpenCommentPanel(controller);
+    OrigNaloiaCommentListWillShow(controller, cmd);
+}
+
+static void (*OrigNaloiaCommentListDismiss)(id, SEL);
+static void HookNaloiaCommentListDismiss(UIViewController *controller, SEL cmd) {
+    OrigNaloiaCommentListDismiss(controller, cmd);
+    FQXNaloiaCloseCommentPanel(controller);
+}
+
+static void (*OrigNaloiaKMPCommentWillShow)(id, SEL);
+static void HookNaloiaKMPCommentWillShow(UIViewController *controller, SEL cmd) {
+    FQXNaloiaOpenCommentPanel(controller);
+    OrigNaloiaKMPCommentWillShow(controller, cmd);
+}
+
+static void (*OrigNaloiaKMPCommentDismiss)(id, SEL);
+static void HookNaloiaKMPCommentDismiss(UIViewController *controller, SEL cmd) {
+    OrigNaloiaKMPCommentDismiss(controller, cmd);
+    FQXNaloiaCloseCommentPanel(controller);
+}
+
 static void (*OrigDramaPanelWillShow)(id, SEL);
 static void HookDramaPanelWillShow(UIViewController *controller, SEL cmd) {
+    FQXNaloiaOpenCommentPanel(controller);
     OrigDramaPanelWillShow(controller, cmd);
     if (controller.isViewLoaded && controller.view.window) {
         FQXStyleDramaPanel(controller);
@@ -20406,6 +20541,7 @@ static void (*OrigDramaPanelDismiss)(id, SEL);
 static void HookDramaPanelDismiss(UIViewController *controller, SEL cmd) {
     UIWindow *win = controller.viewIfLoaded.window;
     OrigDramaPanelDismiss(controller, cmd);
+    FQXNaloiaCloseCommentPanel(controller);
     FQXSyncDockHiddenAcrossWindows(win, controller);
     FQXScheduleOffscreenCommentGlassRelease(controller);
 }
@@ -20414,6 +20550,10 @@ static void (*OrigDramaCommentListDisappeared)(id, SEL, BOOL);
 static void HookDramaCommentListDisappeared(UIViewController *controller, SEL cmd, BOOL animated) {
     UIWindow *win = controller.viewIfLoaded.window;
     OrigDramaCommentListDisappeared(controller, cmd, animated);
+    if (controller.isBeingDismissed || controller.isMovingFromParentViewController ||
+        controller.parentViewController.isBeingDismissed) {
+        FQXNaloiaCloseCommentPanel(controller);
+    }
     FQXSyncDockHiddenAcrossWindows(win, controller);
     FQXScheduleOffscreenCommentGlassRelease(controller);
 }
@@ -22809,6 +22949,62 @@ static void HookReadingSharePanelDidMoveWindow(UIView *panel, SEL cmd) {
     if (panel.window) FQXScheduleCandidateShareInspection(panel);
 }
 
+static void (*OrigNaloiaShareTap)(id, SEL, id);
+static void HookNaloiaShareTap(id manager, SEL cmd, UIView *view) {
+    if (NSThread.isMainThread && [view isKindOfClass:objc_lookUpClass("SSShortVideoRightInteractionShareView")]) {
+        FQXNaloiaPanelSession *existing = objc_getAssociatedObject(manager, &FQXNaloiaSharePanelSessionKey);
+        if (!existing.active || !existing.sharePanel || !FQXNaloiaPanelOwner(existing)) {
+            FQXNaloiaPanelSession *session = FQXNaloiaCapturePanelTap(view, FQXNaloiaShare);
+            objc_setAssociatedObject(manager, &FQXNaloiaSharePanelSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    OrigNaloiaShareTap(manager, cmd, view);
+}
+
+static void FQXNaloiaSharePanelShown(id manager, id panel) {
+    if (!NSThread.isMainThread || !panel) return;
+    FQXNaloiaPanelSession *session = objc_getAssociatedObject(manager, &FQXNaloiaSharePanelSessionKey);
+    if (!session || session.active) return;
+    UIView *owner = FQXNaloiaPanelOwner(session);
+    if (!owner) return;
+    session.active = YES;
+    session.sharePanel = panel;
+    FQXNaloiaPanelDidOpen(owner, FQXNaloiaShare);
+}
+
+static void FQXNaloiaSharePanelClosed(id manager, id panel) {
+    if (!NSThread.isMainThread || !panel) return;
+    FQXNaloiaPanelSession *session = objc_getAssociatedObject(manager, &FQXNaloiaSharePanelSessionKey);
+    if (!session.active || session.sharePanel != panel) return;
+    objc_setAssociatedObject(manager, &FQXNaloiaSharePanelSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIView *owner = FQXNaloiaPanelOwner(session);
+    if (owner) FQXNaloiaPanelDidClose(owner, FQXNaloiaShare);
+}
+
+static void (*OrigNaloiaLegacyShareShown)(id, SEL, id, id);
+static void HookNaloiaLegacyShareShown(id manager, SEL cmd, id panel, id params) {
+    OrigNaloiaLegacyShareShown(manager, cmd, panel, params);
+    FQXNaloiaSharePanelShown(manager, panel);
+}
+
+static void (*OrigNaloiaLegacyShareClosed)(id, SEL, id, id, BOOL);
+static void HookNaloiaLegacyShareClosed(id manager, SEL cmd, id panel, id params, BOOL byChannel) {
+    OrigNaloiaLegacyShareClosed(manager, cmd, panel, params, byChannel);
+    FQXNaloiaSharePanelClosed(manager, panel);
+}
+
+static void (*OrigNaloiaKMPShareShown)(id, SEL, id);
+static void HookNaloiaKMPShareShown(id manager, SEL cmd, id panel) {
+    OrigNaloiaKMPShareShown(manager, cmd, panel);
+    FQXNaloiaSharePanelShown(manager, panel);
+}
+
+static void (*OrigNaloiaKMPShareClosed)(id, SEL, id);
+static void HookNaloiaKMPShareClosed(id manager, SEL cmd, id panel) {
+    OrigNaloiaKMPShareClosed(manager, cmd, panel);
+    FQXNaloiaSharePanelClosed(manager, panel);
+}
+
 static void (*OrigSharePanelLayout)(id, SEL);
 static void HookSharePanelLayout(UIView *panel, SEL cmd) {
     OrigSharePanelLayout(panel, cmd);
@@ -24619,6 +24815,14 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCWillShow", "v16@0:8", OrigDramaPanelWillShow, HookDramaPanelWillShow);
             HOOK_INST("FQCShortVideoCommentPanelViewController", "onVCDismiss", "v16@0:8", OrigDramaPanelDismiss, HookDramaPanelDismiss);
             HOOK_INST("FQCShortVideoCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigDramaCommentListDisappeared, HookDramaCommentListDisappeared);
+            HOOK_INST("SSShortVideoRightInteractionCommentView", "commentViewDidClicked", "v16@0:8", OrigNaloiaCommentTap, HookNaloiaCommentTap);
+            HOOK_INST("SSShortVideoHostRightInteractionCommentView", "commentViewDidClicked", "v16@0:8", OrigNaloiaHostCommentTap, HookNaloiaHostCommentTap);
+            FQXInstallOwnedHook(objc_lookUpClass("SSBizShortVideoCommentUtil"), sel_registerName("configVCBlock:openParam:"),
+                                YES, "v32@0:8@16@24", (IMP)HookNaloiaConfigCommentPanel, (IMP *)&OrigNaloiaConfigCommentPanel);
+            HOOK_INST("FQCShortVideoCommentListViewController", "onVCWillShow", "v16@0:8", OrigNaloiaCommentListWillShow, HookNaloiaCommentListWillShow);
+            HOOK_INST("FQCShortVideoCommentListViewController", "onVCDismiss", "v16@0:8", OrigNaloiaCommentListDismiss, HookNaloiaCommentListDismiss);
+            HOOK_INST("SSBizShortVideoKmpCommentViewController", "onVCWillShow", "v16@0:8", OrigNaloiaKMPCommentWillShow, HookNaloiaKMPCommentWillShow);
+            HOOK_INST("SSBizShortVideoKmpCommentViewController", "onVCDismiss", "v16@0:8", OrigNaloiaKMPCommentDismiss, HookNaloiaKMPCommentDismiss);
             HOOK_INST("FQCParagraphCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigReaderCommentListDisappeared, HookReaderCommentListDisappeared);
             HOOK_INST("FQCShortPlaySeriesCommentListViewController", "viewDidDisappear:", "v20@0:8B16", OrigSeriesCommentListDisappeared, HookSeriesCommentListDisappeared);
             HOOK_INST("FQVTransitionView", "showInView:animated:completion:", "v36@0:8@16B24@?28", OrigTransitionShowInView, HookTransitionShowInView);
@@ -24713,6 +24917,11 @@ void FQXInstallMotionAndAudioHooks(void) {
             // UIViewController.viewDidAppear: stays LAST after all subclass viewDidAppear: hooks).
             HOOK_INST("SSVideoSharePanelView", "layoutSubviews", "v16@0:8", OrigSharePanelLayout, HookSharePanelLayout);
             HOOK_INST("SSUGKmpSharePanelContainerViewController", "viewDidLayoutSubviews", "v16@0:8", OrigKMPShareLayout, HookKMPShareLayout);
+            HOOK_INST("SSShortVideoRightInteractionShareViewManager", "shareViewDidClick:", "v24@0:8@16", OrigNaloiaShareTap, HookNaloiaShareTap);
+            HOOK_INST("SSShortVideoRightInteractionShareViewManager", "panelView:didShowWithParams:", "v32@0:8@16@24", OrigNaloiaLegacyShareShown, HookNaloiaLegacyShareShown);
+            HOOK_INST("SSShortVideoRightInteractionShareViewManager", "panelView:didDismissWithParams:byClickChannel:", "v36@0:8@16@24B32", OrigNaloiaLegacyShareClosed, HookNaloiaLegacyShareClosed);
+            HOOK_INST("SSShortVideoRightInteractionShareViewManager", "sharePanelDidShow:", "v24@0:8@16", OrigNaloiaKMPShareShown, HookNaloiaKMPShareShown);
+            HOOK_INST("SSShortVideoRightInteractionShareViewManager", "sharePanelDidDismiss:", "v24@0:8@16", OrigNaloiaKMPShareClosed, HookNaloiaKMPShareClosed);
             HOOK_INST("SSReadingSharePanel", "layoutSubviews", "v16@0:8", OrigReadingSharePanelLayout, HookReadingSharePanelLayout);
             HOOK_INST("SSReadingSharePanel", "didMoveToWindow", "v16@0:8", OrigReadingSharePanelDidMoveWindow, HookReadingSharePanelDidMoveWindow);
             FQXInstallOwnedHook(UIWindow.class, @selector(addSubview:), NO, "v24@0:8@16",
