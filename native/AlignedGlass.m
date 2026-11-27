@@ -8718,9 +8718,8 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
                 B compact=Flag(zoomStart,"boolValue");
                 if (!cancelled) {
                     Obj direction=objc_getAssociatedObject(self,BottomDragDirectionKey);
-                    if (direction) compact=Flag(direction,"boolValue");
-                    if (progress<=0) compact=0;
-                    if (progress>=1) compact=1;
+                    if (direction)
+                        compact=progress<=0 ? 0 : progress>=1 ? 1 : Flag(direction,"boolValue");
                     if (compact && Flag(zoomStart,"boolValue") && delta.y<=-8 && delta.y>=-32 && progress==1)
                         objc_setAssociatedObject(self,BottomDragLightLiftKey,BoolBox(1),1);
                 }

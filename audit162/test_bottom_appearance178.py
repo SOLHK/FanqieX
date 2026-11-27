@@ -1161,6 +1161,13 @@ def small_scroll_and_release(data, labels):
     progress((8. - 2.5 * 1.4 - .2) / travel)
     release(-5.3, 0., True)
 
+    # A re-grab can touch the opposite end of an in-flight spring before intent is established.
+    rt.interrupted_progress = .006
+    drag(1, 0., 0.)
+    drag(2, 1., 0.)
+    progress(0.)
+    release(1., 0., True)
+
     # More than three points in the new direction selects that endpoint without suppressing small changes.
     drag(1, 0., 0.)
     drag(2, 10., 300.)
