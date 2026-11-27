@@ -88,6 +88,14 @@ int main(void) {
         NSDictionary *conflict = @{LegacyCompact: @YES, ScrollZoom: @YES};
         assert(ApplySettings(storage, domain, conflict, YES));
         assert([storage boolForKey:LegacyCompact] && ![storage boolForKey:ScrollZoom]);
+
+        assert(ApplySettings(storage, domain, @{DockCollapseMode: @3, DockSiriaiHideLine: @YES}, NO));
+        assert([storage integerForKey:DockCollapseMode] == 3);
+        assert([storage boolForKey:DockSiriaiHideLine]);
+        assert(![storage boolForKey:LegacyCompact] && ![storage boolForKey:ScrollZoom]);
+        NSDictionary *siriaiSnap = BackupSnapshot(storage);
+        assert([siriaiSnap[DockCollapseMode] isEqual:@3] && [siriaiSnap[DockSiriaiHideLine] isEqual:@YES]);
+        assert([siriaiSnap[LegacyCompact] isEqual:@NO] && [siriaiSnap[ScrollZoom] isEqual:@NO]);
         [storage removePersistentDomainForName:domain];
     }
     return 0;

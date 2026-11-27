@@ -11,6 +11,7 @@
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
 #import "FanqieXNaloia.h"
+#import "FQXSiriaiDockMotion.h"
 
 static const char FQXK_DockSnapshotKey = 0;
 #define DockSnapshotKey ((const void *)&FQXK_DockSnapshotKey)
@@ -106,6 +107,10 @@ static NSString *const CommentMaterialStylePrefKey = @"FanqieX.CommentMaterialSt
 static NSString *const CommentAppearanceModePrefKey = @"FanqieX.CommentAppearanceMode.1";
 static NSString *const CommentComposerStylePrefKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModePrefKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const DockCollapseModePrefKey = @"FanqieX.DockCollapseMode.1";
+static NSString *const DockSiriaiHideLinePrefKey = @"FanqieX.DockSiriaiHideLine.1";
+static NSString *const DockLegacyCompactPrefKey = @"FanqieX.BottomDramaCompact.1";
+static NSString *const DockLegacyScrollZoomPrefKey = @"FanqieX.DramaDockScrollZoom.1";
 static NSString *const DockMaterialPrefKey = @"FanqieX.DockMaterial.1";
 static NSString *const GlassDarkTintPrefKey = @"FanqieX.GlassDarkTint.1";
 static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
@@ -2431,6 +2436,52 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     }
 }
 
+@class FQXTabBarInteraction;
+
+static const char FQXK_FeedDockItemPartKey = 0;
+#define FQXFeedDockItemPartKey ((const void *)&FQXK_FeedDockItemPartKey)
+
+static FQXDockCollapseMode FQXCurrentDockCollapseMode(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id obj = [ud objectForKey:DockCollapseModePrefKey];
+    int raw = [obj respondsToSelector:@selector(intValue)] ? [obj intValue] : -1;
+    int compact = [ud boolForKey:DockLegacyCompactPrefKey] ? 1 : 0;
+    int scrollZoom = [ud boolForKey:DockLegacyScrollZoomPrefKey] ? 1 : 0;
+    FQXDockCollapseMode resolved = FQXResolveDockCollapseMode(raw, compact, scrollZoom);
+    if (raw < 0 && (compact || scrollZoom)) {
+        [ud setInteger:(NSInteger)resolved forKey:DockCollapseModePrefKey];
+        if (resolved == FQXDockCollapseModeTikTok && scrollZoom) {
+            [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
+        }
+    } else if (raw >= FQXDockCollapseModeOff && raw <= FQXDockCollapseModeSiriai) {
+        BOOL wantLegacyCompact = (resolved == FQXDockCollapseModeLegacy);
+        if ((compact != 0) != wantLegacyCompact) [ud setBool:wantLegacyCompact forKey:DockLegacyCompactPrefKey];
+        if (scrollZoom != 0) [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
+    }
+    return resolved;
+}
+
+static BOOL FQXFeedMotionSupported(void) {
+    if (!FQXGlassEnabled() || UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPhone) return NO;
+    if (@available(iOS 26.0, *)) return YES;
+    return NO;
+}
+
+@interface FQXFeedDockItemPart : NSObject
+@property(nonatomic, weak) CALayer *buttonLayer;
+@property(nonatomic, weak) UIImageView *icon;
+@property(nonatomic, strong) UILabel *caption;
+@property(nonatomic) NSUInteger slotIndex;
+@end
+
+@implementation FQXFeedDockItemPart
+@end
+
+@interface FQXFeedSpringTarget : NSObject
+@property(nonatomic, weak) FQXTabBarInteraction *owner;
+- (void)advance:(CADisplayLink *)link;
+@end
+
 @interface FQXTabBarInteraction : NSObject <UITabBarDelegate, UIGestureRecognizerDelegate> {
 @public
     __weak UIView *_bar;
@@ -2466,6 +2517,19 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
     NSUInteger _dockLastItemCount;
     BOOL _nativeDockActive;
     BOOL _routingHostDockNavigation;
+    FQXDockCollapseMode _appliedCollapseMode;
+    DKFeedSpringState _feedSpring;
+    CADisplayLink *_feedDisplayLink;
+    CALayer *_siriaiMinimumFill;
+    NSArray<FQXFeedDockItemPart *> *_feedDockItems;
+    CGRect _feedCapsuleAtRest;
+    CGRect _feedDetachedAtRest;
+    CGPoint _feedHostCenterAtRest;
+    CGFloat _feedBaseScaleX;
+    CGFloat _feedBaseScaleY;
+    CGFloat _feedGap;
+    NSUInteger _feedLastSelectedIndex;
+    BOOL _feedControlsHidden;
 }
 - (void)syncWithBar:(UIView *)bar
               proxy:(UIVisualEffectView *)proxy
@@ -2483,10 +2547,311 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
 - (void)syncSelectionExclusivityAnimated:(BOOL)animated;
 - (void)layoutNativeDockInBar:(UIView *)bar proxy:(UIVisualEffectView *)proxy forceMeasure:(BOOL)forceMeasure;
 - (void)setNativeDockVisible:(BOOL)visible restoreProxy:(BOOL)restoreProxy;
+- (BOOL)usesFeedMotion;
+- (BOOL)feedCompact;
+- (BOOL)beginFeedDrag;
+- (void)moveFeedDrag:(CGFloat)delta;
+- (void)endFeedDrag:(BOOL)compact velocity:(CGFloat)velocity;
+- (void)setFeedCompact:(BOOL)compact animated:(BOOL)animated;
+- (void)advanceFeedSpring:(CADisplayLink *)link;
+- (void)refreshForCollapseModeChange;
+- (void)settleFeedMotionImmediate;
 - (void)teardown;
 @end
 
+@implementation FQXFeedSpringTarget
+- (void)advance:(CADisplayLink *)link {
+    FQXTabBarInteraction *owner = self.owner;
+    if (!owner) {
+        [link invalidate];
+        return;
+    }
+    [owner advanceFeedSpring:link];
+}
+@end
+
 static NSHashTable<FQXTabBarInteraction *> *FQXTrackedDockInteractions(void);
+static FQXTabBarInteraction *FQXActiveDockInteractionForBar(UIView *bar);
+static BOOL FQXVideoBackdropSingleList(UIViewController *owner);
+static BOOL FQXVideoBackdropHasTransition(UIViewController *owner);
+static BOOL FQXHasVisibleCommentSheetInWindow(UIWindow *window, UIViewController *excludingVC);
+static BOOL FQXIsBarHiddenByComment(UIView *bar);
+
+static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
+    if (!window) return NO;
+    if (FQXHasVisibleCommentSheetInWindow(window, nil)) return YES;
+    Class transCls = objc_lookUpClass("FQVTransitionView");
+    Class epCls = objc_lookUpClass("SSShortVideoEpisodesViewController");
+    if (!transCls && !epCls) return NO;
+    for (UIView *sub in window.subviews) {
+        if (sub.hidden || sub.alpha <= 0.02) continue;
+        if (transCls && [sub isKindOfClass:transCls] && CGRectGetHeight(sub.bounds) > 100.0) return YES;
+        if (epCls) {
+            UIResponder *r = sub.nextResponder;
+            if ([r isKindOfClass:epCls]) return YES;
+        }
+    }
+    return NO;
+}
+
+@interface FQXFeedDockPanController : NSObject {
+    NSHashTable<UIScrollView *> *_trackedCollections;
+    __weak UIPanGestureRecognizer *_feedPan;
+    __weak UIPanGestureRecognizer *_feedPendingPan;
+    __weak UIWindow *_feedPendingWindow;
+    __weak FQXTabBarInteraction *_activeInteraction;
+    FQXDockCollapseMode _feedMode;
+    DKFeedPanState _panState;
+}
++ (instancetype)shared;
+- (void)syncCollectionView:(UIScrollView *)scroll;
+- (void)scanWindowsForMountedCollections;
+- (void)resetFeedGesture;
+- (void)cancelActivePan;
+- (void)cancelFeedPan:(UIPanGestureRecognizer *)pan;
+@end
+
+@implementation FQXFeedDockPanController
+
++ (instancetype)shared {
+    static FQXFeedDockPanController *instance;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ instance = [FQXFeedDockPanController new]; });
+    return instance;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _trackedCollections = [NSHashTable weakObjectsHashTable];
+        DKFeedPanReset(&_panState);
+    }
+    return self;
+}
+
+- (void)resetFeedGesture {
+    _feedPan = nil;
+    _feedPendingPan = nil;
+    _feedPendingWindow = nil;
+    _activeInteraction = nil;
+    DKFeedPanReset(&_panState);
+}
+
+- (void)cancelActivePan {
+    UIPanGestureRecognizer *active = _feedPan;
+    if (active) {
+        [self cancelFeedPan:active];
+        return;
+    }
+    [self resetFeedGesture];
+}
+
+- (void)cancelFeedPan:(UIPanGestureRecognizer *)pan {
+    if (_feedPendingPan == pan) [self resetFeedGesture];
+    if (_feedPan != pan) return;
+    FQXTabBarInteraction *inter = _activeInteraction;
+    BOOL startedCompact = (_panState.startedCompact != 0);
+    [self resetFeedGesture];
+    [inter setFeedCompact:startedCompact animated:YES];
+}
+
+- (void)syncCollectionView:(UIScrollView *)scroll {
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
+    if (!pan) return;
+    [pan removeTarget:self action:@selector(handleFeedPan:)];
+    if (scroll.window) {
+        [_trackedCollections addObject:scroll];
+        [pan addTarget:self action:@selector(handleFeedPan:)];
+    } else {
+        [self cancelFeedPan:pan];
+    }
+}
+
+static void FQXCollectMountedFQVCollections(UIView *root, Class feedCls, NSMutableArray<UIScrollView *> *out, NSInteger depth) {
+    if (!root || depth > 14) return;
+    if (feedCls && [root isKindOfClass:feedCls] && [root isKindOfClass:UIScrollView.class]) {
+        [out addObject:(UIScrollView *)root];
+        return;
+    }
+    for (UIView *sub in root.subviews) {
+        FQXCollectMountedFQVCollections(sub, feedCls, out, depth + 1);
+    }
+}
+
+- (void)scanWindowsForMountedCollections {
+    Class feedCls = objc_lookUpClass("FQVCollectionView");
+    if (!feedCls) return;
+    NSMutableArray<UIScrollView *> *found = [NSMutableArray array];
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
+            FQXCollectMountedFQVCollections(win, feedCls, found, 0);
+        }
+    }
+    for (UIScrollView *scroll in found) {
+        [self syncCollectionView:scroll];
+    }
+}
+
+- (BOOL)canTrackFeed:(UIScrollView *)feed
+                mode:(FQXDockCollapseMode)mode
+      outInteraction:(FQXTabBarInteraction **)outInteraction
+     waitingForMount:(BOOL *)waitingForMount {
+    if (waitingForMount) *waitingForMount = NO;
+    if (outInteraction) *outInteraction = nil;
+    if (!FQXFeedMotionSupported() || !FQXDockCollapseModeUsesFeedMotion(mode)) return NO;
+    UIWindow *win = feed.window;
+    if (!win || !feed.isScrollEnabled) return NO;
+    CGRect winBounds = win.bounds;
+    if (CGRectGetWidth(winBounds) >= CGRectGetHeight(winBounds)) return NO;
+    CGRect feedInWin = [feed convertRect:feed.bounds toView:win];
+    if (CGRectGetWidth(feedInWin) < CGRectGetWidth(winBounds) * 0.85 ||
+        CGRectGetHeight(feedInWin) < CGRectGetHeight(winBounds) * 0.55 ||
+        fabs(CGRectGetMinX(feedInWin) - CGRectGetMinX(winBounds)) > 8.0) {
+        return NO;
+    }
+
+    Class listCls = objc_lookUpClass("FQVShortVideoListViewController");
+    Class seriesFeedCls = objc_lookUpClass("SSVideoSeriesFeedViewController");
+    Class tbcCls = objc_lookUpClass("SSTabBarController");
+    Class tabBarCls = objc_lookUpClass("SSTabBar");
+    UIViewController *listOwner = nil;
+    UIViewController *pinchOwner = nil;
+    UIViewController *tbc = nil;
+    for (UIResponder *resp = feed.nextResponder; resp; resp = resp.nextResponder) {
+        if (!listOwner && listCls && [resp isKindOfClass:listCls]) {
+            listOwner = (UIViewController *)resp;
+        }
+        if (!pinchOwner && seriesFeedCls && [resp isKindOfClass:seriesFeedCls]) {
+            pinchOwner = (UIViewController *)resp;
+        }
+        if (tbcCls && [resp isKindOfClass:tbcCls]) {
+            tbc = (UIViewController *)resp;
+            break;
+        }
+    }
+    if (!listOwner || !tbc || FQXVideoBackdropSingleList(listOwner) || FQXVideoBackdropHasTransition(listOwner)) {
+        return NO;
+    }
+    id effPinchOwner = pinchOwner ?: listOwner;
+    if (effPinchOwner && [objc_getAssociatedObject(effPinchOwner, FQXPinchPureCleanActiveKey) boolValue]) {
+        return NO;
+    }
+    BOOL selectedRoot = NO;
+    for (UIViewController *cur = listOwner; cur; cur = cur.parentViewController) {
+        if (cur.presentedViewController != nil) return NO;
+        UIViewController *parent = cur.parentViewController;
+        if ([parent isKindOfClass:UINavigationController.class] &&
+            ((UINavigationController *)parent).viewControllers.firstObject != cur) {
+            return NO;
+        }
+        if (parent == tbc) {
+            UIViewController *selVC = FQXObjGet(tbc, "selectedViewController");
+            if (cur == selVC && tbc.presentedViewController == nil) selectedRoot = YES;
+            break;
+        }
+    }
+    if (!selectedRoot) return NO;
+
+    UIView *bar = FQXObjGet(tbc, "customTabBar");
+    if (!bar || (tabBarCls && ![bar isKindOfClass:tabBarCls])) return NO;
+    if (!bar.window) {
+        if (waitingForMount) *waitingForMount = YES;
+        return NO;
+    }
+    if (bar.window != win || FQXIsBarHiddenByComment(bar) || FQXHasVisibleOverlaySheetInWindow(win)) {
+        return NO;
+    }
+    for (UIView *v = bar; v; v = v.superview) {
+        if (v.hidden || v.alpha <= 0.01) return NO;
+    }
+    FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
+    if (!inter || !inter->_nativeDockBar || !inter->_nativeDockBar.window) {
+        if (waitingForMount) *waitingForMount = YES;
+        return NO;
+    }
+    if (outInteraction) *outInteraction = inter;
+    return YES;
+}
+
+- (void)handleFeedPan:(UIPanGestureRecognizer *)pan {
+    UIScrollView *scroll = [pan.view isKindOfClass:UIScrollView.class] ? (UIScrollView *)pan.view : nil;
+    if (!scroll) return;
+    UIGestureRecognizerState state = pan.state;
+    FQXDockCollapseMode mode = FQXCurrentDockCollapseMode();
+    if (state == UIGestureRecognizerStateBegan) {
+        if (!FQXFeedMotionSupported() || !FQXDockCollapseModeUsesFeedMotion(mode) || (_feedPan && _feedPan != pan)) {
+            return;
+        }
+        _feedPendingPan = pan;
+        _feedPendingWindow = scroll.window;
+        _feedMode = mode;
+    }
+    if (_feedPendingPan == pan) {
+        if ((state != UIGestureRecognizerStateBegan &&
+             state != UIGestureRecognizerStateChanged &&
+             state != UIGestureRecognizerStateEnded) ||
+            mode != _feedMode || scroll.window != _feedPendingWindow) {
+            [self resetFeedGesture];
+            return;
+        }
+        BOOL waiting = NO;
+        FQXTabBarInteraction *inter = nil;
+        if (![self canTrackFeed:scroll mode:mode outInteraction:&inter waitingForMount:&waiting]) {
+            if (!waiting || state == UIGestureRecognizerStateEnded) [self resetFeedGesture];
+            return;
+        }
+        _feedPendingPan = nil;
+        _feedPendingWindow = nil;
+        _feedPan = pan;
+        _activeInteraction = inter;
+        BOOL siriai = (mode == FQXDockCollapseModeSiriai);
+        BOOL startedCompact = [inter feedCompact];
+        BOOL caughtMotion = [inter beginFeedDrag];
+        CGPoint origin = (caughtMotion && state == UIGestureRecognizerStateBegan)
+            ? [pan translationInView:scroll.window] : CGPointZero;
+        DKFeedPanBegin(&_panState, CGRectGetHeight(scroll.bounds), siriai ? 1 : 0,
+                       startedCompact ? 1 : 0, caughtMotion ? 1 : 0,
+                       origin.x, origin.y, state == UIGestureRecognizerStateBegan ? 1 : 0);
+    }
+
+    if (_feedPan != pan) return;
+    UIWindow *window = scroll.window;
+    FQXTabBarInteraction *inter = _activeInteraction;
+    if (state == UIGestureRecognizerStateCancelled || state == UIGestureRecognizerStateFailed ||
+        mode != _feedMode || !window || !inter || !inter->_nativeDockActive ||
+        inter->_bar.window != window || !scroll.isScrollEnabled ||
+        FQXIsBarHiddenByComment(inter->_bar) || FQXHasVisibleOverlaySheetInWindow(window)) {
+        [self cancelFeedPan:pan];
+        return;
+    }
+
+    BOOL ended = (state == UIGestureRecognizerStateEnded);
+    CGPoint translation = [pan translationInView:window];
+    CGFloat velocityY = ended ? [pan velocityInView:window].y : 0.0;
+    double deltaProgress = 0.0;
+    double endVelocityProgress = 0.0;
+    int endCompact = 0;
+    int locked = 0;
+    DKFeedPanResult result = DKFeedPanUpdate(&_panState, translation.x, translation.y,
+                                             velocityY, ended ? 1 : 0,
+                                             &deltaProgress, &endCompact, &endVelocityProgress, &locked);
+    if (result == DKFeedPanFinishedUnlocked) {
+        BOOL keepCompact = (_panState.startedCompact != 0);
+        [self resetFeedGesture];
+        [inter setFeedCompact:keepCompact animated:YES];
+        return;
+    }
+    if (result == DKFeedPanIgnored) return;
+    if (deltaProgress != 0.0) [inter moveFeedDrag:(CGFloat)deltaProgress];
+    if (result == DKFeedPanEnded) {
+        [self resetFeedGesture];
+        [inter endFeedDrag:(endCompact != 0) velocity:(CGFloat)endVelocityProgress];
+    }
+}
+
+@end
 
 static FQXTabBarInteraction *FQXActiveDockInteractionForBar(UIView *bar) {
     if (!bar) return nil;
@@ -2551,6 +2916,7 @@ static BOOL (*OrigSSTabBarPointInside)(id, SEL, CGPoint, id);
 static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent *event) {
     FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
     if (inter) {
+        if ([inter usesFeedMotion] && inter->_feedControlsHidden) return NO;
         if (inter->_detachedHostIndex != NSNotFound) {
             FQXDetachedDockButtonView *det = inter->_detachedButton;
             if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
@@ -2561,6 +2927,9 @@ static BOOL HookSSTabBarPointInside(UIView *bar, SEL cmd, CGPoint point, UIEvent
             }
         }
         if (FQXNativeDockAtPoint(inter, bar, point)) return YES;
+        if ([inter usesFeedMotion] && (inter->_feedSpring.progress > 0.005 || inter->_feedSpring.overtravel != 0.0)) {
+            return NO;
+        }
         if ([objc_getAssociatedObject(inter->_proxy, &FQXDockCompactKey) boolValue]) return NO;
         // Prevent UITabBar's invisible bottom overhang below the rendered platter from claiming
         // touches inside the iOS Home Indicator edge strip.
@@ -2575,6 +2944,7 @@ static UIView *(*OrigSSTabBarHitTest)(id, SEL, CGPoint, id);
 static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent *event) {
     FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
     if (inter) {
+        if ([inter usesFeedMotion] && inter->_feedControlsHidden) return nil;
         if (inter->_detachedHostIndex != NSNotFound) {
             FQXDetachedDockButtonView *det = inter->_detachedButton;
             if (det && det.superview == bar && !det.hidden && det.alpha > 0.01 && det.userInteractionEnabled) {
@@ -2610,6 +2980,9 @@ static UIView *HookSSTabBarHitTest(UIView *bar, SEL cmd, CGPoint point, UIEvent 
                 if (event) FQXMarkDockTouchActivity(0.35);
                 return hit;
             }
+        }
+        if ([inter usesFeedMotion] && (inter->_feedSpring.progress > 0.005 || inter->_feedSpring.overtravel != 0.0)) {
+            return nil;
         }
         if ([objc_getAssociatedObject(inter->_proxy, &FQXDockCompactKey) boolValue]) return nil;
     }
@@ -2674,8 +3047,603 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         _dockAppliedInkState = -1;
         _dockPlatterHeight = 62.0;
         _dockPlatterInset = 21.0;
+        _appliedCollapseMode = FQXDockCollapseModeOff;
+        _feedLastSelectedIndex = NSNotFound;
+        _feedBaseScaleX = 1.0;
+        _feedBaseScaleY = 1.0;
+        DKFeedSpringInit(&_feedSpring);
     }
     return self;
+}
+
+- (BOOL)usesFeedMotion {
+    return FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(self->_appliedCollapseMode);
+}
+
+- (BOOL)feedCompact {
+    return self->_feedSpring.compact != 0;
+}
+
+static void FQXCollectTabButtonsRecursive(UIView *root, Class buttonClass, NSMutableArray<UIView *> *result) {
+    if (!root || !buttonClass) return;
+    for (UIView *subview in root.subviews) {
+        if ([subview isKindOfClass:buttonClass]) [result addObject:subview];
+        else FQXCollectTabButtonsRecursive(subview, buttonClass, result);
+    }
+}
+
+static BOOL FQXModuleHasFeedGlyph(NSString *title, UIButton *sourceButton) {
+    if (FQXDockSymbolNameForTitle(title, NO) != nil) return YES;
+    if (sourceButton) {
+        if ([sourceButton imageForState:UIControlStateNormal] ||
+            [sourceButton imageForState:UIControlStateSelected] ||
+            sourceButton.currentImage) return YES;
+    }
+    return NO;
+}
+
+- (void)cleanupFeedMotionVisuals {
+    [self->_feedDisplayLink invalidate];
+    self->_feedDisplayLink = nil;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (self->_siriaiMinimumFill) {
+        [self->_siriaiMinimumFill removeFromSuperlayer];
+        self->_siriaiMinimumFill = nil;
+    }
+    for (FQXFeedDockItemPart *part in self->_feedDockItems) {
+        if (part.buttonLayer && !CATransform3DIsIdentity(part.buttonLayer.sublayerTransform)) {
+            part.buttonLayer.sublayerTransform = CATransform3DIdentity;
+        }
+        if (part.icon && part.icon.alpha != 1.0) part.icon.alpha = 1.0;
+        if (part.caption) {
+            part.caption.hidden = YES;
+            part.caption.transform = CGAffineTransformIdentity;
+            part.caption.alpha = 1.0;
+        }
+    }
+    self->_feedDockItems = nil;
+    if (self->_nativeDockBar) {
+        UIView *platter = FQXFindDockPlatter(self->_nativeDockBar);
+        if (platter && platter.alpha != 1.0) platter.alpha = 1.0;
+        static Class platterCls = Nil;
+        static Class itemPlatterCls = Nil;
+        static dispatch_once_t cOnce;
+        dispatch_once(&cOnce, ^{
+            platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
+            itemPlatterCls = NSClassFromString(@"UIKit._UITabBarItemPlatterView");
+        });
+        if ((platterCls || itemPlatterCls) && platter && platter.superview) {
+            for (UIView *sib in platter.superview.subviews) {
+                if ((platterCls && [sib isKindOfClass:platterCls]) ||
+                    (itemPlatterCls && [sib isKindOfClass:itemPlatterCls])) {
+                    if (sib.alpha != 1.0) sib.alpha = 1.0;
+                }
+            }
+        }
+        FQXBackdropBlurView *blur = objc_getAssociatedObject(self->_nativeDockBar, FQXDockBackdropBlurViewKey);
+        if (blur && blur.alpha != 1.0) blur.alpha = 1.0;
+        self->_nativeDockBar.accessibilityElementsHidden = NO;
+    }
+    if (self->_dockTitleOverlay) {
+        if (!CGAffineTransformIsIdentity(self->_dockTitleOverlay.transform)) {
+            self->_dockTitleOverlay.transform = CGAffineTransformIdentity;
+        }
+        if (self->_dockTitleOverlay.alpha != 1.0) self->_dockTitleOverlay.alpha = 1.0;
+        for (UIView *lbl in self->_dockTitleOverlay.arrangedSubviews) {
+            if (!CGAffineTransformIsIdentity(lbl.transform)) lbl.transform = CGAffineTransformIdentity;
+        }
+    }
+    if (self->_detachedButton) {
+        if (!CGAffineTransformIsIdentity(self->_detachedButton.transform)) {
+            self->_detachedButton.transform = CGAffineTransformIdentity;
+        }
+        [self->_detachedButton setFeedGlyphScale:1.0];
+        if (self->_detachedButton.alpha != 1.0) self->_detachedButton.alpha = 1.0;
+        self->_detachedButton.accessibilityElementsHidden = NO;
+    }
+    [CATransaction commit];
+    self->_feedControlsHidden = NO;
+}
+
+- (void)prepareFeedDockItemsWithPlatter:(UIView *)platter {
+    UITabBar *tabBar = self->_nativeDockBar;
+    if (!tabBar) {
+        self->_feedDockItems = nil;
+        return;
+    }
+    Class buttonClass = NSClassFromString(@"_UITabButton");
+    NSMutableArray<UIView *> *buttons = [NSMutableArray array];
+    FQXCollectTabButtonsRecursive(platter, buttonClass, buttons);
+    if (!buttons.count) {
+        FQXCollectTabButtonsRecursive(tabBar, buttonClass, buttons);
+    }
+    UIView *coordRef = platter ?: tabBar;
+    [buttons sortUsingComparator:^NSComparisonResult(UIView *left, UIView *right) {
+        CGFloat ax = [coordRef convertPoint:left.center fromView:left.superview].x;
+        CGFloat bx = [coordRef convertPoint:right.center fromView:right.superview].x;
+        return ax < bx ? NSOrderedAscending : (ax > bx ? NSOrderedDescending : NSOrderedSame);
+    }];
+
+    NSArray<UITabBarItem *> *items = tabBar.items;
+    BOOL rtl = ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:tabBar.semanticContentAttribute]
+                == UIUserInterfaceLayoutDirectionRightToLeft);
+    BOOL showCaption = ([self dockDisplayMode] == 0);
+    BOOL isDark = [self isDarkDock];
+    CGFloat white = isDark ? 1.0 : 0.0;
+    UIColor *selectedInk = [UIColor colorWithWhite:white alpha:1.0];
+    UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
+    NSUInteger hostSel = [self currentSelectedIndex];
+    NSUInteger selectedSlot = self->_capsuleHostIndices.count
+        ? [self->_capsuleHostIndices indexOfObject:@(hostSel)] : hostSel;
+
+    NSMutableArray<FQXFeedDockItemPart *> *parts = [NSMutableArray arrayWithCapacity:buttons.count];
+    NSInteger column = -1;
+    CGFloat lastX = -CGFLOAT_MAX;
+    for (UIView *button in buttons) {
+        CGFloat x = [coordRef convertPoint:button.center fromView:button.superview].x;
+        if (fabs(x - lastX) > 0.5) column++;
+        lastX = x;
+        if (column < 0 || (NSUInteger)column >= items.count) continue;
+
+        UIImageView *icon = (UIImageView *)FQXFindViewOfClassRecursive(button, UIImageView.class);
+        if (!icon) continue;
+        NSUInteger index = rtl ? (items.count - 1 - (NSUInteger)column) : (NSUInteger)column;
+        NSString *title = (index < self->_dockTitles.count) ? self->_dockTitles[index] : (items[index].accessibilityLabel ?: @"");
+        NSUInteger hostIdx = (index < self->_capsuleHostIndices.count) ? self->_capsuleHostIndices[index].unsignedIntegerValue : index;
+        UIButton *hostBtn = (hostIdx < self->_buttons.count && [self->_buttons[hostIdx] isKindOfClass:UIButton.class]) ? self->_buttons[hostIdx] : nil;
+        BOOL captionWanted = showCaption && title.length > 0 && FQXModuleHasFeedGlyph(title, hostBtn);
+
+        FQXFeedDockItemPart *part = objc_getAssociatedObject(button, FQXFeedDockItemPartKey);
+        if (!part) {
+            part = [FQXFeedDockItemPart new];
+            part.buttonLayer = button.layer;
+            objc_setAssociatedObject(button, FQXFeedDockItemPartKey, part, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        part.slotIndex = index;
+        if (part.icon != icon) part.icon = icon;
+        if (captionWanted && !part.caption) {
+            UILabel *caption = [[UILabel alloc] initWithFrame:CGRectZero];
+            caption.font = [UIFont systemFontOfSize:10.0 weight:UIFontWeightSemibold];
+            caption.textAlignment = NSTextAlignmentCenter;
+            caption.adjustsFontSizeToFitWidth = YES;
+            caption.minimumScaleFactor = 0.78;
+            caption.userInteractionEnabled = NO;
+            caption.isAccessibilityElement = NO;
+            [button addSubview:caption];
+            part.caption = caption;
+        }
+        UILabel *caption = part.caption;
+        if (caption) {
+            if (caption.hidden == captionWanted) caption.hidden = !captionWanted;
+            if (![caption.text isEqualToString:title]) caption.text = title;
+            UIColor *ink = (index == selectedSlot) ? selectedInk : normalInk;
+            if (![caption.textColor isEqual:ink]) caption.textColor = ink;
+            CGRect bounds = CGRectMake(0.0, 0.0, MAX(0.0, MIN(64.0, CGRectGetWidth(button.bounds) - 4.0)),
+                                       ceil(caption.font.lineHeight));
+            CGPoint center = CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMidY(button.bounds));
+            if (!CGRectEqualToRect(caption.bounds, bounds)) caption.bounds = bounds;
+            if (!CGPointEqualToPoint(caption.center, center)) caption.center = center;
+        }
+        [parts addObject:part];
+    }
+    self->_feedDockItems = parts;
+}
+
+- (void)applyFeedItemsWithScaleX:(CGFloat)sx
+                          scaleY:(CGFloat)sy
+                      glyphScale:(CGFloat)glyphScale
+                   captionAmount:(CGFloat)captionAmount
+                    contentAlpha:(CGFloat)contentAlpha {
+    CGFloat safeSX = MAX(0.001, sx);
+    CGFloat safeSY = MAX(0.001, sy);
+    CGFloat safeGlyph = MAX(0.001, glyphScale);
+    CATransform3D iconOnly = CATransform3DMakeScale(safeGlyph / safeSX, safeGlyph / safeSY, 1.0);
+    CATransform3D withCaption = iconOnly;
+    withCaption.m42 = -7.0 * captionAmount / safeSY;
+    CGAffineTransform text = CGAffineTransformIdentity;
+    if (captionAmount > 0.0) {
+        text = CGAffineTransformMake(1.0 / safeGlyph, 0.0, 0.0, 1.0 / safeGlyph,
+                                     0.0, (13.0 - withCaption.m42) / withCaption.m22);
+    }
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (FQXFeedDockItemPart *part in self->_feedDockItems) {
+        UILabel *caption = part.caption;
+        BOOL hasCaption = caption && !caption.hidden;
+        CATransform3D contents = hasCaption ? withCaption : iconOnly;
+        CALayer *layer = part.buttonLayer;
+        if (layer && !CATransform3DEqualToTransform(layer.sublayerTransform, contents)) {
+            layer.sublayerTransform = contents;
+        }
+        if (part.icon && part.icon.alpha != contentAlpha) part.icon.alpha = contentAlpha;
+        if (hasCaption) {
+            if (caption.alpha != captionAmount) caption.alpha = captionAmount;
+            if (captionAmount > 0.0 && !CGAffineTransformEqualToTransform(caption.transform, text)) {
+                caption.transform = text;
+            }
+        }
+    }
+    if (self->_dockTitleOverlay && !self->_dockIconOverlay && [self dockDisplayMode] == 2) {
+        CGRect baseTrack = CGRectInset(self->_feedCapsuleAtRest, 4.0 * self->_feedBaseScaleX, 0.0);
+        CGRect trackBounds = CGRectMake(0.0, 0.0, MAX(1.0, CGRectGetWidth(baseTrack)), MAX(1.0, CGRectGetHeight(baseTrack)));
+        if (!CGRectEqualToRect(self->_dockTitleOverlay.bounds, trackBounds)) {
+            self->_dockTitleOverlay.bounds = trackBounds;
+        }
+        CGPoint capCenter = CGPointMake(CGRectGetMidX(self->_dockRenderedPlatterRectInBar),
+                                        CGRectGetMidY(self->_dockRenderedPlatterRectInBar));
+        CGAffineTransform trackXform = CGAffineTransformMakeScale(safeSX, safeSY);
+        if (!CGAffineTransformEqualToTransform(self->_dockTitleOverlay.transform, trackXform)) {
+            self->_dockTitleOverlay.transform = trackXform;
+        }
+        if (!CGPointEqualToPoint(self->_dockTitleOverlay.center, capCenter)) {
+            self->_dockTitleOverlay.center = capCenter;
+        }
+        if (self->_dockTitleOverlay.alpha != contentAlpha) {
+            self->_dockTitleOverlay.alpha = contentAlpha;
+        }
+        CGAffineTransform lblXform = CGAffineTransformMakeScale(safeGlyph / safeSX, safeGlyph / safeSY);
+        for (UIView *lbl in self->_dockTitleOverlay.arrangedSubviews) {
+            if (!CGAffineTransformEqualToTransform(lbl.transform, lblXform)) lbl.transform = lblXform;
+        }
+    }
+    [CATransaction commit];
+}
+
+static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transform, CGPoint center) {
+    if (!view) return;
+    if (!CGAffineTransformEqualToTransform(view.transform, transform)) view.transform = transform;
+    if (!CGPointEqualToPoint(view.center, center)) view.center = center;
+}
+
+- (void)applySiriaiSurface:(DKSiriaiDockGeometry)shape {
+    UITabBar *tabBar = self->_nativeDockBar;
+    UIView *bar = self->_bar;
+    if (!tabBar || !bar) return;
+    UIView *platter = FQXFindDockPlatter(tabBar);
+    CGFloat glassAlpha = (shape.whiteAmount == 1.0) ? 0.0 : (CGFloat)shape.surfaceAlpha;
+    if (platter && platter.alpha != glassAlpha) platter.alpha = glassAlpha;
+    static Class platterCls = Nil;
+    static Class itemPlatterCls = Nil;
+    static dispatch_once_t sOnce;
+    dispatch_once(&sOnce, ^{
+        platterCls = NSClassFromString(@"UIKit._UITabBarPlatterView");
+        itemPlatterCls = NSClassFromString(@"UIKit._UITabBarItemPlatterView");
+    });
+    if ((platterCls || itemPlatterCls) && platter && platter.superview) {
+        for (UIView *sib in platter.superview.subviews) {
+            if (sib == platter) continue;
+            if ((platterCls && [sib isKindOfClass:platterCls]) ||
+                (itemPlatterCls && [sib isKindOfClass:itemPlatterCls])) {
+                if (sib.alpha != glassAlpha) sib.alpha = glassAlpha;
+            }
+        }
+    }
+    FQXBackdropBlurView *blur = objc_getAssociatedObject(tabBar, FQXDockBackdropBlurViewKey);
+    if (blur && (!platter || ![blur isDescendantOfView:platter]) && blur.alpha != glassAlpha) {
+        blur.alpha = glassAlpha;
+    }
+
+    float fillAlpha = (float)(shape.whiteAmount * shape.surfaceAlpha);
+    if (fillAlpha == 0.0f && (!self->_siriaiMinimumFill || self->_siriaiMinimumFill.opacity == 0.0f)) return;
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (fillAlpha > 0.0f) {
+        if (!self->_siriaiMinimumFill) {
+            CALayer *fill = [CALayer layer];
+            fill.backgroundColor = UIColor.whiteColor.CGColor;
+            fill.zPosition = 10.0;
+            [tabBar.layer addSublayer:fill];
+            self->_siriaiMinimumFill = fill;
+        } else if (self->_siriaiMinimumFill.superlayer != tabBar.layer) {
+            [tabBar.layer addSublayer:self->_siriaiMinimumFill];
+        }
+        CGPoint center = CGPointMake(CGRectGetMidX(self->_dockRenderedPlatterRectInBar),
+                                     CGRectGetMidY(self->_dockRenderedPlatterRectInBar));
+        self->_siriaiMinimumFill.position = [tabBar convertPoint:center fromView:bar];
+        self->_siriaiMinimumFill.bounds = CGRectMake(0.0, 0.0, shape.width, shape.height);
+        self->_siriaiMinimumFill.cornerRadius = shape.height * 0.5;
+        CGAffineTransform barXform = tabBar.transform;
+        if (fabs(barXform.a) > 1e-5 && fabs(barXform.d) > 1e-5) {
+            [self->_siriaiMinimumFill setAffineTransform:CGAffineTransformInvert(barXform)];
+        }
+    }
+    self->_siriaiMinimumFill.opacity = fillAlpha;
+    [CATransaction commit];
+}
+
+- (void)applyFeedMotion:(double)progress {
+    UITabBar *tabBar = self->_nativeDockBar;
+    UIView *bar = self->_bar;
+    CGFloat width = CGRectGetWidth(self->_feedCapsuleAtRest);
+    CGFloat height = CGRectGetHeight(self->_feedCapsuleAtRest);
+    if (!tabBar || !bar || width <= 0.0 || height <= 0.0) return;
+
+    BOOL hasDetached = (self->_detachedHostIndex != NSNotFound &&
+                        self->_detachedButton != nil &&
+                        !CGRectIsEmpty(self->_feedDetachedAtRest));
+    CGPoint pivot = CGPointMake(CGRectGetMidX(self->_feedCapsuleAtRest), CGRectGetMidY(self->_feedCapsuleAtRest));
+
+    if (self->_appliedCollapseMode == FQXDockCollapseModeSiriai) {
+        CGRect group = self->_feedCapsuleAtRest;
+        if (hasDetached) group = CGRectUnion(group, self->_feedDetachedAtRest);
+        CGFloat x = CGRectGetMinX(group);
+        CGFloat y = CGRectGetMinY(group);
+        CGFloat bottomLimit = MAX(height + 4.0, CGRectGetMaxY(bar.bounds) - y);
+        CGFloat camDiam = hasDetached ? CGRectGetWidth(self->_feedDetachedAtRest) : 0.0;
+        CGFloat gap = hasDetached ? self->_feedGap : 0.0;
+        DKSiriaiDockGeometry shape = DKSiriaiDockShape(width, height, camDiam, gap, bottomLimit, progress);
+        DKSiriaiApplyRebound(&shape, self->_feedSpring.overtravel, CGRectGetWidth(group), camDiam, bottomLimit);
+        if (self->_feedSpring.siriaiOpeningMaterial > 1.0) {
+            DKSiriaiSetDockMaterial(&shape, self->_feedSpring.siriaiOpeningMaterial);
+        }
+        CGPoint target = CGPointMake(x + shape.centerX, y + shape.centerY);
+        CGFloat sx = MAX(0.001, shape.width / width);
+        CGFloat sy = MAX(0.001, shape.height / height);
+        CGPoint hostCenter = CGPointMake(target.x + (self->_feedHostCenterAtRest.x - pivot.x) * sx,
+                                         target.y + (self->_feedHostCenterAtRest.y - pivot.y) * sy);
+        FQXSetViewTransformAndCenter(tabBar,
+                                     CGAffineTransformMakeScale(self->_feedBaseScaleX * sx, self->_feedBaseScaleY * sy),
+                                     hostCenter);
+        self->_dockRenderedPlatterRectInBar = CGRectMake(target.x - shape.width * 0.5,
+                                                         target.y - shape.height * 0.5,
+                                                         shape.width,
+                                                         shape.height);
+        [self applySiriaiSurface:shape];
+        BOOL controlsHidden = (shape.contentAlpha < 0.10);
+        self->_feedControlsHidden = controlsHidden;
+        if (tabBar.accessibilityElementsHidden != controlsHidden) {
+            tabBar.accessibilityElementsHidden = controlsHidden;
+        }
+        CGFloat glyphScale = MAX(0.001, shape.glyphScale);
+        [self applyFeedItemsWithScaleX:sx
+                                scaleY:sy
+                            glyphScale:glyphScale
+                         captionAmount:shape.captionAmount
+                          contentAlpha:shape.contentAlpha];
+        if (hasDetached) {
+            CGFloat cameraScale = MAX(0.001, shape.cameraScale);
+            CGPoint detCenter = CGPointMake(x + shape.cameraX, y + shape.cameraY);
+            FQXSetViewTransformAndCenter(self->_detachedButton,
+                                         CGAffineTransformMakeScale(cameraScale, cameraScale),
+                                         detCenter);
+            [self->_detachedButton setFeedGlyphScale:(glyphScale / cameraScale)];
+            if (self->_detachedButton.alpha != shape.contentAlpha) {
+                self->_detachedButton.alpha = shape.contentAlpha;
+            }
+            if (self->_detachedButton.accessibilityElementsHidden != controlsHidden) {
+                self->_detachedButton.accessibilityElementsHidden = controlsHidden;
+            }
+        }
+        return;
+    }
+
+    // TikTok interaction mode: 81% group width, 80% height, count * 44pt min capsule width, 91% uniform glyph scale.
+    double shownProgress = progress + self->_feedSpring.overtravel;
+    CGFloat camDiam = hasDetached ? CGRectGetWidth(self->_feedDetachedAtRest) : 0.0;
+    CGFloat camMidY = hasDetached ? CGRectGetMidY(self->_feedDetachedAtRest) : pivot.y;
+    DKSiriaiDockGeometry shape = DKTikTokDockShape(CGRectGetMinX(self->_feedCapsuleAtRest),
+                                                   CGRectGetMinY(self->_feedCapsuleAtRest),
+                                                   width,
+                                                   height,
+                                                   camMidY,
+                                                   camDiam,
+                                                   hasDetached ? self->_feedGap : 0.0,
+                                                   (unsigned)MAX((NSUInteger)1, tabBar.items.count),
+                                                   shownProgress);
+    CGFloat sx = MAX(0.001, shape.width / width);
+    CGFloat sy = MAX(0.001, shape.height / height);
+    CGPoint target = CGPointMake(shape.centerX, shape.centerY);
+    CGPoint hostCenter = CGPointMake(target.x + (self->_feedHostCenterAtRest.x - pivot.x) * sx,
+                                     target.y + (self->_feedHostCenterAtRest.y - pivot.y) * sy);
+    FQXSetViewTransformAndCenter(tabBar,
+                                 CGAffineTransformMakeScale(self->_feedBaseScaleX * sx, self->_feedBaseScaleY * sy),
+                                 hostCenter);
+    self->_dockRenderedPlatterRectInBar = CGRectMake(target.x - shape.width * 0.5,
+                                                     target.y - shape.height * 0.5,
+                                                     shape.width,
+                                                     shape.height);
+    if (self->_siriaiMinimumFill && self->_siriaiMinimumFill.opacity != 0.0f) {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        self->_siriaiMinimumFill.opacity = 0.0f;
+        [CATransaction commit];
+    }
+    UIView *platter = FQXFindDockPlatter(tabBar);
+    if (platter && platter.alpha != 1.0) platter.alpha = 1.0;
+    FQXBackdropBlurView *blur = objc_getAssociatedObject(tabBar, FQXDockBackdropBlurViewKey);
+    if (blur && blur.alpha != 1.0) blur.alpha = 1.0;
+    self->_feedControlsHidden = NO;
+    if (tabBar.accessibilityElementsHidden) tabBar.accessibilityElementsHidden = NO;
+
+    [self applyFeedItemsWithScaleX:sx
+                            scaleY:sy
+                        glyphScale:shape.glyphScale
+                     captionAmount:shape.captionAmount
+                      contentAlpha:1.0];
+    if (hasDetached) {
+        CGFloat cameraScale = MAX(0.001, shape.cameraScale);
+        CGPoint detCenter = CGPointMake(shape.cameraX, shape.cameraY);
+        FQXSetViewTransformAndCenter(self->_detachedButton,
+                                     CGAffineTransformMakeScale(cameraScale, cameraScale),
+                                     detCenter);
+        [self->_detachedButton setFeedGlyphScale:(shape.glyphScale / cameraScale)];
+        if (self->_detachedButton.alpha != 1.0) self->_detachedButton.alpha = 1.0;
+        if (self->_detachedButton.accessibilityElementsHidden) {
+            self->_detachedButton.accessibilityElementsHidden = NO;
+        }
+    }
+}
+
+- (void)startFeedDisplayLink {
+    if (self->_feedDisplayLink) {
+        if (self->_feedDisplayLink.paused) self->_feedDisplayLink.paused = NO;
+        return;
+    }
+    FQXFeedSpringTarget *target = [FQXFeedSpringTarget new];
+    target.owner = self;
+    CADisplayLink *link = [CADisplayLink displayLinkWithTarget:target selector:@selector(advance:)];
+    if (@available(iOS 15.0, *)) {
+        link.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
+    }
+    [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    self->_feedDisplayLink = link;
+}
+
+- (void)scheduleSiriaiFadeIfNeeded {
+    uint64_t ticket = ++self->_feedSpring.siriaiFadeGeneration;
+    __weak FQXTabBarInteraction *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(DKSiriaiFadeDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        FQXTabBarInteraction *strongSelf = weakSelf;
+        if (!strongSelf || ![strongSelf usesFeedMotion]) return;
+        if (DKFeedSpringTriggerSiriaiFade(&strongSelf->_feedSpring, ticket)) {
+            [strongSelf startFeedDisplayLink];
+        }
+    });
+}
+
+- (void)syncSiriaiHideLinePreference {
+    if (self->_appliedCollapseMode != FQXDockCollapseModeSiriai) return;
+    BOOL hideLine = [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey];
+    int startLink = 0;
+    int scheduleFade = 0;
+    BOOL linkActive = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
+    DKFeedSpringUpdateHideLine(&self->_feedSpring, hideLine ? 1 : 0, linkActive ? 1 : 0, &startLink, &scheduleFade);
+    if (startLink) [self startFeedDisplayLink];
+    if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+}
+
+- (void)finishFeedSpringAndApply {
+    [self->_feedDisplayLink invalidate];
+    self->_feedDisplayLink = nil;
+    double applyProgress = 0.0;
+    int scheduleFade = 0;
+    DKFeedSpringFinish(&self->_feedSpring, &applyProgress, &scheduleFade);
+    [self applyFeedMotion:applyProgress];
+    if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+}
+
+- (void)advanceFeedSpring:(CADisplayLink *)link {
+    if (![self usesFeedMotion] || !self->_nativeDockActive || !self->_nativeDockBar.window) {
+        [self finishFeedSpringAndApply];
+        return;
+    }
+    double applyProgress = 0.0;
+    int shouldApply = 0;
+    int scheduleFade = 0;
+    DKFeedAdvanceResult res = DKFeedSpringAdvance(&self->_feedSpring,
+                                                  link.timestamp,
+                                                  link.targetTimestamp,
+                                                  UIAccessibilityIsReduceMotionEnabled() ? 1 : 0,
+                                                  &applyProgress,
+                                                  &shouldApply,
+                                                  &scheduleFade);
+    if (shouldApply) [self applyFeedMotion:applyProgress];
+    if (res == DKFeedAdvancePauseLink) {
+        link.paused = YES;
+    } else if (res == DKFeedAdvanceFinished) {
+        [self->_feedDisplayLink invalidate];
+        self->_feedDisplayLink = nil;
+        if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+    }
+}
+
+- (BOOL)beginFeedDrag {
+    if (![self usesFeedMotion] || !self->_nativeDockActive || !self->_nativeDockBar.window) return NO;
+    BOOL runningUnpaused = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
+    int direct = DKFeedSpringBeginDrag(&self->_feedSpring, runningUnpaused ? 1 : 0);
+    if (self->_feedDisplayLink) self->_feedDisplayLink.paused = YES;
+    return direct != 0;
+}
+
+- (void)moveFeedDrag:(CGFloat)delta {
+    if (![self usesFeedMotion]) return;
+    double frame = self->_feedDisplayLink
+        ? (self->_feedDisplayLink.targetTimestamp - self->_feedDisplayLink.timestamp) : 0.0;
+    BOOL paused = (!self->_feedDisplayLink || self->_feedDisplayLink.paused);
+    if (DKFeedSpringMoveDrag(&self->_feedSpring, delta, CACurrentMediaTime(), frame, paused ? 1 : 0)) {
+        [self startFeedDisplayLink];
+    }
+}
+
+- (void)endFeedDrag:(BOOL)compact velocity:(CGFloat)velocity {
+    if (![self usesFeedMotion]) return;
+    double frame = self->_feedDisplayLink
+        ? (self->_feedDisplayLink.targetTimestamp - self->_feedDisplayLink.timestamp) : (1.0 / 60.0);
+    BOOL linkActive = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
+    BOOL canAnimate = (self->_nativeDockBar.window != nil && !UIAccessibilityIsReduceMotionEnabled());
+    double applyProgress = 0.0;
+    int finishedImmediately = 0;
+    int startLink = 0;
+    int scheduleFade = 0;
+    DKFeedSpringEndDrag(&self->_feedSpring, compact ? 1 : 0, velocity, CACurrentMediaTime(),
+                        frame, linkActive ? 1 : 0, canAnimate ? 1 : 0,
+                        &applyProgress, &finishedImmediately, &startLink, &scheduleFade);
+    if (finishedImmediately) {
+        [self->_feedDisplayLink invalidate];
+        self->_feedDisplayLink = nil;
+        [self applyFeedMotion:applyProgress];
+        if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+    } else if (startLink) {
+        [self startFeedDisplayLink];
+    }
+}
+
+- (void)setFeedCompact:(BOOL)compact animated:(BOOL)animated {
+    if (![self usesFeedMotion] || !self->_nativeDockBar) return;
+    BOOL linkActive = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
+    BOOL canAnimate = (self->_nativeDockBar.window != nil && !UIAccessibilityIsReduceMotionEnabled());
+    double applyProgress = 0.0;
+    int finishedImmediately = 0;
+    int startLink = 0;
+    int scheduleFade = 0;
+    DKFeedSpringSetCompact(&self->_feedSpring, compact ? 1 : 0, animated ? 1 : 0, CACurrentMediaTime(),
+                           linkActive ? 1 : 0, canAnimate ? 1 : 0,
+                           &applyProgress, &finishedImmediately, &startLink, &scheduleFade);
+    if (finishedImmediately) {
+        [self->_feedDisplayLink invalidate];
+        self->_feedDisplayLink = nil;
+        [self applyFeedMotion:applyProgress];
+        if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+    } else if (startLink) {
+        [self startFeedDisplayLink];
+    }
+}
+
+- (void)settleFeedMotionImmediate {
+    if (![self usesFeedMotion]) return;
+    if (self->_feedSpring.following) {
+        self->_feedSpring.following = 0;
+    }
+    if (self->_feedDisplayLink || self->_feedSpring.overtravel != 0.0) {
+        [self finishFeedSpringAndApply];
+    }
+}
+
+- (void)refreshForCollapseModeChange {
+    FQXDockCollapseMode desired = FQXFeedMotionSupported() ? FQXCurrentDockCollapseMode() : FQXDockCollapseModeOff;
+    if (desired != self->_appliedCollapseMode) {
+        [self cleanupFeedMotionVisuals];
+        DKFeedSpringInit(&self->_feedSpring);
+        self->_feedSpring.siriai = (desired == FQXDockCollapseModeSiriai) ? 1 : 0;
+        self->_feedSpring.siriaiHidesLine = (desired == FQXDockCollapseModeSiriai &&
+                                             [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey]) ? 1 : 0;
+        self->_appliedCollapseMode = desired;
+        self->_dockSignature = nil;
+        if (self->_nativeDockBar && self->_buttons.count) {
+            [self syncDockItems];
+            if (self->_bar && self->_proxy) {
+                [self layoutNativeDockInBar:self->_bar proxy:self->_proxy forceMeasure:YES];
+            }
+        }
+    } else if (desired == FQXDockCollapseModeSiriai) {
+        [self syncSiriaiHideLinePreference];
+        if (!self->_feedDisplayLink && !self->_feedSpring.following) {
+            [self applyFeedMotion:self->_feedSpring.progress];
+        }
+    }
 }
 
 - (BOOL)usesNativeSegmentedSelector {
@@ -2773,20 +3741,32 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         UIStackView *titles = self->_dockTitleOverlay;
         CGRect platter = self->_dockRenderedPlatterRectInBar;
         if (titles && self->_nativeDockActive && !CGRectIsEmpty(platter)) {
-            CGFloat scale = tabBar.transform.d;
-            BOOL captions = self->_dockIconOverlay != nil;
-            BOOL compact = [objc_getAssociatedObject(self->_proxy, &FQXDockCompactKey) boolValue];
-            CGFloat fontSize = (captions ? 10.5 : 15.5) * scale;
-            CGRect track = CGRectInset(platter, 4.0 * scale, 0.0);
-            CGRect frame = captions ? CGRectOffset(track, 0, (compact ? 6.0 : 11.5) * scale) : track;
-            CGFloat titleAlpha = captions && compact ? 0.0 : 1.0;
-            if (titles.alpha != titleAlpha) titles.alpha = titleAlpha;
-            if (!CGRectEqualToRect(titles.frame, frame)) titles.frame = frame;
-            if (titles.semanticContentAttribute != tabBar.semanticContentAttribute)
-                titles.semanticContentAttribute = tabBar.semanticContentAttribute;
-            for (UILabel *label in titles.arrangedSubviews) {
-                if (fabs(label.font.pointSize - fontSize) > 0.05)
-                    label.font = [UIFont systemFontOfSize:fontSize weight:label.highlighted ? UIFontWeightSemibold : UIFontWeightMedium];
+            BOOL feedTextOnly = ([self usesFeedMotion] && !self->_dockIconOverlay && [self dockDisplayMode] == 2);
+            if (feedTextOnly) {
+                CGFloat fontSize = 15.5 * self->_feedBaseScaleY;
+                if (titles.semanticContentAttribute != tabBar.semanticContentAttribute)
+                    titles.semanticContentAttribute = tabBar.semanticContentAttribute;
+                for (UILabel *label in titles.arrangedSubviews) {
+                    if (fabs(label.font.pointSize - fontSize) > 0.05)
+                        label.font = [UIFont systemFontOfSize:fontSize weight:label.highlighted ? UIFontWeightSemibold : UIFontWeightMedium];
+                }
+            } else {
+                CGFloat scale = tabBar.transform.d;
+                BOOL captions = self->_dockIconOverlay != nil;
+                BOOL compact = [objc_getAssociatedObject(self->_proxy, &FQXDockCompactKey) boolValue];
+                CGFloat fontSize = (captions ? 10.5 : 15.5) * scale;
+                CGRect track = CGRectInset(platter, 4.0 * scale, 0.0);
+                CGRect frame = captions ? CGRectOffset(track, 0, (compact ? 6.0 : 11.5) * scale) : track;
+                CGFloat titleAlpha = captions && compact ? 0.0 : 1.0;
+                if (!CGAffineTransformIsIdentity(titles.transform)) titles.transform = CGAffineTransformIdentity;
+                if (titles.alpha != titleAlpha) titles.alpha = titleAlpha;
+                if (!CGRectEqualToRect(titles.frame, frame)) titles.frame = frame;
+                if (titles.semanticContentAttribute != tabBar.semanticContentAttribute)
+                    titles.semanticContentAttribute = tabBar.semanticContentAttribute;
+                for (UILabel *label in titles.arrangedSubviews) {
+                    if (fabs(label.font.pointSize - fontSize) > 0.05)
+                        label.font = [UIFont systemFontOfSize:fontSize weight:label.highlighted ? UIFontWeightSemibold : UIFontWeightMedium];
+                }
             }
             NSArray<UIView *> *siblings = bar.subviews;
             NSUInteger index = [siblings indexOfObjectIdenticalTo:titles];
@@ -2794,6 +3774,9 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
                 [bar insertSubview:titles aboveSubview:tabBar];
             UIStackView *icons = self->_dockIconOverlay;
             if (icons) {
+                CGFloat scale = tabBar.transform.d;
+                BOOL compact = [objc_getAssociatedObject(self->_proxy, &FQXDockCompactKey) boolValue];
+                CGRect track = CGRectInset(platter, 4.0 * scale, 0.0);
                 CGFloat iconH = (compact ? 23.6 : 22.0) * scale;
                 CGRect iconFrame = CGRectMake(track.origin.x,
                     CGRectGetMidY(track) - iconH * 0.5 - (compact ? 0.0 : 7.0) * scale,
@@ -2919,6 +3902,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
     NSUInteger finalSel = [self currentSelectedIndex];
     self->_routingHostDockNavigation = NO;
+    if (hostIdx != beforeSel && [self usesFeedMotion]) {
+        self->_feedLastSelectedIndex = finalSel;
+        [[FQXFeedDockPanController shared] resetFeedGesture];
+        [self setFeedCompact:NO animated:NO];
+    }
 
     BOOL isDetachedSource = [source hasPrefix:@"detached"];
     if (isDetachedSource) {
@@ -3016,6 +4004,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
                 item.image = placeholder;
                 item.selectedImage = placeholder;
             }
+        } else if (displayMode == 0 && [self usesFeedMotion]) {
+            UIImage *normalGlyph = FQXDockGlyph(title, btn, 19.0, NO, normalInk);
+            UIImage *selectedGlyph = FQXDockGlyph(title, btn, 19.0, YES, selectedInk);
+            item.image = normalGlyph ?: FQXDockTitleImage(title, normalInk, NO);
+            item.selectedImage = selectedGlyph ?: (normalGlyph ?: FQXDockTitleImage(title, selectedInk, YES));
         } else {
             item.image = FQXDockItemImage(title, btn, displayMode, ptSize, NO, normalInk);
             item.selectedImage = FQXDockItemImage(title, btn, displayMode, ptSize, YES, selectedInk);
@@ -3065,6 +4058,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     NSUInteger capPos = self->_capsuleHostIndices.count
         ? [self->_capsuleHostIndices indexOfObject:@(hostSel)]
         : hostSel;
+    if (self->_feedDockItems.count) {
+        BOOL isDark = [self isDarkDock];
+        CGFloat white = isDark ? 1.0 : 0.0;
+        UIColor *selectedInk = [UIColor colorWithWhite:white alpha:1.0];
+        UIColor *normalInk = [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
+        for (FQXFeedDockItemPart *part in self->_feedDockItems) {
+            if (!part.caption) continue;
+            UIColor *ink = (part.slotIndex == capPos) ? selectedInk : normalInk;
+            if (![part.caption.textColor isEqual:ink]) part.caption.textColor = ink;
+        }
+    }
     NSUInteger slot = 0;
     for (UILabel *label in self->_dockTitleOverlay.arrangedSubviews) {
         BOOL selected = slot == capPos;
@@ -3119,10 +4123,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 
     NSUInteger selected = [self currentSelectedIndex];
     NSString *current = selected < allTitles.count ? allTitles[selected] : nil;
-    BOOL captions = displayMode == 0 && ([current isEqualToString:@"短剧"] || [current isEqualToString:@"视频"]) &&
-        [NSUserDefaults.standardUserDefaults boolForKey:@"FanqieX.DramaDockScrollZoom.1"];
-    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|captions=%d|",
-                            (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx), captions];
+    BOOL usesFeed = [self usesFeedMotion];
+    BOOL captions = !usesFeed && displayMode == 0 && ([current isEqualToString:@"短剧"] || [current isEqualToString:@"视频"]) &&
+        [NSUserDefaults.standardUserDefaults boolForKey:DockLegacyScrollZoomPrefKey];
+    NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|captions=%d|feed=%d|",
+                            (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx), captions, usesFeed];
     NSMutableArray<NSString *> *capsuleTitles = [NSMutableArray arrayWithCapacity:allTitles.count];
     NSMutableArray<NSNumber *> *capsuleIndices = [NSMutableArray arrayWithCapacity:allTitles.count];
     for (NSUInteger i = 0; i < allTitles.count; ++i) {
@@ -3254,7 +4259,12 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     BOOL hasDetached = (self->_detachedHostIndex != NSNotFound && self->_detachedButton != nil);
     NSUInteger itemCount = tabBar.items.count;
     CGFloat barW = CGRectGetWidth(bar.bounds);
-    BOOL compact = [objc_getAssociatedObject(proxy, &FQXDockCompactKey) boolValue];
+    BOOL usesFeed = [self usesFeedMotion];
+    if (usesFeed && bar.window && CGRectGetWidth(bar.window.bounds) >= CGRectGetHeight(bar.window.bounds)) {
+        [[FQXFeedDockPanController shared] resetFeedGesture];
+        [self setFeedCompact:NO animated:NO];
+    }
+    BOOL compact = !usesFeed && [objc_getAssociatedObject(proxy, &FQXDockCompactKey) boolValue];
     BOOL barWidthChanged = fabs(barW - self->_dockLastBarWidth) > 0.5;
     if (barWidthChanged || hasDetached != self->_dockLastDetachedActive || itemCount != self->_dockLastItemCount)
         self->_expandedDockFraction = CGSizeZero;
@@ -3293,6 +4303,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     if (!geometryChanged) {
         UIView *platter = FQXFindDockPlatter(tabBar);
         FQXApplyNativeDockMaterial(tabBar, platter, isDark);
+        if (usesFeed) {
+            if (!self->_feedDockItems.count) {
+                [self prepareFeedDockItemsWithPlatter:platter];
+            }
+            [self syncSiriaiHideLinePreference];
+            if (hasDetached) [self syncDetachedDockMaterial:isDark];
+            [self syncSelectionExclusivityAnimated:NO];
+            [self ensureDockZOrderInBar:bar];
+            [self applyFeedMotion:self->_feedSpring.progress];
+            return;
+        }
         if (platter && CGRectGetHeight(platter.bounds) > 10.0) {
             self->_dockRenderedPlatterRectInBar = [platter convertRect:platter.bounds toView:bar];
         }
@@ -3302,6 +4323,16 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
         [self syncSelectionExclusivityAnimated:NO];
         [self ensureDockZOrderInBar:bar];
         return;
+    }
+
+    if (!CGAffineTransformIsIdentity(tabBar.transform)) {
+        tabBar.transform = CGAffineTransformIdentity;
+    }
+    if (self->_detachedButton) {
+        if (!CGAffineTransformIsIdentity(self->_detachedButton.transform)) {
+            self->_detachedButton.transform = CGAffineTransformIdentity;
+        }
+        [self->_detachedButton setFeedGlyphScale:1.0];
     }
 
     CGFloat barH = MAX(CGRectGetHeight(bar.bounds), CGRectGetHeight(proxyFrame) + 12.0);
@@ -3488,6 +4519,17 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     }
 
     [self syncSelectionExclusivityAnimated:NO];
+    self->_feedBaseScaleX = scaleX;
+    self->_feedBaseScaleY = finalScale;
+    self->_feedHostCenterAtRest = tabBar.center;
+    self->_feedCapsuleAtRest = self->_dockRenderedPlatterRectInBar;
+    if (hasDetached) {
+        self->_feedDetachedAtRest = self->_detachedButton.frame;
+        self->_feedGap = MAX(8.0, CGRectGetMinX(self->_feedDetachedAtRest) - CGRectGetMaxX(self->_feedCapsuleAtRest));
+    } else {
+        self->_feedDetachedAtRest = CGRectZero;
+        self->_feedGap = 0.0;
+    }
     if (!compact && targetW > 0 && targetH > 0) {
         CGRect group = self->_dockRenderedPlatterRectInBar;
         if (hasDetached) group = CGRectUnion(group, self->_detachedButton.frame);
@@ -3497,6 +4539,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     self->_lastDockLiftY = liftY;
     self->_dockLastItemCount = itemCount;
     self->_dockLastDetachedActive = hasDetached;
+    if (usesFeed) {
+        [self prepareFeedDockItemsWithPlatter:platter];
+        [self syncSiriaiHideLinePreference];
+        [self applyFeedMotion:self->_feedSpring.progress];
+    }
 }
 
 - (void)setLegacyDockOverlay:(UIView *)overlay {
@@ -3510,8 +4557,13 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
 }
 
 - (void)setNativeDockVisible:(BOOL)visible restoreProxy:(BOOL)restoreProxy {
+    BOOL wasVisible = self->_nativeDockActive;
     BOOL showDetached = visible && (self->_detachedHostIndex != NSNotFound) && (self->_detachedButton != nil);
     self->_nativeDockActive = visible;
+    if (!visible && wasVisible && [self usesFeedMotion]) {
+        [[FQXFeedDockPanController shared] resetFeedGesture];
+        [self setFeedCompact:NO animated:NO];
+    }
     // The modal transition must never animate the exchange between two sets of glyphs.
     [UIView performWithoutAnimation:^{
         if (visible || restoreProxy) {
@@ -3663,6 +4715,13 @@ static const char FQXDockTouchBeganKey = 0;
              native:(UIView *)native
                lens:(UIVisualEffectView *)lens {
     if (self->_bar != bar) {
+        [[FQXFeedDockPanController shared] resetFeedGesture];
+        [self cleanupFeedMotionVisuals];
+        DKFeedSpringInit(&self->_feedSpring);
+        self->_appliedCollapseMode = FQXDockCollapseModeOff;
+        self->_feedLastSelectedIndex = NSNotFound;
+        self->_feedCapsuleAtRest = CGRectZero;
+        self->_feedDetachedAtRest = CGRectZero;
         [self setNativeDockVisible:NO restoreProxy:YES];
         if (self->_dockTapRescueGesture.view) {
             [self->_dockTapRescueGesture.view removeGestureRecognizer:self->_dockTapRescueGesture];
@@ -3722,6 +4781,30 @@ static const char FQXDockTouchBeganKey = 0;
             }
         }
         return;
+    }
+
+    FQXDockCollapseMode desiredCollapseMode = FQXFeedMotionSupported() ? FQXCurrentDockCollapseMode() : FQXDockCollapseModeOff;
+    if (desiredCollapseMode != self->_appliedCollapseMode) {
+        [[FQXFeedDockPanController shared] resetFeedGesture];
+        [self cleanupFeedMotionVisuals];
+        DKFeedSpringInit(&self->_feedSpring);
+        self->_feedSpring.siriai = (desiredCollapseMode == FQXDockCollapseModeSiriai) ? 1 : 0;
+        self->_feedSpring.siriaiHidesLine = (desiredCollapseMode == FQXDockCollapseModeSiriai &&
+                                             [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey]) ? 1 : 0;
+        self->_appliedCollapseMode = desiredCollapseMode;
+        self->_dockSignature = nil;
+        if (FQXDockCollapseModeUsesFeedMotion(desiredCollapseMode)) {
+            [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+        }
+    }
+
+    NSUInteger curSelIdx = [self currentSelectedIndex];
+    if (self->_feedLastSelectedIndex != curSelIdx) {
+        if (self->_feedLastSelectedIndex != NSNotFound && [self usesFeedMotion]) {
+            [[FQXFeedDockPanController shared] resetFeedGesture];
+            [self setFeedCompact:NO animated:NO];
+        }
+        self->_feedLastSelectedIndex = curSelIdx;
     }
 
     if (!self->_nativeDockBar) {
@@ -3803,6 +4886,13 @@ static const char FQXDockTouchBeganKey = 0;
 }
 
 - (void)teardown {
+    [[FQXFeedDockPanController shared] resetFeedGesture];
+    [self cleanupFeedMotionVisuals];
+    DKFeedSpringInit(&self->_feedSpring);
+    self->_appliedCollapseMode = FQXDockCollapseModeOff;
+    self->_feedLastSelectedIndex = NSNotFound;
+    self->_feedCapsuleAtRest = CGRectZero;
+    self->_feedDetachedAtRest = CGRectZero;
     [self setNativeDockVisible:NO restoreProxy:YES];
     if (self->_dockTapRescueGesture.view) {
         [self->_dockTapRescueGesture.view removeGestureRecognizer:self->_dockTapRescueGesture];
@@ -6657,6 +7747,8 @@ static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling);
               lens:(UIVisualEffectView *)lens;
 + (void)refreshAudioGlass;
 + (CGRect)renderedDockFrameForProxy:(UIView *)proxy;
++ (BOOL)proxyAllowsDramaCapsuleTouch:(UIView *)capsule atPoint:(CGPoint)point;
++ (void)refreshDockCollapseMode;
 + (void)invalidateDramaDockPage:(UIViewController *)page;
 + (void)refreshDramaControls;
 + (void)refreshDramaHeaderBlur;
@@ -7628,9 +8720,57 @@ static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling) {
     FQXTabBarInteraction *interaction = objc_getAssociatedObject(proxy, TabInteractionKey);
     if (interaction && interaction->_nativeDockActive &&
         interaction->_bar == proxy.superview && !interaction->_nativeDockBar.hidden) {
+        if ([interaction usesFeedMotion] && !CGRectIsEmpty(interaction->_feedCapsuleAtRest)) {
+            return interaction->_feedCapsuleAtRest;
+        }
         return interaction->_dockRenderedPlatterRectInBar;
     }
     return CGRectZero;
+}
+
++ (BOOL)proxyAllowsDramaCapsuleTouch:(UIView *)capsule atPoint:(CGPoint)point {
+    if (!capsule) return NO;
+    FQXTabBarInteraction *inter = objc_getAssociatedObject(capsule, TabInteractionKey);
+    UIView *bar = capsule.superview;
+    if (!inter || !inter->_nativeDockActive || inter->_bar != bar || !bar) {
+        return CGRectContainsPoint(capsule.bounds, point);
+    }
+    if (![inter usesFeedMotion]) {
+        return CGRectContainsPoint(capsule.bounds, point);
+    }
+    if (inter->_appliedCollapseMode == FQXDockCollapseModeSiriai && inter->_feedControlsHidden) {
+        return NO;
+    }
+    CGPoint ptInBar = [bar convertPoint:point fromView:capsule];
+    if (FQXPointIsInDockBottomEdgeStrip(inter, ptInBar)) {
+        return NO;
+    }
+    if (CGRectContainsPoint(FQXDisplayedDockRect(inter->_nativeDockBar, bar, inter->_dockRenderedPlatterRectInBar), ptInBar)) {
+        return YES;
+    }
+    if (inter->_detachedHostIndex != NSNotFound && inter->_detachedButton &&
+        inter->_detachedButton.superview == bar && !inter->_detachedButton.hidden &&
+        inter->_detachedButton.alpha > 0.01 && inter->_detachedButton.userInteractionEnabled) {
+        CGPoint ptInDet = FQXPointInDisplayedDock(inter->_detachedButton, bar, ptInBar);
+        if ([inter->_detachedButton pointInside:ptInDet withEvent:nil]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
++ (void)refreshDockCollapseMode {
+    FQXInvalidateHotPrefsCache();
+    FQXDockCollapseMode mode = FQXCurrentDockCollapseMode();
+    [[FQXFeedDockPanController shared] resetFeedGesture];
+    if (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(mode)) {
+        [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+    }
+    for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+        [inter refreshForCollapseModeChange];
+        [inter->_bar setNeedsLayout];
+    }
+    FQXRefreshAllDramaControlsInWindows();
 }
 
 + (void)invalidateDramaDockPage:(UIViewController *)page {
@@ -9386,6 +10526,7 @@ static void HookFQVCollectionLayout(UIScrollView *feed, SEL cmd) {
 static void (*OrigFQVCollectionDidMoveWindow)(id, SEL);
 static void HookFQVCollectionDidMoveWindow(UIScrollView *feed, SEL cmd) {
     if (OrigFQVCollectionDidMoveWindow) OrigFQVCollectionDidMoveWindow(feed, cmd);
+    [[FQXFeedDockPanController shared] syncCollectionView:feed];
     if (feed.window) {
         FQXRefreshVideoBackdropForFeed(feed);
         FQXScheduleFeedLayoutRefresh(feed);
@@ -9603,6 +10744,7 @@ static void FQXApplyPinchPureCleanSharedChrome(UIView *control, BOOL enterClean)
     if ([tabHeader isKindOfClass:UIView.class]) [sharedViews addObject:tabHeader];
     if ([seriesHeader isKindOfClass:UIView.class]) [sharedViews addObject:seriesHeader];
     if ([dock isKindOfClass:UIView.class]) {
+        if (enterClean) [[FQXFeedDockPanController shared] cancelActivePan];
         [sharedViews addObject:dock];
         for (UIView *sib in dock.superview.subviews) {
             if ([sib isKindOfClass:FQXDetachedDockButtonView.class]) [sharedViews addObject:sib];
@@ -19029,10 +20171,17 @@ static NSHashTable<UIView *> *FQXTrackedCommentDimmers(void);
 static void FQXSetCommentDimmerZeroMask(UIView *view, BOOL masked);
 static void FQXClearCommentSurface(UIView *view, BOOL clear);
 
+static BOOL FQXIsBarHiddenByComment(UIView *bar) {
+    return bar && [objc_getAssociatedObject(bar, FQXDockHiddenByCommentKey) boolValue];
+}
+
 static void FQXSyncDockHiddenForCommentSheets(UIWindow *window, UIViewController *excludingVC) {
     if (!window) return;
     BOOL hasVisibleSheet = FQXHasVisibleCommentSheetInWindow(window, excludingVC);
     BOOL shouldHideDock = FQXCommentStylingEnabled() && hasVisibleSheet;
+    if (hasVisibleSheet) {
+        [[FQXFeedDockPanController shared] cancelActivePan];
+    }
     if (!shouldHideDock) {
         for (UIView *dimmer in FQXTrackedCommentDimmers().allObjects) {
             if (!dimmer.window || dimmer.window == window) {
@@ -21488,6 +22637,7 @@ static void HookSeriesCommentListDisappeared(UIViewController *controller, SEL c
 
 static void (*OrigTransitionShowInView)(id, SEL, id, BOOL, id);
 static void HookTransitionShowInView(UIView *self, SEL cmd, UIView *parent, BOOL animated, id completion) {
+    [[FQXFeedDockPanController shared] cancelActivePan];
     OrigTransitionShowInView(self, cmd, parent, animated, completion);
     UIWindow *win = parent.window ?: self.window;
     __weak UIView *weakTrans = self;
@@ -25516,6 +26666,7 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQVShortVideoVPlayerControlView", "handleOutterFeedClipBounds:", "v20@0:8B16", OrigControlHandleOutterClip, HookControlHandleOutterClip);
             HOOK_INST("FQVCollectionView", "layoutSubviews", "v16@0:8", OrigFQVCollectionLayout, HookFQVCollectionLayout);
             HOOK_INST("FQVCollectionView", "didMoveToWindow", "v16@0:8", OrigFQVCollectionDidMoveWindow, HookFQVCollectionDidMoveWindow);
+            [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
             HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidScroll:", "v24@0:8@16", OrigScrollCompDidScroll, HookScrollCompDidScroll);
             HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidEndDecelerating:", "v24@0:8@16", OrigScrollCompDidEndDecel, HookScrollCompDidEndDecel);
             HOOK_INST("FQVShortVideoListVCScrollComponent", "scrollViewDidEndScrollingAnimation:", "v24@0:8@16", OrigScrollCompDidEndAnim, HookScrollCompDidEndAnim);
@@ -25620,6 +26771,11 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                              queue:NSOperationQueue.mainQueue
                                                         usingBlock:^(__unused NSNotification *note) {
                 FQXScheduleCommentForegroundRefresh();
+                for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+                    if ([inter usesFeedMotion] && inter->_nativeDockActive && !inter->_feedDisplayLink) {
+                        [inter applyFeedMotion:inter->_feedSpring.progress];
+                    }
+                }
             }];
             [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                                                             object:nil
@@ -25632,6 +26788,10 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                              queue:NSOperationQueue.mainQueue
                                                         usingBlock:^(__unused NSNotification *note) {
                 FQXComposerKeyboardFrame = CGRectZero;
+                [[FQXFeedDockPanController shared] cancelActivePan];
+                for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
+                    [inter settleFeedMotionImmediate];
+                }
                 FQXResetPinchCleanStates();
                 FQXCompactRuntimeMemory();
             }];

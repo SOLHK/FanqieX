@@ -23,6 +23,7 @@ BUTTONS = "LFQH_BottomButtons178Key"
 class Runtime(SpacingRuntime):
     NATIVE_HIT = 0x33901400
     NATIVE_ALLOW = 0x33901410
+    PROXY_ALLOWS = 0x33901420
 
     def __init__(self, data):
         super().__init__(data)
@@ -30,7 +31,8 @@ class Runtime(SpacingRuntime):
                              ("SSShortVideoOutterMultiGenreProgressView", "UIView"),
                              ("UITouch", "NSObject"), ("UIPanGestureRecognizer", "NSObject"),
                              ("SSTabBarController", "NSObject"),
-                             ("SSShortVideoRcmdMainViewController", "NSObject")):
+                             ("SSShortVideoRcmdMainViewController", "NSObject"),
+                             ("FQXDockMotion", "NSObject")):
             if name not in self.classes:
                 self._class(name, parent)
         for name in ("UIWindow", OUTER, "SSTabBar"):
@@ -40,6 +42,7 @@ class Runtime(SpacingRuntime):
         self._add(self.classes[INNER], BEGIN, self.NATIVE_ALLOW, "B24@0:8@16")
         self._add(self.classes[OUTER], TOUCH, self.NATIVE_ALLOW, "B32@0:8@16@24")
         self.hit_calls = []
+        self.proxy_allows_fn = None
 
     def handle(self, cpu, pc):
         receiver, selector = cpu.x[:2]
@@ -51,6 +54,12 @@ class Runtime(SpacingRuntime):
         if pc == self.NATIVE_ALLOW:
             return self.finish(cpu, state[name] if name == "progressPanGesture" else 1)
         if pc-self.slide == 0xa5d4:
+            if receiver == self.classes.get("FQXDockMotion"):
+                if (name == "respondsToSelector:" and
+                        self.selector_names.get(cpu.x[2]) == "proxyAllowsDramaCapsuleTouch:atPoint:"):
+                    return self.finish(cpu, 1 if self.proxy_allows_fn is not None else 0)
+                if name == "proxyAllowsDramaCapsuleTouch:atPoint:" and self.proxy_allows_fn is not None:
+                    return self.finish(cpu, 1 if self.proxy_allows_fn(cpu.x[2], cpu.fp(0), cpu.fp(1)) else 0)
             if name in ("locationInView:", "translationInView:") and name in state:
                 return self.finish(cpu, fp=state[name])
             if name in ("viewIfLoaded", "selectedViewController", "presentedViewController", "progressContainer", "progressView") and name in state:
@@ -87,8 +96,8 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
 
     proxy_state = runtime.objects[proxy].state
     version = release_version(runtime.data)
-    r24 = version in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6")
-    follow_opt_in = version in ("1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6")
+    r24 = version in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7")
+    follow_opt_in = version in ("1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7")
     bar = proxy_state["superview"]
     if follow_opt_in:
         proxy_state.update(frame=(34., 0., 372., 62.), bounds=(0., 0., 372., 62.))
@@ -104,24 +113,24 @@ def verify_alignment(cpu, runtime, labels, controls, kind, proxy):
                     and state["nativeAction"] == "open series", "CTA keeps native width when follow-bottom-width is off")
         runtime.objects[runtime.DEFAULTS].state["values"]["FanqieX.DramaFollowBottomWidth.1"] = True
     frames = [(20., 400., 20., 400.), (34., 372., 34., 372.)]
-    compact_width = 300. if version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6") else 50.
-    if version in ("2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6"):
-        compact_x = 70. if version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6") else 370.
+    compact_width = 300. if version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7") else 50.
+    if version in ("2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7"):
+        compact_x = 70. if version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7") else 370.
         frames.extend(((130., 180., 130., 180.), (compact_x, compact_width, 34., 372.)))
     else:
         frames.append((370., 50., 16., 408.))
-    if version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6"):
+    if version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7"):
         frames.append((346., 60., 34., 372.))
     for dock_x, dock_width, expected_x, expected_width in frames:
-        circle = version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6") and dock_width == 60.
+        circle = version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7") and dock_width == 60.
         compact = dock_width == compact_width or circle
         height = 62.
-        if compact and version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6"):
+        if compact and version in ("2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7"):
             height = 60. if circle else 52.
         proxy_state.update(frame=(dock_x, (62. - height) / 2, dock_width, height), bounds=(0., 0., dock_width, height))
         if r24 and compact:
             runtime.objects[runtime.DEFAULTS].state["values"]["FanqieX.BottomLengthScale.1"] = 93
-            mode = 2 if version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6") and not circle else 1
+            mode = 2 if version in ("2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7") and not circle else 1
             runtime.associations[bar, labels[COMPACT]] = runtime.box(mode)
             runtime.associations[proxy, labels[BASE]] = runtime.obj("NSValue", "expanded stock frame", rect=(20., 0., 400., 62.))
             runtime.associations[proxy, labels[BUTTONS]] = runtime.box([0, 1, 2, 3])
@@ -211,10 +220,10 @@ def verify(data, labels):
             pan.update({"locationInView:": (48., 2.), "translationInView:": (8., 11.)})
             require(send(cpu, runtime, controls, BEGIN, gesture)["result"] == 1,
                     "A track-origin pan keeps the native delegate after moving down")
-        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6"):
+        if release_version(data) in ("1.78R19", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7"):
             verify_alignment(cpu, runtime, labels, controls, kind, proxy)
             cases.append(f"{kind} rail and available episode CTA align to native dock edges")
-        if kind == OUTER and release_version(data) in ("1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6"):
+        if kind == OUTER and release_version(data) in ("1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7"):
             verify_novel_clearance(cpu, runtime, labels, controls, proxy)
             cases.append("Novel CTA and metadata stay above the dock and restore on reuse")
         cases.append(f"{kind} initial dock and track separation")
@@ -231,6 +240,26 @@ def verify(data, labels):
     runtime.objects[runtime.DEFAULTS].state["values"]["FanqieAdBlock.GlassDisabled.1"] = True
     require(send(cpu, runtime, window, HIT, event, fp=(60., 884.))["result"] == progress,
             "Disabling glass restores the native hit")
+    runtime.objects[runtime.DEFAULTS].state["values"].pop("FanqieAdBlock.GlassDisabled.1", None)
+    if release_version(data) in ("2.0.1beta7",):
+        # TikTok shrunk Dock: [100..300] inside proxy passes through left/right margins while routing interior taps
+        runtime.proxy_allows_fn = lambda _cap, px, py: 100. <= px <= 300. and 6. <= py <= 56.
+        require(send(cpu, runtime, window, HIT, event, fp=(60., 884.))["result"] == progress,
+                "Shrunk TikTok Dock margin passes window hit through to playback/progress")
+        require(send(cpu, runtime, window, HIT, event, fp=(180., 900.))["result"] == button,
+                "Shrunk TikTok Dock interior still routes hits to SSTabBar")
+        runtime.objects[touch].state["locationInView:"] = (40., 20.)
+        require(send(cpu, runtime, controls, TOUCH, gesture, touch)["result"] == 1,
+                "Progress scrub accepts touches in shrunk Dock side margin")
+        runtime.objects[touch].state["locationInView:"] = (160., 20.)
+        require(send(cpu, runtime, controls, TOUCH, gesture, touch)["result"] == 0,
+                "Progress scrub rejects touches inside shrunk Dock interior")
+        # Siri AI compressed/faded line: full pass-through across bottom
+        runtime.proxy_allows_fn = lambda _cap, _px, _py: False
+        require(send(cpu, runtime, window, HIT, event, fp=(180., 900.))["result"] == progress,
+                "Siri AI hidden/thin line never intercepts video gestures")
+        runtime.proxy_allows_fn = None
+        cases.append("TikTok shrunk geometry & Siri AI hidden-line touch pass-through")
     cases.extend(("hidden, transparent dock fallthrough", "presented controller fallthrough",
                   "disabled glass fallthrough"))
     return cases
@@ -242,7 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     binary = args.candidate.read_bytes()
-    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6") else []
+    extra = [COMPACT, BASE, BUTTONS] if release_version(binary) in ("1.78R24", "1.78R25", "1.78R26", "1.78R27", "1.78R28", "1.78R29", "1.78R30", "1.78R31", "1.78R32", "1.78R33", "1.78R34", "1.78R35", "1.78R36", "1.79R1", "1.79R2", "1.79R3", "1.79R4", "1.79R5", "1.8R1", "1.8R2", "1.8R3", "1.8R4", "1.8R5", "1.8R6", "1.8R7", "1.8R8", "1.8R9", "1.8R10", "1.8R11", "1.8R12", "1.8R13", "1.8R14", "1.8R15", "1.8R16", "1.8R17", "1.8R18", "1.8R19", "1.8R19", "1.9.1beta1", "1.9.1beta2", "1.9.1beta3", "1.9.1beta4", "1.9.1beta5", "1.9.1beta6", "1.9.1beta7", "1.9.1beta8", "1.9.1beta9", "1.9.1beta10", "1.9.1beta11", "1.9.1beta12", "1.9.1beta13", "1.9.1beta14", "1.9.1beta15", "1.9.1beta16", "1.9.1beta17", "1.9.1beta18", "1.9.1beta19", "1.9.1beta20", "1.9.1beta21", "1.9.1beta22", "1.9.1beta23", "1.9.1beta24", "1.9.1beta25", "1.9.1beta26", "1.9.5beta1", "1.9.5beta2", "1.9.5beta3", "1.9.5beta4", "1.9.5beta5", "1.9.5beta6", "1.9.5beta7", "1.9.5beta8", "1.9.5beta9", "1.9.6beta1", "1.9.6beta2", "1.9.6beta3", "1.9.6beta4", "1.9.6beta5", "1.9.6beta6", "1.9.6beta7", "1.9.6beta8", "1.9.6beta9", "1.9.7beta1", "1.9.7beta2", "1.9.7beta3", "1.9.7beta4", "1.9.7beta5", "1.9.7beta6", "1.9.7beta7", "1.9.7beta8", "1.9.7beta9", "1.9.7beta10", "1.9.8beta", "1.9.8beta2", "2.0", "2.0.1beta1", "2.0.1beta2", "2.0.1beta3", "2.0.1beta4", "2.0.1beta5", "2.0.1beta6", "2.0.1beta7") else []
     symbols = labels_for(binary, args.candidate.with_suffix(".composed.s"), list(dict.fromkeys(LABELS + EXTRA + extra)))
     report = {"passed": True, "candidate_sha256": hashlib.sha256(binary).hexdigest(),
               "cases": verify(binary, symbols), "device_tested": False}

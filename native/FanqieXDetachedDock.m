@@ -255,6 +255,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.clipsToBounds = NO;
         self.userInteractionEnabled = YES;
         _appliedGlassStamp = NSIntegerMin;
+        _feedGlyphScale = 1.0;
 
         FQXDetachedCircleGlassView *glass = [[FQXDetachedCircleGlassView alloc] initWithEffect:nil];
         glass.frame = self.bounds;
@@ -454,6 +455,16 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     }
 }
 
+- (void)setFeedGlyphScale:(CGFloat)feedGlyphScale {
+    CGFloat clamped = MAX(0.001, feedGlyphScale);
+    if (fabs(_feedGlyphScale - clamped) < 0.0005) return;
+    _feedGlyphScale = clamped;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.contentScaleHost.transform = CGAffineTransformMakeScale(clamped, clamped);
+    [CATransaction commit];
+}
+
 - (void)handleTouchDown {
     if (self.onTouchDiagnostic) {
         self.onTouchDiagnostic(@"touch_down", @{
@@ -462,13 +473,14 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         });
     }
     if (UIAccessibilityIsReduceMotionEnabled()) return;
+    CGFloat base = self.feedGlyphScale > 0.0 ? self.feedGlyphScale : 1.0;
     [UIView animateWithDuration:0.14
                           delay:0.0
                         options:(UIViewAnimationOptionBeginFromCurrentState |
                                  UIViewAnimationOptionAllowUserInteraction |
                                  UIViewAnimationOptionCurveEaseOut)
                      animations:^{
-        self.contentScaleHost.transform = CGAffineTransformMakeScale(0.88, 0.88);
+        self.contentScaleHost.transform = CGAffineTransformMakeScale(0.88 * base, 0.88 * base);
         if (self.moduleSelected) {
             self.selectionLens.transform = CGAffineTransformMakeScale(0.92, 0.92);
         }
@@ -476,8 +488,9 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 }
 
 - (void)animateReleaseBounce {
+    CGFloat base = self.feedGlyphScale > 0.0 ? self.feedGlyphScale : 1.0;
     if (UIAccessibilityIsReduceMotionEnabled()) {
-        self.contentScaleHost.transform = CGAffineTransformIdentity;
+        self.contentScaleHost.transform = CGAffineTransformMakeScale(base, base);
         return;
     }
     [UIView animateWithDuration:0.42
@@ -487,7 +500,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
                         options:(UIViewAnimationOptionBeginFromCurrentState |
                                  UIViewAnimationOptionAllowUserInteraction)
                      animations:^{
-        self.contentScaleHost.transform = CGAffineTransformIdentity;
+        self.contentScaleHost.transform = CGAffineTransformMakeScale(base, base);
         self.selectionLens.transform = self.moduleSelected
             ? CGAffineTransformIdentity
             : CGAffineTransformMakeScale(0.84, 0.84);

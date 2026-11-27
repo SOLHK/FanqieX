@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXBlurControl.h"
+#import "FQXSiriaiDockMotion.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
 #import "FanqieXNaloia.h"
@@ -59,6 +60,8 @@ static const void *MenuKey = &MenuKey;
 static const void *RowKey = &RowKey;
 static NSString *const CompactKey = @"FanqieX.BottomDramaCompact.1";
 static NSString *const ScrollZoomKey = @"FanqieX.DramaDockScrollZoom.1";
+static NSString *const DockCollapseModeKey = @"FanqieX.DockCollapseMode.1";
+static NSString *const DockSiriaiHideLineKey = @"FanqieX.DockSiriaiHideLine.1";
 static NSString *const CompactPositionKey = @"FanqieX.BottomDramaCompactPosition.1";
 static NSString *const FollowWidthKey = @"FanqieX.DramaFollowBottomWidth.1";
 static NSString *const BottomEntryTitlePrefix = @"底栏显示：";
@@ -167,6 +170,7 @@ static NSInteger MatchScore(NSString *folded, NSString *normalized) {
 @property(nonatomic, copy) NSArray<NSDictionary *> *actions;
 @property(nonatomic) CGFloat height;
 @property(nonatomic) BOOL requiresCompact;
+@property(nonatomic) BOOL requiresSiriai;
 @property(nonatomic) BOOL inverted;
 @property(nonatomic) BOOL diagnosticExport;
 @property(nonatomic) BOOL authorInformation;
@@ -342,6 +346,13 @@ static NSInteger CurrentSavedBottomDisplayMode(void) {
     return [ud boolForKey:BottomIconsOnlyLegacyKey] ? 1 : 0;
 }
 
+static NSInteger CurrentSavedDockCollapseMode(void) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id stored = [ud objectForKey:DockCollapseModeKey];
+    int raw = (stored && [stored respondsToSelector:@selector(intValue)]) ? [stored intValue] : -1;
+    return (NSInteger)FQXResolveDockCollapseMode(raw, [ud boolForKey:CompactKey] ? 1 : 0, [ud boolForKey:ScrollZoomKey] ? 1 : 0);
+}
+
 static NSInteger CurrentSavedCommentComposerStyle(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     NSInteger material = CurrentSavedCommentMaterialStyle();
@@ -419,6 +430,8 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         NSInteger saved = CurrentSavedShareMaterialStyle();
         NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
         idx = (found != NSNotFound) ? (NSInteger)found : 1;
+    } else if (row.popoverKind == 11) {
+        idx = CurrentSavedDockCollapseMode();
     } else if (values.count == options.count && options.count > 0) {
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
@@ -437,18 +450,29 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
     return idx;
 }
 
-static void AddDramaDockSwitch(FQXSettingsMenu *menu, NSString *key, NSString *path) {
-    BOOL zoom = [key isEqualToString:ScrollZoomKey];
-    FQXSettingRow *row = [FQXSettingRow new];
-    row.title = zoom ? @"刷视频时自动缩放 Dock" : @"短剧滚动自动收缩";
-    row.path = path;
-    row.option = @{@"key": key, @"default": @NO,
-                   @"detail": zoom ? @"保留全部入口，回看或轻提可展开" : @"收成一个圆按钮，点按可展开"};
-    row.keywords = [NSString stringWithFormat:@"%@ %@ 短剧 底栏 Dock 缩小 放大 收起 开关 %@",
-                    row.title, path, zoom ? @"多图标 动画 轻提 上滑 下滑 回看" : @"单圆按钮 收缩位置"];
-    row.hiddenFromSearch = zoom && [path isEqualToString:@"短剧/底栏收缩"];
-    row.height = 58;
-    [menu.catalog addObject:row];
+static void AddDockCollapseModeRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *modeRow = [FQXSettingRow new];
+    modeRow.title = @"动态收缩底栏";
+    modeRow.path = route;
+    modeRow.hiddenFromSearch = hiddenFromSearch;
+    modeRow.keywords = @"动态收缩底栏 底栏收缩 短剧 底栏 Dock 原有收缩模式 TikTok 交互 Siri AI 交互 缩小 放大 收起 短线 上滑 下滑";
+    modeRow.popoverKey = DockCollapseModeKey;
+    modeRow.popoverOptions = @[@"关闭", @"原有收缩模式", @"TikTok 交互", @"Siri AI 交互"];
+    modeRow.popoverValues = @[@0, @1, @2, @3];
+    modeRow.popoverKind = 11;
+    modeRow.height = 52;
+    [menu.catalog addObject:modeRow];
+
+    FQXSettingRow *hideLineRow = [FQXSettingRow new];
+    hideLineRow.title = @"Siri AI 收缩后隐藏短线";
+    hideLineRow.path = route;
+    hideLineRow.hiddenFromSearch = hiddenFromSearch;
+    hideLineRow.requiresSiriai = YES;
+    hideLineRow.option = @{@"key": DockSiriaiHideLineKey, @"default": @NO,
+                           @"detail": @"收缩成白色短线后自动淡出，下拉可恢复"};
+    hideLineRow.keywords = @"Siri AI 收缩后隐藏短线 短线 白条 隐藏 自动淡出 底栏 Dock";
+    hideLineRow.height = 58;
+    [menu.catalog addObject:hideLineRow];
 }
 
 static void AddDockDisplayStyleRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
@@ -738,9 +762,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     menu.router = router;
     menu.adsOwner = ads;
     menu.path = @"";
-    AddDramaDockSwitch(menu, ScrollZoomKey, @"页面与导航/底栏入口");
-    AddDramaDockSwitch(menu, CompactKey, @"短剧/底栏收缩");
-    AddDramaDockSwitch(menu, ScrollZoomKey, @"短剧/底栏收缩");
+    AddDockCollapseModeRows(menu, @"短剧/底栏收缩", NO);
+    AddDockCollapseModeRows(menu, @"页面与导航/底栏入口", YES);
+    AddDockCollapseModeRows(menu, @"外观/玻璃与尺寸", YES);
     UIView *legacyHeader = legacy.tableHeaderView;
     UIView *legacyFooter = legacy.tableFooterView;
     for (UIView *group in legacyHeader.subviews) {
@@ -1211,8 +1235,11 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     NSMutableArray *rows = [NSMutableArray array];
     NSMutableOrderedSet *folders = [NSMutableOrderedSet orderedSet];
     NSString *prefix = self.path.length ? [self.path stringByAppendingString:@"/"] : @"";
-    BOOL compact = [NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
+    NSInteger collapseMode = CurrentSavedDockCollapseMode();
+    BOOL compact = (collapseMode == FQXDockCollapseModeLegacy);
+    BOOL siriai = (collapseMode == FQXDockCollapseModeSiriai);
     for (FQXSettingRow *row in self.catalog) {
+        if (row.requiresSiriai && !siriai) continue;
         if (row.requiresCompact && !compact && !query.length) continue;
         if (query.length) {
             if (row.hiddenFromSearch) continue;
@@ -1412,7 +1439,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             return cell;
         }
-        BOOL unavailable = row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
+        BOOL unavailable = row.requiresCompact && (CurrentSavedDockCollapseMode() != FQXDockCollapseModeLegacy);
         if (unavailable) {
             cell.textLabel.textColor = UIColor.secondaryLabelColor;
             cell.detailTextLabel.text = searching
@@ -1455,7 +1482,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     }
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.textLabel.numberOfLines = 2;
-    BOOL unavailable = row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey];
+    BOOL unavailable = row.requiresCompact && (CurrentSavedDockCollapseMode() != FQXDockCollapseModeLegacy);
     if (unavailable) {
         cell.textLabel.text = row.title;
         cell.textLabel.textColor = UIColor.secondaryLabelColor;
@@ -1604,12 +1631,27 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
 - (void)performStoredAction:(UIButton *)button {
     for (FQXSettingRow *row in self.catalog) {
         if (row.content != button) continue;
+        __weak FQXSettingsMenu *weakSelf = self;
         void (^perform)(void) = ^{
+            BOOL resetsBottom = NO;
             for (NSDictionary *action in row.actions) {
                 id target = [action[@"target"] anyObject];
-                SEL selector = NSSelectorFromString(action[@"selector"]);
+                NSString *selName = action[@"selector"];
+                if ([selName isEqualToString:@"fqx178_resetBottom:"]) resetsBottom = YES;
+                SEL selector = NSSelectorFromString(selName);
                 if ([target respondsToSelector:selector])
                     ((void (*)(id, SEL, id))objc_msgSend)(target, selector, button);
+            }
+            if (resetsBottom) {
+                NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+                [ud removeObjectForKey:DockCollapseModeKey];
+                [ud removeObjectForKey:DockSiriaiHideLineKey];
+                Class cleanup = objc_lookUpClass("FQXCleanup");
+                SEL refreshSel = sel_registerName("refreshForKey:");
+                if ([cleanup respondsToSelector:refreshSel]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refreshSel, DockCollapseModeKey);
+                }
+                [weakSelf rebuild];
             }
         };
         UIViewController *presenter = self.search.presentingViewController;
@@ -1741,7 +1783,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     } else {
         FQXSettingRow *row = self.visibleRows[path.row - self.folders.count];
         if (row.popoverKey.length && row.popoverOptions.count) {
-            if (row.requiresCompact && ![NSUserDefaults.standardUserDefaults boolForKey:CompactKey]) return;
+            if (row.requiresCompact && (CurrentSavedDockCollapseMode() != FQXDockCollapseModeLegacy)) return;
             UITableViewCell *cell = [tableView cellForRowAtIndexPath:path];
             NSArray<NSString *> *options = nil;
             NSArray<NSNumber *> *values = nil;
@@ -1795,6 +1837,31 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
                     handler:^(__unused UIAlertAction *action) {
                         NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
                         [ud setInteger:savedVal forKey:prefKey];
+                        if (kind == 11) {
+                            FQXSettingsMenu *strongMenu = weakMenu;
+                            BOOL wantLegacyCompact = (savedVal == FQXDockCollapseModeLegacy);
+                            SEL ownerAction = sel_registerName("fqx178_bottomOptionChanged:");
+                            if ([ud boolForKey:ScrollZoomKey]) {
+                                if ([strongMenu.settingsOwner respondsToSelector:ownerAction]) {
+                                    UISwitch *offZoom = [UISwitch new];
+                                    offZoom.on = NO;
+                                    offZoom.tag = 48;
+                                    ((void (*)(id, SEL, id))objc_msgSend)(strongMenu.settingsOwner, ownerAction, offZoom);
+                                } else {
+                                    [ud setBool:NO forKey:ScrollZoomKey];
+                                }
+                            }
+                            if ([ud boolForKey:CompactKey] != wantLegacyCompact) {
+                                if ([strongMenu.settingsOwner respondsToSelector:ownerAction]) {
+                                    UISwitch *compactSw = [UISwitch new];
+                                    compactSw.on = wantLegacyCompact;
+                                    compactSw.tag = 2;
+                                    ((void (*)(id, SEL, id))objc_msgSend)(strongMenu.settingsOwner, ownerAction, compactSw);
+                                } else {
+                                    [ud setBool:wantLegacyCompact forKey:CompactKey];
+                                }
+                            }
+                        }
                         if (kind == 1) [ud setBool:(savedVal == 1) forKey:BottomIconsOnlyLegacyKey];
                         if (kind == 4) {
                             [ud removeObjectForKey:@"FanqieX.CommentGlassFrosted.1"];
@@ -1812,7 +1879,8 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
                         if ([cleanup respondsToSelector:selector]) {
                             ((void (*)(id, SEL, id))objc_msgSend)(cleanup, selector, prefKey);
                         }
-                        [weakMenu.tableView reloadData];
+                        if (kind == 11) [weakMenu rebuild];
+                        else [weakMenu.tableView reloadData];
                     }]];
             }
             [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];

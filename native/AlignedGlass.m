@@ -8449,6 +8449,10 @@ static Obj BottomDramaCapsuleForView(Obj view) {
     return proxy;
 }
 static B BottomContainsCapsulePoint(Obj capsule,Point point) {
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"proxyAllowsDramaCapsuleTouch:atPoint:"))
+        return ((B(*)(Obj,Sel,Obj,Point))Message)(motion,
+            sel_registerName("proxyAllowsDramaCapsuleTouch:atPoint:"),capsule,point);
     Rect bounds=Bounds(capsule);
     return point.x>=bounds.x && point.x<bounds.x+bounds.width &&
         point.y>=bounds.y && point.y<bounds.y+bounds.height;

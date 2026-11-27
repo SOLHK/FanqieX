@@ -4,6 +4,7 @@
 #import <objc/message.h>
 
 #import "FQXLayoutAndSheetPolicy.h"
+#import "FQXSiriaiDockMotion.h"
 #import "FanqieXSettingsCodec.h"
 
 static NSString *const DramaPreferencePrefix = @"FanqieX.DramaCategory.";
@@ -11,6 +12,8 @@ static NSString *const HiddenBookstoreCategories = @"FanqieX.BookstoreHiddenCate
 static NSString *const ReaderThemePreset = @"FanqieX.ReaderThemePreset.1";
 static NSString *const LegacyCompact = @"FanqieX.BottomDramaCompact.1";
 static NSString *const ScrollZoom = @"FanqieX.DramaDockScrollZoom.1";
+static NSString *const DockCollapseMode = @"FanqieX.DockCollapseMode.1";
+static NSString *const DockSiriaiHideLine = @"FanqieX.DockSiriaiHideLine.1";
 static NSString *const BottomDisplayMode = @"FanqieX.BottomDisplayMode.1";
 static NSString *const BottomIconsOnly = @"FanqieX.BottomIconsOnly.1";
 static NSString *const CommentMaterialStyle = @"FanqieX.CommentMaterialStyle.1";
@@ -52,6 +55,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.BottomHaptics.1": @YES,
         LegacyCompact: @NO,
         ScrollZoom: @NO,
+        DockCollapseMode: @0,
+        DockSiriaiHideLine: @NO,
         @"FanqieX.BottomDramaCompactPosition.1": @0,
         @"FanqieX.BottomLengthScale.1": @100,
         @"FanqieX.BottomHeightScale.1": @100,
@@ -177,6 +182,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
+        [key isEqualToString:DockCollapseMode] ||
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||
         [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
@@ -194,7 +200,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
         if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
-        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 3;
+        if ([key isEqualToString:@"FanqieX.DockMaterial.1"] || [key isEqualToString:DockCollapseMode]) maximum = 3;
         if ([key isEqualToString:CommentMaterialStyle] ||
             [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"]) {
             maximum = 4;
@@ -226,7 +232,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
 static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
     NSDictionary<NSString *, id> *defaults = BuiltInSettings();
     NSMutableDictionary<NSString *, id> *snapshot = [NSMutableDictionary dictionary];
-    NSArray *inherited = @[BottomDisplayMode, CommentComposerStyle, @"FanqieX.DramaWatchTab.1",
+    NSArray *inherited = @[BottomDisplayMode, DockCollapseMode, CommentComposerStyle, @"FanqieX.DramaWatchTab.1",
         @"FanqieX.DramaRecentTab.1", @"FanqieX.DramaFavoritesTab.1", @"FanqieX.DramaComicTab.1"];
     [defaults enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
         (void)stop;
@@ -253,6 +259,14 @@ static NSDictionary<NSString *, id> *BackupSnapshot(NSUserDefaults *storage) {
         if (IsDramaPreference(key) && !snapshot[key]) snapshot[key] = @YES;
     }
     if ([snapshot[LegacyCompact] boolValue]) snapshot[ScrollZoom] = @NO;
+    int storedMode = snapshot[DockCollapseMode] ? [snapshot[DockCollapseMode] intValue] : -1;
+    FQXDockCollapseMode resolvedMode = FQXResolveDockCollapseMode(storedMode,
+        [snapshot[LegacyCompact] boolValue] ? 1 : 0, [snapshot[ScrollZoom] boolValue] ? 1 : 0);
+    snapshot[DockCollapseMode] = @((NSInteger)resolvedMode);
+    if (storedMode >= 0) {
+        snapshot[LegacyCompact] = @(resolvedMode == FQXDockCollapseModeLegacy);
+        snapshot[ScrollZoom] = @NO;
+    }
     return snapshot;
 }
 
@@ -270,7 +284,25 @@ static BOOL ApplySettings(NSUserDefaults *storage, NSString *domainName,
         normalized[other] = @NO;
         settings = normalized;
     }
+    if (settings[DockCollapseMode]) {
+        NSInteger modeVal = [settings[DockCollapseMode] integerValue];
+        BOOL wantLegacy = (modeVal == FQXDockCollapseModeLegacy);
+        if ((settings[LegacyCompact] && [settings[LegacyCompact] boolValue] != wantLegacy) ||
+            (!replace && !settings[LegacyCompact] && [current[LegacyCompact] boolValue] != wantLegacy) ||
+            (settings[ScrollZoom] && [settings[ScrollZoom] boolValue]) ||
+            (!replace && !settings[ScrollZoom] && [current[ScrollZoom] boolValue])) {
+            NSMutableDictionary *normalized = [settings mutableCopy];
+            if (settings[LegacyCompact] || (!replace && [current[LegacyCompact] boolValue] != wantLegacy))
+                normalized[LegacyCompact] = @(wantLegacy);
+            if (settings[ScrollZoom] || (!replace && [current[ScrollZoom] boolValue]))
+                normalized[ScrollZoom] = @NO;
+            settings = normalized;
+        }
+    }
     NSMutableArray<NSString *> *removals = [NSMutableArray array];
+    if (!replace && !settings[DockCollapseMode] && (settings[LegacyCompact] || settings[ScrollZoom]) && current[DockCollapseMode]) {
+        [removals addObject:DockCollapseMode];
+    }
     if (replace) {
         NSDictionary<NSString *, id> *defaults = BuiltInSettings();
         for (NSString *key in current) {

@@ -7,6 +7,7 @@ typedef struct {
 
 // Release summaries from VERSION history and the corresponding docs/REPAIR_* notes.
 static const FQXReleaseNote FQXReleaseNotes[] = {
+    {@"2.0.1beta7", @"「页面与导航 → 底栏入口」合并为「动态收缩底栏」，提供关闭、原有收缩模式、TikTok 交互和 Siri AI 交互四档互斥模式，并在 Siri AI 交互下提供「Siri AI 收缩后隐藏短线」。接入独立圆形底栏模块的同步缩放、聚拢与点击穿透。"},
     {@"2.0.1beta6", @"调整多图标 Dock 在小幅拖动、松手和快速翻页时的动画衔接。"},
     {@"2.0.1beta5", @"开启「刷视频时自动缩放 Dock」后，慢慢拖动页面即可控制底栏大小。按住时保持当前尺寸，反向拖动会沿原路展开或收起，松手后补完剩余动画。\n\n短剧右侧点赞、评论、收藏和分享按钮去掉了玻璃底。"},
     {@"2.0.1beta4", @"恢复「短剧滚动自动收缩」的单圆按钮，默认收在右侧。\n\n「页面与导航 → 底栏入口」新增「刷视频时自动缩放 Dock」。它会将多个图标一起缩小并居中。两种模式分别设置，开启一种会关闭另一种。"},

@@ -26,6 +26,7 @@ NSInteger FQXDockDetachedResolveIndexWithReason(NSArray<NSString *> *visibleTitl
 @property(nonatomic, copy, nullable) void (^onTapModule)(UIButton * _Nullable hostButton);
 @property(nonatomic, copy, nullable) void (^onTouchDiagnostic)(NSString *stage, NSDictionary<NSString *, id> *info);
 @property(nonatomic, readonly, getter=isModuleSelected) BOOL moduleSelected;
+@property(nonatomic) CGFloat feedGlyphScale;
 
 - (void)setModuleSelected:(BOOL)selected animated:(BOOL)animated;
 - (void)updateImagesNormal:(nullable UIImage *)normalImage

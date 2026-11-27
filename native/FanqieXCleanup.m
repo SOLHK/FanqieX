@@ -128,6 +128,8 @@ static NSString *const CommentMaterialStyleKey = @"FanqieX.CommentMaterialStyle.
 static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMode.1";
 static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
+static NSString *const DockCollapseModeKey = @"FanqieX.DockCollapseMode.1";
+static NSString *const DockSiriaiHideLineKey = @"FanqieX.DockSiriaiHideLine.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurKey = @"FanqieX.CommentBlur.1";
@@ -2198,6 +2200,13 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SEL refreshCommentSel = sel_registerName("refreshCommentGlass");
         if ([dockMotion respondsToSelector:refreshCommentSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshCommentSel);
+        }
+    } else if ([key isEqualToString:DockCollapseModeKey] ||
+               [key isEqualToString:DockSiriaiHideLineKey]) {
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshModeSel = sel_registerName("refreshDockCollapseMode");
+        if ([dockMotion respondsToSelector:refreshModeSel]) {
+            ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshModeSel);
         }
     } else if ([key isEqualToString:BottomDisplayModeKey] ||
                [key isEqualToString:@"FanqieX.BottomDramaCompactPosition.1"] ||
