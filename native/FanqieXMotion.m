@@ -2462,9 +2462,7 @@ static FQXDockCollapseMode FQXCurrentDockCollapseMode(void) {
 }
 
 static BOOL FQXFeedMotionSupported(void) {
-    if (!FQXGlassEnabled() || UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPhone) return NO;
-    if (@available(iOS 26.0, *)) return YES;
-    return NO;
+    return FQXGlassEnabled() && UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone;
 }
 
 @interface FQXFeedDockItemPart : NSObject
@@ -3484,7 +3482,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     FQXFeedSpringTarget *target = [FQXFeedSpringTarget new];
     target.owner = self;
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:target selector:@selector(advance:)];
-    if (@available(iOS 15.0, *)) {
+    if ([link respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
         link.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
     }
     [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
