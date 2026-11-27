@@ -8258,6 +8258,7 @@ static const char *const BottomDragReleasedKey = "FanqieX.Dock.BottomDragRelease
 static const char *const BottomDragLastYKey = "FanqieX.Dock.DragLastY";
 static const char *const BottomDragProgressKey = "FanqieX.Dock.DragProgress";
 static const char *const BottomDragDirectionKey = "FanqieX.Dock.DragTowardCompact";
+static const char *const BottomDragExtremeKey = "FanqieX.Dock.DragDirectionExtreme";
 static const char *const BottomDragDockKey = "FanqieX.Dock.TrackingDock";
 static const char *const BottomDragFeedKey = "FanqieX.Dock.TrackingFeed";
 static const char *const BottomDragBeganCompactKey = "FanqieX.Dock.BottomDragBeganCompactKey";
@@ -8586,6 +8587,7 @@ static void BottomDramaResetDrag(Obj scroll) {
     objc_setAssociatedObject(scroll,BottomDragLastYKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragProgressKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragDirectionKey,0,1);
+    objc_setAssociatedObject(scroll,BottomDragExtremeKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragBeganCompactKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragLightLiftKey,0,1);
 }
@@ -8605,7 +8607,7 @@ static void BottomDramaResolveDrag(Obj scroll) {
         (page==origin && (Flag(scroll,"isDragging") || Flag(scroll,"isDecelerating") ||
             Flag(scroll,"isScrollAnimating")))) return;
     B lightLift=objc_getAssociatedObject(scroll,BottomDragLightLiftKey)!=0;
-    B tracked=objc_getAssociatedObject(scroll,BottomDragProgressKey)!=0;
+    B tracked=objc_getAssociatedObject(scroll,BottomDragDirectionKey)!=0;
     BottomDramaResetDrag(scroll);
     const char *result;
     Obj bar=BottomDramaScrollBar(scroll,&result);
@@ -8648,6 +8650,10 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
     if (zoomStart) {
         Obj dock=objc_getAssociatedObject(self,BottomDragDockKey),motion=Lookup("FQXDockMotion");
         Point delta=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),self);
+        // UIKit may have accumulated translation before it recognized the pan.
+        // Grab the displayed size here so that distance isn't applied in one frame.
+        if (state==1 && delta.y!=0)
+            objc_setAssociatedObject(self,BottomDragLastYKey,Number(delta.y),1);
         Obj sample=objc_getAssociatedObject(self,BottomDragProgressKey);
         double progress=Double(sample);
         if (!dock && !cancelled && __builtin_fabs(delta.y)>__builtin_fabs(delta.x)) {
@@ -8661,6 +8667,7 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
             Rect expanded=BottomTarget178R5(bar,base,count,0),compact=BottomTarget178R5(bar,base,count,1);
             progress=((double(*)(Obj,Sel,Obj,Rect,Rect))Message)(motion,
                 sel_registerName("beginScrollZoomTracking:expandedFrame:compactFrame:"),dock,expanded,compact);
+            objc_setAssociatedObject(self,BottomDragExtremeKey,objc_getAssociatedObject(self,BottomDragLastYKey),1);
             objc_setAssociatedObject(self,BottomDragDockKey,dock,1);
             BottomSetWeak178(dock,BottomDragFeedKey,self);
         }
@@ -8668,18 +8675,38 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
             // Integrate increments, even at the end stops. A finger reversal
             // then immediately moves the Dock back without any dead travel.
             double travel=BottomClamp178(Bounds(self).height*0.15,96,144);
+            Point velocity={0,0};
+            if (!cancelled) {
+                velocity=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("velocityInView:"),self);
+                double slow=1-BottomClamp178(__builtin_fabs(velocity.y)/300.,0,1);
+                travel/=1+0.4*slow*slow;
+            }
             double dy=delta.y-Double(objc_getAssociatedObject(self,BottomDragLastYKey));
             if (!cancelled) {
                 double next=BottomClamp178(progress-dy/travel,0,1);
                 if (!sample || next!=progress) {
-                    ((void(*)(Obj,Sel,Obj,double))Message)(motion,
-                        sel_registerName("updateScrollZoomTracking:progress:"),dock,next);
+                    // The last translation may arrive only on finger-up. Use it
+                    // for intent; let the spring cover it from the displayed size.
+                    if (state!=3)
+                        ((void(*)(Obj,Sel,Obj,double))Message)(motion,
+                            sel_registerName("updateScrollZoomTracking:progress:"),dock,next);
                     objc_setAssociatedObject(self,BottomDragProgressKey,Number(next),1);
                 }
                 if (dy!=0) {
                     objc_setAssociatedObject(self,BottomDragLastYKey,Number(delta.y),1);
-                    if (next!=progress || !sample)
-                        objc_setAssociatedObject(self,BottomDragDirectionKey,BoolBox(dy<0),1);
+                    // Every increment is visible. Only the release destination
+                    // ignores sub-3pt jitter, measured in the pan's own points.
+                    Obj direction=objc_getAssociatedObject(self,BottomDragDirectionKey);
+                    double extreme=Double(objc_getAssociatedObject(self,BottomDragExtremeKey));
+                    double change=extreme-delta.y;
+                    B shrinking=change>0;
+                    if ((!direction && next==progress) ||
+                        (change!=0 && direction && Flag(direction,"boolValue")==shrinking)) {
+                        objc_setAssociatedObject(self,BottomDragExtremeKey,Number(delta.y),1);
+                    } else if (next!=progress && __builtin_fabs(change)>=3) {
+                        objc_setAssociatedObject(self,BottomDragDirectionKey,BoolBox(shrinking),1);
+                        objc_setAssociatedObject(self,BottomDragExtremeKey,Number(delta.y),1);
+                    }
                 }
                 progress=next;
             }
@@ -8689,11 +8716,11 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
                     BottomDramaResetDrag(self); return;
                 }
                 B compact=Flag(zoomStart,"boolValue");
-                Point velocity={0,0};
                 if (!cancelled) {
-                    velocity=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("velocityInView:"),self);
                     Obj direction=objc_getAssociatedObject(self,BottomDragDirectionKey);
-                    compact=progress<=0 ? 0 : progress>=1 ? 1 : direction ? Flag(direction,"boolValue") : progress>=0.5;
+                    if (direction) compact=Flag(direction,"boolValue");
+                    if (progress<=0) compact=0;
+                    if (progress>=1) compact=1;
                     if (compact && Flag(zoomStart,"boolValue") && delta.y<=-8 && delta.y>=-32 && progress==1)
                         objc_setAssociatedObject(self,BottomDragLightLiftKey,BoolBox(1),1);
                 }
