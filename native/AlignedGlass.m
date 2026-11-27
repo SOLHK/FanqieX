@@ -2679,6 +2679,7 @@ static B DramaGlyph(Obj owner,const char *selector,B animate) {
     Sel glyphSelector=sel_registerName(selector);
     I role=DramaNaloiaRole(owner,glyphSelector);
     if (role<0) return 0;
+    RemoveDramaGlass(owner);
     Obj presenter=DramaNaloiaPresenter(role);
     Obj glyph=Get(owner,selector);
     Obj nativeParent=Kind(glyph,"UIImageView") ? Get(glyph,"superview") : 0;
@@ -2687,11 +2688,11 @@ static B DramaGlyph(Obj owner,const char *selector,B animate) {
         DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
         DramaActionInk(owner,0,1,0,0);
         DramaNaloiaSync(presenter,owner,glyph,role,animate);
-    } else {
-        DramaNaloiaDetach(owner);
-        presenter=0;
+        return 1;
     }
-    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return !!presenter;
+    DramaNaloiaDetach(owner);
+    // Returning handled also removes the selector-keyed disk in the legacy layout path.
+    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return 1;
     Obj parent=Enabled() ? nativeParent : 0;
     Rect frame=parent ? Frame(glyph) : (Rect){0};
     B share=role==DramaNaloiaShare;
@@ -2702,26 +2703,16 @@ static B DramaGlyph(Obj owner,const char *selector,B animate) {
     B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
     if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
-    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0,0); RemoveDramaGlass(owner); return 1; }
+    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0,0); return 1; }
     if (outline) {
         DramaActionInk(owner,0,1,0,0);
         double points=BottomValue178(16);
         if (compactShare) points=__builtin_fmin(points,__builtin_fmin(frame.width,frame.height)*0.70);
-        if (presenter || DramaOutlineApply(owner,glyph,parent,frame,selector,points)) {
-            RemoveDramaGlass(owner);
-            return 1;
-        }
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector,points)) return 1;
     }
     double diameter=DramaActionDiameter178R11();
-    Rect material={frame.x+(frame.width-diameter)*0.5,frame.y+(frame.height-diameter)*0.5,diameter,diameter};
-    Obj glass=PlaceDramaGlass(owner,parent,glyph,material);
-    if (!glass) { DramaActionInk(owner,0,1,0,0); return 0; }
-    if (!presenter) {
-        B stable=role==DramaNaloiaFavorite || role==DramaNaloiaLike || compactShare;
-        DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
-    }
-    B hidden=Flag(glyph,"isHidden");
-    if (hidden!=Flag(glass,"isHidden")) VB(glass,"setHidden:",hidden);
+    B stable=role==DramaNaloiaFavorite || role==DramaNaloiaLike || compactShare;
+    DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
     return 1;
 }
 B FQHDramaGlyph(Obj owner,const char *selector) {
@@ -2826,8 +2817,6 @@ static inline __attribute__((always_inline)) B DramaNaloiaLikeIsMounted(Obj owne
 static void DramaLikeVisibility(Obj self,Sel cmd,B hidden) {
     if (hidden && objc_getAssociatedObject(self,DramaLikeStockEffectKey)) hidden=0;
     ((void(*)(Obj,Sel,B))Original("SSShortVideoRightInteractionLikeView","fqx190_originalDramaLikeVisibility:"))(self,cmd,hidden);
-    Obj glass=objc_getAssociatedObject(self,DramaGlassKey);
-    if (glass) VB(glass,"setHidden:",hidden);
     Obj outline=objc_getAssociatedObject(self,DramaOutlineViewKey);
     if (outline) VB(outline,"setHidden:",hidden);
 }
@@ -8266,7 +8255,11 @@ static void BottomSelectedBox178Key(void) {}
 // These associated-object keys need distinct addresses, but no executable unwind entries.
 static const char *const BottomDragStart178R7Key = "FanqieX.Dock.BottomDragStart178R7Key";
 static const char *const BottomDragReleasedKey = "FanqieX.Dock.BottomDragReleasedKey";
-static const char *const BottomDragTurningPointKey = "FanqieX.Dock.BottomDragTurningPointKey";
+static const char *const BottomDragLastYKey = "FanqieX.Dock.DragLastY";
+static const char *const BottomDragProgressKey = "FanqieX.Dock.DragProgress";
+static const char *const BottomDragDirectionKey = "FanqieX.Dock.DragTowardCompact";
+static const char *const BottomDragDockKey = "FanqieX.Dock.TrackingDock";
+static const char *const BottomDragFeedKey = "FanqieX.Dock.TrackingFeed";
 static const char *const BottomDragBeganCompactKey = "FanqieX.Dock.BottomDragBeganCompactKey";
 static const char *const BottomDragLightLiftKey = "FanqieX.Dock.BottomDragLightLiftKey";
 static const char *const BottomDragAttachedKey = "FanqieX.Dock.BottomDragAttachedKey";
@@ -8580,10 +8573,19 @@ static double BottomDramaOffsetY(Obj scroll) {
 static I BottomDramaPageAtOffset(double offset,double height) {
     return (I)(__builtin_fmax(0,offset)/height+0.5);
 }
+static Rect BottomTarget178R5(Obj bar,Rect base,U count,B compact);
 static void BottomDramaResetDrag(Obj scroll) {
+    Obj dock=objc_getAssociatedObject(scroll,BottomDragDockKey);
+    if (dock) {
+        V1(Lookup("FQXDockMotion"),"cancelScrollZoomTracking:",dock);
+        objc_setAssociatedObject(dock,BottomDragFeedKey,0,1);
+        objc_setAssociatedObject(scroll,BottomDragDockKey,0,1);
+    }
     objc_setAssociatedObject(scroll,BottomDragStart178R7Key,0,1);
     objc_setAssociatedObject(scroll,BottomDragReleasedKey,0,1);
-    objc_setAssociatedObject(scroll,BottomDragTurningPointKey,0,1);
+    objc_setAssociatedObject(scroll,BottomDragLastYKey,0,1);
+    objc_setAssociatedObject(scroll,BottomDragProgressKey,0,1);
+    objc_setAssociatedObject(scroll,BottomDragDirectionKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragBeganCompactKey,0,1);
     objc_setAssociatedObject(scroll,BottomDragLightLiftKey,0,1);
 }
@@ -8603,13 +8605,15 @@ static void BottomDramaResolveDrag(Obj scroll) {
         (page==origin && (Flag(scroll,"isDragging") || Flag(scroll,"isDecelerating") ||
             Flag(scroll,"isScrollAnimating")))) return;
     B lightLift=objc_getAssociatedObject(scroll,BottomDragLightLiftKey)!=0;
+    B tracked=objc_getAssociatedObject(scroll,BottomDragProgressKey)!=0;
     BottomDramaResetDrag(scroll);
     const char *result;
     Obj bar=BottomDramaScrollBar(scroll,&result);
     if (bar) {
         result=page>origin ? "next-page" : page<origin ? "previous-page" : "same-page";
-        if (page>origin) BottomSetCompact178(bar,1);
-        else if (BottomConfiguredShape()==BottomDockZoom && (page<origin || lightLift)) BottomSetCompact178(bar,0);
+        if (!tracked && page>origin) BottomSetCompact178(bar,1);
+        else if (BottomConfiguredShape()==BottomDockZoom && ((!tracked && page<origin) || (page==origin && lightLift)))
+            BottomSetCompact178(bar,0);
     }
     BottomDramaDragLog("resolve",result,offset);
 }
@@ -8640,41 +8644,69 @@ static void BottomDramaDrag(Obj self,Sel cmd,Obj pan) {
     if (!start) return;
     const char *result;
     Obj zoomStart=objc_getAssociatedObject(self,BottomDragBeganCompactKey);
-    if (state==4 || state==5) {
-        Obj bar=zoomStart ? BottomDramaScrollBar(self,&result) : (Obj)0;
-        if (bar) BottomSetCompact178(bar,Flag(zoomStart,"boolValue"));
-        BottomDramaResetDrag(self);
-        return;
-    }
-    // Observe the feed's own pan. A reversal is measured from its latest extreme,
-    // so the user need not drag all the way back past the original touch point.
-    if (!zoomStart && state!=3) return;
-    Point delta=zoomStart ? ((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),self) : (Point){0,0};
-    B vertical=__builtin_fabs(delta.y)>__builtin_fabs(delta.x);
-    Obj bar=BottomWeakValue178(Get(self,"window"),BottomWindowBarKey);
-    double turning=Double(objc_getAssociatedObject(self,BottomDragTurningPointKey));
-    if (bar && vertical) {
-        B compact=BottomCompactActive178R7(bar);
-        double reverse=compact ? delta.y-turning : turning-delta.y;
-        if (reverse>=8) {
-            if (BottomDramaScrollBar(self,&result)!=bar) { BottomDramaResetDrag(self); return; }
-            Obj motion=Lookup("FQXDockMotion");
-            if (Responds(motion,"setScrollZoomVelocity:forDock:")) {
-                Point velocity=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("velocityInView:"),self);
-                ((void(*)(Obj,Sel,double,Obj))Message)(motion,sel_registerName("setScrollZoomVelocity:forDock:"),
-                    __builtin_fabs(velocity.y)/Bounds(self).height,BottomWeakValue178(bar,BottomProxyBox178Key));
-            }
-            BottomSetCompact178(bar,!compact);
+    B cancelled=state==4 || state==5;
+    if (zoomStart) {
+        Obj dock=objc_getAssociatedObject(self,BottomDragDockKey),motion=Lookup("FQXDockMotion");
+        Point delta=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("translationInView:"),self);
+        Obj sample=objc_getAssociatedObject(self,BottomDragProgressKey);
+        double progress=Double(sample);
+        if (!dock && !cancelled && __builtin_fabs(delta.y)>__builtin_fabs(delta.x)) {
+            Obj bar=BottomDramaScrollBar(self,&result);
+            if (!bar || BottomConfiguredShape()!=BottomDockZoom) { BottomDramaResetDrag(self); return; }
+            dock=BottomWeakValue178(bar,BottomProxyBox178Key);
+            Obj stock=objc_getAssociatedObject(dock,BottomBaseFrame178Key);
+            Rect base=stock ? UnboxRect(stock) : Frame(dock);
+            U count=TabCount(objc_getAssociatedObject(dock,BottomButtons178Key));
+            if (!dock || !count || !BottomRect178(base)) { BottomDramaResetDrag(self); return; }
+            Rect expanded=BottomTarget178R5(bar,base,count,0),compact=BottomTarget178R5(bar,base,count,1);
+            progress=((double(*)(Obj,Sel,Obj,Rect,Rect))Message)(motion,
+                sel_registerName("beginScrollZoomTracking:expandedFrame:compactFrame:"),dock,expanded,compact);
+            objc_setAssociatedObject(self,BottomDragDockKey,dock,1);
+            BottomSetWeak178(dock,BottomDragFeedKey,self);
         }
-        if (reverse>=8 || reverse<0)
-            objc_setAssociatedObject(self,BottomDragTurningPointKey,Number(delta.y),1);
+        if (dock) {
+            // Integrate increments, even at the end stops. A finger reversal
+            // then immediately moves the Dock back without any dead travel.
+            double travel=BottomClamp178(Bounds(self).height*0.15,96,144);
+            double dy=delta.y-Double(objc_getAssociatedObject(self,BottomDragLastYKey));
+            if (!cancelled) {
+                double next=BottomClamp178(progress-dy/travel,0,1);
+                if (!sample || next!=progress) {
+                    ((void(*)(Obj,Sel,Obj,double))Message)(motion,
+                        sel_registerName("updateScrollZoomTracking:progress:"),dock,next);
+                    objc_setAssociatedObject(self,BottomDragProgressKey,Number(next),1);
+                }
+                if (dy!=0) {
+                    objc_setAssociatedObject(self,BottomDragLastYKey,Number(delta.y),1);
+                    if (next!=progress || !sample)
+                        objc_setAssociatedObject(self,BottomDragDirectionKey,BoolBox(dy<0),1);
+                }
+                progress=next;
+            }
+            if (state==3 || cancelled) {
+                Obj bar=BottomDramaScrollBar(self,&result);
+                if (!bar || Get(dock,"superview")!=bar || BottomConfiguredShape()!=BottomDockZoom) {
+                    BottomDramaResetDrag(self); return;
+                }
+                B compact=Flag(zoomStart,"boolValue");
+                Point velocity={0,0};
+                if (!cancelled) {
+                    velocity=((Point(*)(Obj,Sel,Obj))Message)(pan,sel_registerName("velocityInView:"),self);
+                    Obj direction=objc_getAssociatedObject(self,BottomDragDirectionKey);
+                    compact=progress<=0 ? 0 : progress>=1 ? 1 : direction ? Flag(direction,"boolValue") : progress>=0.5;
+                    if (compact && Flag(zoomStart,"boolValue") && delta.y<=-8 && delta.y>=-32 && progress==1)
+                        objc_setAssociatedObject(self,BottomDragLightLiftKey,BoolBox(1),1);
+                }
+                ((void(*)(Obj,Sel,Obj,B,double))Message)(motion,sel_registerName("finishScrollZoomTracking:compact:velocity:"),
+                    dock,compact,-velocity.y/travel);
+                objc_setAssociatedObject(dock,BottomDragFeedKey,0,1);
+                objc_setAssociatedObject(self,BottomDragDockKey,0,1);
+                BottomSetCompact178(bar,compact);
+            }
+        }
     }
+    if (cancelled) { BottomDramaResetDrag(self); return; }
     if (state==3) {
-        // An upward nudge and a forward flick can start identically. Only reveal
-        // for a short nudge if UIKit finally settles on the original video.
-        if (vertical && delta.y<=-8 && delta.y>=-32 && turning>=-32 &&
-            Flag(zoomStart,"boolValue"))
-            objc_setAssociatedObject(self,BottomDragLightLiftKey,BoolBox(1),1);
         objc_setAssociatedObject(self,BottomDragReleasedKey,start,1);
         objc_setAssociatedObject(self,BottomDragStart178R7Key,0,1);
         BottomDramaDragLog("end","waiting-for-page",BottomDramaOffsetY(self));
@@ -9275,6 +9307,8 @@ void FQHBottomPrepare(Obj bar,Obj proxy,Obj buttons) {
     Obj page=BottomDramaPage178R7(bar);
     if (!page || BottomWeakValue178(bar,BottomSelectedBox178Key)!=page ||
         (BottomCompactActive178R7(bar) && BottomDockShape(bar)!=BottomConfiguredShape())) {
+        Obj feed=BottomWeakValue178(proxy,BottomDragFeedKey);
+        if (feed) BottomDramaResetDrag(feed);
         BottomSetCompact178(bar,0);
         BottomSetWeak178(bar,BottomSelectedBox178Key,page);
     }
@@ -9438,6 +9472,8 @@ void FQHBottomFinish(Obj bar,Obj proxy,Obj buttons,Obj native) {
     }
 }
 void FQHBottomReset178(Obj bar,Obj proxy) {
+    Obj feed=BottomWeakValue178(proxy,BottomDragFeedKey);
+    if (feed) BottomDramaResetDrag(feed);
     BottomSyncMotion178(bar,proxy,0,0,0);
     BottomPublishDramaGeometry(bar,0);
     BottomSetCompact178(bar,0);
@@ -9464,9 +9500,14 @@ void FQHBottomReset178(Obj bar,Obj proxy) {
 static void BottomRefresh178(void) {
     Obj bars=Get(BottomBars178(),"allObjects");
     U count=TabCount(bars);
+    I mode=BottomConfiguredShape();
     for (U i=0;i<count;++i) {
         Obj bar=At(bars,i);
-        if (BottomCompactActive178R7(bar) && BottomDockShape(bar)!=BottomConfiguredShape()) BottomSetCompact178(bar,0);
+        if (mode!=BottomDockZoom) {
+            Obj proxy=BottomWeakValue178(bar,BottomProxyBox178Key),feed=BottomWeakValue178(proxy,BottomDragFeedKey);
+            if (feed) BottomDramaResetDrag(feed);
+        }
+        if (BottomCompactActive178R7(bar) && BottomDockShape(bar)!=mode) BottomSetCompact178(bar,0);
         V0(bar,"setNeedsLayout");
     }
 }

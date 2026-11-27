@@ -19,6 +19,8 @@ static const char FQXK_DockAnimatorKey = 0;
 static const char FQXScrollZoomSnapshotKey = 0;
 static const char FQXScrollZoomVelocityKey = 0;
 static const char FQXScrollZoomSpringKey = 0;
+static const char FQXScrollZoomTrackingKey = 0;
+static const char FQXExpandedCaptionRectKey = 0;
 static const char FQXDockCompactKey = 0;
 static const char FQXK_TabInteractionKey = 0;
 #define TabInteractionKey ((const void *)&FQXK_TabInteractionKey)
@@ -6601,9 +6603,46 @@ static void FQXRefreshAllDramaPlaybackOptions(void);
 
 #pragma mark - FQXDockMotion
 
+@interface FQXDockTrackingLayer : NSObject {
+@public
+    __weak UIView *view;
+    __weak UIView *owner;
+    __weak UILabel *hostCaption;
+    FQXDockTrackingLayer *parent;
+    CGRect expanded, compact, grabbed, model;
+    CGFloat grabbedOpacity;
+    CFTimeInterval clock, originalOffset;
+    float originalSpeed;
+    BOOL caption, glyph, temporaryCaption;
+}
+@end
+@implementation FQXDockTrackingLayer
+@end
+
+@interface FQXDockTracking : NSObject {
+@public
+    NSMutableArray<FQXDockTrackingLayer *> *layers;
+    CGFloat start, progress, releaseVelocity;
+    BOOL fromCompact, finishing;
+    __weak UIView *bar, *dock;
+    CGRect expandedFrame, compactFrame;
+    NSMapTable *resumeFrames;
+}
+@end
+static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling);
+@implementation FQXDockTracking
+- (void)dealloc {
+    if (layers.count) FQXReleaseTrackingLayers(self, NO);
+}
+@end
+
 @interface FQXDockMotion : NSObject
 + (void)prepareDock:(UIView *)dock inBar:(UIView *)bar;
 + (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact button:(UIView *)button;
++ (double)beginScrollZoomTracking:(UIView *)dock expandedFrame:(CGRect)expanded compactFrame:(CGRect)compact;
++ (void)updateScrollZoomTracking:(UIView *)dock progress:(double)progress;
++ (void)finishScrollZoomTracking:(UIView *)dock compact:(BOOL)target velocity:(double)velocity;
++ (void)cancelScrollZoomTracking:(UIView *)dock;
 + (void)setScrollZoomVelocity:(CGFloat)screenHeightsPerSecond forDock:(UIView *)dock;
 + (void)prepareScrollZoomDock:(UIView *)dock inBar:(UIView *)bar;
 + (void)setDock:(UIView *)dock compact:(BOOL)compact;
@@ -6944,6 +6983,8 @@ static CGRect FQXZoomGlyphRect(UIImageView *glyph, UIView *bar, BOOL live) {
 }
 
 + (void)prepareScrollZoomDock:(UIView *)dock inBar:(UIView *)bar {
+    FQXDockTracking *tracking = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (tracking && tracking->finishing) return; // finish already captured this exact drag sample
     NSNumber *speed = objc_getAssociatedObject(dock, &FQXScrollZoomVelocityKey);
     objc_setAssociatedObject(dock, &FQXScrollZoomVelocityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!dock.window || UIAccessibilityIsReduceMotionEnabled()) {
@@ -6991,11 +7032,14 @@ static double FQXZoomSpringValue(FQXZoomSpring spring, double seconds, double *v
     return spring.target + envelope * offset;
 }
 
-static NSArray<NSNumber *> *FQXZoomSamples(UIView *dock, BOOL compact, double speed, CFTimeInterval now) {
+static NSArray<NSNumber *> *FQXZoomSamples(UIView *dock, BOOL compact, double speed, CFTimeInterval now, FQXDockTracking *tracking) {
     FQXZoomSpring spring = { now, compact ? 0 : 1, compact ? 1 : 0,
         (compact ? 1 : -1) * MIN(3.5, MAX(0, speed)), compact ? 19.0 : 19.4, compact ? 0.67 : 0.65 };
     NSValue *saved = objc_getAssociatedObject(dock, &FQXScrollZoomSpringKey);
-    if (saved) {
+    if (tracking && fabs(spring.target - tracking->progress) > 0.0001) {
+        spring.from = tracking->progress;
+        spring.velocity = tracking->releaseVelocity;
+    } else if (!tracking && saved) {
         FQXZoomSpring prior;
         [saved getValue:&prior size:sizeof(prior)];
         double elapsed = now - prior.startTime;
@@ -7019,13 +7063,17 @@ static NSArray<NSNumber *> *FQXZoomSamples(UIView *dock, BOOL compact, double sp
     return progress;
 }
 
-static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to,
-                               CGRect parentFrom, CGRect parentTo, NSArray<NSNumber *> *progress, CFTimeInterval now) {
+static CGRect FQXZoomMixRect(CGRect from, CGRect to, double p) {
+    return CGRectMake(from.origin.x + (to.origin.x - from.origin.x) * p,
+                      from.origin.y + (to.origin.y - from.origin.y) * p,
+                      from.size.width + (to.size.width - from.size.width) * p,
+                      from.size.height + (to.size.height - from.size.height) * p);
+}
+
+static CAAnimationGroup *FQXZoomGeometryGroup(UIView *view, UIView *bar, CGRect to, CGRect parentTo,
+        NSArray<NSNumber *> *progress, NSArray<NSNumber *> *keyTimes, CFTimeInterval duration,
+        CGRect (^rectAt)(double), CGRect (^parentAt)(double)) {
     CALayer *layer = view.layer;
-    [layer removeAnimationForKey:FQXDockGeometryAnimation];
-    if (!progress.count || CGRectIsEmpty(from) || CGRectIsEmpty(to)) return;
-    BOOL insideMovingSurface = !CGRectIsEmpty(parentFrom) && !CGRectIsEmpty(parentTo);
-    if (CGRectEqualToRect(from, to) && !insideMovingSurface) return;
     CGPoint toCenter = CGPointMake(CGRectGetMidX(to), CGRectGetMidY(to));
     UIView *parent = view.superview;
     CGPoint anchor = [parent convertPoint:toCenter fromView:bar];
@@ -7036,19 +7084,14 @@ static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to
     NSMutableArray *positions = [NSMutableArray arrayWithCapacity:progress.count];
     NSMutableArray *transforms = [NSMutableArray arrayWithCapacity:progress.count];
     for (NSNumber *sample in progress) {
-        double remaining = 1.0 - sample.doubleValue;
-        CGPoint center = CGPointMake(toCenter.x + remaining * (CGRectGetMidX(from) - toCenter.x),
-                                     toCenter.y + remaining * (CGRectGetMidY(from) - toCenter.y));
-        CGFloat sx = 1 + remaining * (from.size.width / to.size.width - 1);
-        CGFloat sy = 1 + remaining * (from.size.height / to.size.height - 1);
-        if (insideMovingSurface) {
-            // Remove the parent's in-flight stretch from the glyph. Its own optical
-            // size and center follow the spring exactly once, including on reversal.
-            CGFloat px = 1 + remaining * (parentFrom.size.width / parentTo.size.width - 1);
-            CGFloat py = 1 + remaining * (parentFrom.size.height / parentTo.size.height - 1);
-            CGFloat tx = CGRectGetMidX(parentTo), ty = CGRectGetMidY(parentTo);
-            center.x = tx + (center.x - tx - remaining * (CGRectGetMidX(parentFrom) - tx)) / px;
-            center.y = ty + (center.y - ty - remaining * (CGRectGetMidY(parentFrom) - ty)) / py;
+        CGRect rect = rectAt(sample.doubleValue);
+        CGPoint center = CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
+        CGFloat sx = rect.size.width / to.size.width, sy = rect.size.height / to.size.height;
+        if (parentAt) {
+            CGRect outer = parentAt(sample.doubleValue);
+            CGFloat px = outer.size.width / parentTo.size.width, py = outer.size.height / parentTo.size.height;
+            center.x = CGRectGetMidX(parentTo) + (center.x - CGRectGetMidX(outer)) / px;
+            center.y = CGRectGetMidY(parentTo) + (center.y - CGRectGetMidY(outer)) / py;
             sx /= px;
             sy /= py;
         }
@@ -7062,27 +7105,387 @@ static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to
     }
     CAKeyframeAnimation *position = [CAKeyframeAnimation animationWithKeyPath:@"position"];
     position.values = positions;
-    position.duration = FQXZoomDuration;
+    position.keyTimes = keyTimes;
+    position.duration = duration;
     CAKeyframeAnimation *transform = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
     transform.values = transforms;
-    transform.duration = FQXZoomDuration;
+    transform.keyTimes = keyTimes;
+    transform.duration = duration;
     CAAnimationGroup *group = [CAAnimationGroup animation];
     group.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    group.beginTime = [layer convertTime:now fromLayer:nil];
-    group.duration = FQXZoomDuration;
+    group.duration = duration;
     group.animations = @[position, transform];
+    return group;
+}
+
+static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to,
+                               CGRect parentFrom, CGRect parentTo, NSArray<NSNumber *> *progress, CFTimeInterval now) {
+    CALayer *layer = view.layer;
+    [layer removeAnimationForKey:FQXDockGeometryAnimation];
+    if (!progress.count || CGRectIsEmpty(from) || CGRectIsEmpty(to)) return;
+    BOOL nested = !CGRectIsEmpty(parentFrom) && !CGRectIsEmpty(parentTo);
+    if (CGRectEqualToRect(from, to) && !nested) return;
+    CGRect (^outer)(double) = nil;
+    if (nested) outer = ^CGRect(double p) { return FQXZoomMixRect(parentFrom, parentTo, p); };
+    CAAnimationGroup *group = FQXZoomGeometryGroup(view, bar, to, parentTo, progress, nil, FQXZoomDuration,
+        ^CGRect(double p) { return FQXZoomMixRect(from, to, p); }, outer);
+    group.beginTime = [layer convertTime:now fromLayer:nil];
     [layer addAnimation:group forKey:FQXDockGeometryAnimation];
 }
+
+// Interactive geometry is installed once per drag. Scrubbing advances the local
+// clocks over a single millisecond; the host model frames and hit targets stay put.
+static const CFTimeInterval FQXTrackingInterval = 0.001;
+
+static CGRect FQXTrackingRect(FQXDockTrackingLayer *item, double start, double p) {
+    if (p == start) return item->grabbed;
+    return p < start ? FQXZoomMixRect(item->expanded, item->grabbed, p / start) :
+        FQXZoomMixRect(item->grabbed, item->compact, (p - start) / (1.0 - start));
+}
+
+static CGFloat FQXTrackingAlpha(FQXDockTrackingLayer *item, double start, double p) {
+    if (!item->caption || p == start) return item->grabbedOpacity;
+    // The reference captions disappear before the capsule reaches its small size.
+    double weight = MAX(0., 1. - p / 0.82), initial = MAX(0., 1. - start / 0.82);
+    if (p < start && initial < 1.)
+        return item->grabbedOpacity + (1. - item->grabbedOpacity) * (weight - initial) / (1. - initial);
+    return initial > 0 ? item->grabbedOpacity * weight / initial : weight;
+}
+
+static CGRect FQXMapTrackingRect(CGRect rect, CGRect source, CGRect destination, CGFloat widthScale, CGFloat heightScale) {
+    CGFloat mx = CGRectGetMidX(destination) + (CGRectGetMidX(rect) - CGRectGetMidX(source)) * destination.size.width / source.size.width;
+    CGFloat my = CGRectGetMidY(destination) + (CGRectGetMidY(rect) - CGRectGetMidY(source)) * destination.size.height / source.size.height;
+    CGSize size = CGSizeMake(rect.size.width * widthScale, rect.size.height * heightScale);
+    return CGRectMake(mx - size.width * .5, my - size.height * .5, size.width, size.height);
+}
+
+static FQXDockTrackingLayer *FQXAddTrackingLayer(FQXDockTracking *track, UIView *view, UIView *owner,
+        CGRect model, CGRect opposite, CGRect live, FQXDockTrackingLayer *parent, CFTimeInterval now) {
+    if (!view.window || CGRectIsEmpty(model) || CGRectIsEmpty(opposite)) return nil;
+    FQXDockTrackingLayer *item = [FQXDockTrackingLayer new];
+    item->view = view;
+    item->owner = owner;
+    item->parent = parent;
+    item->model = model;
+    item->expanded = track->fromCompact ? opposite : model;
+    item->compact = track->fromCompact ? model : opposite;
+    item->grabbed = CGRectIsEmpty(live) ? model : live;
+    CALayer *layer = view.layer;
+    item->grabbedOpacity = (layer.presentationLayer ?: layer).opacity;
+    id resume = [track->resumeFrames objectForKey:owner];
+    if ([resume isKindOfClass:NSArray.class]) {
+        item->grabbed = [resume[0] CGRectValue];
+        item->grabbedOpacity = [resume[1] doubleValue];
+    } else if (resume) item->grabbed = [resume CGRectValue];
+    item->clock = [layer convertTime:now fromLayer:nil];
+    item->originalOffset = layer.timeOffset;
+    item->originalSpeed = layer.speed;
+    [track->layers addObject:item];
+    return item;
+}
+
+static void FQXAddTrackingCaption(FQXDockTracking *track, UIButton *button, NSString *title, UIView *bar,
+        FQXDockTrackingLayer *surface, CGRect source, CGRect destination, CFTimeInterval now) {
+    UILabel *label = button.titleLabel;
+    if (!label) return;
+    CGRect slot = [button convertRect:button.bounds toView:bar];
+    if (CGRectIsEmpty(slot)) return;
+    BOOL visible = FQXDockLabelVisible(label, bar);
+    // A custom module without any glyph keeps its only label at both sizes.
+    if (track->fromCompact && visible) return;
+    UIView *caption = label;
+    CGRect model, opposite, live;
+    if (!track->fromCompact) {
+        if (!visible) return;
+        model = FQXDockAnchorRect(label, label.bounds, bar, NO);
+        if (CGRectIsEmpty(model)) return;
+        CGRect relative = CGRectMake((model.origin.x-slot.origin.x)/slot.size.width,
+                                     (model.origin.y-slot.origin.y)/slot.size.height,
+                                     model.size.width/slot.size.width, model.size.height/slot.size.height);
+        objc_setAssociatedObject(button, &FQXExpandedCaptionRectKey, [NSValue valueWithCGRect:relative], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        opposite = FQXMapTrackingRect(model, source, destination, .90, .90);
+        live = FQXDockAnchorRect(label, label.bounds, bar, YES);
+    } else {
+        if (!title.length) return;
+        UILabel *copy = [UILabel new];
+        copy.userInteractionEnabled = NO;
+        copy.accessibilityElementsHidden = YES;
+        copy.text = title;
+        copy.font = label.font;
+        copy.textColor = (label.highlighted ? label.highlightedTextColor : nil) ?: label.textColor;
+        copy.textAlignment = NSTextAlignmentCenter;
+        CGRect expandedSlot = FQXMapTrackingRect(slot, source, destination,
+            destination.size.width/source.size.width, destination.size.height/source.size.height);
+        NSValue *cached = objc_getAssociatedObject(button, &FQXExpandedCaptionRectKey);
+        CGRect relative = cached ? cached.CGRectValue : CGRectMake(0, .55, 1, .36);
+        opposite = CGRectMake(expandedSlot.origin.x + relative.origin.x*expandedSlot.size.width,
+                              expandedSlot.origin.y + relative.origin.y*expandedSlot.size.height,
+                              relative.size.width*expandedSlot.size.width, relative.size.height*expandedSlot.size.height);
+        model = FQXMapTrackingRect(opposite, destination, source, .90, .90);
+        UIView *prior = objc_getAssociatedObject(label, &FQXFallbackCaptionKey);
+        live = prior && !prior.hidden ? FQXDockAnchorRect(prior, prior.bounds, bar, YES) : model;
+        copy.alpha = prior && !prior.hidden ? (prior.layer.presentationLayer ?: prior.layer).opacity : 0;
+        [prior removeFromSuperview];
+        objc_setAssociatedObject(label, &FQXFallbackCaptionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        copy.frame = [button convertRect:model fromView:bar];
+        [button addSubview:copy];
+        caption = copy;
+    }
+    FQXDockTrackingLayer *item = FQXAddTrackingLayer(track, caption, label, model, opposite, live, surface, now);
+    if (item) {
+        item->caption = YES;
+        item->hostCaption = label;
+        item->temporaryCaption = caption != label;
+        if (item->temporaryCaption && ![track->resumeFrames objectForKey:label]) item->grabbedOpacity = caption.alpha;
+    } else if (caption != label) {
+        [caption removeFromSuperview];
+    }
+}
+
+static NSMapTable *FQXCaptureTrackingFrames(FQXDockTracking *track) {
+    NSMapTable *captured = [NSMapTable weakToStrongObjectsMapTable];
+    for (FQXDockTrackingLayer *item in track->layers) {
+        UIView *owner = item->owner;
+        if (!owner) continue;
+        NSValue *rect = [NSValue valueWithCGRect:FQXTrackingRect(item, track->start, track->progress)];
+        id value = item->glyph ? (id)rect : @[rect, @(FQXTrackingAlpha(item, track->start, track->progress))];
+        [captured setObject:value forKey:owner];
+    }
+    return captured;
+}
+
+static double FQXStartZoomTracking(UIView *dock, CGRect expanded, CGRect compact,
+                                   double heldProgress, NSMapTable *heldFrames) {
+    BOOL small = [objc_getAssociatedObject(dock, &FQXDockCompactKey) boolValue];
+    UIView *bar = dock.superview;
+    if (!dock.window || dock.hidden || CGRectIsEmpty(expanded) || CGRectIsEmpty(compact)) return small ? 1 : 0;
+    FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    FQXDockTracking *track = [FQXDockTracking new];
+    track->layers = [NSMutableArray array];
+    track->fromCompact = small;
+    track->bar = bar;
+    track->dock = dock;
+    track->expandedFrame = expanded;
+    track->compactFrame = compact;
+    track->resumeFrames = heldFrames;
+    track->start = heldFrames ? heldProgress : (small ? 1 : 0);
+    CFTimeInterval now = CACurrentMediaTime();
+    NSValue *spring = objc_getAssociatedObject(dock, &FQXScrollZoomSpringKey);
+    if (!heldFrames && spring) {
+        FQXZoomSpring prior;
+        [spring getValue:&prior size:sizeof(prior)];
+        double elapsed = now - prior.startTime;
+        if (elapsed >= 0 && elapsed < FQXZoomDuration)
+            track->start = MIN(1., MAX(0., FQXZoomSpringValue(prior, elapsed, NULL)));
+    }
+    track->progress = track->start;
+    CGRect source = small ? compact : expanded, destination = small ? expanded : compact;
+    CGFloat sx = destination.size.width/source.size.width, sy = destination.size.height/source.size.height;
+    CGFloat iconScale = small ? 1./.90 : .90;
+    FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
+        if (view.hidden || view.superview != bar) return;
+        CGRect model = FQXDockAnchorRect(anchor, anchor.bounds, bar, NO);
+        CGRect opposite = FQXMapTrackingRect(model, source, destination,
+            interaction && view == interaction->_detachedButton ? sy : sx, sy);
+        BOOL isIcons = interaction && view == interaction->_dockIconOverlay;
+        BOOL isCaptions = interaction && interaction->_dockIconOverlay && view == interaction->_dockTitleOverlay;
+        if (isIcons || isCaptions) {
+            CGFloat otherScale = interaction->_nativeDockBar.transform.d * sy;
+            // Native icon+caption stacks use these same offsets at settled layout.
+            CGFloat shift = isIcons ? 7.0 : -5.5;
+            opposite.origin.y += (small ? -1 : 1) * shift * otherScale;
+            if (isIcons) {
+                CGFloat h = model.size.height * iconScale;
+                opposite.origin.y += (opposite.size.height - h) * .5;
+                opposite.size.height = h;
+            }
+        }
+        FQXDockTrackingLayer *surface = FQXAddTrackingLayer(track, view, view, model, opposite,
+            FQXDockAnchorRect(anchor, anchor.bounds, bar, YES), nil, now);
+        if (!surface) return;
+        surface->caption = isCaptions;
+        FQXEnumerateZoomGlyphs(interaction, view, ^(UIView *owner, UIImageView *glyph) {
+            CGRect box = FQXZoomGlyphRect(glyph, bar, NO);
+            CGRect target = FQXMapTrackingRect(box, model, opposite, iconScale, iconScale);
+            if ([owner isKindOfClass:UIButton.class] && [interaction dockDisplayMode] == 0) {
+                CGRect slot = [owner convertRect:owner.bounds toView:bar];
+                CGFloat slotY = CGRectGetMidY(destination) + (CGRectGetMidY(slot) - CGRectGetMidY(source)) * sy;
+                target.origin.y = slotY - target.size.height * .5 - (small ? destination.size.height * .12 : 0);
+                NSUInteger index = [interaction->_buttons indexOfObjectIdenticalTo:(UIButton *)owner];
+                FQXAddTrackingCaption(track, (UIButton *)owner, FQXDockButtonTitle((UIButton *)owner, bar, index),
+                                      bar, surface, source, destination, now);
+            }
+            FQXDockTrackingLayer *item = FQXAddTrackingLayer(track, glyph, owner, box, target,
+                FQXZoomGlyphRect(glyph, bar, YES), surface, now);
+            if (item) item->glyph = YES;
+        });
+    });
+    track->resumeFrames = nil;
+    if (!track->layers.count) return small ? 1 : 0;
+    NSMutableArray<NSNumber *> *samples = [NSMutableArray array];
+    for (NSUInteger i=0; i<=16; ++i) [samples addObject:@(i / 16.)];
+    if (![samples containsObject:@(track->start)]) {
+        [samples addObject:@(track->start)];
+        [samples sortUsingSelector:@selector(compare:)];
+    }
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (FQXDockTrackingLayer *item in track->layers) {
+        FQXDockTrackingLayer *parent = item->parent;
+        CGRect (^outer)(double) = nil;
+        if (parent) outer = ^CGRect(double p) { return FQXTrackingRect(parent, track->start, p); };
+        CAAnimationGroup *group = FQXZoomGeometryGroup(item->view, bar, item->model, parent ? parent->model : CGRectZero,
+            samples, samples, FQXTrackingInterval, ^CGRect(double p) { return FQXTrackingRect(item, track->start, p); }, outer);
+        if (item->caption) {
+            NSMutableArray *alphas = [NSMutableArray arrayWithCapacity:samples.count];
+            for (NSNumber *p in samples) [alphas addObject:@(FQXTrackingAlpha(item, track->start, p.doubleValue))];
+            CAKeyframeAnimation *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+            fade.values = alphas;
+            fade.keyTimes = samples;
+            fade.duration = FQXTrackingInterval;
+            group.animations = [group.animations arrayByAddingObject:fade];
+        }
+        group.beginTime = item->clock;
+        group.fillMode = kCAFillModeBoth;
+        group.removedOnCompletion = NO;
+        CALayer *layer = item->view.layer;
+        [layer removeAnimationForKey:@"FanqieX.dock.caption"];
+        layer.speed = 0;
+        layer.timeOffset = item->clock + track->progress * FQXTrackingInterval;
+        [layer addAnimation:group forKey:FQXDockGeometryAnimation];
+    }
+    [CATransaction commit];
+    objc_setAssociatedObject(dock, &FQXScrollZoomSpringKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(dock, &FQXScrollZoomTrackingKey, track, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return track->progress;
+}
+
++ (double)beginScrollZoomTracking:(UIView *)dock expandedFrame:(CGRect)expanded compactFrame:(CGRect)compact {
+    FQXDockTracking *prior = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (prior && !prior->finishing) return prior->progress;
+    if (!prior) return FQXStartZoomTracking(dock, expanded, compact, 0, nil);
+    // A second finger drag can arrive before the previous release's setNeedsLayout.
+    // Flush that one queued layout; the sampled handoff also works before CA commits.
+    double p = prior->progress;
+    NSMapTable *frames = FQXCaptureTrackingFrames(prior);
+    [dock.superview layoutIfNeeded];
+    [self cancelScrollZoomTracking:dock];
+    return FQXStartZoomTracking(dock, expanded, compact, p, frames);
+}
+
++ (void)updateScrollZoomTracking:(UIView *)dock progress:(double)p {
+    FQXDockTracking *track = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (!track || track->finishing || !isfinite(p)) return;
+    p = MIN(1., MAX(0., p));
+    if (track->progress == p) return;
+    track->progress = p;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (FQXDockTrackingLayer *item in track->layers)
+        item->view.layer.timeOffset = item->clock + p * FQXTrackingInterval;
+    [CATransaction commit];
+}
+
+static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling) {
+    NSArray *labels = settling ? FQXFallbackDockLabels(objc_getAssociatedObject(track->dock, TabInteractionKey)) : nil;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (FQXDockTrackingLayer *item in track->layers) {
+        CALayer *layer = item->view.layer;
+        [layer removeAnimationForKey:FQXDockGeometryAnimation];
+        layer.timeOffset = item->originalOffset;
+        layer.speed = item->originalSpeed;
+        UILabel *label = item->hostCaption;
+        BOOL keepCaption = label && [labels containsObject:label] && label.window && track->bar;
+        if (label && !keepCaption) {
+            UIView *copy = objc_getAssociatedObject(label, &FQXFallbackCaptionKey);
+            [copy removeFromSuperview];
+            objc_setAssociatedObject(label, &FQXFallbackCaptionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (item->temporaryCaption) {
+            UIView *copy = item->view;
+            if (keepCaption) {
+                [track->bar addSubview:copy];
+                copy.frame = FQXTrackingRect(item, track->start, track->progress);
+                copy.alpha = FQXTrackingAlpha(item, track->start, track->progress);
+                objc_setAssociatedObject(label, &FQXFallbackCaptionKey, copy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            } else {
+                [copy removeFromSuperview];
+            }
+        }
+    }
+    [CATransaction commit];
+    [track->layers removeAllObjects];
+}
+
++ (void)finishScrollZoomTracking:(UIView *)dock compact:(BOOL)target velocity:(double)velocity {
+    FQXDockTracking *track = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (!track || track->finishing) return;
+    track->finishing = YES;
+    track->releaseVelocity = isfinite(velocity) ? MIN(6., MAX(-6., velocity)) : 0.;
+    FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    FQXPrepareFallbackTitles(interaction, dock.superview);
+    NSMapTable *captured = FQXCaptureTrackingFrames(track);
+    for (FQXDockTrackingLayer *item in track->layers) {
+        if (!item->hostCaption || item->temporaryCaption) continue;
+        UIView *copy = objc_getAssociatedObject(item->hostCaption, &FQXFallbackCaptionKey);
+        copy.alpha = FQXTrackingAlpha(item, track->start, track->progress);
+    }
+    objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, captured, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (track->fromCompact == target)
+        [self animateDock:dock fromFrame:dock.frame compact:target];
+}
+
++ (void)cancelScrollZoomTracking:(UIView *)dock {
+    FQXDockTracking *track = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (track) FQXReleaseTrackingLayers(track, NO);
+    if (track || objc_getAssociatedObject(dock, &FQXScrollZoomSpringKey)) {
+        FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+        FQXEnumerateDockSurfaces(dock, ^(UIView *view, __unused UIView *anchor) {
+            [view.layer removeAnimationForKey:FQXDockGeometryAnimation];
+            [view.layer removeAnimationForKey:@"FanqieX.dock.caption"];
+            FQXEnumerateZoomGlyphs(interaction, view, ^(__unused UIView *owner, UIImageView *glyph) {
+                [glyph.layer removeAnimationForKey:FQXDockGeometryAnimation];
+            });
+        });
+        for (UILabel *label in FQXFallbackDockLabels(interaction)) {
+            UIView *copy = objc_getAssociatedObject(label, &FQXFallbackCaptionKey);
+            [copy removeFromSuperview];
+            objc_setAssociatedObject(label, &FQXFallbackCaptionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [label.layer removeAnimationForKey:@"FanqieX.dock.caption"];
+        }
+    }
+    objc_setAssociatedObject(dock, &FQXScrollZoomTrackingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(dock, &FQXScrollZoomSpringKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(dock, &FQXScrollZoomVelocityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 
 + (void)animateDock:(UIView *)dock fromFrame:(CGRect)frame compact:(BOOL)compact {
     NSMapTable *start = objc_getAssociatedObject(dock, &FQXScrollZoomSnapshotKey);
     objc_setAssociatedObject(dock, &FQXScrollZoomSnapshotKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UIView *bar = dock.superview;
     FQXTabBarInteraction *interaction = objc_getAssociatedObject(dock, TabInteractionKey);
+    FQXDockTracking *tracking = objc_getAssociatedObject(dock, &FQXScrollZoomTrackingKey);
+    if (tracking && !tracking->finishing) {
+        // UIKit delivered an older model change after the new gesture began.
+        // Rebase the paused tracks to that model without moving the visible Dock.
+        NSMapTable *frames = FQXCaptureTrackingFrames(tracking);
+        CGFloat p = tracking->progress;
+        CGRect expanded = tracking->expandedFrame, compactFrame = tracking->compactFrame;
+        [self cancelScrollZoomTracking:dock];
+        FQXStartZoomTracking(dock, expanded, compactFrame, p, frames);
+        return;
+    }
+    if (tracking) {
+        FQXReleaseTrackingLayers(tracking, YES);
+        objc_setAssociatedObject(dock, &FQXScrollZoomTrackingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     FQXAnimateFallbackTitles(interaction, bar, compact);
     CFTimeInterval now = CACurrentMediaTime();
     NSArray *progress = dock.window && !UIAccessibilityIsReduceMotionEnabled() ?
-        FQXZoomSamples(dock, compact, [[start objectForKey:bar] doubleValue], now) : nil;
+        FQXZoomSamples(dock, compact, [[start objectForKey:bar] doubleValue], now, tracking) : nil;
     if (!progress) objc_setAssociatedObject(dock, &FQXScrollZoomSpringKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     FQXEnumerateDockSurfaces(dock, ^(UIView *view, UIView *anchor) {
         if (view.superview != bar) return;
@@ -7120,6 +7523,7 @@ static void FQXAnimateZoomRect(UIView *view, UIView *bar, CGRect from, CGRect to
         return;
     }
     if (!buttons.count) {
+        [self cancelScrollZoomTracking:proxy];
         [interaction teardown];
         return;
     }
