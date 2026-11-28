@@ -2361,6 +2361,8 @@ static B DramaAlignWithDockFrame(Obj view,Rect alignment,double inset) {
     return !BottomSameFrame178(before,Frame(view));
 }
 static void RemoveDramaGlass(Obj owner) {
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"restoreDramaOwner:")) V1(motion,"restoreDramaOwner:",owner);
     Obj glass=objc_getAssociatedObject(owner,DramaGlassKey);
     if (!glass) return;
     V0(glass,"removeFromSuperview");
@@ -2388,17 +2390,21 @@ static Obj PlaceDramaGlass(Obj owner,Obj parent,Obj foreground,Rect frame) {
         V0(glass,"release");
     }
     B move=!SameRect(Frame(glass),frame), attach=O0(glass,"superview")!=parent;
-    if (!move && !attach) return glass;
-    Obj transaction=Lookup("CATransaction");
-    V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
-    if (move) SetFrame(glass,frame);
-    if (attach) {
-        if (foreground)
-            ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:belowSubview:"),glass,foreground);
-        else
-            ((void(*)(Obj,Sel,Obj,I))Message)(parent,sel_registerName("insertSubview:atIndex:"),glass,0);
+    if (move || attach) {
+        Obj transaction=Lookup("CATransaction");
+        V0(transaction,"begin"); VB(transaction,"setDisableActions:",1);
+        if (move) SetFrame(glass,frame);
+        if (attach) {
+            if (foreground)
+                ((void(*)(Obj,Sel,Obj,Obj))Message)(parent,sel_registerName("insertSubview:belowSubview:"),glass,foreground);
+            else
+                ((void(*)(Obj,Sel,Obj,I))Message)(parent,sel_registerName("insertSubview:atIndex:"),glass,0);
+        }
+        V0(transaction,"commit");
     }
-    V0(transaction,"commit");
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"styleDramaGlass:owner:"))
+        ((void(*)(Obj,Sel,Obj,Obj))Message)(motion,sel_registerName("styleDramaGlass:owner:"),glass,owner);
     return glass;
 }
 
@@ -2675,6 +2681,13 @@ static B DramaOutlineApply(Obj owner,Obj glyph,Obj parent,Rect frame,const char 
     return 1;
 }
 
+static void DramaNotifyActionMotion(Obj owner,Obj glyph,I role) {
+    Obj motion=Lookup("FQXDockMotion");
+    if (Responds(motion,"styleDramaActionOwner:glyph:outline:role:"))
+        ((void(*)(Obj,Sel,Obj,Obj,Obj,I))Message)(motion,sel_registerName("styleDramaActionOwner:glyph:outline:role:"),
+            owner,glyph,objc_getAssociatedObject(owner,DramaOutlineViewKey),role);
+}
+
 static B DramaGlyph(Obj owner,const char *selector,B animate) {
     Sel glyphSelector=sel_registerName(selector);
     I role=DramaNaloiaRole(owner,glyphSelector);
@@ -2688,11 +2701,12 @@ static B DramaGlyph(Obj owner,const char *selector,B animate) {
         DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
         DramaActionInk(owner,0,1,0,0);
         DramaNaloiaSync(presenter,owner,glyph,role,animate);
+        DramaNotifyActionMotion(owner,glyph,role);
         return 1;
     }
     DramaNaloiaDetach(owner);
     // Returning handled also removes the selector-keyed disk in the legacy layout path.
-    if (!FQHGlassAvailable() || !FQHButtonAvailable()) return 1;
+    if (!FQHGlassAvailable() || !FQHButtonAvailable()) { DramaNotifyActionMotion(owner,0,role); return 1; }
     Obj parent=Enabled() ? nativeParent : 0;
     Rect frame=parent ? Frame(glyph) : (Rect){0};
     B share=role==DramaNaloiaShare;
@@ -2703,16 +2717,17 @@ static B DramaGlyph(Obj owner,const char *selector,B animate) {
     B outline=VisibleRect(frame) && BoolProp(O1(O0(Lookup("NSUserDefaults"),"standardUserDefaults"),
         "objectForKey:",Text("FanqieX.DramaOutlineActions.1")),"boolValue");
     if (!outline) DramaOutlineApply(owner,0,0,(Rect){0},selector,0);
-    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0,0); return 1; }
+    if (!VisibleRect(frame)) { DramaActionInk(owner,0,1,0,0); DramaNotifyActionMotion(owner,0,role); return 1; }
     if (outline) {
         DramaActionInk(owner,0,1,0,0);
         double points=BottomValue178(16);
         if (compactShare) points=__builtin_fmin(points,__builtin_fmin(frame.width,frame.height)*0.70);
-        if (DramaOutlineApply(owner,glyph,parent,frame,selector,points)) return 1;
+        if (DramaOutlineApply(owner,glyph,parent,frame,selector,points)) { DramaNotifyActionMotion(owner,glyph,role); return 1; }
     }
     double diameter=DramaActionDiameter178R11();
     B stable=role==DramaNaloiaFavorite || role==DramaNaloiaLike || compactShare;
     DramaActionInk(owner,glyph,diameter/50,stable,compactShare ? diameter*0.72 : 0);
+    DramaNotifyActionMotion(owner,glyph,role);
     return 1;
 }
 B FQHDramaGlyph(Obj owner,const char *selector) {

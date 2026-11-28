@@ -2,12 +2,12 @@
 
 番茄小说 7.4.3 液态玻璃与精准广告移除插件修补工程。
 
-## FanqieX 2.0.1beta10
+## FanqieX 2.0.1beta11
 
 听书页右上角与「更多」半屏弹窗新增独立可调节的「听书更多面板模糊程度」（0%–100%）；为 TikTok 与 Siri AI 交互引入三阶 $C^2$ 流体弹簧释放模型，优化轻提/轻拉放手动画的顺滑与优雅质感；并将 TikTok 与 Siri AI 动态收缩底栏扩展至书城、书架、我的与短剧四大主页面。
 
-- [安装与更新说明](docs/REPAIR_2.0.1beta10.md)
-- [2.0.1beta10 真机验收](TESTING.md#201beta10-真机验收)
+- [安装与更新说明](docs/REPAIR_2.0.1beta11.md)
+- [2.0.1beta11 真机验收](TESTING.md#201beta11-真机验收)
 
 ## FanqieX 2.0.1beta9
 

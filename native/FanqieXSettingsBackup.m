@@ -33,6 +33,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         BottomIconsOnly: @NO,
         BottomDisplayMode: @0,
         @"FanqieX.DockMaterial.1": @0,
+        @"FanqieX.SelectionTintStyle.1": @0,
+        @"FanqieX.DramaButtonSurfaceStyle.1": @0,
         @"FanqieX.GlassDarkTint.1": @NO,
         @"FanqieX.DockDetachedEnabled.1": @NO,
         @"FanqieX.DockDetachedModule.1": @"",
@@ -41,6 +43,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.CommentBlur.1": @0,
         @"FanqieX.AudioButtonBlur.1": @0,
         @"FanqieX.AudioMoreBlur.1": @0,
+        @"FanqieX.AudioSheetMaterial.1": @1,
+        @"FanqieX.AudioSheetBlur.1": @0,
         @"FanqieX.DramaHeaderBlur.1": @0,
         @"FanqieX.DramaHeaderButtonScale.1": @100,
         @"FanqieX.DramaPlaybackOptionsMaterial.1": @0,
@@ -183,11 +187,15 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     }
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
+        [key isEqualToString:@"FanqieX.SelectionTintStyle.1"] ||
+        [key isEqualToString:@"FanqieX.DramaButtonSurfaceStyle.1"] ||
         [key isEqualToString:DockCollapseMode] ||
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||
         [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioMoreBlur.1"] ||
+        [key isEqualToString:@"FanqieX.AudioSheetMaterial.1"] ||
+        [key isEqualToString:@"FanqieX.AudioSheetBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
         [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"] ||
@@ -201,16 +209,21 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"] ||
         [key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
-        if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
-        if ([key isEqualToString:@"FanqieX.DockMaterial.1"] || [key isEqualToString:DockCollapseMode]) maximum = 3;
+        if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
+            [key isEqualToString:@"FanqieX.SelectionTintStyle.1"] ||
+            [key isEqualToString:@"FanqieX.DramaButtonSurfaceStyle.1"]) maximum = 1;
+        if ([key isEqualToString:DockCollapseMode]) maximum = 3;
+        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 4;
         if ([key isEqualToString:CommentMaterialStyle] ||
-            [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"]) {
+            [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"] ||
+            [key isEqualToString:@"FanqieX.AudioSheetMaterial.1"]) {
             maximum = 4;
             if (number == 3) return @0;
         }
         if ([key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) maximum = 6;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
             [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.AudioMoreBlur.1"] ||
+            [key isEqualToString:@"FanqieX.AudioSheetBlur.1"] ||
             [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
             [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
             [key isEqualToString:@"FanqieX.ShareBlur.1"]) maximum = 100;

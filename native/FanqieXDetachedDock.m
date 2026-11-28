@@ -1,4 +1,5 @@
 #import "FanqieXDetachedDock.h"
+#import "FQXLayoutAndSheetPolicy.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -231,6 +232,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 @interface FQXDetachedDockButtonView ()
 @property(nonatomic, strong, readwrite) FQXDetachedCircleGlassView *internalGlassView;
 @property(nonatomic, strong, readwrite) UIView *selectionLens;
+@property(nonatomic, strong) UIImageView *videoSelectedPillView;
 @property(nonatomic, strong) UIView *contentScaleHost;
 @property(nonatomic, strong) UIImageView *iconView;
 @property(nonatomic, strong) UIView *unreadDot;
@@ -239,6 +241,9 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 @property(nonatomic, strong, nullable) UIImage *selectedImage;
 @property(nonatomic, readwrite, getter=isModuleSelected) BOOL moduleSelected;
 @property(nonatomic) NSInteger appliedGlassStamp;
+@property(nonatomic) BOOL videoBaseSurface;
+@property(nonatomic) BOOL videoSelectedPill;
+@property(nonatomic) CGSize lastVideoPillSize;
 @end
 
 @implementation FQXDetachedDockButtonView
@@ -275,6 +280,14 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         lens.alpha = 0.0;
         [glass.contentView addSubview:lens];
         _selectionLens = lens;
+
+        UIImageView *videoPill = [[UIImageView alloc] initWithFrame:lens.bounds];
+        videoPill.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        videoPill.contentMode = UIViewContentModeScaleToFill;
+        videoPill.userInteractionEnabled = NO;
+        videoPill.hidden = YES;
+        [lens addSubview:videoPill];
+        _videoSelectedPillView = videoPill;
 
         UIView *scaleHost = [[UIView alloc] initWithFrame:glass.contentView.bounds];
         scaleHost.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -347,11 +360,22 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 
     CGRect contentBounds = self.internalGlassView.contentView.bounds;
     if (CGRectIsEmpty(contentBounds)) contentBounds = bounds;
+    if (self.videoBaseSurface) {
+        CGFloat r = MIN(CGRectGetWidth(contentBounds), CGRectGetHeight(contentBounds)) * 0.5;
+        self.internalGlassView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        if (fabs(self.internalGlassView.contentView.layer.cornerRadius - r) > 0.25) {
+            self.internalGlassView.contentView.layer.cornerRadius = r;
+        }
+        self.internalGlassView.contentView.clipsToBounds = YES;
+    }
     CGRect lensRect = CGRectInset(contentBounds, 4.0, 4.0);
     if (CGRectGetWidth(lensRect) > 4.0 && CGRectGetHeight(lensRect) > 4.0) {
         self.selectionLens.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(lensRect), CGRectGetHeight(lensRect));
         self.selectionLens.center = CGPointMake(CGRectGetMidX(contentBounds), CGRectGetMidY(contentBounds));
         self.selectionLens.layer.cornerRadius = MIN(CGRectGetWidth(lensRect), CGRectGetHeight(lensRect)) * 0.5;
+        if (self.videoSelectedPill) {
+            [self syncVideoSelectedPillImageForSize:lensRect.size];
+        }
     }
     self.contentScaleHost.bounds = contentBounds;
     self.contentScaleHost.center = CGPointMake(CGRectGetMidX(contentBounds), CGRectGetMidY(contentBounds));
@@ -408,6 +432,57 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     } completion:nil];
 }
 
+- (void)syncVideoSelectedPillImageForSize:(CGSize)size {
+    if (!self.videoSelectedPillView || size.width < 6.0 || size.height < 6.0) return;
+    if (self.videoSelectedPillView.image &&
+        fabs(self.lastVideoPillSize.width - size.width) < 0.5 &&
+        fabs(self.lastVideoPillSize.height - size.height) < 0.5) {
+        return;
+    }
+    Class motionCls = objc_lookUpClass("FQXDockMotion");
+    SEL imgSel = sel_registerName("videoSelectedPillImageForSize:");
+    if (motionCls && [motionCls respondsToSelector:imgSel]) {
+        UIImage *img = ((UIImage *(*)(id, SEL, CGSize))objc_msgSend)(motionCls, imgSel, size);
+        if (img) {
+            self.videoSelectedPillView.image = img;
+            self.lastVideoPillSize = size;
+        }
+    }
+}
+
+- (void)applyVideoSurfaceBase:(BOOL)videoBase
+            videoSelectedPill:(BOOL)videoSelectedPill {
+    self.videoBaseSurface = videoBase;
+    self.videoSelectedPill = videoSelectedPill;
+    if (videoBase) {
+        FQXRGBAColor fill = FQXVideoBaseSurfaceFillColor();
+        FQXRGBAColor border = FQXVideoBaseSurfaceBorderColor();
+        self.internalGlassView.effect = nil;
+        self.internalGlassView.backgroundColor = UIColor.clearColor;
+        self.internalGlassView.contentView.backgroundColor =
+            [UIColor colorWithRed:(CGFloat)fill.r green:(CGFloat)fill.g blue:(CGFloat)fill.b alpha:(CGFloat)fill.a];
+        self.internalGlassView.contentView.layer.borderWidth = 0.5;
+        self.internalGlassView.contentView.layer.borderColor =
+            [UIColor colorWithRed:(CGFloat)border.r green:(CGFloat)border.g blue:(CGFloat)border.b alpha:(CGFloat)border.a].CGColor;
+        CGFloat r = MIN(CGRectGetWidth(self.internalGlassView.contentView.bounds),
+                        CGRectGetHeight(self.internalGlassView.contentView.bounds)) * 0.5;
+        self.internalGlassView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        self.internalGlassView.contentView.layer.cornerRadius = r;
+        self.internalGlassView.contentView.clipsToBounds = YES;
+    } else {
+        self.internalGlassView.contentView.layer.borderWidth = 0.0;
+        self.internalGlassView.contentView.layer.borderColor = NULL;
+        self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
+    }
+    if (videoSelectedPill) {
+        self.selectionLens.backgroundColor = UIColor.clearColor;
+        self.videoSelectedPillView.hidden = NO;
+        [self syncVideoSelectedPillImageForSize:self.selectionLens.bounds.size];
+    } else {
+        self.videoSelectedPillView.hidden = YES;
+    }
+}
+
 - (void)applyGlassEffect:(UIVisualEffect *)effect
           interfaceStyle:(UIUserInterfaceStyle)style
           selectionColor:(UIColor *)selectionColor
@@ -416,7 +491,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     if (self.internalGlassView.overrideUserInterfaceStyle != style) {
         self.internalGlassView.overrideUserInterfaceStyle = style;
     }
-    if (selectionColor && ![self.selectionLens.backgroundColor isEqual:selectionColor]) {
+    if (!self.videoSelectedPill && selectionColor && ![self.selectionLens.backgroundColor isEqual:selectionColor]) {
         self.selectionLens.backgroundColor = selectionColor;
     }
     BOOL effectLost = (effect != nil && !self.internalGlassView.effect);
@@ -426,7 +501,9 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.internalGlassView.backgroundColor = reduceTransparency
             ? [UIColor secondarySystemBackgroundColor]
             : UIColor.clearColor;
-        self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
+        if (!self.videoBaseSurface) {
+            self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
+        }
         FQXApplyCapsuleCornerToGlass(self.internalGlassView);
     }
 }

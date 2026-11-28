@@ -571,4 +571,134 @@ static inline int FQXShouldHideEpisodePanelRecommend(int hideRecommend) {
     return hideRecommend ? 1 : 0;
 }
 
+/* Audiobook half-sheet glass/blur policy (covers all 7 audiobook sheets + More panel). */
+static inline int FQXResolveAudioSheetMaterial(int hasAudioSheetPref,
+                                               int rawAudioSheetMaterial,
+                                               int rawShareMaterial,
+                                               int audioSheetBlurPercent) {
+    int style = hasAudioSheetPref ? rawAudioSheetMaterial : 1; /* Default: Liquid Glass (1) */
+    if (style == 3) style = 0;
+    if (style != 0 && style != 1 && style != 2 && style != 4) style = 1;
+    if (!hasAudioSheetPref && rawShareMaterial == 4) {
+        style = 4;
+    }
+    if (style == 0 && FQXBlurPercent(audioSheetBlurPercent) > 0 && !hasAudioSheetPref) {
+        style = 1;
+    }
+    return style;
+}
+
+static inline int FQXResolveAudioSheetBlur(int hasAudioSheetBlur,
+                                           int rawAudioSheetBlur,
+                                           int hasLegacyMoreBlur,
+                                           int rawLegacyMoreBlur) {
+    if (hasAudioSheetBlur) return FQXBlurPercent(rawAudioSheetBlur);
+    if (hasLegacyMoreBlur) return FQXBlurPercent(rawLegacyMoreBlur);
+    return 0;
+}
+
+static inline int FQXAudioSheetCardGeometryValid(double cardMinY,
+                                                 double cardMaxY,
+                                                 double cardWidth,
+                                                 double cardHeight,
+                                                 double winWidth,
+                                                 double winHeight) {
+    if (!isfinite(cardMinY) || !isfinite(cardMaxY) || !isfinite(cardWidth) ||
+        !isfinite(cardHeight) || !isfinite(winWidth) || !isfinite(winHeight)) {
+        return 0;
+    }
+    if (winWidth < 200.0 || winHeight < 300.0) return 0;
+    return (cardWidth >= winWidth - 36.0 &&
+            cardHeight >= 120.0 &&
+            cardHeight <= winHeight * 0.94 &&
+            cardMinY >= 24.0 &&
+            cardMaxY >= winHeight - 64.0) ? 1 : 0;
+}
+
+/* Calibrated reference video palette (YouTube pill bar white-balanced against #FFFFFF play glyph):
+   - Base surface: silky matte cool porcelain off-white (#EEEDF0), non-Liquid-Glass & non-Blur.
+   - Selected pill: diagonal top-left rose-blush (#E0A6B6) -> misty rose-pearl (#E2D3D8)
+     -> cool pearl silver (#E2E1E4 / #DFDEE2) with top-left organic rose bloom and delicate rim. */
+enum {
+    FQXDockMaterialModeNewGlass = 0,
+    FQXDockMaterialModeLegacyGlass = 1,
+    FQXDockMaterialModeFrostedGlass = 2,
+    FQXDockMaterialModeIOS18Gaussian = 3,
+    FQXDockMaterialModeVideoBase = 4,
+};
+
+enum {
+    FQXSelectionTintStyleDefault = 0,
+    FQXSelectionTintStyleVideoBlush = 1,
+};
+
+enum {
+    FQXDramaButtonSurfaceDefaultGlass = 0,
+    FQXDramaButtonSurfaceVideoBase = 1,
+};
+
+typedef struct {
+    double r;
+    double g;
+    double b;
+    double a;
+} FQXRGBAColor;
+
+static inline FQXRGBAColor FQXVideoBaseSurfaceFillColor(void) {
+    FQXRGBAColor c = {238.0 / 255.0, 237.0 / 255.0, 240.0 / 255.0, 0.965};
+    return c;
+}
+
+static inline FQXRGBAColor FQXVideoBaseSurfaceBorderColor(void) {
+    FQXRGBAColor c = {210.0 / 255.0, 209.0 / 255.0, 214.0 / 255.0, 0.72};
+    return c;
+}
+
+static inline FQXRGBAColor FQXVideoInkColor(double alpha) {
+    FQXRGBAColor c = {20.0 / 255.0, 19.0 / 255.0, 22.0 / 255.0, alpha};
+    return c;
+}
+
+static inline FQXRGBAColor FQXVideoSelectedPillFallbackColor(void) {
+    FQXRGBAColor c = {225.0 / 255.0, 185.0 / 255.0, 197.0 / 255.0, 0.96};
+    return c;
+}
+
+static inline int FQXNormalizeDockMaterialMode(int rawMode) {
+    return (rawMode >= FQXDockMaterialModeNewGlass && rawMode <= FQXDockMaterialModeVideoBase)
+        ? rawMode : FQXDockMaterialModeNewGlass;
+}
+
+static inline int FQXDockMaterialUsesGlass(int mode) {
+    int m = FQXNormalizeDockMaterialMode(mode);
+    return (m == FQXDockMaterialModeNewGlass ||
+            m == FQXDockMaterialModeLegacyGlass ||
+            m == FQXDockMaterialModeFrostedGlass) ? 1 : 0;
+}
+
+static inline int FQXDockMaterialUsesBlur(int mode, int blurPercent) {
+    int m = FQXNormalizeDockMaterialMode(mode);
+    if (m == FQXDockMaterialModeVideoBase) return 0; /* Video base is strictly non-glass & non-blur */
+    if (m == FQXDockMaterialModeIOS18Gaussian) return 1;
+    return FQXBlurPercent(blurPercent) > 0 ? 1 : 0;
+}
+
+static inline int FQXNormalizeSelectionTintStyle(int rawStyle) {
+    return (rawStyle == FQXSelectionTintStyleVideoBlush)
+        ? FQXSelectionTintStyleVideoBlush : FQXSelectionTintStyleDefault;
+}
+
+static inline int FQXNormalizeDramaButtonSurfaceStyle(int rawStyle) {
+    return (rawStyle == FQXDramaButtonSurfaceVideoBase)
+        ? FQXDramaButtonSurfaceVideoBase : FQXDramaButtonSurfaceDefaultGlass;
+}
+
+static inline int FQXShouldUseDarkInkForSurface(int isVideoBaseSurface,
+                                                int isVideoSelectedItem,
+                                                int darkBackdrop) {
+    if (isVideoSelectedItem) return 1;
+    if (isVideoBaseSurface) return 1;
+    return darkBackdrop ? 0 : 1;
+}
+
 #endif

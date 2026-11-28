@@ -36,6 +36,8 @@ NSInteger FQXDockDetachedResolveIndexWithReason(NSArray<NSString *> *visibleTitl
           selectionColor:(UIColor *)selectionColor
       reduceTransparency:(BOOL)reduceTransparency
               styleStamp:(NSInteger)styleStamp;
+- (void)applyVideoSurfaceBase:(BOOL)videoBase
+            videoSelectedPill:(BOOL)videoSelectedPill;
 - (void)syncUnreadBadgeFromHostButton:(nullable UIButton *)hostButton;
 @end
 

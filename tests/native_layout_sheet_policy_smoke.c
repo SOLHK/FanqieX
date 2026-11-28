@@ -360,6 +360,63 @@ static void test_pinch_pure_clean_session_and_745_gates(void) {
     assert(FQXShouldBlockBookstoreAndPopupAd(1, 0u) == 0);
 }
 
+static void test_audiobook_sheets_and_video_palette_policy(void) {
+    /* 1. Audiobook half-sheets material & blur resolution (7 sheets + More panel) */
+    assert(FQXResolveAudioSheetMaterial(0, 0, 1, 0) == 1);      /* Unset defaults to Liquid Glass (1) */
+    assert(FQXResolveAudioSheetMaterial(0, 0, 4, 0) == 4);      /* Unset inherits Regular Frosted (4) from Share */
+    assert(FQXResolveAudioSheetMaterial(1, 0, 1, 50) == 0);     /* Explicit Native (0) stays Native */
+    assert(FQXResolveAudioSheetMaterial(1, 4, 1, 20) == 4);     /* Explicit Frosted Glass (4) */
+    assert(FQXResolveAudioSheetMaterial(1, 2, 1, 40) == 2);     /* Explicit Gaussian Blur (2) */
+    assert(FQXResolveAudioSheetMaterial(1, 3, 1, 0) == 0);      /* Legacy 3 normalizes to 0 */
+    assert(FQXResolveAudioSheetMaterial(1, 99, 1, 0) == 1);     /* Out-of-range defaults to Liquid Glass (1) */
+
+    assert(FQXResolveAudioSheetBlur(1, 42, 1, 15) == 42);       /* Prefers AudioSheetBlur */
+    assert(FQXResolveAudioSheetBlur(0, 0, 1, 35) == 35);        /* Falls back to legacy AudioMoreBlur */
+    assert(FQXResolveAudioSheetBlur(0, 0, 0, 0) == 0);
+    assert(FQXResolveAudioSheetBlur(1, 140, 0, 0) == 100);      /* Clamped to 0..100 */
+    assert(FQXResolveAudioSheetBlur(1, -10, 0, 0) == 0);
+
+    /* 2. Audiobook sheet card geometry: accepts both short sheets (已加书架/语速 ~240pt)
+          and tall sheets (章评/选择章节/播放目录 ~89% height), rejects full-screen root (minY=0) */
+    assert(FQXAudioSheetCardGeometryValid(105.0, 956.0, 440.0, 851.0, 440.0, 956.0) == 1); /* 章评/目录 */
+    assert(FQXAudioSheetCardGeometryValid(700.0, 956.0, 440.0, 256.0, 440.0, 956.0) == 1); /* 语速/已加书架 */
+    assert(FQXAudioSheetCardGeometryValid(0.0, 956.0, 440.0, 956.0, 440.0, 956.0) == 0);   /* Full-screen root */
+    assert(FQXAudioSheetCardGeometryValid(880.0, 956.0, 440.0, 76.0, 440.0, 956.0) == 0);  /* Too short */
+    assert(FQXAudioSheetCardGeometryValid(200.0, 600.0, 200.0, 400.0, 440.0, 956.0) == 0); /* Not bottom-anchored */
+
+    /* 3. Reference video non-glass base surface & rose-blush selected pill palette */
+    FQXRGBAColor baseFill = FQXVideoBaseSurfaceFillColor();
+    assert(fabs(baseFill.r - 238.0 / 255.0) < 1e-6);
+    assert(fabs(baseFill.g - 237.0 / 255.0) < 1e-6);
+    assert(fabs(baseFill.b - 240.0 / 255.0) < 1e-6);
+    assert(baseFill.a > 0.90 && baseFill.a <= 1.0);
+
+    FQXRGBAColor selFallback = FQXVideoSelectedPillFallbackColor();
+    assert(selFallback.r > selFallback.g && selFallback.b > selFallback.g); /* Warm rose-blush tint */
+
+    /* 4. VideoBase Dock material (4) strictly disables both glass and blur even when blurPercent > 0 */
+    assert(FQXNormalizeDockMaterialMode(4) == FQXDockMaterialModeVideoBase);
+    assert(FQXNormalizeDockMaterialMode(5) == FQXDockMaterialModeNewGlass);
+    assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeNewGlass) == 1);
+    assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeFrostedGlass) == 1);
+    assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeIOS18Gaussian) == 0);
+    assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeVideoBase) == 0);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeVideoBase, 100) == 0);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeVideoBase, 0) == 0);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeIOS18Gaussian, 0) == 1);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeNewGlass, 25) == 1);
+
+    /* 5. Selection tint & drama button base normalization + dark ink polarity */
+    assert(FQXNormalizeSelectionTintStyle(1) == FQXSelectionTintStyleVideoBlush);
+    assert(FQXNormalizeSelectionTintStyle(2) == FQXSelectionTintStyleDefault);
+    assert(FQXNormalizeDramaButtonSurfaceStyle(1) == FQXDramaButtonSurfaceVideoBase);
+    assert(FQXNormalizeDramaButtonSurfaceStyle(-1) == FQXDramaButtonSurfaceDefaultGlass);
+    assert(FQXShouldUseDarkInkForSurface(1, 0, 1) == 1); /* Dark ink on VideoBase over dark video */
+    assert(FQXShouldUseDarkInkForSurface(0, 1, 1) == 1); /* Dark ink on VideoSelected pill over dark video */
+    assert(FQXShouldUseDarkInkForSurface(0, 0, 1) == 0); /* White ink on normal dark glass */
+    assert(FQXShouldUseDarkInkForSurface(0, 0, 0) == 1); /* Dark ink on normal light glass */
+}
+
 int main(void) {
     test_drama_top_capsule_alignment();
     test_sheet_blur_policy();
@@ -367,6 +424,7 @@ int main(void) {
     test_audio_ad_duration_gate_and_pendant_purification_policy();
     test_video_backdrop_viewport_and_single_series_tray_policy();
     test_pinch_pure_clean_session_and_745_gates();
+    test_audiobook_sheets_and_video_palette_policy();
     puts("Layout and sheet policy: concentric capsule, hardware sheet blur, strip compaction & visible pager passed.");
     return 0;
 }

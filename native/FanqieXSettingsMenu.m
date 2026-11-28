@@ -71,10 +71,14 @@ static NSString *const CommentAppearanceModeKey = @"FanqieX.CommentAppearanceMod
 static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.1";
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
+static NSString *const SelectionTintStyleKey = @"FanqieX.SelectionTintStyle.1";
+static NSString *const DramaButtonSurfaceStyleKey = @"FanqieX.DramaButtonSurfaceStyle.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
 static NSString *const ShareBlurKey = @"FanqieX.ShareBlur.1";
 static NSString *const AudioMoreBlurKey = @"FanqieX.AudioMoreBlur.1";
+static NSString *const AudioSheetMaterialKey = @"FanqieX.AudioSheetMaterial.1";
+static NSString *const AudioSheetBlurKey = @"FanqieX.AudioSheetBlur.1";
 static NSString *const DramaPlaybackOptionsMaterialKey = @"FanqieX.DramaPlaybackOptionsMaterial.1";
 static NSString *const DramaPlaybackOptionsBlurKey = @"FanqieX.DramaPlaybackOptionsBlur.1";
 static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
@@ -330,6 +334,14 @@ static NSInteger CurrentSavedShareMaterialStyle(void) {
     return (val >= 0 && val <= 4) ? val : 1;
 }
 
+static NSInteger CurrentSavedAudioSheetMaterialStyle(void) {
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:AudioSheetMaterialKey];
+    if (!stored) return 1;
+    NSInteger val = [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 1;
+    if (val == 3) return 0;
+    return (val >= 0 && val <= 4) ? val : 1;
+}
+
 static NSInteger CurrentSavedCommentAppearanceMode(void) {
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:CommentAppearanceModeKey];
     if (!stored) return 0;
@@ -433,6 +445,10 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         idx = (found != NSNotFound) ? (NSInteger)found : 1;
     } else if (row.popoverKind == 11) {
         idx = CurrentSavedDockCollapseMode();
+    } else if (row.popoverKind == 12) {
+        NSInteger saved = CurrentSavedAudioSheetMaterialStyle();
+        NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
+        idx = (found != NSNotFound) ? (NSInteger)found : 1;
     } else if (values.count == options.count && options.count > 0) {
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
@@ -606,18 +622,73 @@ static void AddShareStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hidde
     }
 }
 
+static void AddAudioSheetStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *matRow = [FQXSettingRow new];
+    matRow.title = @"听书弹窗材质";
+    matRow.path = route;
+    matRow.hiddenFromSearch = hiddenFromSearch;
+    matRow.keywords = @"听书弹窗材质 听书 弹窗 面板 半屏 章评 选择章节 下载 已加书架 语速 定时关闭 播放目录 简介 音色设置 更多 分享 液态玻璃 模糊玻璃 清透玻璃 高斯模糊 原版默认 智能朗读 真人讲书";
+    matRow.popoverKey = AudioSheetMaterialKey;
+    matRow.popoverOptions = @[@"原版默认", @"液态玻璃", @"模糊玻璃", @"高斯模糊"];
+    matRow.popoverValues = @[@0, @1, @4, @2];
+    matRow.popoverKind = 12;
+    matRow.height = 52;
+    [menu.catalog addObject:matRow];
+
+    AddBlurRowEx(menu,
+                 route,
+                 @"听书弹窗模糊程度",
+                 AudioSheetBlurKey,
+                 hiddenFromSearch,
+                 @"听书弹窗模糊程度 听书 更多 分享 章评 选择章节 下载 已加书架 语速 定时关闭 播放目录 音色设置 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 模糊玻璃 高斯模糊 智能朗读 真人讲书");
+}
+
+static void AddSelectionAndSurfaceStyleRows(FQXSettingsMenu *menu,
+                                            NSString *route,
+                                            BOOL hiddenFromSearch,
+                                            BOOL includeSelectionTint,
+                                            BOOL includeDramaBase) {
+    if (includeSelectionTint) {
+        FQXSettingRow *selRow = [FQXSettingRow new];
+        selRow.title = @"顶部按钮与 Dock 选中色";
+        selRow.path = route;
+        selRow.hiddenFromSearch = hiddenFromSearch;
+        selRow.keywords = @"顶部按钮 Dock 底栏 选中色 选中 胶囊 视频同款 粉雾 粉色 渐变 颜色 顶部分类 短剧";
+        selRow.popoverKey = SelectionTintStyleKey;
+        selRow.popoverOptions = @[@"默认", @"视频同款粉雾"];
+        selRow.popoverValues = @[@0, @1];
+        selRow.height = 52;
+        [menu.catalog addObject:selRow];
+    }
+    if (includeDramaBase) {
+        FQXSettingRow *baseRow = [FQXSettingRow new];
+        baseRow.title = @"短剧按钮底色";
+        baseRow.path = route;
+        baseRow.hiddenFromSearch = hiddenFromSearch;
+        baseRow.keywords = @"短剧按钮底色 短剧 按钮 底色 视频同款 非玻璃 哑光 灰白 顶部按钮 搜索 互动按钮 查看全集 全屏 弹幕 横屏";
+        baseRow.popoverKey = DramaButtonSurfaceStyleKey;
+        baseRow.popoverOptions = @[@"默认液态玻璃", @"视频同款底色（非玻璃）"];
+        baseRow.popoverValues = @[@0, @1];
+        baseRow.height = 52;
+        [menu.catalog addObject:baseRow];
+    }
+}
+
 static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     NSString *route = @"外观/玻璃与尺寸";
     FQXSettingRow *material = [FQXSettingRow new];
     material.title = @"Dock 材质";
     material.path = route;
-    material.keywords = @"底栏 导航栏 材质 新液态玻璃 老液态玻璃 液态玻璃 模糊玻璃 毛玻璃 高斯模糊 iOS18";
+    material.keywords = @"底栏 导航栏 材质 新液态玻璃 老液态玻璃 液态玻璃 模糊玻璃 毛玻璃 高斯模糊 iOS18 视频同款底色 非玻璃 底色 灰白";
     material.popoverKey = DockMaterialKey;
-    material.popoverOptions = @[@"新液态玻璃", @"老液态玻璃", @"模糊玻璃", @"高斯模糊"];
+    material.popoverOptions = @[@"新液态玻璃", @"老液态玻璃", @"模糊玻璃", @"高斯模糊", @"视频同款底色（非玻璃）"];
+    material.popoverValues = @[@0, @1, @2, @3, @4];
     material.popoverKind = 3;
     material.height = 52;
     [menu.catalog addObject:material];
 
+    AddSelectionAndSurfaceStyleRows(menu, route, NO, YES, NO);
+    AddSelectionAndSurfaceStyleRows(menu, route, YES, NO, YES);
     AddBlurRow(menu, route, @"Dock 模糊程度", DockBlurKey);
 }
 
@@ -799,6 +870,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     // Add Dock 3-way display style popover picker (Icons+Text / Icons Only / Text Only)
     AddDockDisplayStyleRow(menu, @"外观/玻璃与尺寸", NO);
     AddDockDisplayStyleRow(menu, @"页面与导航/底栏入口", YES);
+    AddSelectionAndSurfaceStyleRows(menu, @"页面与导航/底栏入口", YES, YES, NO);
     AddDockMaterialRows(menu);
 
     // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native),
@@ -812,23 +884,15 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
     AddBlurRowEx(menu, @"外观/玻璃效果", @"评论区模糊程度", @"FanqieX.CommentBlur.1", YES, nil);
     AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
-    AddBlurRowEx(menu,
-                 @"外观/玻璃效果",
-                 @"听书更多面板模糊程度",
-                 AudioMoreBlurKey,
-                 YES,
-                 @"听书 更多 分享 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 高斯模糊 智能朗读 真人讲书 右上角 三个点");
+    AddAudioSheetStyleRows(menu, @"外观/玻璃效果", YES);
     AddPlaybackOptionsStyleRows(menu, @"外观/玻璃效果", YES);
     AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
     AddPlaybackOptionsStyleRows(menu, @"短剧/播放设置", NO);
     AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
+    AddSelectionAndSurfaceStyleRows(menu, @"短剧/播放设置", NO, NO, YES);
+    AddSelectionAndSurfaceStyleRows(menu, @"短剧/顶部分类", YES, YES, YES);
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
-    AddBlurRowEx(menu,
-                 @"阅读/智能朗读",
-                 @"听书更多面板模糊程度",
-                 AudioMoreBlurKey,
-                 NO,
-                 @"听书 更多 分享 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 高斯模糊 智能朗读 真人讲书 右上角 三个点");
+    AddAudioSheetStyleRows(menu, @"阅读/智能朗读", NO);
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
     NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
     AddScaleSliderRow(menu, @"短剧/顶部分类", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, NO, topSizeKeywords);
@@ -1320,7 +1384,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
     if ([self.path isEqualToString:@"评论区净化"]) return @"评论区材质与发评论输入框样式可独立搭配选择。";
-    if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书按钮模糊程度在听书界面液态玻璃开启时生效；听书更多面板模糊程度可独立调节右上角与“更多”按钮弹出的半屏弹窗模糊度。";
+    if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书弹窗材质与模糊程度作用于章评、选择章节、已加书架、语速、定时关闭、简介/播放目录、音色设置与更多弹窗；听书按钮模糊程度在听书界面液态玻璃开启时生效。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
     return nil;
@@ -1360,6 +1424,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
         NSInteger maxV = row.sliderMax > row.sliderMin ? row.sliderMax : 100;
         NSInteger defV = row.sliderMax > row.sliderMin ? row.sliderDefault : 0;
         id storedObj = [NSUserDefaults.standardUserDefaults objectForKey:row.blurKey];
+        if (!storedObj && [row.blurKey isEqualToString:AudioSheetBlurKey]) {
+            storedObj = [NSUserDefaults.standardUserDefaults objectForKey:AudioMoreBlurKey];
+        }
         NSInteger storedVal = (storedObj && [storedObj respondsToSelector:@selector(integerValue)])
             ? [storedObj integerValue] : defV;
         slider.minimumValue = (float)minV;
@@ -1613,6 +1680,9 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     slider.stepper.accessibilityValue = text;
     if ([defaults objectForKey:key] && [defaults integerForKey:key] == strength) return;
     [defaults setInteger:strength forKey:key];
+    if ([key isEqualToString:AudioSheetBlurKey]) {
+        [defaults setInteger:strength forKey:AudioMoreBlurKey];
+    }
     Class cleanup = objc_lookUpClass("FQXCleanup");
     SEL refresh = sel_registerName("refreshForKey:");
     if ([cleanup respondsToSelector:refresh]) ((void (*)(id, SEL, id))objc_msgSend)(cleanup, refresh, key);
