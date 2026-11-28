@@ -2,6 +2,7 @@
 #define FQXSiriaiDockMotion_h
 
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef enum {
