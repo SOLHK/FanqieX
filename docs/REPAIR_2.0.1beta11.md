@@ -12,7 +12,11 @@
 
 3. **Exact Reference Video Non-Glass Base Surface (`视频同款底色（非玻璃）`) for All Short-Drama Buttons & Dock**:
    - Added option `4` (`视频同款底色（非玻璃）`) to `Dock 材质` (`FanqieX.DockMaterial.1`) and added `短剧按钮底色` (`FanqieX.DramaButtonSurfaceStyle.1`: `默认液态玻璃` / `视频同款底色（非玻璃）`).
-   - Renders calibrated matte cool porcelain `#EEEDF0` (`alpha 0.965`, `0.5pt` `#D2D1D6` border) with strictly zero `UIGlassEffect` and zero `UIBlurEffect` across Dock (native platter, proxy, detached circle), top category capsule, top search button, right-rail interaction buttons (`点赞/评论/收藏/分享`), and all `AlignedGlass` short-drama controls (`查看全集`, `原著`, `弹幕`, `全屏观看`, portrait detail nav, landscape controls), with reversible high-contrast dark charcoal `#141316` ink/icon adaptation.
+   - Renders calibrated matte cool porcelain `#EEEDF0` (`alpha 0.965`, `0.5pt` `#D2D1D6` border) with strictly zero `UIGlassEffect` and zero `UIBlurEffect` across Dock (native platter, proxy, detached circle), top category capsule, top search button, right-rail interaction buttons (`点赞/评论/收藏/分享`), and all short-drama controls (`查看全集`, `原著`, `弹幕`, `全屏观看`, portrait detail nav, landscape controls) via pure-runtime post-glass hooks in `FanqieXMotion.m` (zero bytes added to `AlignedGlass.s`), with reversible high-contrast dark charcoal `#141316` ink/icon adaptation.
+
+4. **Cold-Start & Long-Idle First-Swipe Reliability Fix for TikTok / Siri AI Dock Motion**:
+   - Added Phase-1 `UIWindow -sendEvent:` pre-pan attachment on `UITouchPhaseBegan` (`prepareForTouchOnView:`), ensuring every ancestor `UIScrollView` under the finger has `handleFeedPan:` attached and any stale `_feedPan` is cleared before UIKit begins recognizing the pan.
+   - Added `Changed`-state mid-swipe adoption if `Began` was missed, `UICollectionView` / `UITableView` `didMoveToWindow` hooks, deeper window scan (`depth <= 36`), cold-start delayed rescans, `UIApplicationDidBecomeActiveNotification` stale-pan reset & rescan, and offscreen `FQVTransitionView` filtering.
 
 ## Verification
 - C11 unit tests (`-Wall -Wextra -Werror`) covering `FQXLayoutAndSheetPolicy.h` and `FQXSiriaiDockMotion.h`.

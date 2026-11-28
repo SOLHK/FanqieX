@@ -2950,6 +2950,7 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     if (!transCls && !epCls) return NO;
     for (UIView *sub in window.subviews) {
         if (sub.hidden || sub.alpha <= 0.02) continue;
+        if (!CGRectIntersectsRect(sub.frame, window.bounds)) continue;
         if (transCls && [sub isKindOfClass:transCls] && CGRectGetHeight(sub.bounds) > 100.0) return YES;
         if (epCls) {
             UIResponder *r = sub.nextResponder;
@@ -2970,6 +2971,8 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
 }
 + (instancetype)shared;
 - (void)syncCollectionView:(UIScrollView *)scroll;
+- (void)prepareForTouchOnView:(UIView *)leaf;
+- (void)clearStaleFeedPanIfNeeded;
 - (void)scanWindowsForMountedCollections;
 - (void)resetFeedGesture;
 - (void)cancelActivePan;
@@ -3020,6 +3023,44 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     [inter setFeedCompact:startedCompact animated:YES];
 }
 
+- (void)clearStaleFeedPanIfNeeded {
+    UIPanGestureRecognizer *active = _feedPan;
+    if (active) {
+        UIGestureRecognizerState st = active.state;
+        BOOL alive = (st == UIGestureRecognizerStateBegan || st == UIGestureRecognizerStateChanged) &&
+                     active.view.window != nil;
+        if (!alive) {
+            [self resetFeedGesture];
+        }
+    }
+    UIPanGestureRecognizer *pending = _feedPendingPan;
+    if (pending) {
+        UIGestureRecognizerState pst = pending.state;
+        BOOL alive = (pst == UIGestureRecognizerStateBegan || pst == UIGestureRecognizerStateChanged) &&
+                     pending.view.window != nil;
+        if (!alive) {
+            _feedPendingPan = nil;
+            _feedPendingWindow = nil;
+        }
+    }
+}
+
+- (void)prepareForTouchOnView:(UIView *)leaf {
+    if (!leaf) return;
+    [self clearStaleFeedPanIfNeeded];
+    for (UIView *cur = leaf; cur; cur = cur.superview) {
+        if ([cur isKindOfClass:UIScrollView.class] && ![cur isKindOfClass:UITextView.class] && cur.window) {
+            UIScrollView *sv = (UIScrollView *)cur;
+            UIPanGestureRecognizer *pan = sv.panGestureRecognizer;
+            if (pan) {
+                [pan removeTarget:self action:@selector(handleFeedPan:)];
+                [pan addTarget:self action:@selector(handleFeedPan:)];
+                [_trackedCollections addObject:sv];
+            }
+        }
+    }
+}
+
 - (void)syncCollectionView:(UIScrollView *)scroll {
     if (![scroll isKindOfClass:UIScrollView.class] || [scroll isKindOfClass:UITextView.class]) return;
     UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
@@ -3034,7 +3075,7 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
 }
 
 static void FQXCollectMountedFeedScrollViews(UIView *root, NSMutableArray<UIScrollView *> *out, NSInteger depth) {
-    if (!root || depth > 18) return;
+    if (!root || depth > 36) return;
     if ([root isKindOfClass:UIScrollView.class] && ![root isKindOfClass:UITextView.class]) {
         [out addObject:(UIScrollView *)root];
     }
@@ -3174,6 +3215,14 @@ static BOOL FQXControllerNameBlocksFeedDockMotion(NSString *name) {
         if (waitingForMount) *waitingForMount = YES;
         return NO;
     }
+    if (CGRectIsEmpty(inter->_feedCapsuleAtRest)) {
+        [bar setNeedsLayout];
+        [bar layoutIfNeeded];
+        if (CGRectIsEmpty(inter->_feedCapsuleAtRest)) {
+            if (waitingForMount) *waitingForMount = YES;
+            return NO;
+        }
+    }
     if (outInteraction) *outInteraction = inter;
     return YES;
 }
@@ -3183,9 +3232,14 @@ static BOOL FQXControllerNameBlocksFeedDockMotion(NSString *name) {
     if (!scroll) return;
     UIGestureRecognizerState state = pan.state;
     FQXDockCollapseMode mode = FQXCurrentDockCollapseMode();
-    if (state == UIGestureRecognizerStateBegan) {
-        if (!FQXFeedMotionSupported() || !FQXDockCollapseModeUsesFeedMotion(mode) || (_feedPan && _feedPan != pan)) {
+    BOOL adoptingOnChanged = (state == UIGestureRecognizerStateChanged && !_feedPan && !_feedPendingPan);
+    if (state == UIGestureRecognizerStateBegan || adoptingOnChanged) {
+        if (!FQXFeedMotionSupported() || !FQXDockCollapseModeUsesFeedMotion(mode)) {
             return;
+        }
+        if (_feedPan && _feedPan != pan) {
+            [self clearStaleFeedPanIfNeeded];
+            if (_feedPan && _feedPan != pan) return;
         }
         _feedPendingPan = pan;
         _feedPendingWindow = scroll.window;
@@ -5362,18 +5416,27 @@ static const char FQXDockTouchBeganKey = 0;
 
     NSUInteger curSelIdx = [self currentSelectedIndex];
     if (self->_feedLastSelectedIndex != curSelIdx) {
-        if (self->_feedLastSelectedIndex != NSNotFound && [self usesFeedMotion]) {
-            [[FQXFeedDockPanController shared] resetFeedGesture];
-            if (self->_feedSpring.compact || self->_feedSpring.progress > 0.005 || self->_feedSpring.overtravel != 0.0) {
-                [self setFeedCompact:NO animated:YES];
+        BOOL wasColdStart = (self->_feedLastSelectedIndex == NSNotFound);
+        if ([self usesFeedMotion]) {
+            if (!wasColdStart) {
+                [[FQXFeedDockPanController shared] resetFeedGesture];
+                if (self->_feedSpring.compact || self->_feedSpring.progress > 0.005 || self->_feedSpring.overtravel != 0.0) {
+                    [self setFeedCompact:NO animated:YES];
+                }
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
             });
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((wasColdStart ? 0.25 : 0.35) * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
             });
+            if (wasColdStart) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.90 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+                });
+            }
         }
         self->_feedLastSelectedIndex = curSelIdx;
     }
@@ -8474,9 +8537,6 @@ static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling);
 + (void)refreshShareGlass;
 + (void)refreshAudioSheets;
 + (UIImage *)videoSelectedPillImageForSize:(CGSize)size;
-+ (void)styleDramaGlass:(UIView *)glass owner:(UIView *)owner;
-+ (void)restoreDramaOwner:(UIView *)owner;
-+ (void)styleDramaActionOwner:(UIView *)owner glyph:(UIImageView *)glyph outline:(UIImageView *)outline role:(NSInteger)role;
 + (void)refreshDramaPlaybackOptions;
 + (void)refreshDockAppearance;
 + (void)refreshDockMaterial;
@@ -9741,21 +9801,63 @@ static void FQXApplyDramaActionSurface(UIView *owner, UIImageView *glyph, UIImag
 static void FQXSetWeakAssocView(id owner, const void *key, UIView *target);
 static UIView *FQXGetWeakAssocView(id owner, const void *key);
 
-+ (void)styleDramaGlass:(UIView *)glass owner:(UIView *)owner {
-    if (![glass isKindOfClass:UIView.class] || ![owner isKindOfClass:UIView.class]) return;
-    [FQXTrackedDramaSurfaceOwners() addObject:owner];
-    FQXSetWeakAssocView(owner, DramaSurfaceGlassRefKey, glass);
-    FQXApplyDramaGlassButtonSurface(glass, owner);
+static BOOL FQXIsAlignedDramaGlassButton(UIButton *btn) {
+    if (![btn isKindOfClass:UIButton.class]) return NO;
+    if (btn.userInteractionEnabled || btn.isAccessibilityElement || !btn.accessibilityElementsHidden) return NO;
+    if (objc_getAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey) != nil) return YES;
+    if (!btn.configuration) return NO;
+    if (btn.configuration.title.length > 0 || btn.configuration.image != nil) return NO;
+    if (btn.currentTitle.length > 0 || btn.currentImage != nil) return NO;
+    return btn.overrideUserInterfaceStyle == UIUserInterfaceStyleDark;
 }
 
-+ (void)restoreDramaOwner:(UIView *)owner {
-    if (![owner isKindOfClass:UIView.class]) return;
-    UIView *glass = FQXGetWeakAssocView(owner, DramaSurfaceGlassRefKey);
-    FQXApplyDramaButtonVideoInkTree(owner, glass, NO, 0);
+static UIView *FQXOwnerForDramaGlassButton(UIButton *glass) {
+    UIView *parent = glass.superview;
+    if (!parent) return nil;
+    NSUInteger idx = [parent.subviews indexOfObjectIdenticalTo:glass];
+    if (idx != NSNotFound && idx + 1 < parent.subviews.count) {
+        UIView *above = parent.subviews[idx + 1];
+        if (([above isKindOfClass:UIButton.class] || [above isKindOfClass:UIImageView.class]) &&
+            !above.hidden && CGRectIntersectsRect(glass.frame, above.frame) &&
+            CGRectGetWidth(parent.bounds) > CGRectGetWidth(glass.bounds) * 1.6) {
+            return above;
+        }
+    }
+    return parent;
 }
 
-+ (void)styleDramaActionOwner:(UIView *)owner glyph:(UIImageView *)glyph outline:(UIImageView *)outline role:(NSInteger)role {
+static void FQXSyncDramaGlassSubtree(UIView *root, NSInteger depth) {
+    if (![root isKindOfClass:UIView.class] || depth > 4) return;
+    if ([root isKindOfClass:UIButton.class] && FQXIsAlignedDramaGlassButton((UIButton *)root)) {
+        UIView *owner = FQXOwnerForDramaGlassButton((UIButton *)root);
+        if (owner) {
+            [FQXTrackedDramaSurfaceOwners() addObject:owner];
+            FQXSetWeakAssocView(owner, DramaSurfaceGlassRefKey, root);
+            FQXApplyDramaGlassButtonSurface(root, owner);
+        }
+        return;
+    }
+    for (UIView *sub in root.subviews) {
+        FQXSyncDramaGlassSubtree(sub, depth + 1);
+    }
+}
+
+static void FQXSyncDramaActionControl(UIView *owner, const char *glyphProp, NSInteger role) {
     if (![owner isKindOfClass:UIView.class]) return;
+    id rawGlyph = glyphProp ? FQXObjGet(owner, glyphProp) : nil;
+    UIImageView *glyph = [rawGlyph isKindOfClass:UIImageView.class] ? (UIImageView *)rawGlyph : nil;
+    UIImageView *outline = nil;
+    UIView *gParent = glyph ? glyph.superview : nil;
+    if (gParent) {
+        for (UIView *sub in gParent.subviews) {
+            if (sub != glyph && [sub isKindOfClass:UIImageView.class] &&
+                !sub.userInteractionEnabled && !sub.isAccessibilityElement && sub.accessibilityElementsHidden &&
+                CGRectIntersectsRect(sub.frame, glyph.frame)) {
+                outline = (UIImageView *)sub;
+                break;
+            }
+        }
+    }
     [FQXTrackedDramaActionSurfaceOwners() addObject:owner];
     if (glyph) FQXSetWeakAssocView(owner, DramaActionGlyphRefKey, glyph);
     if (outline) FQXSetWeakAssocView(owner, DramaActionOutlineRefKey, outline);
@@ -9763,16 +9865,240 @@ static UIView *FQXGetWeakAssocView(id owner, const void *key);
     FQXApplyDramaActionSurface(owner, glyph, outline, role);
 }
 
+static void FQXScanWindowForDramaButtonSurfaces(UIView *view, NSInteger depth) {
+    if (![view isKindOfClass:UIView.class] || depth > 10) return;
+    const char *cn = class_getName(object_getClass(view));
+    if (cn) {
+        if (strcmp(cn, "SSShortVideoRightInteractionCollectView") == 0) {
+            FQXSyncDramaActionControl(view, "starIcon", 0);
+            return;
+        }
+        if (strcmp(cn, "SSShortVideoRightInteractionCommentView") == 0 ||
+            strcmp(cn, "SSShortVideoHostRightInteractionCommentView") == 0) {
+            FQXSyncDramaActionControl(view, "commentIcon", 1);
+            return;
+        }
+        if (strcmp(cn, "SSShortVideoRightInteractionLikeView") == 0) {
+            FQXSyncDramaActionControl(view, "likeIcon", 2);
+            return;
+        }
+        if (strcmp(cn, "SSShortVideoRightInteractionShareView") == 0) {
+            FQXSyncDramaActionControl(view, "shareIcon", 3);
+            return;
+        }
+        if (strncmp(cn, "SSShortVideo", 12) == 0 || strncmp(cn, "FQVShortVideo", 13) == 0 ||
+            strncmp(cn, "FQCShortVideo", 13) == 0 || strncmp(cn, "FQVLandscapeAdjust", 18) == 0) {
+            FQXSyncDramaGlassSubtree(view, 0);
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        FQXScanWindowForDramaButtonSurfaces(sub, depth + 1);
+    }
+}
+
 static void FQXRefreshAllDramaButtonSurfaces(void) {
     for (UIView *owner in FQXTrackedDramaSurfaceOwners().allObjects) {
         UIView *glass = FQXGetWeakAssocView(owner, DramaSurfaceGlassRefKey);
-        if (glass) FQXApplyDramaGlassButtonSurface(glass, owner);
+        if (glass && glass.superview) {
+            FQXApplyDramaGlassButtonSurface(glass, owner);
+        } else {
+            FQXApplyDramaButtonVideoInkTree(owner, glass, NO, 0);
+        }
     }
     for (UIView *owner in FQXTrackedDramaActionSurfaceOwners().allObjects) {
         UIImageView *glyph = (UIImageView *)FQXGetWeakAssocView(owner, DramaActionGlyphRefKey);
         UIImageView *outline = (UIImageView *)FQXGetWeakAssocView(owner, DramaActionOutlineRefKey);
         NSNumber *roleNum = objc_getAssociatedObject(owner, DramaActionRoleNumKey);
         FQXApplyDramaActionSurface(owner, glyph, outline, roleNum ? roleNum.integerValue : -1);
+    }
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
+            if (!win.hidden && win.alpha > 0.01) {
+                FQXScanWindowForDramaButtonSurfaces(win, 0);
+            }
+        }
+    }
+}
+
+static void FQXInstallDramaGlassVoidPostHook(const char *clsName, const char *selName) {
+    Class cls = objc_lookUpClass(clsName);
+    if (!cls) return;
+    SEL sel = sel_registerName(selName);
+    __block IMP orig = NULL;
+    IMP hook = imp_implementationWithBlock(^(id self) {
+        if (orig) ((void (*)(id, SEL))orig)(self, sel);
+        if ([self isKindOfClass:UIView.class]) {
+            FQXSyncDramaGlassSubtree((UIView *)self, 0);
+        } else {
+            id navBar = FQXObjGet(self, "navBar");
+            if ([navBar isKindOfClass:UIView.class]) FQXSyncDramaGlassSubtree((UIView *)navBar, 0);
+            id itemView = FQXObjGet(self, "view");
+            if ([itemView isKindOfClass:UIView.class]) FQXSyncDramaGlassSubtree((UIView *)itemView, 0);
+        }
+    });
+    if (!FQXInstallOwnedHook(cls, sel, NO, "v16@0:8", hook, &orig)) {
+        imp_removeBlock(hook);
+    }
+}
+
+static void FQXInstallDramaGlassObjPostHook(const char *clsName, const char *selName) {
+    Class cls = objc_lookUpClass(clsName);
+    if (!cls) return;
+    SEL sel = sel_registerName(selName);
+    __block IMP orig = NULL;
+    IMP hook = imp_implementationWithBlock(^(id self, id arg) {
+        if (orig) ((void (*)(id, SEL, id))orig)(self, sel, arg);
+        if ([self isKindOfClass:UIView.class]) {
+            FQXSyncDramaGlassSubtree((UIView *)self, 0);
+        } else {
+            id navBar = FQXObjGet(self, "navBar");
+            if ([navBar isKindOfClass:UIView.class]) FQXSyncDramaGlassSubtree((UIView *)navBar, 0);
+        }
+    });
+    if (!FQXInstallOwnedHook(cls, sel, NO, "v24@0:8@16", hook, &orig)) {
+        imp_removeBlock(hook);
+    }
+}
+
+static void FQXInstallDramaButtonSurfaceHooks(void) {
+    static const struct { const char *cls; const char *sel; } kVoidGlassHooks[] = {
+        {"SSShortVideoBottomDistributionView", "layoutSubviews"},
+        {"SSShortVideoAlbumSeriesBottomInsertView", "layoutSubviews"},
+        {"SSShortVideoAlbumSeriesBottomInsertView", "updateAdaptiveSubViews"},
+        {"SSShortVideoOriginalNovelEntranceView", "layoutSubviews"},
+        {"SSShortVideoSingleBottomInsertView", "layoutSubviews"},
+        {"SSShortVideoTagListBottomInsertView", "layoutSubviews"},
+        {"FQVShortVideoPlayerBottomView", "layoutSubviews"},
+        {"FQCShortVideoDanmakuEntranceView", "layoutSubviews"},
+        {"FQCShortVideoDanmakuEntranceView", "refreshIcon"},
+        {"FQVShortVideoPlayerLandscapeBaseInfoView", "layoutSubviews"},
+        {"FQVShortVideoPlayerLandscapeBaseControlView", "layoutSubviews"},
+        {"FQVShortVideoLandscapeNavBar", "layoutSubviews"},
+        {"FQVShortVideoLandscapeNavBar", "refreshLayout"},
+        {"FQVShortVideoLandscapeBottomRightView", "layoutSubviews"},
+        {"SSShortVideoLandscapeBizInteractionView", "layoutSubviews"},
+        {"SSShortVideoLandscapeBizInteractionView", "refreshUI"},
+        {"SSShortVideoLandscapeAutoInflowTipView", "layoutSubviews"},
+        {"FQVLandscapeAdjustButtonBase", "layoutSubviews"},
+        {"FQVShortVideoListVCNavBarComponent", "updateNavgationBarLeftView"},
+        {"FQVShortVideoMoreBtnNavBarItem", "setUp"},
+    };
+    for (size_t i = 0; i < sizeof(kVoidGlassHooks) / sizeof(kVoidGlassHooks[0]); ++i) {
+        FQXInstallDramaGlassVoidPostHook(kVoidGlassHooks[i].cls, kVoidGlassHooks[i].sel);
+    }
+    FQXInstallDramaGlassObjPostHook("SSShortVideoBottomDistributionView", "renderWithModel:");
+    FQXInstallDramaGlassObjPostHook("FQVShortVideoListVCNavBarComponent", "setupLayout:");
+    FQXInstallDramaGlassObjPostHook("FQVShortVideoListVCNavBarComponent", "updateNavgationBarRightViewWithRightItems:");
+
+    Class bizCls = objc_lookUpClass("SSShortVideoLandscapeBizInteractionView");
+    if (bizCls) {
+        SEL sel = sel_registerName("danmakuSwitchDidChange:");
+        __block IMP orig = NULL;
+        IMP hook = imp_implementationWithBlock(^(id self, BOOL enabled) {
+            if (orig) ((void (*)(id, SEL, BOOL))orig)(self, sel, enabled);
+            if ([self isKindOfClass:UIView.class]) FQXSyncDramaGlassSubtree((UIView *)self, 0);
+        });
+        if (!FQXInstallOwnedHook(bizCls, sel, NO, "v20@0:8B16", hook, &orig)) imp_removeBlock(hook);
+    }
+    Class navCompCls = objc_lookUpClass("FQVShortVideoListVCNavBarComponent");
+    if (navCompCls) {
+        SEL sel = sel_registerName("updateNavgationBarRightView:showItemValue:");
+        __block IMP orig = NULL;
+        IMP hook = imp_implementationWithBlock(^(id self, id ctx, NSUInteger val) {
+            if (orig) ((void (*)(id, SEL, id, NSUInteger))orig)(self, sel, ctx, val);
+            id navBar = FQXObjGet(self, "navBar");
+            if ([navBar isKindOfClass:UIView.class]) FQXSyncDramaGlassSubtree((UIView *)navBar, 0);
+        });
+        if (!FQXInstallOwnedHook(navCompCls, sel, NO, "v32@0:8@16Q24", hook, &orig)) imp_removeBlock(hook);
+    }
+
+    // Right-rail interaction buttons: collect, like, share (comment is wired in HookDramaCommentLayout / HookHostDramaCommentLayout)
+    Class collectCls = objc_lookUpClass("SSShortVideoRightInteractionCollectView");
+    if (collectCls) {
+        SEL s1 = @selector(layoutSubviews);
+        __block IMP o1 = NULL;
+        IMP h1 = imp_implementationWithBlock(^(id self) {
+            if (o1) ((void (*)(id, SEL))o1)(self, s1);
+            FQXSyncDramaActionControl(self, "starIcon", 0);
+        });
+        if (!FQXInstallOwnedHook(collectCls, s1, NO, "v16@0:8", h1, &o1)) imp_removeBlock(h1);
+
+        SEL s2 = sel_registerName("refreshUIWithModel:animated:");
+        __block IMP o2 = NULL;
+        IMP h2 = imp_implementationWithBlock(^(id self, id model, BOOL animated) {
+            if (o2) ((void (*)(id, SEL, id, BOOL))o2)(self, s2, model, animated);
+            FQXSyncDramaActionControl(self, "starIcon", 0);
+        });
+        if (!FQXInstallOwnedHook(collectCls, s2, NO, "v28@0:8@16B24", h2, &o2)) imp_removeBlock(h2);
+    }
+    Class likeCls = objc_lookUpClass("SSShortVideoRightInteractionLikeView");
+    if (likeCls) {
+        SEL s1 = @selector(layoutSubviews);
+        __block IMP o1 = NULL;
+        IMP h1 = imp_implementationWithBlock(^(id self) {
+            if (o1) ((void (*)(id, SEL))o1)(self, s1);
+            FQXSyncDramaActionControl(self, "likeIcon", 2);
+        });
+        if (!FQXInstallOwnedHook(likeCls, s1, NO, "v16@0:8", h1, &o1)) imp_removeBlock(h1);
+
+        SEL s2 = sel_registerName("refreshUIWithModel:");
+        __block IMP o2 = NULL;
+        IMP h2 = imp_implementationWithBlock(^(id self, id model) {
+            if (o2) ((void (*)(id, SEL, id))o2)(self, s2, model);
+            FQXSyncDramaActionControl(self, "likeIcon", 2);
+        });
+        if (!FQXInstallOwnedHook(likeCls, s2, NO, "v24@0:8@16", h2, &o2)) imp_removeBlock(h2);
+
+        SEL s3 = sel_registerName("updateLikeIconHidden:");
+        __block IMP o3 = NULL;
+        IMP h3 = imp_implementationWithBlock(^(id self, BOOL hidden) {
+            if (o3) ((void (*)(id, SEL, BOOL))o3)(self, s3, hidden);
+            FQXSyncDramaActionControl(self, "likeIcon", 2);
+        });
+        if (!FQXInstallOwnedHook(likeCls, s3, NO, "v20@0:8B16", h3, &o3)) imp_removeBlock(h3);
+    }
+    Class shareCls = objc_lookUpClass("SSShortVideoRightInteractionShareView");
+    if (shareCls) {
+        SEL s1 = @selector(layoutSubviews);
+        __block IMP o1 = NULL;
+        IMP h1 = imp_implementationWithBlock(^(id self) {
+            if (o1) ((void (*)(id, SEL))o1)(self, s1);
+            FQXSyncDramaActionControl(self, "shareIcon", 3);
+        });
+        if (!FQXInstallOwnedHook(shareCls, s1, NO, "v16@0:8", h1, &o1)) imp_removeBlock(h1);
+    }
+    Class actionStyleCls = objc_lookUpClass("FQXDramaActionStyle");
+    if (actionStyleCls) {
+        SEL s1 = sel_registerName("refresh");
+        __block IMP o1 = NULL;
+        IMP h1 = imp_implementationWithBlock(^(id self) {
+            if (o1) ((void (*)(id, SEL))o1)(self, s1);
+            FQXRefreshAllDramaButtonSurfaces();
+        });
+        if (!FQXInstallOwnedHook(actionStyleCls, s1, YES, "v16@0:8", h1, &o1)) imp_removeBlock(h1);
+
+        SEL s2 = sel_registerName("refreshOwner:");
+        __block IMP o2 = NULL;
+        IMP h2 = imp_implementationWithBlock(^(id self, id owner) {
+            if (o2) ((void (*)(id, SEL, id))o2)(self, s2, owner);
+            if ([owner isKindOfClass:UIView.class]) {
+                const char *cn = class_getName(object_getClass(owner));
+                if (cn && strcmp(cn, "SSShortVideoRightInteractionCollectView") == 0) FQXSyncDramaActionControl(owner, "starIcon", 0);
+                else if (cn && strcmp(cn, "SSShortVideoRightInteractionLikeView") == 0) FQXSyncDramaActionControl(owner, "likeIcon", 2);
+                else if (cn && strcmp(cn, "SSShortVideoRightInteractionShareView") == 0) FQXSyncDramaActionControl(owner, "shareIcon", 3);
+                else FQXSyncDramaActionControl(owner, "commentIcon", 1);
+            }
+        });
+        if (!FQXInstallOwnedHook(actionStyleCls, s2, YES, "v24@0:8@16", h2, &o2)) imp_removeBlock(h2);
+
+        SEL s3 = sel_registerName("syncActionModel:");
+        __block IMP o3 = NULL;
+        IMP h3 = imp_implementationWithBlock(^(id self, id model) {
+            if (o3) ((void (*)(id, SEL, id))o3)(self, s3, model);
+            FQXRefreshAllDramaButtonSurfaces();
+        });
+        if (!FQXInstallOwnedHook(actionStyleCls, s3, YES, "v24@0:8@16", h3, &o3)) imp_removeBlock(h3);
     }
 }
 
@@ -11527,6 +11853,39 @@ static void HookFeedScrollViewDidMoveWindow(UIScrollView *scroll, SEL cmd) {
     if (!scroll.window || (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode()))) {
         [[FQXFeedDockPanController shared] syncCollectionView:scroll];
     }
+}
+
+static void (*OrigFeedCollectionViewDidMoveWindow)(id, SEL);
+static void HookFeedCollectionViewDidMoveWindow(UICollectionView *scroll, SEL cmd) {
+    if (OrigFeedCollectionViewDidMoveWindow) OrigFeedCollectionViewDidMoveWindow(scroll, cmd);
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    if (!scroll.window || (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode()))) {
+        [[FQXFeedDockPanController shared] syncCollectionView:scroll];
+    }
+}
+
+static void (*OrigFeedTableViewDidMoveWindow)(id, SEL);
+static void HookFeedTableViewDidMoveWindow(UITableView *scroll, SEL cmd) {
+    if (OrigFeedTableViewDidMoveWindow) OrigFeedTableViewDidMoveWindow(scroll, cmd);
+    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    if (!scroll.window || (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode()))) {
+        [[FQXFeedDockPanController shared] syncCollectionView:scroll];
+    }
+}
+
+static void (*OrigWindowSendEventForFeedMotion)(id, SEL, id);
+static void HookWindowSendEventForFeedMotion(UIWindow *win, SEL cmd, UIEvent *event) {
+    if (event.type == UIEventTypeTouches &&
+        FQXFeedMotionSupported() &&
+        FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode())) {
+        NSSet<UITouch *> *touches = [event touchesForWindow:win];
+        for (UITouch *touch in touches) {
+            if (touch.phase == UITouchPhaseBegan) {
+                [[FQXFeedDockPanController shared] prepareForTouchOnView:touch.view];
+            }
+        }
+    }
+    if (OrigWindowSendEventForFeedMotion) OrigWindowSendEventForFeedMotion(win, cmd, event);
 }
 
 static void (*OrigFQVCollectionDidMoveWindow)(id, SEL);
@@ -13312,6 +13671,7 @@ static void HookVPlayerLayoutForSeriesPill(UIView *self, SEL _cmd) {
     if (OrigVPlayerLayoutForSeriesPill) OrigVPlayerLayoutForSeriesPill(self, _cmd);
     FQXSyncDramaSeriesPillForControl(self);
     FQXSyncCellControlWithPinchSession(self);
+    FQXSyncDramaGlassSubtree(self, 0);
 }
 
 static void (*OrigVPlayerWillDisplay)(id, SEL);
@@ -19984,11 +20344,13 @@ static void (*OrigDramaCommentLayout)(id, SEL);
 static void HookDramaCommentLayout(UIView *view, SEL cmd) {
     OrigDramaCommentLayout(view, cmd);
     FQXRefreshDramaCommentCaption(view);
+    FQXSyncDramaActionControl(view, "commentIcon", 1);
 }
 static void (*OrigHostDramaCommentLayout)(id, SEL);
 static void HookHostDramaCommentLayout(UIView *view, SEL cmd) {
     OrigHostDramaCommentLayout(view, cmd);
     FQXRefreshDramaCommentCaption(view);
+    FQXSyncDramaActionControl(view, "commentIcon", 1);
 }
 
 // Note: Do not override SSBookShelfViewModel.shouldShowEmptyBookCell during cold start;
@@ -28354,6 +28716,8 @@ void FQXInstallMotionAndAudioHooks(void) {
                             (IMP)HookVisualEffectLayoutForProxyGuard, (IMP *)&OrigVisualEffectLayoutForProxyGuard);
         FQXInstallOwnedHook(UIVisualEffectView.class, @selector(didMoveToWindow), NO, "v16@0:8",
                             (IMP)HookVisualEffectWindowForProxyGuard, (IMP *)&OrigVisualEffectWindowForProxyGuard);
+        FQXInstallOwnedHook(UIWindow.class, @selector(sendEvent:), NO, "v24@0:8@16",
+                            (IMP)HookWindowSendEventForFeedMotion, (IMP *)&OrigWindowSendEventForFeedMotion);
         HOOK_INST("SSTabBar", "pointInside:withEvent:", "B40@0:8{CGPoint=dd}16@32", OrigSSTabBarPointInside, HookSSTabBarPointInside);
         HOOK_INST("SSTabBar", "hitTest:withEvent:", "@40@0:8{CGPoint=dd}16@32", OrigSSTabBarHitTest, HookSSTabBarHitTest);
         HOOK_INST("SSTabBarController", "impactFeedback", "v16@0:8", OrigBottomImpactFeedback, HookBottomImpactFeedback);
@@ -28450,6 +28814,8 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQVShortVideoVPlayerControlView", "setPlayerViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigControlSetPlayerViewFrame, HookControlSetPlayerViewFrame);
             HOOK_INST("FQVShortVideoVPlayerControlView", "handleOutterFeedClipBounds:", "v20@0:8B16", OrigControlHandleOutterClip, HookControlHandleOutterClip);
             HOOK_INST("UIScrollView", "didMoveToWindow", "v16@0:8", OrigFeedScrollViewDidMoveWindow, HookFeedScrollViewDidMoveWindow);
+            HOOK_INST("UICollectionView", "didMoveToWindow", "v16@0:8", OrigFeedCollectionViewDidMoveWindow, HookFeedCollectionViewDidMoveWindow);
+            HOOK_INST("UITableView", "didMoveToWindow", "v16@0:8", OrigFeedTableViewDidMoveWindow, HookFeedTableViewDidMoveWindow);
             HOOK_INST("FQVCollectionView", "layoutSubviews", "v16@0:8", OrigFQVCollectionLayout, HookFQVCollectionLayout);
             HOOK_INST("FQVCollectionView", "didMoveToWindow", "v16@0:8", OrigFQVCollectionDidMoveWindow, HookFQVCollectionDidMoveWindow);
             [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
@@ -28557,6 +28923,10 @@ void FQXInstallMotionAndAudioHooks(void) {
                                                              queue:NSOperationQueue.mainQueue
                                                         usingBlock:^(__unused NSNotification *note) {
                 FQXScheduleCommentForegroundRefresh();
+                [[FQXFeedDockPanController shared] clearStaleFeedPanIfNeeded];
+                if (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode())) {
+                    [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+                }
                 for (FQXTabBarInteraction *inter in FQXTrackedDockInteractions().allObjects) {
                     BOOL linkRunning = (inter->_feedDisplayLink != nil && !inter->_feedDisplayLink.paused);
                     if ([inter usesFeedMotion] && inter->_nativeDockActive && !linkRunning) {
@@ -28928,6 +29298,7 @@ static void FQXInstallPostGlassHooks(void) {
         POST_HOOK("SSShortVideoOutterBookCardManager", "shouldShowBookCardWithPlaybackTime:", "B24@0:8d16", OrigOutterBookCardShouldShowTime, HookOutterBookCardShouldShowTime);
         POST_HOOK("SSShortVideoOutterBookCardManager", "shouldShowBookCardImmediately", "B16@0:8", OrigOutterBookCardShouldShowNow, HookOutterBookCardShouldShowNow);
         POST_HOOK("SSShortVideoRightInteractionRelateBookManager", "showRelateBook", "B16@0:8", OrigRightRelateBookShouldShow, HookRightRelateBookShouldShow);
+        FQXInstallDramaButtonSurfaceHooks();
 
 #undef POST_HOOK
     });
