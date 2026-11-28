@@ -2542,7 +2542,6 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         platter.backgroundColor = UIColor.clearColor;
     }
     FQXApplyDockPlatterGlass(platter, dark, mode);
-    FQXSyncNativeTabSelectionVideoPill(tabBar, effSel, 0);
     static Class platterCls = Nil;
     static Class itemPlatterCls = Nil;
     static dispatch_once_t pOnce;
@@ -2563,7 +2562,7 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
             }
         }
     }
-    FQXSyncNativeTabSelectionVideoPill(tabBar, videoSel, 0);
+    FQXSyncNativeTabSelectionVideoPill(tabBar, effSel, 0);
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *surface = (UIVisualEffectView *)platter;
         FQXApplyDockBackdropBlur(tabBar, surface.contentView, nil, surface.contentView.bounds, -1, dark, mode, DockBlurPrefKey);
