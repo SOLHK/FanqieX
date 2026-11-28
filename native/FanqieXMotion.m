@@ -190,6 +190,12 @@ typedef struct {
     NSInteger dockSelectionTintStyle;
     NSInteger dramaTopSelectionTintStyle;
     NSInteger dramaButtonSurfaceStyle;
+    FQXDockCollapseMode dockCollapseMode;
+    NSInteger dockDisplayMode;
+    CGFloat dockIconPointSize;
+    NSInteger dockBlurPercent;
+    BOOL dockSiriaiHideLine;
+    BOOL dockLegacyScrollZoom;
     BOOL hasStoredComposerStyle;
     BOOL glassDisabled;
     BOOL glassDarkTint;
@@ -213,6 +219,10 @@ static pthread_mutex_t gFQXHotPrefsLock = PTHREAD_MUTEX_INITIALIZER;
 static FQXHotPrefsCache gFQXHotPrefs;
 static _Atomic uint64_t gFQXHotPrefsGen = 1;
 static uint64_t gFQXHotPrefsLoadedGen = 0;
+// Lock-free mirror for 120Hz touch/pan hot paths:
+// bit 0: glassEnabled, bits 1..3: dockCollapseMode, bit 4: audioSheetStyled
+static _Atomic uint32_t gFQXHotDockFlags = 0;
+static _Atomic uint64_t gFQXHotDockFlagsGen = 0;
 
 static void FQXInvalidateHotPrefsCache(void) {
     atomic_fetch_add_explicit(&gFQXHotPrefsGen, 1, memory_order_release);
@@ -322,13 +332,68 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     fresh.dramaHideEpisodeSameSeries = [ud boolForKey:DramaHideEpisodeSameSeriesPrefKey];
     fresh.dramaHideEpisodeRecommend = [ud boolForKey:DramaHideEpisodeRecommendPrefKey];
 
+    id collapseObj = [ud objectForKey:DockCollapseModePrefKey];
+    int collapseRaw = [collapseObj respondsToSelector:@selector(intValue)] ? [collapseObj intValue] : -1;
+    int legacyCompact = [ud boolForKey:DockLegacyCompactPrefKey] ? 1 : 0;
+    int legacyScrollZoom = [ud boolForKey:DockLegacyScrollZoomPrefKey] ? 1 : 0;
+    FQXDockCollapseMode resolvedCollapse = FQXResolveDockCollapseMode(collapseRaw, legacyCompact, legacyScrollZoom);
+    if (collapseRaw < 0 && (legacyCompact || legacyScrollZoom)) {
+        [ud setInteger:(NSInteger)resolvedCollapse forKey:DockCollapseModePrefKey];
+        if (resolvedCollapse == FQXDockCollapseModeTikTok && legacyScrollZoom) {
+            [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
+            legacyScrollZoom = 0;
+        }
+    } else if (collapseRaw >= FQXDockCollapseModeOff && collapseRaw <= FQXDockCollapseModeSiriai) {
+        BOOL wantLegacyCompact = (resolvedCollapse == FQXDockCollapseModeLegacy);
+        if ((legacyCompact != 0) != wantLegacyCompact) {
+            [ud setBool:wantLegacyCompact forKey:DockLegacyCompactPrefKey];
+        }
+        if (legacyScrollZoom != 0) {
+            [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
+            legacyScrollZoom = 0;
+        }
+    }
+    fresh.dockCollapseMode = resolvedCollapse;
+    fresh.dockSiriaiHideLine = [ud boolForKey:DockSiriaiHideLinePrefKey];
+    fresh.dockLegacyScrollZoom = (legacyScrollZoom != 0);
+
+    id dispObj = [ud objectForKey:BottomDisplayModePrefKey];
+    if (dispObj && [dispObj respondsToSelector:@selector(integerValue)]) {
+        NSInteger dv = [dispObj integerValue];
+        fresh.dockDisplayMode = (dv >= 0 && dv <= 2) ? dv : 0;
+    } else {
+        fresh.dockDisplayMode = [ud boolForKey:@"FanqieX.BottomIconsOnly.1"] ? 1 : 0;
+    }
+    id iconPtObj = [ud objectForKey:@"FanqieX.BottomIconPointSize.1"];
+    CGFloat iconPt = 27.0;
+    if ([iconPtObj respondsToSelector:@selector(doubleValue)]) {
+        CGFloat pv = (CGFloat)[iconPtObj doubleValue];
+        if (pv >= 16.0 && pv <= 34.0) iconPt = pv;
+    }
+    fresh.dockIconPointSize = iconPt;
+    fresh.dockBlurPercent = FQXBlurPercent([ud doubleForKey:DockBlurPrefKey]);
+
+    uint32_t fastFlags = (!fresh.glassDisabled ? 1u : 0u) |
+                         (((uint32_t)fresh.dockCollapseMode & 0x7u) << 1) |
+                         ((!fresh.glassDisabled && fresh.audioSheetMaterialStyle != FQXShareMaterialNative) ? (1u << 4) : 0u);
+
     pthread_mutex_lock(&gFQXHotPrefsLock);
     if (atomic_load_explicit(&gFQXHotPrefsGen, memory_order_acquire) == gen) {
         gFQXHotPrefs = fresh;
         gFQXHotPrefsLoadedGen = gen;
+        atomic_store_explicit(&gFQXHotDockFlags, fastFlags, memory_order_release);
+        atomic_store_explicit(&gFQXHotDockFlagsGen, gen, memory_order_release);
     }
     pthread_mutex_unlock(&gFQXHotPrefsLock);
     return fresh;
+}
+
+static inline uint32_t FQXFastDockFlags(void) {
+    uint64_t gen = atomic_load_explicit(&gFQXHotPrefsGen, memory_order_acquire);
+    if (atomic_load_explicit(&gFQXHotDockFlagsGen, memory_order_acquire) != gen) {
+        FQXHotPrefsSnapshot();
+    }
+    return atomic_load_explicit(&gFQXHotDockFlags, memory_order_relaxed);
 }
 
 static BOOL FQXShelfEditButtonEnabled(void) {
@@ -658,7 +723,68 @@ static void FQXSyncVideoSelectedPillOverlayInView(UIView *host, NSInteger select
     [overlay setTranslucentGlass:translucentGlass];
 }
 
-static BOOL FQXSyncNativeTabSelectionVideoPill(UIView *root, NSInteger selectionTintStyle, CGFloat barWidth, NSInteger depth) {
+@interface FQXWeakViewBox : NSObject
+@property(nonatomic, weak) UIView *view;
+@end
+
+@implementation FQXWeakViewBox
+@end
+
+static const char FQXK_FQXCachedNativeTabLensKey = 0;
+#define FQXCachedNativeTabLensKey ((const void *)&FQXK_FQXCachedNativeTabLensKey)
+
+static BOOL FQXApplySelectionPillToLensView(UIView *root, NSInteger selectionTintStyle, CGFloat barWidth) {
+    if (!root) return NO;
+    CGFloat w = CGRectGetWidth(root.bounds);
+    CGFloat h = CGRectGetHeight(root.bounds);
+    BOOL singleSlotSize = (w >= 32.0 && h >= 22.0 && (barWidth < 40.0 || w <= barWidth * 0.58));
+    if (!singleSlotSize) return NO;
+    if (selectionTintStyle != FQXSelectionTintStyleDefault) {
+        if (root.overrideUserInterfaceStyle != UIUserInterfaceStyleLight) {
+            root.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+        }
+    } else if (objc_getAssociatedObject(root, FQXVideoSelectedPillOverlayKey) != nil &&
+               root.overrideUserInterfaceStyle == UIUserInterfaceStyleLight) {
+        root.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+    }
+    FQXSyncVideoSelectedPillOverlayInView(root, selectionTintStyle);
+    if (selectionTintStyle != FQXSelectionTintStyleDefault) {
+        FQXVideoSelectedPillView *overlay = objc_getAssociatedObject(root, FQXVideoSelectedPillOverlayKey);
+        UIView *container = [root isKindOfClass:UIVisualEffectView.class]
+            ? ((UIVisualEffectView *)root).contentView : root;
+        if (overlay && overlay.superview == container) {
+            // Place pill above internal glass/backdrop views but BELOW lifted portal/icon/label views.
+            UIView *firstContent = nil;
+            for (UIView *sub in container.subviews) {
+                if (sub == overlay) continue;
+                NSString *sc = NSStringFromClass(sub.class) ?: @"";
+                if ([sc containsString:@"Portal"] ||
+                    [sub isKindOfClass:UILabel.class] ||
+                    [sub isKindOfClass:UIImageView.class] ||
+                    [sc containsString:@"Content"]) {
+                    firstContent = sub;
+                    break;
+                }
+            }
+            if (firstContent) {
+                NSUInteger oIdx = [container.subviews indexOfObjectIdenticalTo:overlay];
+                NSUInteger cIdx = [container.subviews indexOfObjectIdenticalTo:firstContent];
+                if (oIdx == NSNotFound || cIdx == NSNotFound || oIdx > cIdx) {
+                    [container insertSubview:overlay belowSubview:firstContent];
+                }
+            } else if (container.subviews.lastObject != overlay) {
+                [container bringSubviewToFront:overlay];
+            }
+        }
+    }
+    return YES;
+}
+
+static BOOL FQXSyncNativeTabSelectionVideoPillRecursive(UIView *root,
+                                                        UITabBar *cacheOwner,
+                                                        NSInteger selectionTintStyle,
+                                                        CGFloat barWidth,
+                                                        NSInteger depth) {
     if (!root || depth > 9) return NO;
     NSString *clsName = NSStringFromClass(root.class) ?: @"";
     BOOL isLensClass = [clsName containsString:@"LiquidLens"] ||
@@ -667,55 +793,39 @@ static BOOL FQXSyncNativeTabSelectionVideoPill(UIView *root, NSInteger selection
                        [clsName containsString:@"SelectionIndicator"] ||
                        [clsName containsString:@"SelectionBackground"] ||
                        [clsName containsString:@"PlatterSelection"];
-    if (isLensClass) {
-        CGFloat w = CGRectGetWidth(root.bounds);
-        CGFloat h = CGRectGetHeight(root.bounds);
-        BOOL singleSlotSize = (w >= 32.0 && h >= 22.0 && (barWidth < 40.0 || w <= barWidth * 0.58));
-        if (singleSlotSize) {
-            if (selectionTintStyle != FQXSelectionTintStyleDefault) {
-                if (root.overrideUserInterfaceStyle != UIUserInterfaceStyleLight) {
-                    root.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
-                }
-            } else if (objc_getAssociatedObject(root, FQXVideoSelectedPillOverlayKey) != nil &&
-                       root.overrideUserInterfaceStyle == UIUserInterfaceStyleLight) {
-                root.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+    if (isLensClass && FQXApplySelectionPillToLensView(root, selectionTintStyle, barWidth)) {
+        if (cacheOwner) {
+            FQXWeakViewBox *box = objc_getAssociatedObject(cacheOwner, FQXCachedNativeTabLensKey);
+            if (!box) {
+                box = [FQXWeakViewBox new];
+                objc_setAssociatedObject(cacheOwner, FQXCachedNativeTabLensKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
-            FQXSyncVideoSelectedPillOverlayInView(root, selectionTintStyle);
-            if (selectionTintStyle != FQXSelectionTintStyleDefault) {
-                FQXVideoSelectedPillView *overlay = objc_getAssociatedObject(root, FQXVideoSelectedPillOverlayKey);
-                UIView *container = [root isKindOfClass:UIVisualEffectView.class]
-                    ? ((UIVisualEffectView *)root).contentView : root;
-                if (overlay && overlay.superview == container) {
-                    // Place pill above internal glass/backdrop views but BELOW lifted portal/icon/label views.
-                    UIView *firstContent = nil;
-                    for (UIView *sub in container.subviews) {
-                        if (sub == overlay) continue;
-                        NSString *sc = NSStringFromClass(sub.class) ?: @"";
-                        if ([sc containsString:@"Portal"] ||
-                            [sub isKindOfClass:UILabel.class] ||
-                            [sub isKindOfClass:UIImageView.class] ||
-                            [sc containsString:@"Content"]) {
-                            firstContent = sub;
-                            break;
-                        }
-                    }
-                    if (firstContent) {
-                        [container insertSubview:overlay belowSubview:firstContent];
-                    } else {
-                        [container bringSubviewToFront:overlay];
-                    }
-                }
-            }
-            return YES;
+            box.view = root;
         }
+        return YES;
     }
     BOOL foundAny = NO;
     for (UIView *sub in root.subviews) {
-        if (FQXSyncNativeTabSelectionVideoPill(sub, selectionTintStyle, barWidth, depth + 1)) {
+        if (FQXSyncNativeTabSelectionVideoPillRecursive(sub, cacheOwner, selectionTintStyle, barWidth, depth + 1)) {
             foundAny = YES;
         }
     }
     return foundAny;
+}
+
+static BOOL FQXSyncNativeTabSelectionVideoPill(UIView *root, NSInteger selectionTintStyle, CGFloat barWidth, NSInteger depth) {
+    if (!root) return NO;
+    if (depth == 0 && [root isKindOfClass:UITabBar.class]) {
+        FQXWeakViewBox *box = objc_getAssociatedObject(root, FQXCachedNativeTabLensKey);
+        UIView *cached = box.view;
+        if (cached && [cached isDescendantOfView:root] &&
+            FQXApplySelectionPillToLensView(cached, selectionTintStyle, barWidth)) {
+            return YES;
+        }
+        if (box) box.view = nil;
+        return FQXSyncNativeTabSelectionVideoPillRecursive(root, (UITabBar *)root, selectionTintStyle, barWidth, 0);
+    }
+    return FQXSyncNativeTabSelectionVideoPillRecursive(root, nil, selectionTintStyle, barWidth, depth);
 }
 
 // surfaceStyle: 0 = none, 1 = matte VideoBase (#EEEDF0), 2 = translucent RoseMistGlass rim only
@@ -1073,6 +1183,14 @@ static UIVisualEffectView *FQXNewGlassViewFull(NSInteger style,
     CGFloat _maxTintAlpha;
     BOOL _matteChromeBorder;
     BOOL _commentPureMode;
+    BOOL _hwAppliedValid;
+    NSInteger _hwAppliedPercent;
+    BOOL _hwAppliedDark;
+    CGFloat _hwAppliedBaseTint;
+    CGFloat _hwAppliedMaxTint;
+    BOOL _hwAppliedChromeBorder;
+    BOOL _hwAppliedCommentPure;
+    CGRect _hwAppliedBounds;
 }
 - (void)configurePercent:(NSInteger)percent
                     dark:(BOOL)dark
@@ -1704,6 +1822,7 @@ static BOOL FQXBackdropFilterAvailable(void) {
     }
 }
 - (void)invalidateBlurAnimator {
+    self->_hwAppliedValid = NO;
     if (self->_blurAnimator.state == UIViewAnimatingStateActive) [self->_blurAnimator stopAnimation:YES];
     self->_blurAnimator = nil;
     self->_animatorWindow = nil;
@@ -1726,6 +1845,7 @@ static BOOL FQXBackdropFilterAvailable(void) {
 }
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    self->_hwAppliedValid = NO;
     if (self->_usingHardwareFilter) {
         if (self.window) [self applyHardwareBlur];
         return;
@@ -1736,6 +1856,7 @@ static BOOL FQXBackdropFilterAvailable(void) {
 }
 - (void)blurDidBecomeActive:(NSNotification *)notification {
     (void)notification;
+    self->_hwAppliedValid = NO;
     if (self->_usingHardwareFilter) {
         if (self.window) [self applyHardwareBlur];
         return;
@@ -1748,11 +1869,24 @@ static BOOL FQXBackdropFilterAvailable(void) {
                 baseTint:(CGFloat)baseTint
                  maxTint:(CGFloat)maxTint
             chromeBorder:(BOOL)chromeBorder {
+    NSInteger clamped = FQXBlurPercent(percent);
+    if (self->_usingHardwareFilter && self->_hwAppliedValid &&
+        self->_hwAppliedPercent == clamped &&
+        self->_hwAppliedDark == dark &&
+        fabs(self->_hwAppliedBaseTint - baseTint) < 0.0005 &&
+        fabs(self->_hwAppliedMaxTint - maxTint) < 0.0005 &&
+        self->_hwAppliedChromeBorder == chromeBorder &&
+        self->_hwAppliedCommentPure == self->_commentPureMode &&
+        CGRectEqualToRect(self->_hwAppliedBounds, self.contentView.bounds) &&
+        self.effect == nil &&
+        (clamped <= 0 || (self->_backdropHost && self->_backdropHost.superview == self.contentView))) {
+        return;
+    }
     self->_isDarkStyle = dark;
     self->_baseTintAlpha = baseTint;
     self->_maxTintAlpha = maxTint;
     self->_matteChromeBorder = chromeBorder;
-    self->_percent = FQXBlurPercent(percent);
+    self->_percent = clamped;
     if (self->_usingHardwareFilter) {
         [self applyHardwareBlur];
     } else {
@@ -1868,9 +2002,19 @@ static BOOL FQXBackdropFilterAvailable(void) {
     [CATransaction commit];
 
     if (!filterApplied) {
+        self->_hwAppliedValid = NO;
         self->_usingHardwareFilter = NO;
         [self invalidateBlurAnimator];
         if (self->_percent > 0) [self scheduleBlurUpdate];
+    } else {
+        self->_hwAppliedValid = YES;
+        self->_hwAppliedPercent = self->_percent;
+        self->_hwAppliedDark = self->_isDarkStyle;
+        self->_hwAppliedBaseTint = self->_baseTintAlpha;
+        self->_hwAppliedMaxTint = self->_maxTintAlpha;
+        self->_hwAppliedChromeBorder = self->_matteChromeBorder;
+        self->_hwAppliedCommentPure = self->_commentPureMode;
+        self->_hwAppliedBounds = self.contentView.bounds;
     }
 }
 - (void)scheduleBlurUpdate {
@@ -2011,7 +2155,9 @@ static void FQXClearDockBackdropBlur(UIView *owner) {
 static void FQXApplyDockBackdropBlur(UIView *owner, UIView *container, UIView *anchor, CGRect frame,
                                      CGFloat radius, BOOL dark, FQXDockMaterialMode mode, NSString *preference) {
     FQXBackdropBlurView *blur = objc_getAssociatedObject(owner, FQXDockBackdropBlurViewKey);
-    NSInteger strength = FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:preference]);
+    NSInteger strength = (preference == DockBlurPrefKey || [preference isEqualToString:DockBlurPrefKey])
+        ? FQXHotPrefsSnapshot().dockBlurPercent
+        : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:preference]);
     BOOL needsView = (FQXDockMaterialUsesBlur((int)mode, (int)strength) != 0);
     if (!container || !needsView || UIAccessibilityIsReduceTransparencyEnabled()) {
         if (blur) {
@@ -2924,27 +3070,16 @@ static void HookVisualEffectWindowForProxyGuard(UIVisualEffectView *view, SEL cm
 @class FQXTabBarInteraction;
 
 static FQXDockCollapseMode FQXCurrentDockCollapseMode(void) {
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    id obj = [ud objectForKey:DockCollapseModePrefKey];
-    int raw = [obj respondsToSelector:@selector(intValue)] ? [obj intValue] : -1;
-    int compact = [ud boolForKey:DockLegacyCompactPrefKey] ? 1 : 0;
-    int scrollZoom = [ud boolForKey:DockLegacyScrollZoomPrefKey] ? 1 : 0;
-    FQXDockCollapseMode resolved = FQXResolveDockCollapseMode(raw, compact, scrollZoom);
-    if (raw < 0 && (compact || scrollZoom)) {
-        [ud setInteger:(NSInteger)resolved forKey:DockCollapseModePrefKey];
-        if (resolved == FQXDockCollapseModeTikTok && scrollZoom) {
-            [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
-        }
-    } else if (raw >= FQXDockCollapseModeOff && raw <= FQXDockCollapseModeSiriai) {
-        BOOL wantLegacyCompact = (resolved == FQXDockCollapseModeLegacy);
-        if ((compact != 0) != wantLegacyCompact) [ud setBool:wantLegacyCompact forKey:DockLegacyCompactPrefKey];
-        if (scrollZoom != 0) [ud setBool:NO forKey:DockLegacyScrollZoomPrefKey];
-    }
-    return resolved;
+    return (FQXDockCollapseMode)((FQXFastDockFlags() >> 1) & 0x7u);
 }
 
 static BOOL FQXFeedMotionSupported(void) {
-    return FQXGlassEnabled() && UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone;
+    static BOOL isPhone = NO;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        isPhone = (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone);
+    });
+    return isPhone && ((FQXFastDockFlags() & 1u) != 0u);
 }
 
 @interface FQXFeedDockSlotView : UIView
@@ -3042,6 +3177,13 @@ static BOOL FQXFeedMotionSupported(void) {
     CGFloat _feedGap;
     NSUInteger _feedLastSelectedIndex;
     BOOL _feedControlsHidden;
+    BOOL _feedAppliedValid;
+    double _feedAppliedProgress;
+    double _feedAppliedOvertravel;
+    double _feedAppliedSiriaiOpeningMat;
+    NSString *_feedSlotVisualsSig;
+    BOOL _dockSelectionLensHidden;
+    BOOL _feedNeedsPostMotionSync;
 }
 - (void)syncWithBar:(UIView *)bar
               proxy:(UIVisualEffectView *)proxy
@@ -3107,6 +3249,9 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     return NO;
 }
 
+static const char FQXK_FQXFeedPanTargetAttachedKey = 0;
+#define FQXFeedPanTargetAttachedKey ((const void *)&FQXK_FQXFeedPanTargetAttachedKey)
+
 @interface FQXFeedDockPanController : NSObject {
     NSHashTable<UIScrollView *> *_trackedCollections;
     __weak UIPanGestureRecognizer *_feedPan;
@@ -3115,6 +3260,8 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     __weak FQXTabBarInteraction *_activeInteraction;
     FQXDockCollapseMode _feedMode;
     DKFeedPanState _panState;
+    CFTimeInterval _lastOverlayCheckTime;
+    CFTimeInterval _lastWindowScanTime;
 }
 + (instancetype)shared;
 - (void)syncCollectionView:(UIScrollView *)scroll;
@@ -3199,9 +3346,9 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
         if ([cur isKindOfClass:UIScrollView.class] && ![cur isKindOfClass:UITextView.class] && cur.window) {
             UIScrollView *sv = (UIScrollView *)cur;
             UIPanGestureRecognizer *pan = sv.panGestureRecognizer;
-            if (pan) {
-                [pan removeTarget:self action:@selector(handleFeedPan:)];
+            if (pan && !objc_getAssociatedObject(pan, FQXFeedPanTargetAttachedKey)) {
                 [pan addTarget:self action:@selector(handleFeedPan:)];
+                objc_setAssociatedObject(pan, FQXFeedPanTargetAttachedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 [_trackedCollections addObject:sv];
             }
         }
@@ -3212,11 +3359,17 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     if (![scroll isKindOfClass:UIScrollView.class] || [scroll isKindOfClass:UITextView.class]) return;
     UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
     if (!pan) return;
-    [pan removeTarget:self action:@selector(handleFeedPan:)];
     if (scroll.window) {
-        [_trackedCollections addObject:scroll];
-        [pan addTarget:self action:@selector(handleFeedPan:)];
+        if (!objc_getAssociatedObject(pan, FQXFeedPanTargetAttachedKey)) {
+            [pan addTarget:self action:@selector(handleFeedPan:)];
+            objc_setAssociatedObject(pan, FQXFeedPanTargetAttachedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [_trackedCollections addObject:scroll];
+        }
     } else {
+        if (objc_getAssociatedObject(pan, FQXFeedPanTargetAttachedKey)) {
+            [pan removeTarget:self action:@selector(handleFeedPan:)];
+            objc_setAssociatedObject(pan, FQXFeedPanTargetAttachedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         [self cancelFeedPan:pan];
     }
 }
@@ -3232,6 +3385,10 @@ static void FQXCollectMountedFeedScrollViews(UIView *root, NSMutableArray<UIScro
 }
 
 - (void)scanWindowsForMountedCollections {
+    if (_feedPan != nil) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (now - _lastWindowScanTime < 0.30) return;
+    _lastWindowScanTime = now;
     NSMutableArray<UIScrollView *> *found = [NSMutableArray array];
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
@@ -3410,6 +3567,7 @@ static BOOL FQXControllerNameBlocksFeedDockMotion(NSString *name) {
         _feedPendingWindow = nil;
         _feedPan = pan;
         _activeInteraction = inter;
+        _lastOverlayCheckTime = CACurrentMediaTime();
         BOOL siriai = (mode == FQXDockCollapseModeSiriai);
         BOOL startedCompact = [inter feedCompact];
         BOOL caughtMotion = [inter beginFeedDrag];
@@ -3423,10 +3581,18 @@ static BOOL FQXControllerNameBlocksFeedDockMotion(NSString *name) {
     if (_feedPan != pan) return;
     UIWindow *window = scroll.window;
     FQXTabBarInteraction *inter = _activeInteraction;
+    BOOL overlayBlocked = NO;
+    if (window && state == UIGestureRecognizerStateChanged) {
+        CFTimeInterval now = CACurrentMediaTime();
+        if (now - _lastOverlayCheckTime >= 0.25) {
+            _lastOverlayCheckTime = now;
+            overlayBlocked = FQXHasVisibleOverlaySheetInWindow(window);
+        }
+    }
     if (state == UIGestureRecognizerStateCancelled || state == UIGestureRecognizerStateFailed ||
         mode != _feedMode || !window || !inter || !inter->_nativeDockActive ||
         inter->_bar.window != window || !scroll.isScrollEnabled ||
-        FQXIsBarHiddenByComment(inter->_bar) || FQXHasVisibleOverlaySheetInWindow(window)) {
+        FQXIsBarHiddenByComment(inter->_bar) || overlayBlocked) {
         [self cancelFeedPan:pan];
         return;
     }
@@ -3660,6 +3826,11 @@ static void FQXSetNativeTabSelectionLensVisible(UIView *root, BOOL visible, NSIn
     return self;
 }
 
+- (void)dealloc {
+    [self->_feedDisplayLink invalidate];
+    self->_feedDisplayLink = nil;
+}
+
 - (BOOL)usesFeedMotion {
     return FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(self->_appliedCollapseMode);
 }
@@ -3676,15 +3847,34 @@ static void FQXCollectTabButtonsRecursive(UIView *root, Class buttonClass, NSMut
     }
 }
 
+static inline void FQXSetViewAlphaIfNeeded(UIView *view, CGFloat alpha) {
+    if (!view) return;
+    CGFloat cur = view.alpha;
+    if ((alpha == 0.0 && cur != 0.0) || (alpha == 1.0 && cur != 1.0) || fabs(cur - alpha) > 0.002) {
+        view.alpha = alpha;
+    }
+}
+
 static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transform, CGPoint center) {
     if (!view) return;
-    if (!CGAffineTransformEqualToTransform(view.transform, transform)) view.transform = transform;
-    if (!CGPointEqualToPoint(view.center, center)) view.center = center;
+    CGAffineTransform cur = view.transform;
+    if (fabs(cur.a - transform.a) > 1e-4 || fabs(cur.d - transform.d) > 1e-4 ||
+        fabs(cur.b - transform.b) > 1e-4 || fabs(cur.c - transform.c) > 1e-4 ||
+        fabs(cur.tx - transform.tx) > 0.02 || fabs(cur.ty - transform.ty) > 0.02) {
+        view.transform = transform;
+    }
+    CGPoint curCenter = view.center;
+    if (fabs(curCenter.x - center.x) > 0.02 || fabs(curCenter.y - center.y) > 0.02) {
+        view.center = center;
+    }
 }
 
 - (void)cleanupFeedMotionVisuals {
     [self->_feedDisplayLink invalidate];
     self->_feedDisplayLink = nil;
+    self->_feedAppliedValid = NO;
+    self->_feedSlotVisualsSig = nil;
+    self->_feedNeedsPostMotionSync = NO;
     [UIView performWithoutAnimation:^{
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
@@ -3795,6 +3985,18 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     NSUInteger hostSel = [self currentSelectedIndex];
     NSUInteger selectedSlot = self->_capsuleHostIndices.count
         ? [self->_capsuleHostIndices indexOfObject:@(hostSel)] : hostSel;
+    FQXDockMaterialMode curMode = FQXCurrentDockMaterialMode();
+    NSInteger curEffSel = FQXEffectiveDockSelectionTintStyle();
+    NSString *visualSig = [NSString stringWithFormat:@"%lu|%d|%ld|%ld|%ld|%.1f|%.2f|%lu|%@",
+                           (unsigned long)count, isDark ? 1 : 0, (long)curMode, (long)curEffSel,
+                           (long)displayMode, ptSize, baseScale,
+                           (unsigned long)(selectedSlot == NSNotFound ? 999 : selectedSlot),
+                           self->_dockSignature ?: @""];
+    if (self->_feedSlotVisualsSig && [self->_feedSlotVisualsSig isEqualToString:visualSig]) {
+        return;
+    }
+    self->_feedSlotVisualsSig = visualSig;
+    self->_feedAppliedValid = NO;
 
     for (NSUInteger i = 0; i < count; ++i) {
         FQXFeedDockSlotView *slot = self->_feedDockSlots[i];
@@ -3935,6 +4137,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
             if (!CGRectEqualToRect(slot.captionLabel.bounds, cb)) slot.captionLabel.bounds = cb;
         }
     }
+    self->_feedAppliedValid = NO;
 }
 
 - (void)applyFeedSlotsAtTarget:(CGPoint)target
@@ -3948,7 +4151,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
                   contentAlpha:(CGFloat)contentAlpha {
     UIView *overlay = self->_feedContentOverlay;
     if (!overlay || !self->_feedDockSlots.count) return;
-    if (overlay.alpha != contentAlpha) overlay.alpha = contentAlpha;
+    FQXSetViewAlphaIfNeeded(overlay, contentAlpha);
     if (contentAlpha <= 0.001) return;
 
     CGFloat baseScale = MAX(0.70, MIN(1.30, self->_feedBaseScaleY > 0.05 ? self->_feedBaseScaleY : 1.0));
@@ -3974,18 +4177,21 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 
     for (FQXFeedDockSlotView *slot in self->_feedDockSlots) {
         CGPoint slotCenter = CGPointMake(target.x + slot.restOffsetX * sx, target.y);
-        if (!CGPointEqualToPoint(slot.center, slotCenter)) slot.center = slotCenter;
+        CGPoint curSlotCenter = slot.center;
+        if (fabs(curSlotCenter.x - slotCenter.x) > 0.02 || fabs(curSlotCenter.y - slotCenter.y) > 0.02) {
+            slot.center = slotCenter;
+        }
 
         if (slot.hasIcon && slot.hasCaption) {
             FQXSetViewTransformAndCenter(slot.iconView, iconXform, CGPointMake(slotMid.x, slotMid.y + iconOffsetY));
-            if (slot.captionLabel.alpha != captionAmount) slot.captionLabel.alpha = captionAmount;
+            FQXSetViewAlphaIfNeeded(slot.captionLabel, captionAmount);
             if (captionAmount > 0.001) {
                 FQXSetViewTransformAndCenter(slot.captionLabel, capXform, CGPointMake(slotMid.x, slotMid.y + capOffsetY));
             }
         } else if (slot.hasIcon) {
             FQXSetViewTransformAndCenter(slot.iconView, iconXform, slotMid);
         } else if (slot.hasCaption) {
-            if (slot.captionLabel.alpha != 1.0) slot.captionLabel.alpha = 1.0;
+            FQXSetViewAlphaIfNeeded(slot.captionLabel, 1.0);
             FQXSetViewTransformAndCenter(slot.captionLabel, primaryTitleXform, slotMid);
         }
     }
@@ -3996,7 +4202,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     UIView *bar = self->_bar;
     if (!tabBar || !bar) return;
     CGFloat glassAlpha = (shape.whiteAmount == 1.0) ? 0.0 : (CGFloat)shape.surfaceAlpha;
-    if (tabBar.alpha != glassAlpha) tabBar.alpha = glassAlpha;
+    FQXSetViewAlphaIfNeeded(tabBar, glassAlpha);
 
     CGFloat fillAlpha = (CGFloat)(shape.whiteAmount * shape.surfaceAlpha);
     if (fillAlpha <= 0.0005 && (!self->_siriaiMinimumFillView || self->_siriaiMinimumFillView.alpha == 0.0)) return;
@@ -4017,19 +4223,22 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
             [bar insertSubview:self->_siriaiMinimumFillView aboveSubview:above];
         }
         CGRect fillBounds = CGRectMake(0.0, 0.0, shape.width, shape.height);
-        if (!CGRectEqualToRect(self->_siriaiMinimumFillView.bounds, fillBounds)) {
+        CGRect curBounds = self->_siriaiMinimumFillView.bounds;
+        if (fabs(curBounds.size.width - fillBounds.size.width) > 0.02 ||
+            fabs(curBounds.size.height - fillBounds.size.height) > 0.02) {
             self->_siriaiMinimumFillView.bounds = fillBounds;
         }
-        if (!CGPointEqualToPoint(self->_siriaiMinimumFillView.center, target)) {
+        CGPoint curCenter = self->_siriaiMinimumFillView.center;
+        if (fabs(curCenter.x - target.x) > 0.02 || fabs(curCenter.y - target.y) > 0.02) {
             self->_siriaiMinimumFillView.center = target;
         }
         CGFloat radius = shape.height * 0.5;
-        if (self->_siriaiMinimumFillView.layer.cornerRadius != radius) {
+        if (fabs(self->_siriaiMinimumFillView.layer.cornerRadius - radius) > 0.02) {
             self->_siriaiMinimumFillView.layer.cornerRadius = radius;
         }
     }
-    if (self->_siriaiMinimumFillView && self->_siriaiMinimumFillView.alpha != fillAlpha) {
-        self->_siriaiMinimumFillView.alpha = fillAlpha;
+    if (self->_siriaiMinimumFillView) {
+        FQXSetViewAlphaIfNeeded(self->_siriaiMinimumFillView, fillAlpha);
     }
 }
 
@@ -4040,103 +4249,53 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     CGFloat height = CGRectGetHeight(self->_feedCapsuleAtRest);
     if (!tabBar || !bar || width <= 0.0 || height <= 0.0) return;
 
-    [UIView performWithoutAnimation:^{
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
+    double overtravel = self->_feedSpring.overtravel;
+    double openingMat = self->_feedSpring.siriaiOpeningMaterial;
+    if (self->_feedAppliedValid &&
+        fabs(progress - self->_feedAppliedProgress) < 1e-5 &&
+        fabs(overtravel - self->_feedAppliedOvertravel) < 1e-5 &&
+        fabs(openingMat - self->_feedAppliedSiriaiOpeningMat) < 1e-5) {
+        return;
+    }
+    self->_feedAppliedValid = YES;
+    self->_feedAppliedProgress = progress;
+    self->_feedAppliedOvertravel = overtravel;
+    self->_feedAppliedSiriaiOpeningMat = openingMat;
 
-        BOOL hasDetached = (self->_detachedHostIndex != NSNotFound &&
-                            self->_detachedButton != nil &&
-                            !CGRectIsEmpty(self->_feedDetachedAtRest));
-        CGPoint pivot = CGPointMake(CGRectGetMidX(self->_feedCapsuleAtRest), CGRectGetMidY(self->_feedCapsuleAtRest));
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
 
-        if (self->_appliedCollapseMode == FQXDockCollapseModeSiriai) {
-            CGRect group = self->_feedCapsuleAtRest;
-            if (hasDetached) group = CGRectUnion(group, self->_feedDetachedAtRest);
-            CGFloat x = CGRectGetMinX(group);
-            CGFloat y = CGRectGetMinY(group);
-            CGFloat bottomLimit = MAX(height + 4.0, CGRectGetMaxY(bar.bounds) - y);
-            CGFloat camDiam = hasDetached ? CGRectGetWidth(self->_feedDetachedAtRest) : 0.0;
-            CGFloat gap = hasDetached ? self->_feedGap : 0.0;
-            DKSiriaiDockGeometry shape = DKSiriaiDockShape(width, height, camDiam, gap, bottomLimit, progress);
-            DKSiriaiApplyRebound(&shape, self->_feedSpring.overtravel, CGRectGetWidth(group), camDiam, bottomLimit);
-            if (self->_feedSpring.overtravel < 0.0) {
-                double boostX = 1.0 - 0.22 * self->_feedSpring.overtravel;
-                double boostY = fmin(boostX, bottomLimit / fmax(1.0, shape.height));
-                double midX = CGRectGetWidth(group) * 0.5;
-                shape.centerX = midX + (shape.centerX - midX) * boostX;
-                shape.cameraX = midX + (shape.cameraX - midX) * boostX;
-                shape.width *= boostX;
-                shape.height *= boostY;
-                shape.cameraScale *= boostY;
-            }
-            if (self->_feedSpring.siriaiOpeningMaterial > 1.0) {
-                DKSiriaiSetDockMaterial(&shape, self->_feedSpring.siriaiOpeningMaterial);
-            }
-            CGPoint target = CGPointMake(x + shape.centerX, y + shape.centerY);
-            CGFloat sx = MAX(0.001, shape.width / width);
-            CGFloat sy = MAX(0.001, shape.height / height);
-            CGPoint hostCenter = CGPointMake(target.x + (self->_feedHostCenterAtRest.x - pivot.x) * sx,
-                                             target.y + (self->_feedHostCenterAtRest.y - pivot.y) * sy);
-            FQXSetViewTransformAndCenter(tabBar,
-                                         CGAffineTransformMakeScale(self->_feedBaseScaleX * sx, self->_feedBaseScaleY * sy),
-                                         hostCenter);
-            self->_dockRenderedPlatterRectInBar = CGRectMake(target.x - shape.width * 0.5,
-                                                             target.y - shape.height * 0.5,
-                                                             shape.width,
-                                                             shape.height);
-            [self applySiriaiSurface:shape target:target];
-            BOOL controlsHidden = (shape.contentAlpha < 0.10);
-            self->_feedControlsHidden = controlsHidden;
-            if (tabBar.accessibilityElementsHidden != controlsHidden) {
-                tabBar.accessibilityElementsHidden = controlsHidden;
-            }
-            CGFloat openRebound = (self->_feedSpring.overtravel < 0.0) ? MAX(1.0, sy) : 1.0;
-            CGFloat effectiveGlyphScale = MAX(0.001, shape.glyphScale * openRebound);
-            CGFloat effectiveCaptionScale = MAX(0.001, shape.captionScale * openRebound);
-            double siriShown = fmin(1.0, fmax(0.0, progress)) + self->_feedSpring.overtravel;
-            [self applyFeedSlotsAtTarget:target
-                                  scaleX:sx
-                                  scaleY:sy
-                              glyphScale:effectiveGlyphScale
-                            captionScale:effectiveCaptionScale
-                           captionAmount:shape.captionAmount
-                           shownProgress:siriShown
-                                  siriai:YES
-                            contentAlpha:shape.contentAlpha];
-            if (hasDetached) {
-                CGFloat cameraScale = MAX(0.001, shape.cameraScale);
-                CGPoint detCenter = CGPointMake(x + shape.cameraX, y + shape.cameraY);
-                FQXSetViewTransformAndCenter(self->_detachedButton,
-                                             CGAffineTransformMakeScale(cameraScale, cameraScale),
-                                             detCenter);
-                [self->_detachedButton setFeedGlyphScale:(effectiveGlyphScale / cameraScale)];
-                if (self->_detachedButton.alpha != shape.contentAlpha) {
-                    self->_detachedButton.alpha = shape.contentAlpha;
-                }
-                if (self->_detachedButton.accessibilityElementsHidden != controlsHidden) {
-                    self->_detachedButton.accessibilityElementsHidden = controlsHidden;
-                }
-            }
-            [CATransaction commit];
-            return;
-        }
+    BOOL hasDetached = (self->_detachedHostIndex != NSNotFound &&
+                        self->_detachedButton != nil &&
+                        !CGRectIsEmpty(self->_feedDetachedAtRest));
+    CGPoint pivot = CGPointMake(CGRectGetMidX(self->_feedCapsuleAtRest), CGRectGetMidY(self->_feedCapsuleAtRest));
 
-        // TikTok interaction mode: 81% group width, 80% height, count * 44pt min capsule width, 91% uniform glyph scale.
-        double shownProgress = progress + self->_feedSpring.overtravel;
+    if (self->_appliedCollapseMode == FQXDockCollapseModeSiriai) {
+        CGRect group = self->_feedCapsuleAtRest;
+        if (hasDetached) group = CGRectUnion(group, self->_feedDetachedAtRest);
+        CGFloat x = CGRectGetMinX(group);
+        CGFloat y = CGRectGetMinY(group);
+        CGFloat bottomLimit = MAX(height + 4.0, CGRectGetMaxY(bar.bounds) - y);
         CGFloat camDiam = hasDetached ? CGRectGetWidth(self->_feedDetachedAtRest) : 0.0;
-        CGFloat camMidY = hasDetached ? CGRectGetMidY(self->_feedDetachedAtRest) : pivot.y;
-        DKSiriaiDockGeometry shape = DKTikTokDockShape(CGRectGetMinX(self->_feedCapsuleAtRest),
-                                                       CGRectGetMinY(self->_feedCapsuleAtRest),
-                                                       width,
-                                                       height,
-                                                       camMidY,
-                                                       camDiam,
-                                                       hasDetached ? self->_feedGap : 0.0,
-                                                       (unsigned)MAX((NSUInteger)1, tabBar.items.count),
-                                                       shownProgress);
+        CGFloat gap = hasDetached ? self->_feedGap : 0.0;
+        DKSiriaiDockGeometry shape = DKSiriaiDockShape(width, height, camDiam, gap, bottomLimit, progress);
+        DKSiriaiApplyRebound(&shape, overtravel, CGRectGetWidth(group), camDiam, bottomLimit);
+        if (overtravel < 0.0) {
+            double boostX = 1.0 - 0.22 * overtravel;
+            double boostY = fmin(boostX, bottomLimit / fmax(1.0, shape.height));
+            double midX = CGRectGetWidth(group) * 0.5;
+            shape.centerX = midX + (shape.centerX - midX) * boostX;
+            shape.cameraX = midX + (shape.cameraX - midX) * boostX;
+            shape.width *= boostX;
+            shape.height *= boostY;
+            shape.cameraScale *= boostY;
+        }
+        if (openingMat > 1.0) {
+            DKSiriaiSetDockMaterial(&shape, openingMat);
+        }
+        CGPoint target = CGPointMake(x + shape.centerX, y + shape.centerY);
         CGFloat sx = MAX(0.001, shape.width / width);
         CGFloat sy = MAX(0.001, shape.height / height);
-        CGPoint target = CGPointMake(shape.centerX, shape.centerY);
         CGPoint hostCenter = CGPointMake(target.x + (self->_feedHostCenterAtRest.x - pivot.x) * sx,
                                          target.y + (self->_feedHostCenterAtRest.y - pivot.y) * sy);
         FQXSetViewTransformAndCenter(tabBar,
@@ -4146,36 +4305,106 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
                                                          target.y - shape.height * 0.5,
                                                          shape.width,
                                                          shape.height);
-        if (self->_siriaiMinimumFillView && self->_siriaiMinimumFillView.alpha != 0.0) {
-            self->_siriaiMinimumFillView.alpha = 0.0;
+        [self applySiriaiSurface:shape target:target];
+        BOOL controlsHidden = (shape.contentAlpha < 0.10);
+        self->_feedControlsHidden = controlsHidden;
+        if (tabBar.accessibilityElementsHidden != controlsHidden) {
+            tabBar.accessibilityElementsHidden = controlsHidden;
         }
-        if (tabBar.alpha != 1.0) tabBar.alpha = 1.0;
-        self->_feedControlsHidden = NO;
-        if (tabBar.accessibilityElementsHidden) tabBar.accessibilityElementsHidden = NO;
-
+        CGFloat openRebound = (overtravel < 0.0) ? MAX(1.0, sy) : 1.0;
+        CGFloat effectiveGlyphScale = MAX(0.001, shape.glyphScale * openRebound);
+        CGFloat effectiveCaptionScale = MAX(0.001, shape.captionScale * openRebound);
+        double siriShown = fmin(1.0, fmax(0.0, progress)) + overtravel;
         [self applyFeedSlotsAtTarget:target
                               scaleX:sx
                               scaleY:sy
-                          glyphScale:shape.glyphScale
-                        captionScale:shape.captionScale
+                          glyphScale:effectiveGlyphScale
+                        captionScale:effectiveCaptionScale
                        captionAmount:shape.captionAmount
-                       shownProgress:shownProgress
-                              siriai:NO
-                        contentAlpha:1.0];
+                       shownProgress:siriShown
+                              siriai:YES
+                        contentAlpha:shape.contentAlpha];
         if (hasDetached) {
             CGFloat cameraScale = MAX(0.001, shape.cameraScale);
-            CGPoint detCenter = CGPointMake(shape.cameraX, shape.cameraY);
+            CGPoint detCenter = CGPointMake(x + shape.cameraX, y + shape.cameraY);
             FQXSetViewTransformAndCenter(self->_detachedButton,
                                          CGAffineTransformMakeScale(cameraScale, cameraScale),
                                          detCenter);
-            [self->_detachedButton setFeedGlyphScale:(shape.glyphScale / cameraScale)];
-            if (self->_detachedButton.alpha != 1.0) self->_detachedButton.alpha = 1.0;
-            if (self->_detachedButton.accessibilityElementsHidden) {
-                self->_detachedButton.accessibilityElementsHidden = NO;
+            [self->_detachedButton setFeedGlyphScale:(effectiveGlyphScale / cameraScale)];
+            FQXSetViewAlphaIfNeeded(self->_detachedButton, shape.contentAlpha);
+            if (self->_detachedButton.accessibilityElementsHidden != controlsHidden) {
+                self->_detachedButton.accessibilityElementsHidden = controlsHidden;
             }
         }
         [CATransaction commit];
-    }];
+        return;
+    }
+
+    // TikTok interaction mode: 81% group width, 80% height, count * 44pt min capsule width, 91% uniform glyph scale.
+    double shownProgress = progress + overtravel;
+    CGFloat camDiam = hasDetached ? CGRectGetWidth(self->_feedDetachedAtRest) : 0.0;
+    CGFloat camMidY = hasDetached ? CGRectGetMidY(self->_feedDetachedAtRest) : pivot.y;
+    NSUInteger itemCount = MAX((NSUInteger)1, self->_dockLastItemCount ?: self->_feedDockSlots.count);
+    DKSiriaiDockGeometry shape = DKTikTokDockShape(CGRectGetMinX(self->_feedCapsuleAtRest),
+                                                   CGRectGetMinY(self->_feedCapsuleAtRest),
+                                                   width,
+                                                   height,
+                                                   camMidY,
+                                                   camDiam,
+                                                   hasDetached ? self->_feedGap : 0.0,
+                                                   (unsigned)itemCount,
+                                                   shownProgress);
+    CGFloat sx = MAX(0.001, shape.width / width);
+    CGFloat sy = MAX(0.001, shape.height / height);
+    CGPoint target = CGPointMake(shape.centerX, shape.centerY);
+    CGPoint hostCenter = CGPointMake(target.x + (self->_feedHostCenterAtRest.x - pivot.x) * sx,
+                                     target.y + (self->_feedHostCenterAtRest.y - pivot.y) * sy);
+    FQXSetViewTransformAndCenter(tabBar,
+                                 CGAffineTransformMakeScale(self->_feedBaseScaleX * sx, self->_feedBaseScaleY * sy),
+                                 hostCenter);
+    self->_dockRenderedPlatterRectInBar = CGRectMake(target.x - shape.width * 0.5,
+                                                     target.y - shape.height * 0.5,
+                                                     shape.width,
+                                                     shape.height);
+    if (self->_siriaiMinimumFillView && self->_siriaiMinimumFillView.alpha != 0.0) {
+        self->_siriaiMinimumFillView.alpha = 0.0;
+    }
+    FQXSetViewAlphaIfNeeded(tabBar, 1.0);
+    self->_feedControlsHidden = NO;
+    if (tabBar.accessibilityElementsHidden) tabBar.accessibilityElementsHidden = NO;
+
+    [self applyFeedSlotsAtTarget:target
+                          scaleX:sx
+                          scaleY:sy
+                      glyphScale:shape.glyphScale
+                    captionScale:shape.captionScale
+                   captionAmount:shape.captionAmount
+                   shownProgress:shownProgress
+                          siriai:NO
+                    contentAlpha:1.0];
+    if (hasDetached) {
+        CGFloat cameraScale = MAX(0.001, shape.cameraScale);
+        CGPoint detCenter = CGPointMake(shape.cameraX, shape.cameraY);
+        FQXSetViewTransformAndCenter(self->_detachedButton,
+                                     CGAffineTransformMakeScale(cameraScale, cameraScale),
+                                     detCenter);
+        [self->_detachedButton setFeedGlyphScale:(shape.glyphScale / cameraScale)];
+        FQXSetViewAlphaIfNeeded(self->_detachedButton, 1.0);
+        if (self->_detachedButton.accessibilityElementsHidden) {
+            self->_detachedButton.accessibilityElementsHidden = NO;
+        }
+    }
+    [CATransaction commit];
+}
+
+- (double)feedDisplayLinkFrameDuration {
+    if (self->_feedDisplayLink) {
+        double dt = self->_feedDisplayLink.targetTimestamp - self->_feedDisplayLink.timestamp;
+        if (dt > 0.001 && dt < 0.05) return dt;
+    }
+    UIScreen *screen = self->_bar.window.screen ?: UIScreen.mainScreen;
+    NSInteger maxFps = screen ? screen.maximumFramesPerSecond : 60;
+    return 1.0 / (double)MAX((NSInteger)60, maxFps);
 }
 
 - (void)startFeedDisplayLink {
@@ -4187,7 +4416,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     target.owner = self;
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:target selector:@selector(advance:)];
     if ([link respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-        link.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
+        link.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
     }
     [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     self->_feedDisplayLink = link;
@@ -4208,7 +4437,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 
 - (void)syncSiriaiHideLinePreference {
     if (self->_appliedCollapseMode != FQXDockCollapseModeSiriai) return;
-    BOOL hideLine = [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey];
+    BOOL hideLine = FQXHotPrefsSnapshot().dockSiriaiHideLine;
     int startLink = 0;
     int scheduleFade = 0;
     BOOL linkActive = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
@@ -4218,11 +4447,13 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 }
 
 - (void)finishFeedSpringAndApply {
-    [self->_feedDisplayLink invalidate];
-    self->_feedDisplayLink = nil;
+    if (self->_feedDisplayLink && !self->_feedDisplayLink.paused) {
+        self->_feedDisplayLink.paused = YES;
+    }
     double applyProgress = 0.0;
     int scheduleFade = 0;
     DKFeedSpringFinish(&self->_feedSpring, &applyProgress, &scheduleFade);
+    self->_feedAppliedValid = NO;
     [self applyFeedMotion:applyProgress];
     if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
 }
@@ -4246,9 +4477,15 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     if (res == DKFeedAdvancePauseLink) {
         link.paused = YES;
     } else if (res == DKFeedAdvanceFinished) {
-        [self->_feedDisplayLink invalidate];
-        self->_feedDisplayLink = nil;
+        link.paused = YES;
         if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
+        if (self->_feedNeedsPostMotionSync) {
+            self->_feedNeedsPostMotionSync = NO;
+            if (self->_nativeDockActive && self->_bar && self->_nativeDockBar.window) {
+                [self syncSelectionExclusivityAnimated:NO];
+                [self ensureDockZOrderInBar:self->_bar];
+            }
+        }
     }
 }
 
@@ -4261,7 +4498,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     target.owner = self;
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:target selector:@selector(advance:)];
     if ([link respondsToSelector:@selector(setPreferredFrameRateRange:)]) {
-        link.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
+        link.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
     }
     link.paused = YES;
     [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
@@ -4278,8 +4515,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 
 - (void)moveFeedDrag:(CGFloat)delta {
     if (![self usesFeedMotion]) return;
-    double frame = self->_feedDisplayLink
-        ? (self->_feedDisplayLink.targetTimestamp - self->_feedDisplayLink.timestamp) : 0.0;
+    double frame = [self feedDisplayLinkFrameDuration];
     BOOL paused = (!self->_feedDisplayLink || self->_feedDisplayLink.paused);
     if (DKFeedSpringMoveDrag(&self->_feedSpring, delta, CACurrentMediaTime(), frame, paused ? 1 : 0)) {
         [self startFeedDisplayLink];
@@ -4288,8 +4524,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 
 - (void)endFeedDrag:(BOOL)compact velocity:(CGFloat)velocity {
     if (![self usesFeedMotion]) return;
-    double frame = self->_feedDisplayLink
-        ? (self->_feedDisplayLink.targetTimestamp - self->_feedDisplayLink.timestamp) : (1.0 / 60.0);
+    double frame = [self feedDisplayLinkFrameDuration];
     BOOL linkActive = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
     BOOL canAnimate = (self->_nativeDockBar.window != nil && !UIAccessibilityIsReduceMotionEnabled());
     double applyProgress = 0.0;
@@ -4300,8 +4535,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
                         frame, linkActive ? 1 : 0, canAnimate ? 1 : 0,
                         &applyProgress, &finishedImmediately, &startLink, &scheduleFade);
     if (finishedImmediately) {
-        [self->_feedDisplayLink invalidate];
-        self->_feedDisplayLink = nil;
+        if (self->_feedDisplayLink && !self->_feedDisplayLink.paused) self->_feedDisplayLink.paused = YES;
         [self applyFeedMotion:applyProgress];
         if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
     } else if (startLink) {
@@ -4321,8 +4555,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
                            linkActive ? 1 : 0, canAnimate ? 1 : 0,
                            &applyProgress, &finishedImmediately, &startLink, &scheduleFade);
     if (finishedImmediately) {
-        [self->_feedDisplayLink invalidate];
-        self->_feedDisplayLink = nil;
+        if (self->_feedDisplayLink && !self->_feedDisplayLink.paused) self->_feedDisplayLink.paused = YES;
         [self applyFeedMotion:applyProgress];
         if (scheduleFade) [self scheduleSiriaiFadeIfNeeded];
     } else if (startLink) {
@@ -4335,7 +4568,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     if (self->_feedSpring.following) {
         self->_feedSpring.following = 0;
     }
-    if (self->_feedDisplayLink || self->_feedSpring.overtravel != 0.0) {
+    if ((self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused) || self->_feedSpring.overtravel != 0.0) {
         [self finishFeedSpringAndApply];
     }
 }
@@ -4347,7 +4580,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         DKFeedSpringInit(&self->_feedSpring);
         self->_feedSpring.siriai = (desired == FQXDockCollapseModeSiriai) ? 1 : 0;
         self->_feedSpring.siriaiHidesLine = (desired == FQXDockCollapseModeSiriai &&
-                                             [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey]) ? 1 : 0;
+                                             FQXHotPrefsSnapshot().dockSiriaiHideLine) ? 1 : 0;
         self->_appliedCollapseMode = desired;
         self->_dockSignature = nil;
         if (self->_nativeDockBar && self->_buttons.count) {
@@ -4360,6 +4593,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         [self syncSiriaiHideLinePreference];
         BOOL linkRunning = (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
         if (!linkRunning && !self->_feedSpring.following) {
+            self->_feedAppliedValid = NO;
             [self applyFeedMotion:self->_feedSpring.progress];
         }
     }
@@ -4641,7 +4875,9 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     if (hostIdx != beforeSel && [self usesFeedMotion]) {
         self->_feedLastSelectedIndex = finalSel;
         [[FQXFeedDockPanController shared] resetFeedGesture];
-        [self setFeedCompact:NO animated:NO];
+        if (self->_feedSpring.compact || self->_feedSpring.progress > 0.005 || self->_feedSpring.overtravel != 0.0) {
+            [self setFeedCompact:NO animated:(self->_nativeDockBar.window != nil)];
+        }
     }
 
     BOOL isDetachedSource = [source hasPrefix:@"detached"];
@@ -4683,22 +4919,11 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 }
 
 - (NSInteger)dockDisplayMode {
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    id stored = [ud objectForKey:BottomDisplayModePrefKey];
-    if (stored && [stored respondsToSelector:@selector(integerValue)]) {
-        NSInteger v = [stored integerValue];
-        if (v >= 0 && v <= 2) return v;
-    }
-    return [ud boolForKey:@"FanqieX.BottomIconsOnly.1"] ? 1 : 0;
+    return FQXHotPrefsSnapshot().dockDisplayMode;
 }
 
 - (CGFloat)dockIconPointSize {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:@"FanqieX.BottomIconPointSize.1"];
-    if ([stored respondsToSelector:@selector(doubleValue)]) {
-        CGFloat v = (CGFloat)[stored doubleValue];
-        if (v >= 16.0 && v <= 34.0) return v;
-    }
-    return 27.0;
+    return FQXHotPrefsSnapshot().dockIconPointSize;
 }
 
 - (void)applyDockItemImagesToItems:(NSArray<UITabBarItem *> *)items {
@@ -4954,6 +5179,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         self->_detachedButton &&
         hostSel == (NSUInteger)self->_detachedHostIndex) {
         FQXSetNativeTabSelectionLensVisible(tabBar, NO, 0);
+        self->_dockSelectionLensHidden = YES;
         [self syncCustomDockSelectedPillForSlot:NSNotFound animated:NO nativeFound:NO];
         if (tabBar.selectedItem != nil) {
             tabBar.selectedItem = nil;
@@ -4971,7 +5197,10 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
             tabBar.selectedItem = desiredItem;
         }
     }
-    FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
+    if (self->_dockSelectionLensHidden) {
+        FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
+        self->_dockSelectionLensHidden = NO;
+    }
     BOOL nativeFound = FQXSyncNativeTabSelectionVideoPill(tabBar, FQXEffectiveDockSelectionTintStyle(), CGRectGetWidth(tabBar.bounds), 0);
     [self syncCustomDockSelectedPillForSlot:capPos animated:animated nativeFound:nativeFound];
 }
@@ -4996,7 +5225,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     NSString *current = selected < allTitles.count ? allTitles[selected] : nil;
     BOOL usesFeed = [self usesFeedMotion];
     BOOL captions = !usesFeed && displayMode == 0 && ([current isEqualToString:@"短剧"] || [current isEqualToString:@"视频"]) &&
-        [NSUserDefaults.standardUserDefaults boolForKey:DockLegacyScrollZoomPrefKey];
+        FQXHotPrefsSnapshot().dockLegacyScrollZoom;
     NSMutableString *sig = [NSMutableString stringWithFormat:@"dm=%ld|pt=%.1f|det=%ld|captions=%d|feed=%d|",
                             (long)displayMode, ptSize, (long)(detIdx == NSNotFound ? -1 : detIdx), captions, usesFeed];
     NSMutableArray<NSString *> *capsuleTitles = [NSMutableArray arrayWithCapacity:allTitles.count];
@@ -5119,7 +5348,6 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         [self->_detachedButton syncUnreadBadgeFromHostButton:detBtn];
     }
 
-    if (!rebuilt) [self syncSelectionExclusivityAnimated:(tabBar.window != nil)];
     return rebuilt;
 }
 
@@ -5417,6 +5645,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     self->_lastDockLiftY = liftY;
     self->_dockLastItemCount = itemCount;
     self->_dockLastDetachedActive = hasDetached;
+    self->_feedAppliedValid = NO;
     if (usesFeed) {
         [self prepareFeedDockItemsWithPlatter:platter];
         [self ensureDockZOrderInBar:bar];
@@ -5675,7 +5904,7 @@ static const char FQXDockTouchBeganKey = 0;
         DKFeedSpringInit(&self->_feedSpring);
         self->_feedSpring.siriai = (desiredCollapseMode == FQXDockCollapseModeSiriai) ? 1 : 0;
         self->_feedSpring.siriaiHidesLine = (desiredCollapseMode == FQXDockCollapseModeSiriai &&
-                                             [NSUserDefaults.standardUserDefaults boolForKey:DockSiriaiHideLinePrefKey]) ? 1 : 0;
+                                             FQXHotPrefsSnapshot().dockSiriaiHideLine) ? 1 : 0;
         self->_appliedCollapseMode = desiredCollapseMode;
         self->_dockSignature = nil;
         if (FQXDockCollapseModeUsesFeedMotion(desiredCollapseMode)) {
@@ -5692,22 +5921,39 @@ static const char FQXDockTouchBeganKey = 0;
                 if (self->_feedSpring.compact || self->_feedSpring.progress > 0.005 || self->_feedSpring.overtravel != 0.0) {
                     [self setFeedCompact:NO animated:YES];
                 }
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
-            });
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((wasColdStart ? 0.25 : 0.35) * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
-            });
-            if (wasColdStart) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.90 * NSEC_PER_SEC)),
+            } else {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+                });
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{
                     [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
                 });
             }
         }
         self->_feedLastSelectedIndex = curSelIdx;
+    }
+
+    if (self->_nativeDockActive && self->_dockPlatterMeasured && self->_nativeDockBar &&
+        self->_nativeDockBar.superview == bar && [self usesFeedMotion]) {
+        BOOL feedAnimating = self->_feedSpring.following ||
+                             (self->_feedDisplayLink != nil && !self->_feedDisplayLink.paused);
+        if (feedAnimating && self->_feedDockSlots.count == self->_nativeDockBar.items.count) {
+            CGRect pf = proxy.frame;
+            BOOL proxyStable = fabs(CGRectGetMinX(pf) - CGRectGetMinX(self->_dockLastProxyFrame)) <= 0.5 &&
+                               fabs(CGRectGetMinY(pf) - CGRectGetMinY(self->_dockLastProxyFrame)) <= 0.5 &&
+                               fabs(CGRectGetWidth(pf) - CGRectGetWidth(self->_dockLastProxyFrame)) <= 0.5 &&
+                               fabs(CGRectGetHeight(pf) - CGRectGetHeight(self->_dockLastProxyFrame)) <= 0.5;
+            UIUserInterfaceStyle desiredStyleFast = [self desiredDockGlassStyle];
+            FQXDockMaterialMode curDockModeFast = FQXCurrentDockMaterialMode();
+            NSInteger curDockSelFast = FQXEffectiveDockSelectionTintStyle();
+            NSInteger desiredInkFast = ([self isDarkDock] ? 1 : 0) | ((NSInteger)curDockModeFast << 1) | (curDockSelFast << 5);
+            if (proxyStable && self->_dockAppliedStyle == desiredStyleFast &&
+                self->_dockAppliedInkState == desiredInkFast) {
+                self->_feedNeedsPostMotionSync = YES;
+                return;
+            }
+        }
     }
 
     if (!self->_nativeDockBar) {
@@ -5826,6 +6072,10 @@ static const char FQXDockTouchBeganKey = 0;
     self->_lastNativeTabSelectTime = 0.0;
     self->_dockAppliedStyle = UIUserInterfaceStyleUnspecified;
     self->_dockAppliedInkState = -1;
+    self->_feedAppliedValid = NO;
+    self->_feedSlotVisualsSig = nil;
+    self->_dockSelectionLensHidden = NO;
+    self->_feedNeedsPostMotionSync = NO;
 }
 
 @end
@@ -12191,21 +12441,60 @@ static void HookFeedTableViewDidMoveWindow(UITableView *scroll, SEL cmd) {
 
 static void FQXScheduleAudioSheetScanInWindow(UIWindow *window);
 
+static NSHashTable<UIViewController *> *FQXTrackedAudioPlayVCs(void) {
+    static NSHashTable<UIViewController *> *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
+static void FQXNoteAudioPlayVCActive(UIViewController *vc) {
+    if ([vc isKindOfClass:UIViewController.class]) {
+        [FQXTrackedAudioPlayVCs() addObject:vc];
+    }
+}
+
+static BOOL FQXHasMountedAudioPlayVCInWindow(UIWindow *win) {
+    for (UIViewController *vc in FQXTrackedAudioPlayVCs()) {
+        UIView *v = vc.viewIfLoaded;
+        if (v && v.window != nil && !v.hidden && v.alpha > 0.01) {
+            return YES;
+        }
+    }
+    if (win) {
+        Class audioCls = objc_lookUpClass("SSNewAudioPlayViewController");
+        if (audioCls && [win.rootViewController.presentedViewController isKindOfClass:audioCls]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 static void (*OrigWindowSendEventForFeedMotion)(id, SEL, id);
 static void HookWindowSendEventForFeedMotion(UIWindow *win, SEL cmd, UIEvent *event) {
     if (event.type == UIEventTypeTouches) {
-        BOOL wantFeed = FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode());
         BOOL sawEnded = NO;
+        BOOL checkedFeed = NO;
+        BOOL wantFeed = NO;
         NSSet<UITouch *> *touches = [event touchesForWindow:win];
         for (UITouch *touch in touches) {
-            if (wantFeed && touch.phase == UITouchPhaseBegan) {
-                [[FQXFeedDockPanController shared] prepareForTouchOnView:touch.view];
-            } else if (touch.phase == UITouchPhaseEnded) {
+            UITouchPhase phase = touch.phase;
+            if (phase == UITouchPhaseBegan) {
+                if (!checkedFeed) {
+                    checkedFeed = YES;
+                    uint32_t flags = FQXFastDockFlags();
+                    FQXDockCollapseMode m = (FQXDockCollapseMode)((flags >> 1) & 0x7u);
+                    wantFeed = ((flags & 1u) != 0u) && FQXDockCollapseModeUsesFeedMotion(m) && FQXFeedMotionSupported();
+                }
+                if (wantFeed) {
+                    [[FQXFeedDockPanController shared] prepareForTouchOnView:touch.view];
+                }
+            } else if (phase == UITouchPhaseEnded) {
                 sawEnded = YES;
             }
         }
-        if (sawEnded && !FQXHotPrefsSnapshot().glassDisabled &&
-            FQXCurrentAudioSheetMaterialStyle() != FQXShareMaterialNative &&
+        if (sawEnded && ((FQXFastDockFlags() & (1u << 4)) != 0u) &&
+            FQXHasMountedAudioPlayVCInWindow(win) &&
             FQXFindVisibleAudioPlayVCInWindow(win) != nil) {
             static CFTimeInterval lastAudioTapScan = 0.0;
             CFTimeInterval now = CACurrentMediaTime();
@@ -12228,37 +12517,40 @@ static void HookFQVCollectionDidMoveWindow(UIScrollView *feed, SEL cmd) {
     }
 }
 
-static void FQXHandleFeedScrollUpdate(id scroll) {
-    Class feedCls = objc_lookUpClass("FQVCollectionView");
+static void FQXHandleFeedScrollUpdate(id scroll, BOOL scheduleDeferredSettle) {
+    static Class feedCls = Nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ feedCls = objc_lookUpClass("FQVCollectionView"); });
     if (feedCls && [scroll isKindOfClass:feedCls] && [scroll isKindOfClass:UIScrollView.class]) {
-        /* Synchronous 1:1 finger-tracking refresh during vertical swipes, plus post-unwind settle check */
         FQXRefreshVideoBackdropForFeed((UIScrollView *)scroll);
-        FQXScheduleFeedLayoutRefresh((UIScrollView *)scroll);
+        if (scheduleDeferredSettle) {
+            FQXScheduleFeedLayoutRefresh((UIScrollView *)scroll);
+        }
     }
 }
 
 static void (*OrigScrollCompDidScroll)(id, SEL, id);
 static void HookScrollCompDidScroll(id self, SEL cmd, id scrollView) {
     if (OrigScrollCompDidScroll) OrigScrollCompDidScroll(self, cmd, scrollView);
-    FQXHandleFeedScrollUpdate(scrollView);
+    FQXHandleFeedScrollUpdate(scrollView, NO);
 }
 
 static void (*OrigScrollCompDidEndDecel)(id, SEL, id);
 static void HookScrollCompDidEndDecel(id self, SEL cmd, id scrollView) {
     if (OrigScrollCompDidEndDecel) OrigScrollCompDidEndDecel(self, cmd, scrollView);
-    FQXHandleFeedScrollUpdate(scrollView);
+    FQXHandleFeedScrollUpdate(scrollView, YES);
 }
 
 static void (*OrigScrollCompDidEndAnim)(id, SEL, id);
 static void HookScrollCompDidEndAnim(id self, SEL cmd, id scrollView) {
     if (OrigScrollCompDidEndAnim) OrigScrollCompDidEndAnim(self, cmd, scrollView);
-    FQXHandleFeedScrollUpdate(scrollView);
+    FQXHandleFeedScrollUpdate(scrollView, YES);
 }
 
 static void (*OrigScrollCompDidEndDrag)(id, SEL, id, BOOL);
 static void HookScrollCompDidEndDrag(id self, SEL cmd, id scrollView, BOOL decelerate) {
     if (OrigScrollCompDidEndDrag) OrigScrollCompDidEndDrag(self, cmd, scrollView, decelerate);
-    if (!decelerate) FQXHandleFeedScrollUpdate(scrollView);
+    if (!decelerate) FQXHandleFeedScrollUpdate(scrollView, YES);
 }
 
 #pragma mark - TikTok-Style Two-Finger Spread/Pinch Pure Clean Screen (Session-Persistent Across Swipes)
@@ -29088,6 +29380,7 @@ static void HookAudioBgBlurHidden(UIView *self, SEL cmd, BOOL hidden) {
 static void (*OrigAudioVCLayoutContent)(id, SEL);
 static void HookAudioVCLayoutContent(UIViewController *self, SEL _cmd) {
     if (OrigAudioVCLayoutContent) OrigAudioVCLayoutContent(self, _cmd);
+    FQXNoteAudioPlayVCActive(self);
     FQXApplyAudioPlayControllerRefractionAndSeamless(self);
     FQXApplyAudioBookGlass(FQXObjGet(self, "bookView"));
     UIView *nav = FQXObjGet(self, "navigationView");
@@ -29098,6 +29391,7 @@ static void HookAudioVCLayoutContent(UIViewController *self, SEL _cmd) {
 static void (*OrigAudioVCLayoutMasks)(id, SEL);
 static void HookAudioVCLayoutMasks(UIViewController *self, SEL _cmd) {
     if (OrigAudioVCLayoutMasks) OrigAudioVCLayoutMasks(self, _cmd);
+    FQXNoteAudioPlayVCActive(self);
     FQXApplyAudioPlayControllerRefractionAndSeamless(self);
 }
 static void (*OrigAudioVCSliderMasks)(id, SEL);

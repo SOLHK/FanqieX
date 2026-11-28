@@ -552,10 +552,14 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     CGFloat clamped = MAX(0.001, feedGlyphScale);
     if (fabs(_feedGlyphScale - clamped) < 0.0005) return;
     _feedGlyphScale = clamped;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.contentScaleHost.transform = CGAffineTransformMakeScale(clamped, clamped);
-    [CATransaction commit];
+    if ([CATransaction disableActions]) {
+        self.contentScaleHost.transform = CGAffineTransformMakeScale(clamped, clamped);
+    } else {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        self.contentScaleHost.transform = CGAffineTransformMakeScale(clamped, clamped);
+        [CATransaction commit];
+    }
 }
 
 - (void)handleTouchDown {

@@ -807,9 +807,9 @@ static inline int DKFeedSpringMoveDrag(DKFeedSpringState *s, double delta, doubl
         s->previousInputInterval = 0.0;
         s->inputTimeLeft = 0.0;
     } else if (interval > 0.001) {
-        int sparse = displayLinkFrame > 0.0 && interval >= 1.5 * displayLinkFrame && interval <= 0.04
-            && fabs(interval - s->previousInputInterval) <= 0.5 * displayLinkFrame;
-        s->inputTimeLeft = sparse ? interval : 0.0;
+        int sparse = displayLinkFrame > 0.0 && interval >= 1.45 * displayLinkFrame && interval <= 0.045
+            && (fabs(interval - s->previousInputInterval) <= 1.25 * displayLinkFrame || interval <= 2.6 * displayLinkFrame);
+        s->inputTimeLeft = sparse ? fmin(interval, 0.034) : 0.0;
         s->previousInputInterval = interval;
     }
     if (interval >= 0.08) {
@@ -820,9 +820,11 @@ static inline int DKFeedSpringMoveDrag(DKFeedSpringState *s, double delta, doubl
     s->dragTarget = fmin(upper, fmax(lower, s->dragTarget + delta));
     if (s->dragTarget != shown) {
         if (turned && s->dragReversals < 2) s->dragReversals++;
-        if (displayLinkPaused && now - s->lastFrame >= 0.08) {
+        if (displayLinkPaused) {
+            if (interval >= 0.08 || (s->lastFrame > 0.0 && now - s->lastFrame >= 0.08)) {
+                s->dragVelocity = 0.0;
+            }
             s->lastFrame = 0.0;
-            s->dragVelocity = 0.0;
         }
         return 1;
     }
@@ -865,7 +867,12 @@ static inline void DKFeedSpringSetCompact(DKFeedSpringState *s, int compact, int
         return;
     }
     s->siriaiMaterialBegan = 0.0;
-    if (s->landingBegan == 0.0 && now - s->lastFrame >= 0.04) {
+    if (!displayLinkActive) {
+        if (s->landingBegan == 0.0 && !s->fluidRelease.active && now - s->lastFrame >= 0.04) {
+            s->dragVelocity = 0.0;
+        }
+        s->lastFrame = 0.0;
+    } else if (s->landingBegan == 0.0 && now - s->lastFrame >= 0.04) {
         if (!s->fluidRelease.active) s->dragVelocity = 0.0;
         s->lastFrame = 0.0;
     }
@@ -969,8 +976,12 @@ static inline DKFeedAdvanceResult DKFeedSpringAdvance(DKFeedSpringState *s,
     if (outScheduleFade) *outScheduleFade = 0;
     double now = targetTimestamp;
     double last = s->lastFrame > 0.0 ? s->lastFrame : timestamp;
-    double dt = fmin(1.0 / 30.0, fmax(0.0, now - last));
-    s->lastFrame = now;
+    double rawDt = now - last;
+    if (s->lastFrame > 0.0 && rawDt <= 0.0) {
+        rawDt = fmax(0.0, targetTimestamp - timestamp);
+    }
+    double dt = fmin(1.0 / 30.0, fmax(0.0, rawDt));
+    s->lastFrame = fmax(s->lastFrame, now);
     double goal = s->following ? s->dragTarget : (s->compact ? 1.0 : 0.0);
     double shown = DKFeedSpringDisplayedProgress(s);
 
@@ -1063,7 +1074,7 @@ static inline DKFeedAdvanceResult DKFeedSpringAdvance(DKFeedSpringState *s,
     }
 
     if (s->following) {
-        if (!s->directTracking || timestamp - s->lastDragTime >= 0.05) {
+        if (!s->directTracking || timestamp - s->lastDragTime >= 0.18) {
             return DKFeedAdvancePauseLink;
         }
         return DKFeedAdvanceKeepRunning;

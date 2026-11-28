@@ -1259,7 +1259,8 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     CGFloat width = MIN(312.0, CGRectGetWidth(self.view.bounds) - 32.0);
     CGSize contentSize = [notes sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
     CGFloat historyHeight = MAX(44.0, [history sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)].height);
-    page.preferredContentSize = CGSizeMake(width, MIN(300.0, ceil(contentSize.height)) + historyHeight);
+    CGFloat maxNotesHeight = MIN(360.0, MAX(240.0, CGRectGetHeight(self.view.bounds) * 0.46));
+    page.preferredContentSize = CGSizeMake(width, MIN(maxNotesHeight, ceil(contentSize.height)) + historyHeight);
     UIPopoverPresentationController *popover = page.popoverPresentationController;
     popover.delegate = self;
     popover.sourceView = sender;

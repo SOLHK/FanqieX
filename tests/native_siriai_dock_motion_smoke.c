@@ -650,6 +650,67 @@ static void check_fanqiex_modes_and_motion(void) {
     assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 0, 0) == 0);
     assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 0, 45) == 1);
     assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 1, 45) == 0);
+
+    // 2.0.1 Smoothness regression: slow continuous drag must NOT thrash DisplayLink pause/resume
+    // across 60..140ms finger-creep gaps, and waking from a paused DisplayLink must NEVER jump 33ms!
+    DKFeedSpringState slow;
+    DKFeedSpringInit(&slow);
+    DKFeedSpringBeginDrag(&slow, 0);
+    double tSlow = 20.0;
+    assert(DKFeedSpringMoveDrag(&slow, 0.015, tSlow, dt120, 1));
+    DKFeedAdvanceResult slowRes = DKFeedSpringAdvance(&slow, tSlow, tSlow + dt120, 0, &progress, &apply, &scheduleFade);
+    assert(slow.directTracking == 1 && slowRes == DKFeedAdvanceKeepRunning);
+    // Finger creeps slowly (1 pixel every 80ms = 9.6 frames at 120Hz): DisplayLink stays alive (<180ms grace)
+    for (int f = 1; f <= 12; f++) {
+        double ts = tSlow + f * dt120;
+        slowRes = DKFeedSpringAdvance(&slow, ts, ts + dt120, 0, &progress, &apply, &scheduleFade);
+        assert(slowRes == DKFeedAdvanceKeepRunning);
+    }
+    // Deliberate 220ms hold pauses DisplayLink cleanly, then next creep resets lastFrame so 1st resumed frame uses 1*dt120 (no 33ms jump!)
+    double tHold = tSlow + 0.22;
+    slowRes = DKFeedSpringAdvance(&slow, tHold, tHold + dt120, 0, &progress, &apply, &scheduleFade);
+    assert(slowRes == DKFeedAdvancePauseLink);
+    double prevBeforeResume = slow.progress;
+    assert(DKFeedSpringMoveDrag(&slow, 0.05, tHold + 0.06, dt120, 1));
+    assert(slow.lastFrame == 0.0);
+    double tResume = tHold + 0.06;
+    DKFeedSpringAdvance(&slow, tResume, tResume + dt120, 0, &progress, &apply, &scheduleFade);
+    // Max step on first resumed 120Hz frame is bounded by 6.0 * dt120 (0.05), never a stale 33ms jump
+    assert(progress > prevBeforeResume && (progress - prevBeforeResume) <= 0.05 + 1e-6);
+
+    // Non-monotonic ProMotion refresh-rate switch timestamp (targetTimestamp == lastFrame) must never stall backward
+    double prevMono = slow.progress;
+    double savedLast = slow.lastFrame;
+    DKFeedSpringMoveDrag(&slow, 0.03, savedLast, dt120, 0);
+    DKFeedSpringAdvance(&slow, savedLast - dt120, savedLast, 0, &progress, &apply, &scheduleFade);
+    assert(progress >= prevMono && slow.lastFrame >= savedLast);
+
+    // Rapid consecutive fast flicks (compact -> catch mid-air -> expand -> catch -> compact) settle cleanly
+    DKFeedSpringState rapid;
+    DKFeedSpringInit(&rapid);
+    rapid.siriai = 1;
+    double tRap = 30.0;
+    for (int cyc = 0; cyc < 3; cyc++) {
+        int wantCompact = (cyc % 2 == 0) ? 1 : 0;
+        double dir = wantCompact ? 1.0 : -1.0;
+        DKFeedSpringBeginDrag(&rapid, cyc > 0 ? 1 : 0);
+        DKFeedSpringMoveDrag(&rapid, dir * 0.14, tRap, dt120, cyc == 0 ? 1 : 0);
+        DKFeedSpringAdvance(&rapid, tRap, tRap + dt120, 0, &progress, &apply, &scheduleFade);
+        tRap += dt120;
+        DKFeedSpringEndDrag(&rapid, wantCompact, dir * 4.2, tRap, dt120, 1, 1, &progress, &finished, &startLink, &scheduleFade);
+        assert(!finished && startLink);
+        for (int f = 0; f < 10; f++) {
+            DKFeedSpringAdvance(&rapid, tRap, tRap + dt120, 0, &progress, &apply, &scheduleFade);
+            tRap += dt120;
+        }
+    }
+    int settleTicks = 0;
+    while (settleTicks++ < 260) {
+        DKFeedAdvanceResult rr = DKFeedSpringAdvance(&rapid, tRap, tRap + dt120, 0, &progress, &apply, &scheduleFade);
+        tRap += dt120;
+        if (rr == DKFeedAdvanceFinished) break;
+    }
+    assert(rapid.compact == 1 && fabs(rapid.progress - DKSiriaiWhiteProgress) < 1e-9);
 }
 
 int main(void) {
