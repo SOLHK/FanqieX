@@ -44,13 +44,15 @@ static inline double DKSiriaiSmoothstep(double from, double to, double value) {
 
 static const double DKFeedLandingDuration = 1.0 / 12.0 + 0.22;
 
-// 端点前接住当前速度，只越过一次。到顶与落稳时速度都为零。
-static inline double DKFeedLandingSample(double from, double end, double velocity, double elapsed) {
+// 端点前接住当前速度，只越过一次。到顶与落稳时速度都为零（支持按入场速度自适应回弹幅度，且保持峰值 C2 连续）。
+static inline double DKFeedLandingSampleWithAmplitude(double from, double end, double velocity,
+                                                      double elapsed, double mag) {
     if (elapsed <= 0.0) return from;
     if (elapsed >= DKFeedLandingDuration) return end;
     const double peakTime = 1.0 / 12.0;
     const double baseReturnTime = 0.20;
-    double amplitude = end == 1.0 ? 0.04 : -0.04;
+    double safeMag = mag > 0.0 ? mag : 0.04;
+    double amplitude = end == 1.0 ? safeMag : -safeMag;
     double peak = end + amplitude;
     if (elapsed < peakTime) {
         // 四次 Bézier 的末两个控制点都在峰值。倒数第三点匹配回程的起始加速度。
@@ -78,6 +80,10 @@ static inline double DKFeedLandingSample(double from, double end, double velocit
     double u = (sincePeak - delay) / baseReturnTime;
     double remaining = 1.0 - u;
     return end + amplitude * remaining * remaining * remaining * (1.0 + 3.0 * u);
+}
+
+static inline double DKFeedLandingSample(double from, double end, double velocity, double elapsed) {
+    return DKFeedLandingSampleWithAmplitude(from, end, velocity, elapsed, 0.04);
 }
 
 // 浅拖留给胶囊和图标收拢，深拖继续压成白条。两段在接点的位置和斜率相同。
@@ -210,10 +216,10 @@ static inline DKSiriaiDockGeometry DKSiriaiDockShape(double capsuleWidth, double
     shape.centerY = bottom - shape.height * 0.5;
     shape.cameraX = shape.centerX + shape.width * 0.5 + (gap + camera * 0.5) * shape.cameraScale;
     shape.cameraY = bottom - camera * shape.cameraScale * 0.5;
-    // 图标与文字保持等比同步缩放：先靠拢，再随短条收小；标题在图标仍清晰时退出。
+    // 图标与文字在各自原位等比同步缩放：文字就地缩小淡出且不与图标重叠，随后图标平滑居中并随短条收小。
     shape.glyphScale = (1.0 - q) * (1.0 + 0.78 * q);
-    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.22, q);
-    shape.captionScale = shape.glyphScale * (0.82 + 0.18 * shape.captionAmount);
+    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.20, q);
+    shape.captionScale = shape.glyphScale * (0.54 + 0.46 * shape.captionAmount);
     shape.contentAlpha = 1.0 - DKSiriaiSmoothstep(0.48, 0.93, p);
     DKSiriaiSetDockMaterial(&shape, progress);
     return shape;
@@ -288,20 +294,49 @@ static inline DKSiriaiDockGeometry DKTikTokDockShape(double capsuleX, double cap
     double left = groupCenterX - (capsuleWidth * sx + usedGap + camera * sy) * 0.5;
     double compact = fmin(1.0, fmax(0.0, progressWithOvertravel));
 
+    double sinkY = (1.0 - sy) * capsuleHeight * 0.28;
     shape.width = capsuleWidth * sx;
     shape.height = capsuleHeight * sy;
     shape.centerX = left + shape.width * 0.5;
-    shape.centerY = capsuleY + capsuleHeight * 0.5;
+    shape.centerY = capsuleY + capsuleHeight * 0.5 + sinkY;
     shape.cameraScale = sy;
     shape.cameraX = hasCamera ? (left + shape.width + usedGap + camera * sy * 0.5) : shape.centerX;
-    shape.cameraY = cameraMidY;
+    shape.cameraY = cameraMidY + sinkY;
     shape.glyphScale = 1.0 - 0.09 * progressWithOvertravel;
-    shape.captionScale = sy;
-    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.78, compact);
+    shape.captionScale = progressWithOvertravel < 0.0 ? sy : fmax(0.52, 1.0 - 0.68 * progressWithOvertravel);
+    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.66, compact);
     shape.contentAlpha = 1.0;
     shape.surfaceAlpha = 1.0;
     shape.whiteAmount = 0.0;
     return shape;
+}
+
+// 计算槽位内图标与标题的纵向偏移：文字在原下方相对位置就地缩小淡出，并施加最小安全间距屏障，确保全程绝不与图标重叠。
+static inline void DKFeedComputeSlotVerticalOffsets(int siriai,
+                                                    double shownProgress,
+                                                    double sy,
+                                                    double baseScale,
+                                                    double glyphScale,
+                                                    double captionScale,
+                                                    double *outIconOffsetY,
+                                                    double *outCapOffsetY) {
+    double iconLift = 1.0;
+    if (siriai) {
+        double p = DKSiriaiGeometryProgress(shownProgress);
+        double q = p * (1.20 - 0.20 * p);
+        iconLift = (shownProgress < 0.0) ? 1.0 : (1.0 - DKSiriaiSmoothstep(0.03, 0.28, q));
+    } else {
+        double compact = fmin(1.0, fmax(0.0, shownProgress));
+        iconLift = (shownProgress < 0.0) ? 1.0 : (1.0 - DKSiriaiSmoothstep(0.10, 0.96, compact));
+    }
+    double iconY = -7.5 * baseScale * iconLift * sy;
+    double inPlaceCapY = 11.5 * baseScale * sy;
+    double iconBottom = iconY + 10.0 * baseScale * glyphScale;
+    double minGap = 1.8 * baseScale * fmax(0.80, sy);
+    double capHalfH = 5.0 * baseScale * captionScale;
+    double safeCapY = iconBottom + minGap + capHalfH;
+    if (outIconOffsetY) *outIconOffsetY = iconY;
+    if (outCapOffsetY) *outCapOffsetY = fmax(inPlaceCapY, safeCapY);
 }
 
 static inline int DKFeedAllowsHit(double feedProgress, int siriai, int controlsHidden,
@@ -463,6 +498,7 @@ typedef struct {
     int lastEndpoint;
     double landingFrom;
     double landingBegan;
+    double landingAmplitude;
     double siriaiMaterialStart;
     double siriaiMaterialBegan;
 } DKFeedSpringState;
@@ -493,6 +529,7 @@ static inline void DKFeedSpringInit(DKFeedSpringState *s) {
     s->lastEndpoint = 0;
     s->landingFrom = 0.0;
     s->landingBegan = 0.0;
+    s->landingAmplitude = 0.04;
     s->siriaiMaterialStart = 1.0;
     s->siriaiMaterialBegan = 0.0;
 }
@@ -726,10 +763,20 @@ static inline DKFeedAdvanceResult DKFeedSpringAdvance(DKFeedSpringState *s,
     if (s->landingBegan == 0.0 && shown != goal) {
         if (fabs(shown - (double)s->lastEndpoint) > DKFeedLandingRange) s->lastEndpoint = -1;
         int endpoint = (goal == 0.0 || goal == 1.0);
-        int approaching = s->releaseMotion.duration == 0.0 ||
+        int releaseAligned = s->releaseMotion.duration > 0.0
+            && (goal - s->releaseMotion.from) * s->releaseMotion.velocity > 0.0;
+        int approaching = s->releaseMotion.duration == 0.0 || releaseAligned ||
             (s->releaseElapsed >= 1.0 / 30.0 && (goal - shown) * s->dragVelocity > 0.0);
         if (approaching && endpoint && goal != (double)s->lastEndpoint && shown >= 0.0 && shown <= 1.0
             && fabs(goal - shown) <= DKFeedLandingRange && !reduceMotion) {
+            double entrySpeed = fabs(s->dragVelocity);
+            if (releaseAligned && s->releaseElapsed == 0.0) {
+                entrySpeed = fmax(entrySpeed, fabs(s->releaseMotion.velocity));
+            }
+            if ((goal - shown) * s->dragVelocity > 0.0 || releaseAligned) {
+                s->dragVelocity = copysign(entrySpeed, goal - shown);
+            }
+            s->landingAmplitude = 0.042 + 0.030 * fmin(1.0, entrySpeed / 4.5);
             s->lastEndpoint = (int)goal;
             s->landingFrom = shown;
             s->landingBegan = now - dt;
@@ -741,7 +788,8 @@ static inline DKFeedAdvanceResult DKFeedSpringAdvance(DKFeedSpringState *s,
     if (s->landingBegan > 0.0 || s->releaseMotion.duration > 0.0 || shown != goal) {
         if (s->landingBegan > 0.0) {
             double elapsed = now - s->landingBegan;
-            shown = DKFeedLandingSample(s->landingFrom, goal, s->dragVelocity, elapsed);
+            shown = DKFeedLandingSampleWithAmplitude(s->landingFrom, goal, s->dragVelocity,
+                                                     elapsed, s->landingAmplitude);
             if (elapsed >= DKFeedLandingDuration) {
                 s->landingBegan = 0.0;
                 s->dragVelocity = 0.0;

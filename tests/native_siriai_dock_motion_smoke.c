@@ -332,18 +332,52 @@ static void check_fanqiex_modes_and_motion(void) {
     assert(openBounce.glyphScale > 1.0 && openBounce.captionScale > 1.0 && openBounce.cameraScale > 1.0);
     // Mid-swipe shrinks capsule, icons, captions, and detached circle synchronously together
     assert(midSwipe.glyphScale < 1.0 && midSwipe.glyphScale > 0.91);
-    assert(midSwipe.captionScale < 1.0 && midSwipe.captionScale > 0.80 && midSwipe.captionAmount > 0.0);
+    assert(midSwipe.captionScale < 1.0 && midSwipe.captionScale > 0.52 && midSwipe.captionAmount > 0.0);
     // Compact bounce cushions capsule, icons, and detached circle together past 91%/80%
     assert(compactBounce.glyphScale < 0.91 && compactBounce.cameraScale < 0.80);
+    // Compact tucks gently downward toward bottom baseline while keeping detached circle aligned
+    assert(compact.centerY > openRest.centerY && compact.centerY + compact.height * 0.5 <= openRest.centerY + openRest.height * 0.5);
+    assert(fabs((compact.cameraY - circleMidY) - (compact.centerY - openRest.centerY)) < 1e-9);
     double left = compact.centerX - compact.width * 0.5;
     double right = compact.cameraX + circleD * compact.cameraScale * 0.5;
     assert(fabs((right - left) - groupW * 0.81) < 1e-9);
     assert(fabs((left + right) * 0.5 - groupMidX) < 1e-9);
     assert(fabs(compact.height - capsuleH * 0.80) < 1e-9);
     assert(fabs(compact.glyphScale - 0.91) < 1e-9);
-    assert(fabs(compact.captionScale - 0.80) < 1e-9);
+    assert(fabs(compact.captionScale - 0.52) < 1e-9);
     assert(compact.captionAmount == 0.0);
     assert(fabs(compact.cameraScale - 0.80) < 1e-9);
+
+    // Slow-motion video invariant: icon and caption NEVER overlap at any progress or baseScale in TikTok or Siri AI
+    const double scales[] = {0.80, 1.00, 1.25};
+    for (int si = 0; si < 3; si++) {
+        double bScale = scales[si];
+        for (int step = -100; step <= 1100; step++) {
+            double p = step / 1000.0;
+            DKSiriaiDockGeometry tt = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
+                                                        circleMidY, circleD, gap, 3, p);
+            double ttSy = tt.height / capsuleH;
+            double iconY = 0.0, capY = 0.0;
+            DKFeedComputeSlotVerticalOffsets(0, p, ttSy, bScale, tt.glyphScale, tt.captionScale, &iconY, &capY);
+            if (tt.captionAmount > 0.001) {
+                double iconBottom = iconY + 10.0 * bScale * tt.glyphScale;
+                double capTop = capY - 5.0 * bScale * tt.captionScale;
+                assert(capTop - iconBottom >= 1.4 * bScale - 1e-9);
+                assert(capY + 5.0 * bScale * tt.captionScale <= 31.0 * bScale * ttSy);
+            }
+            if (p >= 0.0 && p <= 1.0) {
+                DKSiriaiDockGeometry sa = DKSiriaiDockShape(capsuleW, capsuleH, circleD, gap, 83.0, p);
+                double saSy = sa.height / capsuleH;
+                DKFeedComputeSlotVerticalOffsets(1, p, saSy, bScale, sa.glyphScale, sa.captionScale, &iconY, &capY);
+                if (sa.captionAmount > 0.001) {
+                    double iconBottom = iconY + 10.0 * bScale * sa.glyphScale;
+                    double capTop = capY - 5.0 * bScale * sa.captionScale;
+                    assert(capTop - iconBottom >= 1.4 * bScale - 1e-9);
+                    assert(capY + 5.0 * bScale * sa.captionScale <= 31.0 * bScale * saSy);
+                }
+            }
+        }
+    }
 
     // Minimum hit-width protection (itemCount * 44pt) when capsule is narrow
     double narrowCompactW = DKFeedCompactCapsuleWidth(180.0, 62.0, 10.0, 4);
@@ -464,6 +498,21 @@ static void check_fanqiex_modes_and_motion(void) {
     DKFeedSpringAdvance(&flick, 2.01, 2.01 + 1.0 / 120.0, 0, &progress, &apply, &scheduleFade);
     DKFeedSpringEndDrag(&flick, 1, 5.2, 2.02, 1.0 / 120.0, 1, 1, &progress, &finished, &startLink, &scheduleFade);
     assert(!finished && startLink && flick.releaseMotion.duration > 0.0 && fabs(flick.releaseMotion.velocity - 5.2) < 1e-9);
+
+    // Release near endpoint (>88% progress) still enters C2 landing rebound with preserved finger speed
+    DKFeedSpringState nearEnd;
+    DKFeedSpringInit(&nearEnd);
+    DKFeedSpringBeginDrag(&nearEnd, 1);
+    double tNear = 3.00;
+    for (int f = 0; f < 19; f++) {
+        DKFeedSpringMoveDrag(&nearEnd, 0.048, tNear, 1.0 / 120.0, 0);
+        DKFeedSpringAdvance(&nearEnd, tNear, tNear + 1.0 / 120.0, 0, &progress, &apply, &scheduleFade);
+        tNear += 1.0 / 120.0;
+    }
+    assert(nearEnd.progress >= 0.88 && nearEnd.progress < 1.0);
+    DKFeedSpringEndDrag(&nearEnd, 1, 3.8, tNear, 1.0 / 120.0, 1, 1, &progress, &finished, &startLink, &scheduleFade);
+    DKFeedSpringAdvance(&nearEnd, tNear, tNear + 1.0 / 120.0, 0, &progress, &apply, &scheduleFade);
+    assert(nearEnd.landingBegan > 0.0 && nearEnd.landingAmplitude > 0.05);
 
     // Page switch / comment sheet / landscape immediate reset (`animated == 0`)
     DKFeedSpringSetCompact(&s, 0, 0, 1.10, 0, 1, &progress, &finished, &startLink, &scheduleFade);

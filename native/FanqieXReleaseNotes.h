@@ -7,6 +7,7 @@ typedef struct {
 
 // Release summaries from VERSION history and the corresponding docs/REPAIR_* notes.
 static const FQXReleaseNote FQXReleaseNotes[] = {
+    {@"2.0.1beta9", @"对照慢动作效果重调 TikTok 交互与 Siri AI 交互：缩放时文字在原下方位置就地缩小淡出、图标平滑落中，彻底消除图标与文字重叠；收缩态自然向底边贴合，增强快滑与近端点松手的弹性呼吸回弹。"},
     {@"2.0.1beta8", @"优化「动态收缩底栏」的 TikTok 交互与 Siri AI 交互动画：胶囊、图标、文字标题与右侧独立圆形入口在滑动、快滑惯性及收尾回弹中全程等比同步放大与缩小，提升跟手与换向丝滑度。"},
     {@"2.0.1beta7", @"「页面与导航 → 底栏入口」合并为「动态收缩底栏」，提供关闭、原有收缩模式、TikTok 交互和 Siri AI 交互四档互斥模式，并在 Siri AI 交互下提供「Siri AI 收缩后隐藏短线」。接入独立圆形底栏模块的同步缩放、聚拢与点击穿透。"},
     {@"2.0.1beta6", @"调整多图标 Dock 在小幅拖动、松手和快速翻页时的动画衔接。"},

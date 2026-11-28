@@ -3359,7 +3359,8 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
                     glyphScale:(CGFloat)glyphScale
                   captionScale:(CGFloat)captionScale
                  captionAmount:(CGFloat)captionAmount
-                 captionLayout:(CGFloat)captionLayout
+                 shownProgress:(double)shownProgress
+                        siriai:(BOOL)siriai
                   contentAlpha:(CGFloat)contentAlpha {
     UIView *overlay = self->_feedContentOverlay;
     if (!overlay || !self->_feedDockSlots.count) return;
@@ -3373,8 +3374,18 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     CGAffineTransform iconXform = CGAffineTransformMakeScale(safeGlyph, safeGlyph);
     CGAffineTransform primaryTitleXform = CGAffineTransformMakeScale(safeTitleScale, safeTitleScale);
     CGAffineTransform capXform = CGAffineTransformMakeScale(safeCapScale, safeCapScale);
-    CGFloat iconOffsetY = -6.8 * baseScale * captionLayout * sy;
-    CGFloat capOffsetY = (5.4 + 5.8 * captionLayout) * baseScale * sy;
+    double rawIconY = 0.0;
+    double rawCapY = 0.0;
+    DKFeedComputeSlotVerticalOffsets(siriai ? 1 : 0,
+                                     shownProgress,
+                                     sy,
+                                     baseScale,
+                                     glyphScale,
+                                     captionScale,
+                                     &rawIconY,
+                                     &rawCapY);
+    CGFloat iconOffsetY = (CGFloat)rawIconY;
+    CGFloat capOffsetY = (CGFloat)rawCapY;
     const CGPoint slotMid = CGPointMake(32.0, 31.0);
 
     for (FQXFeedDockSlotView *slot in self->_feedDockSlots) {
@@ -3464,6 +3475,16 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
             CGFloat gap = hasDetached ? self->_feedGap : 0.0;
             DKSiriaiDockGeometry shape = DKSiriaiDockShape(width, height, camDiam, gap, bottomLimit, progress);
             DKSiriaiApplyRebound(&shape, self->_feedSpring.overtravel, CGRectGetWidth(group), camDiam, bottomLimit);
+            if (self->_feedSpring.overtravel < 0.0) {
+                double boostX = 1.0 - 0.22 * self->_feedSpring.overtravel;
+                double boostY = fmin(boostX, bottomLimit / fmax(1.0, shape.height));
+                double midX = CGRectGetWidth(group) * 0.5;
+                shape.centerX = midX + (shape.centerX - midX) * boostX;
+                shape.cameraX = midX + (shape.cameraX - midX) * boostX;
+                shape.width *= boostX;
+                shape.height *= boostY;
+                shape.cameraScale *= boostY;
+            }
             if (self->_feedSpring.siriaiOpeningMaterial > 1.0) {
                 DKSiriaiSetDockMaterial(&shape, self->_feedSpring.siriaiOpeningMaterial);
             }
@@ -3485,17 +3506,18 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
             if (tabBar.accessibilityElementsHidden != controlsHidden) {
                 tabBar.accessibilityElementsHidden = controlsHidden;
             }
-            // On open rebound (overtravel < 0), scale icons, captions, and detached glyph in unison with capsule sy.
             CGFloat openRebound = (self->_feedSpring.overtravel < 0.0) ? MAX(1.0, sy) : 1.0;
             CGFloat effectiveGlyphScale = MAX(0.001, shape.glyphScale * openRebound);
             CGFloat effectiveCaptionScale = MAX(0.001, shape.captionScale * openRebound);
+            double siriShown = fmin(1.0, fmax(0.0, progress)) + self->_feedSpring.overtravel;
             [self applyFeedSlotsAtTarget:target
                                   scaleX:sx
                                   scaleY:sy
                               glyphScale:effectiveGlyphScale
                             captionScale:effectiveCaptionScale
                            captionAmount:shape.captionAmount
-                           captionLayout:shape.captionAmount
+                           shownProgress:siriShown
+                                  siriai:YES
                             contentAlpha:shape.contentAlpha];
             if (hasDetached) {
                 CGFloat cameraScale = MAX(0.001, shape.cameraScale);
@@ -3547,15 +3569,14 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         self->_feedControlsHidden = NO;
         if (tabBar.accessibilityElementsHidden) tabBar.accessibilityElementsHidden = NO;
 
-        double compactClamped = fmin(1.0, fmax(0.0, shownProgress));
-        CGFloat captionLayout = (CGFloat)(1.0 - DKSiriaiSmoothstep(0.0, 0.88, compactClamped));
         [self applyFeedSlotsAtTarget:target
                               scaleX:sx
                               scaleY:sy
                           glyphScale:shape.glyphScale
                         captionScale:shape.captionScale
                        captionAmount:shape.captionAmount
-                       captionLayout:captionLayout
+                       shownProgress:shownProgress
+                              siriai:NO
                         contentAlpha:1.0];
         if (hasDetached) {
             CGFloat cameraScale = MAX(0.001, shape.cameraScale);
