@@ -9,6 +9,7 @@ static void check_centered_dock(double screen, double capsule, double capsuleHei
     double left = (screen - width) / 2.0;
     double previous = width;
     double previousGlyph = 1.0;
+    double previousCaptionScale = 1.0;
     for (int sample = 0; sample <= 1000; sample++) {
         double p = sample / 1000.0;
         DKSiriaiDockGeometry shape = DKSiriaiDockShape(capsule, capsuleHeight, camera, gap, bottomLimit, p);
@@ -22,8 +23,11 @@ static void check_centered_dock(double screen, double capsule, double capsuleHei
         assert(shape.centerY + shape.height / 2.0 <= bottomLimit + 1e-9);
         assert(shape.cameraY + camera * shape.cameraScale / 2.0 <= bottomLimit + 1e-9);
         assert(shape.glyphScale >= 0.0 && shape.glyphScale <= previousGlyph + 1e-9);
+        assert(shape.captionScale >= 0.0 && shape.captionScale <= previousCaptionScale + 1e-9);
+        if (sample == 0) assert(fabs(shape.captionScale - 1.0) < 1e-9);
         if (p >= 0.48) assert(shape.captionAmount == 0.0);
         previousGlyph = shape.glyphScale;
+        previousCaptionScale = shape.captionScale;
         previous = groupRight - groupLeft;
     }
     DKSiriaiDockGeometry line = DKSiriaiDockShape(capsule, capsuleHeight, camera, gap, bottomLimit, 1.0);
@@ -312,14 +316,32 @@ static void check_fanqiex_modes_and_motion(void) {
     double groupW = capsuleW + gap + circleD;
     double groupMidX = capsuleX + groupW * 0.5;
 
+    DKSiriaiDockGeometry openRest = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
+                                                      circleMidY, circleD, gap, 3, 0.0);
+    DKSiriaiDockGeometry openBounce = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
+                                                        circleMidY, circleD, gap, 3, -0.04);
+    DKSiriaiDockGeometry midSwipe = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
+                                                      circleMidY, circleD, gap, 3, 0.45);
     DKSiriaiDockGeometry compact = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
                                                      circleMidY, circleD, gap, 3, 1.0);
+    DKSiriaiDockGeometry compactBounce = DKTikTokDockShape(capsuleX, capsuleY, capsuleW, capsuleH,
+                                                           circleMidY, circleD, gap, 3, 1.04);
+    assert(fabs(openRest.glyphScale - 1.0) < 1e-9 && fabs(openRest.captionScale - 1.0) < 1e-9);
+    // Synchronous zoom: open rebound expands capsule, icons, captions, and detached circle together
+    assert(openBounce.width > openRest.width && openBounce.height > openRest.height);
+    assert(openBounce.glyphScale > 1.0 && openBounce.captionScale > 1.0 && openBounce.cameraScale > 1.0);
+    // Mid-swipe shrinks capsule, icons, captions, and detached circle synchronously together
+    assert(midSwipe.glyphScale < 1.0 && midSwipe.glyphScale > 0.91);
+    assert(midSwipe.captionScale < 1.0 && midSwipe.captionScale > 0.80 && midSwipe.captionAmount > 0.0);
+    // Compact bounce cushions capsule, icons, and detached circle together past 91%/80%
+    assert(compactBounce.glyphScale < 0.91 && compactBounce.cameraScale < 0.80);
     double left = compact.centerX - compact.width * 0.5;
     double right = compact.cameraX + circleD * compact.cameraScale * 0.5;
     assert(fabs((right - left) - groupW * 0.81) < 1e-9);
     assert(fabs((left + right) * 0.5 - groupMidX) < 1e-9);
     assert(fabs(compact.height - capsuleH * 0.80) < 1e-9);
     assert(fabs(compact.glyphScale - 0.91) < 1e-9);
+    assert(fabs(compact.captionScale - 0.80) < 1e-9);
     assert(compact.captionAmount == 0.0);
     assert(fabs(compact.cameraScale - 0.80) < 1e-9);
 
@@ -430,6 +452,18 @@ static void check_fanqiex_modes_and_motion(void) {
     // Even if pan target passed compact=0, 2+ reversals with positive speed chooses compact=1
     DKFeedSpringEndDrag(&s, 0, 1.8, 1.05, 1.0 / 60.0, 1, 1, &progress, &finished, &startLink, &scheduleFade);
     assert(s.compact == 1);
+
+    // Unidirectional fast flick from rest preserves real finger momentum via releaseMotion & promotes to 1:1 tracking
+    DKFeedSpringState flick;
+    DKFeedSpringInit(&flick);
+    assert(!DKFeedSpringBeginDrag(&flick, 0));
+    assert(DKFeedSpringMoveDrag(&flick, 0.015, 2.00, 1.0 / 120.0, 1));
+    DKFeedSpringAdvance(&flick, 2.00, 2.00 + 1.0 / 120.0, 0, &progress, &apply, &scheduleFade);
+    assert(flick.directTracking == 1);
+    assert(DKFeedSpringMoveDrag(&flick, 0.22, 2.01, 1.0 / 120.0, 0));
+    DKFeedSpringAdvance(&flick, 2.01, 2.01 + 1.0 / 120.0, 0, &progress, &apply, &scheduleFade);
+    DKFeedSpringEndDrag(&flick, 1, 5.2, 2.02, 1.0 / 120.0, 1, 1, &progress, &finished, &startLink, &scheduleFade);
+    assert(!finished && startLink && flick.releaseMotion.duration > 0.0 && fabs(flick.releaseMotion.velocity - 5.2) < 1e-9);
 
     // Page switch / comment sheet / landscape immediate reset (`animated == 0`)
     DKFeedSpringSetCompact(&s, 0, 0, 1.10, 0, 1, &progress, &finished, &startLink, &scheduleFade);

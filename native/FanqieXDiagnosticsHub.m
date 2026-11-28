@@ -11,7 +11,7 @@
 NSString *const FQXDiagCategoryFilterPrefKey = @"FanqieX.DiagCategoryFilter.1";
 
 #ifndef FQX_BUILD_VERSION
-#define FQX_BUILD_VERSION "2.0.1beta7"
+#define FQX_BUILD_VERSION "2.0.1beta8"
 #endif
 static NSString *const kFQXHubPluginVersion = @FQX_BUILD_VERSION;
 

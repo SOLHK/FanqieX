@@ -34,7 +34,7 @@ static const double DKSiriaiCompactElasticScale = 0.30;
 typedef struct {
     double width, height, centerX, centerY;
     double cameraScale, cameraX, cameraY;
-    double glyphScale, captionAmount, contentAlpha, surfaceAlpha, whiteAmount;
+    double glyphScale, captionScale, captionAmount, contentAlpha, surfaceAlpha, whiteAmount;
 } DKSiriaiDockGeometry;
 
 static inline double DKSiriaiSmoothstep(double from, double to, double value) {
@@ -210,9 +210,10 @@ static inline DKSiriaiDockGeometry DKSiriaiDockShape(double capsuleWidth, double
     shape.centerY = bottom - shape.height * 0.5;
     shape.cameraX = shape.centerX + shape.width * 0.5 + (gap + camera * 0.5) * shape.cameraScale;
     shape.cameraY = bottom - camera * shape.cameraScale * 0.5;
-    // 图标保持等比，先靠拢，再随短条收小；标题在图标仍清晰时退出。
+    // 图标与文字保持等比同步缩放：先靠拢，再随短条收小；标题在图标仍清晰时退出。
     shape.glyphScale = (1.0 - q) * (1.0 + 0.78 * q);
-    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.20, q);
+    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.22, q);
+    shape.captionScale = shape.glyphScale * (0.82 + 0.18 * shape.captionAmount);
     shape.contentAlpha = 1.0 - DKSiriaiSmoothstep(0.48, 0.93, p);
     DKSiriaiSetDockMaterial(&shape, progress);
     return shape;
@@ -258,8 +259,8 @@ static const double DKSiriaiFadeDuration = 0.18;
 static const double DKSiriaiFadeDelay = 1.4;
 
 static inline double DKFeedMotionTravel(double height, int siriai) {
-    return siriai ? fmin(104.0, fmax(52.0, height * 0.12))
-                  : fmin(200.0, fmax(84.0, height * 0.22));
+    return siriai ? fmin(96.0, fmax(52.0, height * 0.11))
+                  : fmin(144.0, fmax(78.0, height * 0.16));
 }
 
 static inline double DKFeedCompactCapsuleWidth(double capsuleWidth, double cameraDiameter,
@@ -294,8 +295,9 @@ static inline DKSiriaiDockGeometry DKTikTokDockShape(double capsuleX, double cap
     shape.cameraScale = sy;
     shape.cameraX = hasCamera ? (left + shape.width + usedGap + camera * sy * 0.5) : shape.centerX;
     shape.cameraY = cameraMidY;
-    shape.glyphScale = 1.0 - 0.09 * compact;
-    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.80, compact);
+    shape.glyphScale = 1.0 - 0.09 * progressWithOvertravel;
+    shape.captionScale = sy;
+    shape.captionAmount = 1.0 - DKSiriaiSmoothstep(0.0, 0.78, compact);
     shape.contentAlpha = 1.0;
     shape.surfaceAlpha = 1.0;
     shape.whiteAmount = 0.0;
@@ -653,20 +655,21 @@ static inline void DKFeedSpringEndDrag(DKFeedSpringState *s, int compact, double
                                        int *outStartLink, int *outScheduleFade) {
     if (!s->following) return;
     compact = compact ? 1 : 0;
-    if (s->directTracking && s->landingBegan == 0.0 && s->lastDragDelta != 0.0
-        && now - s->lastDragTime < 0.08) {
+    if (s->landingBegan == 0.0 && s->lastDragDelta != 0.0 && now - s->lastDragTime < 0.08) {
         double shown = DKFeedSpringDisplayedProgress(s);
         double pending = s->dragTarget - s->sampleProgress;
-        double speed = s->dragVelocity;
-        if (pending * s->lastDragDelta > 0.0) {
+        double speed = (velocity * s->lastDragDelta > 0.0) ? velocity : s->dragVelocity;
+        if (s->directTracking && pending * s->lastDragDelta > 0.0) {
             double fallbackFrame = displayLinkFrame > 0.0 ? displayLinkFrame : (1.0 / 60.0);
-            speed = pending / fmax(s->inputTimeLeft, fallbackFrame);
+            double pendingSpeed = pending / fmax(s->inputTimeLeft, fallbackFrame);
+            if (speed == 0.0 || s->dragReversals >= 2) speed = pendingSpeed;
         }
         if (speed * s->lastDragDelta <= 0.0) speed = 0.0;
-        if (speed == 0.0 && velocity * s->lastDragDelta > 0.0) speed = velocity;
         if (s->dragReversals >= 2 && speed != 0.0) compact = speed > 0.0 ? 1 : 0;
-        s->releaseMotion = DKFeedMakeReleaseMotion(shown, compact ? 1.0 : 0.0, speed, s->elasticExtent);
-        s->releaseElapsed = 0.0;
+        if (speed != 0.0) {
+            s->releaseMotion = DKFeedMakeReleaseMotion(shown, compact ? 1.0 : 0.0, speed, s->elasticExtent);
+            s->releaseElapsed = 0.0;
+        }
     }
     DKFeedSpringSetCompact(s, compact, 1, now, displayLinkActive, canAnimate,
                            outApplyProgress, outFinishedImmediately, outStartLink, outScheduleFade);
@@ -761,6 +764,11 @@ static inline DKFeedAdvanceResult DKFeedSpringAdvance(DKFeedSpringState *s,
             shown = DKFeedDirectStep(shown, s->sampleProgress, &s->dragVelocity, dt);
         } else {
             shown = DKFeedFollowStep(shown, goal, &s->dragVelocity, dt, s->following);
+            if (s->following && fabs(goal - shown) <= 0.020) {
+                s->directTracking = 1;
+                s->sampleProgress = shown;
+                s->inputTimeLeft = 0.0;
+            }
         }
         double geometry = fmin(1.0, fmax(0.0, shown));
         s->overtravel = shown - geometry;
