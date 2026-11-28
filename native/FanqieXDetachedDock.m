@@ -241,8 +241,9 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 @property(nonatomic, strong, nullable) UIImage *selectedImage;
 @property(nonatomic, readwrite, getter=isModuleSelected) BOOL moduleSelected;
 @property(nonatomic) NSInteger appliedGlassStamp;
-@property(nonatomic) BOOL videoBaseSurface;
-@property(nonatomic) BOOL videoSelectedPill;
+@property(nonatomic) NSInteger surfaceStyle;
+@property(nonatomic) NSInteger selectionTintStyle;
+@property(nonatomic) BOOL lastVideoPillTranslucent;
 @property(nonatomic) CGSize lastVideoPillSize;
 @end
 
@@ -360,7 +361,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 
     CGRect contentBounds = self.internalGlassView.contentView.bounds;
     if (CGRectIsEmpty(contentBounds)) contentBounds = bounds;
-    if (self.videoBaseSurface) {
+    if (self.surfaceStyle != 0) {
         CGFloat r = MIN(CGRectGetWidth(contentBounds), CGRectGetHeight(contentBounds)) * 0.5;
         self.internalGlassView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
         if (fabs(self.internalGlassView.contentView.layer.cornerRadius - r) > 0.25) {
@@ -373,7 +374,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.selectionLens.bounds = CGRectMake(0.0, 0.0, CGRectGetWidth(lensRect), CGRectGetHeight(lensRect));
         self.selectionLens.center = CGPointMake(CGRectGetMidX(contentBounds), CGRectGetMidY(contentBounds));
         self.selectionLens.layer.cornerRadius = MIN(CGRectGetWidth(lensRect), CGRectGetHeight(lensRect)) * 0.5;
-        if (self.videoSelectedPill) {
+        if (self.selectionTintStyle != 0) {
             [self syncVideoSelectedPillImageForSize:lensRect.size];
         }
     }
@@ -434,27 +435,30 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
 
 - (void)syncVideoSelectedPillImageForSize:(CGSize)size {
     if (!self.videoSelectedPillView || size.width < 6.0 || size.height < 6.0) return;
+    BOOL translucent = (self.selectionTintStyle == FQXSelectionTintStyleRoseMistGlass);
     if (self.videoSelectedPillView.image &&
+        self.lastVideoPillTranslucent == translucent &&
         fabs(self.lastVideoPillSize.width - size.width) < 0.5 &&
         fabs(self.lastVideoPillSize.height - size.height) < 0.5) {
         return;
     }
     Class motionCls = objc_lookUpClass("FQXDockMotion");
-    SEL imgSel = sel_registerName("videoSelectedPillImageForSize:");
+    SEL imgSel = sel_registerName("videoSelectedPillImageForSize:translucentGlass:");
     if (motionCls && [motionCls respondsToSelector:imgSel]) {
-        UIImage *img = ((UIImage *(*)(id, SEL, CGSize))objc_msgSend)(motionCls, imgSel, size);
+        UIImage *img = ((UIImage *(*)(id, SEL, CGSize, BOOL))objc_msgSend)(motionCls, imgSel, size, translucent);
         if (img) {
             self.videoSelectedPillView.image = img;
             self.lastVideoPillSize = size;
+            self.lastVideoPillTranslucent = translucent;
         }
     }
 }
 
-- (void)applyVideoSurfaceBase:(BOOL)videoBase
-            videoSelectedPill:(BOOL)videoSelectedPill {
-    self.videoBaseSurface = videoBase;
-    self.videoSelectedPill = videoSelectedPill;
-    if (videoBase) {
+- (void)applySurfaceStyle:(NSInteger)surfaceStyle
+       selectionTintStyle:(NSInteger)selectionTintStyle {
+    self.surfaceStyle = surfaceStyle;
+    self.selectionTintStyle = selectionTintStyle;
+    if (surfaceStyle == 1) {
         FQXRGBAColor fill = FQXVideoBaseSurfaceFillColor();
         FQXRGBAColor border = FQXVideoBaseSurfaceBorderColor();
         self.internalGlassView.effect = nil;
@@ -469,12 +473,24 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.internalGlassView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
         self.internalGlassView.contentView.layer.cornerRadius = r;
         self.internalGlassView.contentView.clipsToBounds = YES;
+    } else if (surfaceStyle == 2) {
+        FQXRGBAColor border = FQXRoseMistGlassBaseBorderColor();
+        self.internalGlassView.backgroundColor = UIColor.clearColor;
+        self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
+        self.internalGlassView.contentView.layer.borderWidth = 0.5;
+        self.internalGlassView.contentView.layer.borderColor =
+            [UIColor colorWithRed:(CGFloat)border.r green:(CGFloat)border.g blue:(CGFloat)border.b alpha:(CGFloat)border.a].CGColor;
+        CGFloat r = MIN(CGRectGetWidth(self.internalGlassView.contentView.bounds),
+                        CGRectGetHeight(self.internalGlassView.contentView.bounds)) * 0.5;
+        self.internalGlassView.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        self.internalGlassView.contentView.layer.cornerRadius = r;
+        self.internalGlassView.contentView.clipsToBounds = YES;
     } else {
         self.internalGlassView.contentView.layer.borderWidth = 0.0;
         self.internalGlassView.contentView.layer.borderColor = NULL;
         self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
     }
-    if (videoSelectedPill) {
+    if (selectionTintStyle != 0) {
         self.selectionLens.backgroundColor = UIColor.clearColor;
         self.videoSelectedPillView.hidden = NO;
         [self syncVideoSelectedPillImageForSize:self.selectionLens.bounds.size];
@@ -491,7 +507,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
     if (self.internalGlassView.overrideUserInterfaceStyle != style) {
         self.internalGlassView.overrideUserInterfaceStyle = style;
     }
-    if (!self.videoSelectedPill && selectionColor && ![self.selectionLens.backgroundColor isEqual:selectionColor]) {
+    if (self.selectionTintStyle == 0 && selectionColor && ![self.selectionLens.backgroundColor isEqual:selectionColor]) {
         self.selectionLens.backgroundColor = selectionColor;
     }
     BOOL effectLost = (effect != nil && !self.internalGlassView.effect);
@@ -501,7 +517,7 @@ static void FQXApplyCapsuleCornerToGlass(UIView *view) {
         self.internalGlassView.backgroundColor = reduceTransparency
             ? [UIColor secondarySystemBackgroundColor]
             : UIColor.clearColor;
-        if (!self.videoBaseSurface) {
+        if (self.surfaceStyle != 1) {
             self.internalGlassView.contentView.backgroundColor = UIColor.clearColor;
         }
         FQXApplyCapsuleCornerToGlass(self.internalGlassView);

@@ -653,22 +653,22 @@ static void AddSelectionAndSurfaceStyleRows(FQXSettingsMenu *menu,
         selRow.title = @"顶部按钮与 Dock 选中色";
         selRow.path = route;
         selRow.hiddenFromSearch = hiddenFromSearch;
-        selRow.keywords = @"顶部按钮 Dock 底栏 选中色 选中 胶囊 视频同款 粉雾 粉色 渐变 颜色 顶部分类 短剧";
+        selRow.keywords = @"顶部按钮 Dock 底栏 选中色 选中 胶囊 柔性粉雾 粉雾玻璃 粉雾 粉色 液态玻璃 透明 渐变 颜色 顶部分类 短剧 视频同款";
         selRow.popoverKey = SelectionTintStyleKey;
-        selRow.popoverOptions = @[@"默认", @"视频同款粉雾"];
-        selRow.popoverValues = @[@0, @1];
+        selRow.popoverOptions = @[@"默认", @"柔性粉雾", @"粉雾玻璃"];
+        selRow.popoverValues = @[@0, @1, @2];
         selRow.height = 52;
         [menu.catalog addObject:selRow];
     }
     if (includeDramaBase) {
         FQXSettingRow *baseRow = [FQXSettingRow new];
-        baseRow.title = @"短剧按钮底色";
+        baseRow.title = @"顶部与短剧按钮底色";
         baseRow.path = route;
         baseRow.hiddenFromSearch = hiddenFromSearch;
-        baseRow.keywords = @"短剧按钮底色 短剧 按钮 底色 视频同款 非玻璃 哑光 灰白 顶部按钮 搜索 互动按钮 查看全集 全屏 弹幕 横屏";
+        baseRow.keywords = @"顶部与短剧按钮底色 顶部按钮 短剧按钮底色 短剧 按钮 底色 粉雾玻璃 柔性粉雾 液态玻璃 透明 粉色 视频同款 非玻璃 哑光 灰白 搜索 互动按钮 查看全集 全屏 弹幕 横屏";
         baseRow.popoverKey = DramaButtonSurfaceStyleKey;
-        baseRow.popoverOptions = @[@"默认液态玻璃", @"视频同款底色（非玻璃）"];
-        baseRow.popoverValues = @[@0, @1];
+        baseRow.popoverOptions = @[@"默认液态玻璃", @"视频同款底色（非玻璃）", @"粉雾玻璃"];
+        baseRow.popoverValues = @[@0, @1, @2];
         baseRow.height = 52;
         [menu.catalog addObject:baseRow];
     }
@@ -679,10 +679,10 @@ static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     FQXSettingRow *material = [FQXSettingRow new];
     material.title = @"Dock 材质";
     material.path = route;
-    material.keywords = @"底栏 导航栏 材质 新液态玻璃 老液态玻璃 液态玻璃 模糊玻璃 毛玻璃 高斯模糊 iOS18 视频同款底色 非玻璃 底色 灰白";
+    material.keywords = @"底栏 导航栏 材质 新液态玻璃 老液态玻璃 液态玻璃 模糊玻璃 毛玻璃 高斯模糊 iOS18 视频同款底色 非玻璃 底色 灰白 粉雾玻璃 柔性粉雾 粉色 透明";
     material.popoverKey = DockMaterialKey;
-    material.popoverOptions = @[@"新液态玻璃", @"老液态玻璃", @"模糊玻璃", @"高斯模糊", @"视频同款底色（非玻璃）"];
-    material.popoverValues = @[@0, @1, @2, @3, @4];
+    material.popoverOptions = @[@"新液态玻璃", @"老液态玻璃", @"模糊玻璃", @"高斯模糊", @"视频同款底色（非玻璃）", @"粉雾玻璃"];
+    material.popoverValues = @[@0, @1, @2, @3, @4, @5];
     material.popoverKind = 3;
     material.height = 52;
     [menu.catalog addObject:material];

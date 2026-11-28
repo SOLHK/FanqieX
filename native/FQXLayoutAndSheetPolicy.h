@@ -615,26 +615,40 @@ static inline int FQXAudioSheetCardGeometryValid(double cardMinY,
             cardMaxY >= winHeight - 64.0) ? 1 : 0;
 }
 
+/* Guard against false-positive styling of the main audiobook player body
+   (FQRJXCategoryListContainerView / SSNestedContainerScrollView) as a half-sheet. */
+static inline int FQXAudioSheetCandidateIsMainPlayer(int isScrollView,
+                                                     int isCategoryContainer,
+                                                     int containsMainPlayerControls) {
+    return (isScrollView || isCategoryContainer || containsMainPlayerControls) ? 1 : 0;
+}
+
 /* Calibrated reference video palette (YouTube pill bar white-balanced against #FFFFFF play glyph):
-   - Base surface: silky matte cool porcelain off-white (#EEEDF0), non-Liquid-Glass & non-Blur.
-   - Selected pill: diagonal top-left rose-blush (#E0A6B6) -> misty rose-pearl (#E2D3D8)
-     -> cool pearl silver (#E2E1E4 / #DFDEE2) with top-left organic rose bloom and delicate rim. */
+   - VideoBase (non-glass): silky matte cool porcelain off-white (#EEEDF0), non-Liquid-Glass & non-Blur.
+   - RoseMistGlass (粉雾玻璃): true translucent iOS 26 UIGlassEffect (Clear) carrying the exact same
+     cool-pearl-blush base tint (#EEE8EC @ 42% alpha) + translucent 5-stop sakura-rose (#E0A6B6 ->
+     #DFB6C1 -> #E2D3D8 -> #E2E1E4 -> #DFDEE2) selected pill so refraction stays live.
+   - SoftRoseMist (柔性粉雾): silky matte diagonal rose-blush -> misty rose-pearl -> cool pearl pill. */
 enum {
     FQXDockMaterialModeNewGlass = 0,
     FQXDockMaterialModeLegacyGlass = 1,
     FQXDockMaterialModeFrostedGlass = 2,
     FQXDockMaterialModeIOS18Gaussian = 3,
     FQXDockMaterialModeVideoBase = 4,
+    FQXDockMaterialModeRoseMistGlass = 5,
 };
 
 enum {
     FQXSelectionTintStyleDefault = 0,
+    FQXSelectionTintStyleSoftRoseMist = 1,
     FQXSelectionTintStyleVideoBlush = 1,
+    FQXSelectionTintStyleRoseMistGlass = 2,
 };
 
 enum {
     FQXDramaButtonSurfaceDefaultGlass = 0,
     FQXDramaButtonSurfaceVideoBase = 1,
+    FQXDramaButtonSurfaceRoseMistGlass = 2,
 };
 
 typedef struct {
@@ -654,6 +668,16 @@ static inline FQXRGBAColor FQXVideoBaseSurfaceBorderColor(void) {
     return c;
 }
 
+static inline FQXRGBAColor FQXRoseMistGlassBaseTintColor(void) {
+    FQXRGBAColor c = {238.0 / 255.0, 232.0 / 255.0, 236.0 / 255.0, 0.42};
+    return c;
+}
+
+static inline FQXRGBAColor FQXRoseMistGlassBaseBorderColor(void) {
+    FQXRGBAColor c = {220.0 / 255.0, 198.0 / 255.0, 208.0 / 255.0, 0.50};
+    return c;
+}
+
 static inline FQXRGBAColor FQXVideoInkColor(double alpha) {
     FQXRGBAColor c = {20.0 / 255.0, 19.0 / 255.0, 22.0 / 255.0, alpha};
     return c;
@@ -664,8 +688,13 @@ static inline FQXRGBAColor FQXVideoSelectedPillFallbackColor(void) {
     return c;
 }
 
+static inline FQXRGBAColor FQXRoseMistGlassSelectedFallbackColor(void) {
+    FQXRGBAColor c = {224.0 / 255.0, 170.0 / 255.0, 185.0 / 255.0, 0.48};
+    return c;
+}
+
 static inline int FQXNormalizeDockMaterialMode(int rawMode) {
-    return (rawMode >= FQXDockMaterialModeNewGlass && rawMode <= FQXDockMaterialModeVideoBase)
+    return (rawMode >= FQXDockMaterialModeNewGlass && rawMode <= FQXDockMaterialModeRoseMistGlass)
         ? rawMode : FQXDockMaterialModeNewGlass;
 }
 
@@ -673,7 +702,14 @@ static inline int FQXDockMaterialUsesGlass(int mode) {
     int m = FQXNormalizeDockMaterialMode(mode);
     return (m == FQXDockMaterialModeNewGlass ||
             m == FQXDockMaterialModeLegacyGlass ||
-            m == FQXDockMaterialModeFrostedGlass) ? 1 : 0;
+            m == FQXDockMaterialModeFrostedGlass ||
+            m == FQXDockMaterialModeRoseMistGlass) ? 1 : 0;
+}
+
+static inline int FQXDockMaterialUsesVideoLightBase(int mode) {
+    int m = FQXNormalizeDockMaterialMode(mode);
+    return (m == FQXDockMaterialModeVideoBase ||
+            m == FQXDockMaterialModeRoseMistGlass) ? 1 : 0;
 }
 
 static inline int FQXDockMaterialUsesBlur(int mode, int blurPercent) {
@@ -684,13 +720,26 @@ static inline int FQXDockMaterialUsesBlur(int mode, int blurPercent) {
 }
 
 static inline int FQXNormalizeSelectionTintStyle(int rawStyle) {
-    return (rawStyle == FQXSelectionTintStyleVideoBlush)
-        ? FQXSelectionTintStyleVideoBlush : FQXSelectionTintStyleDefault;
+    if (rawStyle == FQXSelectionTintStyleSoftRoseMist ||
+        rawStyle == FQXSelectionTintStyleRoseMistGlass) {
+        return rawStyle;
+    }
+    return FQXSelectionTintStyleDefault;
 }
 
 static inline int FQXNormalizeDramaButtonSurfaceStyle(int rawStyle) {
-    return (rawStyle == FQXDramaButtonSurfaceVideoBase)
-        ? FQXDramaButtonSurfaceVideoBase : FQXDramaButtonSurfaceDefaultGlass;
+    if (rawStyle == FQXDramaButtonSurfaceVideoBase ||
+        rawStyle == FQXDramaButtonSurfaceRoseMistGlass) {
+        return rawStyle;
+    }
+    return FQXDramaButtonSurfaceDefaultGlass;
+}
+
+static inline int FQXEffectiveSelectionTintStyle(int storedSelectionStyle,
+                                                 int surfaceIsRoseMistGlass) {
+    int sel = FQXNormalizeSelectionTintStyle(storedSelectionStyle);
+    if (sel != FQXSelectionTintStyleDefault) return sel;
+    return surfaceIsRoseMistGlass ? FQXSelectionTintStyleRoseMistGlass : FQXSelectionTintStyleDefault;
 }
 
 static inline int FQXShouldUseDarkInkForSurface(int isVideoBaseSurface,

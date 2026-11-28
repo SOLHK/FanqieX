@@ -209,11 +209,9 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.CommentMaterialMode.1"] ||
         [key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) {
         NSInteger maximum = [key isEqualToString:@"FanqieX.StartupTab.1"] ? 4 : 2;
-        if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"] ||
-            [key isEqualToString:@"FanqieX.SelectionTintStyle.1"] ||
-            [key isEqualToString:@"FanqieX.DramaButtonSurfaceStyle.1"]) maximum = 1;
+        if ([key isEqualToString:@"FanqieX.DramaAlbumTitleLines.1"]) maximum = 1;
         if ([key isEqualToString:DockCollapseMode]) maximum = 3;
-        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 4;
+        if ([key isEqualToString:@"FanqieX.DockMaterial.1"]) maximum = 5;
         if ([key isEqualToString:CommentMaterialStyle] ||
             [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"] ||
             [key isEqualToString:@"FanqieX.AudioSheetMaterial.1"]) {

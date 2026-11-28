@@ -384,35 +384,62 @@ static void test_audiobook_sheets_and_video_palette_policy(void) {
     assert(FQXAudioSheetCardGeometryValid(880.0, 956.0, 440.0, 76.0, 440.0, 956.0) == 0);  /* Too short */
     assert(FQXAudioSheetCardGeometryValid(200.0, 600.0, 200.0, 400.0, 440.0, 956.0) == 0); /* Not bottom-anchored */
 
-    /* 3. Reference video non-glass base surface & rose-blush selected pill palette */
+    /* 2b. Main audiobook player guard strictly rejects SSNestedContainerScrollView /
+           FQRJXCategoryListContainerView / main player subtree so player is never double-glassed */
+    assert(FQXAudioSheetCandidateIsMainPlayer(1, 0, 0) == 1); /* SSNestedContainerScrollView */
+    assert(FQXAudioSheetCandidateIsMainPlayer(0, 1, 0) == 1); /* FQRJXCategoryListContainerView */
+    assert(FQXAudioSheetCandidateIsMainPlayer(0, 0, 1) == 1); /* Contains 边听边读 / core player controls */
+    assert(FQXAudioSheetCandidateIsMainPlayer(0, 0, 0) == 0); /* Real secondary half-sheet container */
+
+    /* 3. Reference video palette: matte VideoBase + translucent RoseMistGlass (粉雾玻璃) */
     FQXRGBAColor baseFill = FQXVideoBaseSurfaceFillColor();
     assert(fabs(baseFill.r - 238.0 / 255.0) < 1e-6);
     assert(fabs(baseFill.g - 237.0 / 255.0) < 1e-6);
     assert(fabs(baseFill.b - 240.0 / 255.0) < 1e-6);
     assert(baseFill.a > 0.90 && baseFill.a <= 1.0);
 
-    FQXRGBAColor selFallback = FQXVideoSelectedPillFallbackColor();
-    assert(selFallback.r > selFallback.g && selFallback.b > selFallback.g); /* Warm rose-blush tint */
+    FQXRGBAColor glassTint = FQXRoseMistGlassBaseTintColor();
+    assert(glassTint.r > glassTint.g && glassTint.b > glassTint.g); /* Cool-pearl rose-mist undertone */
+    assert(glassTint.a > 0.30 && glassTint.a < 0.60);               /* Truly translucent Liquid Glass tint */
 
-    /* 4. VideoBase Dock material (4) strictly disables both glass and blur even when blurPercent > 0 */
+    FQXRGBAColor selFallback = FQXVideoSelectedPillFallbackColor();
+    assert(selFallback.r > selFallback.g && selFallback.b > selFallback.g); /* SoftRoseMist (柔性粉雾) */
+    FQXRGBAColor glassSel = FQXRoseMistGlassSelectedFallbackColor();
+    assert(glassSel.r > glassSel.g && glassSel.b > glassSel.g);             /* RoseMistGlass (粉雾玻璃) */
+    assert(glassSel.a > 0.35 && glassSel.a < 0.65);
+
+    /* 4. Dock material modes: VideoBase (4) disables glass+blur; RoseMistGlass (5) enables glass & obeys blur slider */
     assert(FQXNormalizeDockMaterialMode(4) == FQXDockMaterialModeVideoBase);
-    assert(FQXNormalizeDockMaterialMode(5) == FQXDockMaterialModeNewGlass);
+    assert(FQXNormalizeDockMaterialMode(5) == FQXDockMaterialModeRoseMistGlass);
+    assert(FQXNormalizeDockMaterialMode(6) == FQXDockMaterialModeNewGlass);
     assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeNewGlass) == 1);
     assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeFrostedGlass) == 1);
     assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeIOS18Gaussian) == 0);
     assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeVideoBase) == 0);
+    assert(FQXDockMaterialUsesGlass(FQXDockMaterialModeRoseMistGlass) == 1);
+    assert(FQXDockMaterialUsesVideoLightBase(FQXDockMaterialModeVideoBase) == 1);
+    assert(FQXDockMaterialUsesVideoLightBase(FQXDockMaterialModeRoseMistGlass) == 1);
+    assert(FQXDockMaterialUsesVideoLightBase(FQXDockMaterialModeNewGlass) == 0);
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeVideoBase, 100) == 0);
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeVideoBase, 0) == 0);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeRoseMistGlass, 0) == 0);
+    assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeRoseMistGlass, 30) == 1);
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeIOS18Gaussian, 0) == 1);
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeNewGlass, 25) == 1);
 
-    /* 5. Selection tint & drama button base normalization + dark ink polarity */
-    assert(FQXNormalizeSelectionTintStyle(1) == FQXSelectionTintStyleVideoBlush);
-    assert(FQXNormalizeSelectionTintStyle(2) == FQXSelectionTintStyleDefault);
+    /* 5. Selection tint (柔性粉雾=1, 粉雾玻璃=2), smart pairing, & drama button base normalization */
+    assert(FQXNormalizeSelectionTintStyle(1) == FQXSelectionTintStyleSoftRoseMist);
+    assert(FQXNormalizeSelectionTintStyle(2) == FQXSelectionTintStyleRoseMistGlass);
+    assert(FQXNormalizeSelectionTintStyle(3) == FQXSelectionTintStyleDefault);
+    assert(FQXEffectiveSelectionTintStyle(0, 0) == FQXSelectionTintStyleDefault);
+    assert(FQXEffectiveSelectionTintStyle(0, 1) == FQXSelectionTintStyleRoseMistGlass);
+    assert(FQXEffectiveSelectionTintStyle(1, 1) == FQXSelectionTintStyleSoftRoseMist);
+    assert(FQXEffectiveSelectionTintStyle(2, 0) == FQXSelectionTintStyleRoseMistGlass);
     assert(FQXNormalizeDramaButtonSurfaceStyle(1) == FQXDramaButtonSurfaceVideoBase);
+    assert(FQXNormalizeDramaButtonSurfaceStyle(2) == FQXDramaButtonSurfaceRoseMistGlass);
     assert(FQXNormalizeDramaButtonSurfaceStyle(-1) == FQXDramaButtonSurfaceDefaultGlass);
-    assert(FQXShouldUseDarkInkForSurface(1, 0, 1) == 1); /* Dark ink on VideoBase over dark video */
-    assert(FQXShouldUseDarkInkForSurface(0, 1, 1) == 1); /* Dark ink on VideoSelected pill over dark video */
+    assert(FQXShouldUseDarkInkForSurface(1, 0, 1) == 1); /* Dark ink on VideoBase/RoseMistGlass over dark video */
+    assert(FQXShouldUseDarkInkForSurface(0, 1, 1) == 1); /* Dark ink on RoseMist pill over dark video */
     assert(FQXShouldUseDarkInkForSurface(0, 0, 1) == 0); /* White ink on normal dark glass */
     assert(FQXShouldUseDarkInkForSurface(0, 0, 0) == 1); /* Dark ink on normal light glass */
 }

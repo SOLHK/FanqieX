@@ -374,12 +374,24 @@ static FQXShareMaterialStyle FQXCurrentAudioSheetMaterialStyle(void) {
     return FQXHotPrefsSnapshot().audioSheetMaterialStyle;
 }
 
-static BOOL FQXVideoSelectionEnabled(void) {
-    return FQXHotPrefsSnapshot().selectionTintStyle == FQXSelectionTintStyleVideoBlush;
+static NSInteger FQXDramaButtonSurfaceStyleMode(void) {
+    return FQXHotPrefsSnapshot().dramaButtonSurfaceStyle;
 }
 
 static BOOL FQXDramaButtonUsesVideoBase(void) {
-    return FQXHotPrefsSnapshot().dramaButtonSurfaceStyle == FQXDramaButtonSurfaceVideoBase;
+    return FQXDramaButtonSurfaceStyleMode() == FQXDramaButtonSurfaceVideoBase;
+}
+
+static NSInteger FQXEffectiveDockSelectionTintStyle(void) {
+    FQXHotPrefsCache p = FQXHotPrefsSnapshot();
+    return FQXEffectiveSelectionTintStyle((int)p.selectionTintStyle,
+                                          p.dockMaterialMode == FQXDockMaterialModeRoseMistGlass ? 1 : 0);
+}
+
+static NSInteger FQXEffectiveDramaSelectionTintStyle(void) {
+    FQXHotPrefsCache p = FQXHotPrefsSnapshot();
+    return FQXEffectiveSelectionTintStyle((int)p.selectionTintStyle,
+                                          p.dramaButtonSurfaceStyle == FQXDramaButtonSurfaceRoseMistGlass ? 1 : 0);
 }
 
 static UIColor *FQXVideoBaseFillUIColor(void) {
@@ -389,6 +401,16 @@ static UIColor *FQXVideoBaseFillUIColor(void) {
 
 static UIColor *FQXVideoBaseBorderUIColor(void) {
     FQXRGBAColor c = FQXVideoBaseSurfaceBorderColor();
+    return [UIColor colorWithRed:(CGFloat)c.r green:(CGFloat)c.g blue:(CGFloat)c.b alpha:(CGFloat)c.a];
+}
+
+static UIColor *FQXRoseMistGlassBaseTintUIColor(void) {
+    FQXRGBAColor c = FQXRoseMistGlassBaseTintColor();
+    return [UIColor colorWithRed:(CGFloat)c.r green:(CGFloat)c.g blue:(CGFloat)c.b alpha:(CGFloat)c.a];
+}
+
+static UIColor *FQXRoseMistGlassBaseBorderUIColor(void) {
+    FQXRGBAColor c = FQXRoseMistGlassBaseBorderColor();
     return [UIColor colorWithRed:(CGFloat)c.r green:(CGFloat)c.g blue:(CGFloat)c.b alpha:(CGFloat)c.a];
 }
 
@@ -402,10 +424,17 @@ static UIColor *FQXVideoSelectedPillFallbackUIColor(void) {
     return [UIColor colorWithRed:(CGFloat)c.r green:(CGFloat)c.g blue:(CGFloat)c.b alpha:(CGFloat)c.a];
 }
 
+static UIColor *FQXRoseMistGlassSelectedFallbackUIColor(void) {
+    FQXRGBAColor c = FQXRoseMistGlassSelectedFallbackColor();
+    return [UIColor colorWithRed:(CGFloat)c.r green:(CGFloat)c.g blue:(CGFloat)c.b alpha:(CGFloat)c.a];
+}
+
 // Render the exact calibrated multi-stop diagonal rose-blush-to-pearl gradient pill
 // with top-left organic rose bloom, delicate specular top sheen, and fine capsule rim
-// matching the reference video (media_1795849251859_81880744.mp4).
-static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
+// matching the reference video (media_1795849251859_81880744.mp4 / media_1795857200639_b1fac465.mp4).
+// When translucentGlass == NO -> silky matte 「柔性粉雾」;
+// When translucentGlass == YES -> real translucent 「粉雾玻璃」 layered over live UIGlassEffect refraction.
+static UIImage *FQXVideoSelectedPillImageForSize(CGSize size, BOOL translucentGlass) {
     CGFloat w = ceil(size.width);
     CGFloat h = ceil(size.height);
     if (w < 8.0 || h < 8.0 || w > 600.0 || h > 240.0) return nil;
@@ -413,9 +442,9 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         cache = [[NSCache alloc] init];
-        cache.countLimit = 48;
+        cache.countLimit = 64;
     });
-    NSString *key = [NSString stringWithFormat:@"%.0fx%.0f", w, h];
+    NSString *key = [NSString stringWithFormat:@"%s_%.0fx%.0f", translucentGlass ? "g" : "m", w, h];
     UIImage *cached = [cache objectForKey:key];
     if (cached) return cached;
 
@@ -433,13 +462,18 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
         [capsule addClip];
 
         CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-        // 1. Base 5-stop diagonal rose-blush -> misty rose-pearl -> cool pearl-silver gradient
+        // 1. Exact 5-stop diagonal sakura-rose -> warm rose -> misty rose-pearl -> cool pearl-silver gradient
+        const CGFloat a0 = translucentGlass ? 0.68 : 0.98;
+        const CGFloat a1 = translucentGlass ? 0.58 : 0.98;
+        const CGFloat a2 = translucentGlass ? 0.44 : 0.97;
+        const CGFloat a3 = translucentGlass ? 0.34 : 0.96;
+        const CGFloat a4 = translucentGlass ? 0.30 : 0.96;
         const CGFloat comps[] = {
-            224.0 / 255.0, 166.0 / 255.0, 182.0 / 255.0, 0.98, // #E0A6B6 top-left sakura rose
-            223.0 / 255.0, 182.0 / 255.0, 193.0 / 255.0, 0.98, // #DFB6C1 warm rose blend
-            226.0 / 255.0, 211.0 / 255.0, 216.0 / 255.0, 0.97, // #E2D3D8 misty rose-pearl
-            226.0 / 255.0, 225.0 / 255.0, 228.0 / 255.0, 0.96, // #E2E1E4 cool neutral pearl
-            223.0 / 255.0, 222.0 / 255.0, 226.0 / 255.0, 0.96  // #DFDEE2 soft silver-gray bottom
+            224.0 / 255.0, 166.0 / 255.0, 182.0 / 255.0, a0, // #E0A6B6 top-left sakura rose
+            223.0 / 255.0, 182.0 / 255.0, 193.0 / 255.0, a1, // #DFB6C1 warm rose blend
+            226.0 / 255.0, 211.0 / 255.0, 216.0 / 255.0, a2, // #E2D3D8 misty rose-pearl
+            226.0 / 255.0, 225.0 / 255.0, 228.0 / 255.0, a3, // #E2E1E4 cool neutral pearl
+            223.0 / 255.0, 222.0 / 255.0, 226.0 / 255.0, a4  // #DFDEE2 soft silver-gray bottom
         };
         const CGFloat locs[] = {0.0, 0.26, 0.54, 0.78, 1.0};
         CGGradientRef linGrad = CGGradientCreateWithColorComponents(cs, comps, locs, 5);
@@ -451,10 +485,10 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
             CGGradientRelease(linGrad);
         }
 
-        // 2. Organic top-left rose bloom concentrated along the upper-left curve
+        // 2. Organic top-left sakura rose bloom concentrated along the upper-left curve
         const CGFloat radComps[] = {
-            222.0 / 255.0, 152.0 / 255.0, 174.0 / 255.0, 0.28,
-            222.0 / 255.0, 168.0 / 255.0, 186.0 / 255.0, 0.10,
+            222.0 / 255.0, 152.0 / 255.0, 174.0 / 255.0, translucentGlass ? 0.34 : 0.28,
+            222.0 / 255.0, 168.0 / 255.0, 186.0 / 255.0, translucentGlass ? 0.14 : 0.10,
             224.0 / 255.0, 212.0 / 255.0, 218.0 / 255.0, 0.0
         };
         const CGFloat radLocs[] = {0.0, 0.48, 1.0};
@@ -466,9 +500,11 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
             CGGradientRelease(radGrad);
         }
 
-        // 3. Delicate upper inner specular rim sheen
+        // 3. Upper inner specular glass highlight (plus subtle bottom refraction lift in glass mode)
         const CGFloat sheenComps[] = {
-            1.0, 245.0 / 255.0, 248.0 / 255.0, 0.34,
+            1.0, translucentGlass ? (248.0 / 255.0) : (245.0 / 255.0),
+            translucentGlass ? (251.0 / 255.0) : (248.0 / 255.0),
+            translucentGlass ? 0.46 : 0.34,
             1.0, 245.0 / 255.0, 248.0 / 255.0, 0.0
         };
         const CGFloat sheenLocs[] = {0.0, 1.0};
@@ -476,13 +512,28 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
         if (sheenGrad) {
             CGContextDrawLinearGradient(ctx, sheenGrad,
                                         CGPointMake(w * 0.5, 0.0),
-                                        CGPointMake(w * 0.5, MIN(h * 0.28, 10.0)),
+                                        CGPointMake(w * 0.5, MIN(h * (translucentGlass ? 0.32 : 0.28), 11.0)),
                                         0);
             CGGradientRelease(sheenGrad);
         }
+        if (translucentGlass) {
+            const CGFloat liftComps[] = {
+                1.0, 1.0, 1.0, 0.0,
+                1.0, 250.0 / 255.0, 252.0 / 255.0, 0.18
+            };
+            const CGFloat liftLocs[] = {0.0, 1.0};
+            CGGradientRef liftGrad = CGGradientCreateWithColorComponents(cs, liftComps, liftLocs, 2);
+            if (liftGrad) {
+                CGContextDrawLinearGradient(ctx, liftGrad,
+                                            CGPointMake(w * 0.5, MAX(0.0, h * 0.80)),
+                                            CGPointMake(w * 0.5, h),
+                                            0);
+                CGGradientRelease(liftGrad);
+            }
+        }
         CGContextRestoreGState(ctx);
 
-        // 4. Crisp 0.75pt hairline border transitioning from rose-mauve top-left to cool silver bottom-right
+        // 4. Crisp 0.75pt hairline rim transitioning from rose top-left to cool silver/glass-white bottom-right
         CGContextSaveGState(ctx);
         CGRect strokeRect = CGRectInset(rect, 0.375, 0.375);
         UIBezierPath *strokePath = [UIBezierPath bezierPathWithRoundedRect:strokeRect
@@ -492,8 +543,14 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
         CGContextReplacePathWithStrokedPath(ctx);
         CGContextClip(ctx);
         const CGFloat borderComps[] = {
-            197.0 / 255.0, 156.0 / 255.0, 169.0 / 255.0, 0.82, // #C59CA9 rose-mauve top-left rim
-            199.0 / 255.0, 198.0 / 255.0, 202.0 / 255.0, 0.72  // #C7C6CA silver bottom-right rim
+            translucentGlass ? (216.0 / 255.0) : (197.0 / 255.0),
+            translucentGlass ? (158.0 / 255.0) : (156.0 / 255.0),
+            translucentGlass ? (176.0 / 255.0) : (169.0 / 255.0),
+            translucentGlass ? 0.72 : 0.82,
+            translucentGlass ? 1.0 : (199.0 / 255.0),
+            translucentGlass ? 1.0 : (198.0 / 255.0),
+            translucentGlass ? 1.0 : (202.0 / 255.0),
+            translucentGlass ? 0.46 : 0.72
         };
         const CGFloat borderLocs[] = {0.0, 1.0};
         CGGradientRef borderGrad = CGGradientCreateWithColorComponents(cs, borderComps, borderLocs, 2);
@@ -514,7 +571,9 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
 @interface FQXVideoSelectedPillView : UIImageView {
 @public
     CGSize _renderedSize;
+    BOOL _translucentGlass;
 }
+- (void)setTranslucentGlass:(BOOL)translucentGlass;
 @end
 
 @implementation FQXVideoSelectedPillView
@@ -528,15 +587,24 @@ static UIImage *FQXVideoSelectedPillImageForSize(CGSize size) {
         self.contentMode = UIViewContentModeScaleToFill;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _renderedSize = CGSizeZero;
+        _translucentGlass = NO;
     }
     return self;
+}
+- (void)setTranslucentGlass:(BOOL)translucentGlass {
+    if (_translucentGlass == translucentGlass && self.image) return;
+    _translucentGlass = translucentGlass;
+    _renderedSize = CGSizeZero;
+    self.image = nil;
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
 }
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGSize sz = self.bounds.size;
     if (sz.width < 8.0 || sz.height < 8.0) return;
     if (!self.image || fabs(_renderedSize.width - sz.width) >= 0.5 || fabs(_renderedSize.height - sz.height) >= 0.5) {
-        UIImage *img = FQXVideoSelectedPillImageForSize(sz);
+        UIImage *img = FQXVideoSelectedPillImageForSize(sz, _translucentGlass);
         if (img) {
             self.image = img;
             _renderedSize = sz;
@@ -550,18 +618,19 @@ static const char FQXK_FQXVideoSelectedPillOverlayKey = 0;
 static const char FQXK_FQXPlatterVideoBaseViewKey = 0;
 #define FQXPlatterVideoBaseViewKey ((const void *)&FQXK_FQXPlatterVideoBaseViewKey)
 
-static void FQXSyncVideoSelectedPillOverlayInView(UIView *host, BOOL enabled) {
+static void FQXSyncVideoSelectedPillOverlayInView(UIView *host, NSInteger selectionTintStyle) {
     if (![host isKindOfClass:UIView.class]) return;
     UIView *container = [host isKindOfClass:UIVisualEffectView.class]
         ? ((UIVisualEffectView *)host).contentView : host;
     FQXVideoSelectedPillView *overlay = objc_getAssociatedObject(host, FQXVideoSelectedPillOverlayKey);
-    if (!enabled) {
+    if (selectionTintStyle == FQXSelectionTintStyleDefault) {
         if (overlay) {
             [overlay removeFromSuperview];
             objc_setAssociatedObject(host, FQXVideoSelectedPillOverlayKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         return;
     }
+    BOOL translucentGlass = (selectionTintStyle == FQXSelectionTintStyleRoseMistGlass);
     if (!overlay) {
         overlay = [[FQXVideoSelectedPillView alloc] initWithFrame:container.bounds];
         objc_setAssociatedObject(overlay, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -573,16 +642,15 @@ static void FQXSyncVideoSelectedPillOverlayInView(UIView *host, BOOL enabled) {
     if (!CGRectEqualToRect(overlay.frame, container.bounds)) {
         overlay.frame = container.bounds;
     }
-    [overlay setNeedsLayout];
-    [overlay layoutIfNeeded];
+    [overlay setTranslucentGlass:translucentGlass];
 }
 
-static void FQXSyncNativeTabSelectionVideoPill(UIView *root, BOOL enabled, NSInteger depth) {
+static void FQXSyncNativeTabSelectionVideoPill(UIView *root, NSInteger selectionTintStyle, NSInteger depth) {
     if (!root || depth > 6) return;
     NSString *clsName = NSStringFromClass(root.class) ?: @"";
     if ([clsName containsString:@"TabSelectionView"] || [clsName containsString:@"SelectionPlatter"]) {
-        FQXSyncVideoSelectedPillOverlayInView(root, enabled);
-        if (enabled) {
+        FQXSyncVideoSelectedPillOverlayInView(root, selectionTintStyle);
+        if (selectionTintStyle != FQXSelectionTintStyleDefault) {
             FQXVideoSelectedPillView *overlay = objc_getAssociatedObject(root, FQXVideoSelectedPillOverlayKey);
             UIView *container = [root isKindOfClass:UIVisualEffectView.class]
                 ? ((UIVisualEffectView *)root).contentView : root;
@@ -593,14 +661,15 @@ static void FQXSyncNativeTabSelectionVideoPill(UIView *root, BOOL enabled, NSInt
         return;
     }
     for (UIView *sub in root.subviews) {
-        FQXSyncNativeTabSelectionVideoPill(sub, enabled, depth + 1);
+        FQXSyncNativeTabSelectionVideoPill(sub, selectionTintStyle, depth + 1);
     }
 }
 
-static void FQXSyncPlatterVideoBaseBacking(UIView *platter, BOOL enabled) {
+// surfaceStyle: 0 = none, 1 = matte VideoBase (#EEEDF0), 2 = translucent RoseMistGlass rim only
+static void FQXSyncPlatterSurfaceBacking(UIView *platter, NSInteger surfaceStyle) {
     if (!platter) return;
     UIView *backing = objc_getAssociatedObject(platter, FQXPlatterVideoBaseViewKey);
-    if (!enabled) {
+    if (surfaceStyle == 0) {
         if (backing) {
             [backing removeFromSuperview];
             objc_setAssociatedObject(platter, FQXPlatterVideoBaseViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -615,13 +684,21 @@ static void FQXSyncPlatterVideoBaseBacking(UIView *platter, BOOL enabled) {
         backing.userInteractionEnabled = NO;
         backing.accessibilityElementsHidden = YES;
         backing.isAccessibilityElement = NO;
-        backing.backgroundColor = FQXVideoBaseFillUIColor();
         backing.layer.cornerCurve = kCACornerCurveContinuous;
-        backing.layer.borderWidth = 0.5;
-        backing.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
         backing.clipsToBounds = YES;
         objc_setAssociatedObject(backing, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(platter, FQXPlatterVideoBaseViewKey, backing, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (surfaceStyle == 1) {
+        backing.backgroundColor = FQXVideoBaseFillUIColor();
+        backing.layer.borderWidth = 0.5;
+        backing.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
+    } else {
+        // RoseMistGlass keeps UIGlassEffect completely transparent & refractive underneath;
+        // add only a delicate 0.5pt translucent rose-pearl hairline rim.
+        backing.backgroundColor = UIColor.clearColor;
+        backing.layer.borderWidth = 0.5;
+        backing.layer.borderColor = FQXRoseMistGlassBaseBorderUIColor().CGColor;
     }
     if (backing.superview != container) {
         [container insertSubview:backing atIndex:0];
@@ -1500,6 +1577,7 @@ typedef NS_ENUM(NSInteger, FQXDockMaterialMode) {
     FQXDockMaterialFrostedGlass = 2,  // 模糊玻璃（比 beta5 更模糊）
     FQXDockMaterialIOS18Gaussian = 3, // 高斯模糊（iOS 18 高斯模糊）
     FQXDockMaterialVideoBase = 4,     // 视频同款底色（非玻璃、非模糊）
+    FQXDockMaterialRoseMistGlass = 5, // 粉雾玻璃（带透明粉雾底色的液态玻璃）
 };
 
 static FQXDockMaterialMode FQXCurrentDockMaterialMode(void) {
@@ -1513,8 +1591,13 @@ static UIColor *FQXDockRestingSelectionColor(BOOL dark) {
 }
 
 static UIColor *FQXDockSelectionColorForMode(FQXDockMaterialMode mode, BOOL dark) {
-    if (FQXVideoSelectionEnabled()) {
+    NSInteger effSel = FQXEffectiveSelectionTintStyle((int)FQXHotPrefsSnapshot().selectionTintStyle,
+                                                      mode == FQXDockMaterialRoseMistGlass ? 1 : 0);
+    if (effSel == FQXSelectionTintStyleSoftRoseMist) {
         return FQXVideoSelectedPillFallbackUIColor();
+    }
+    if (effSel == FQXSelectionTintStyleRoseMistGlass) {
+        return FQXRoseMistGlassSelectedFallbackUIColor();
     }
     if (mode == FQXDockMaterialVideoBase) {
         return [UIColor colorWithWhite:0.0 alpha:0.085];
@@ -1935,6 +2018,9 @@ static void FQXApplyBackdropBlur(UIView *owner, UIView *container, UIView *ancho
 
 static UIVisualEffect *FQXMakeDockEffectForMode(FQXDockMaterialMode mode, BOOL isDark, BOOL interactive, BOOL reduceTrans) {
     if (mode == FQXDockMaterialVideoBase) return nil;
+    if (mode == FQXDockMaterialRoseMistGlass) {
+        return FQXMakeGlassEffect(reduceTrans ? 0 : 1, interactive, FQXRoseMistGlassBaseTintUIColor());
+    }
     if (reduceTrans) return FQXMakeGlassEffect(0, interactive, nil);
     switch (mode) {
         case FQXDockMaterialLegacyGlass: {
@@ -2045,12 +2131,15 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     BOOL isVideoBase = (mode == FQXDockMaterialVideoBase);
+    BOOL isRoseMistGlass = (mode == FQXDockMaterialRoseMistGlass);
+    BOOL lightBase = isVideoBase || isRoseMistGlass;
+    NSInteger surfaceStyle = isVideoBase ? 1 : (isRoseMistGlass ? 2 : 0);
     BOOL darkTint = FQXGlassDarkTintEnabled();
-    UIUserInterfaceStyle dockStyle = isVideoBase ? UIUserInterfaceStyleLight : proxy.overrideUserInterfaceStyle;
-    BOOL darkDock = !isVideoBase && (dockStyle == UIUserInterfaceStyleDark ||
+    UIUserInterfaceStyle dockStyle = lightBase ? UIUserInterfaceStyleLight : proxy.overrideUserInterfaceStyle;
+    BOOL darkDock = !lightBase && (dockStyle == UIUserInterfaceStyleDark ||
         (dockStyle == UIUserInterfaceStyleUnspecified && proxy.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark));
     NSNumber *appliedMode = objc_getAssociatedObject(proxy, FQXUnifiedClearDockKey);
-    NSInteger desiredMode = reduceTrans ? 99 : ((darkTint ? 100 : 0) + (darkDock ? 20 : 10) + (NSInteger)mode);
+    NSInteger desiredMode = reduceTrans ? (90 + (NSInteger)mode) : ((darkTint ? 100 : 0) + (darkDock ? 20 : 10) + (NSInteger)mode);
     BOOL effectLost = isVideoBase
         ? (proxy.effect != nil)
         : (!proxy.effect || [proxy.effect isKindOfClass:UIBlurEffect.class]);
@@ -2066,14 +2155,14 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
                     @"darkTint": @(darkTint),
                     @"darkDock": @(darkDock),
                     @"overrideStyle": @((NSInteger)proxy.overrideUserInterfaceStyle),
-                    @"hasTint": @((mode == FQXDockMaterialNewGlass && darkDock && darkTint && !reduceTrans) ? YES : NO),
+                    @"hasTint": @(((mode == FQXDockMaterialNewGlass && darkDock && darkTint && !reduceTrans) || isRoseMistGlass) ? YES : NO),
                     @"reduceTransparency": @(reduceTrans),
                     @"owner": FQXDockMaterialOwnerName(FQXGetDockMaterialOwner(proxy)),
                 }, NO);
             }
         }
     }
-    FQXSyncPlatterVideoBaseBacking(proxy, isVideoBase);
+    FQXSyncPlatterSurfaceBacking(proxy, surfaceStyle);
     if (proxy.backgroundColor && ![proxy.backgroundColor isEqual:UIColor.clearColor]) {
         proxy.backgroundColor = UIColor.clearColor;
     }
@@ -2105,10 +2194,12 @@ static void FQXApplyDockProxyMaterial(UIView *bar, UIVisualEffectView *proxy, UI
             lens.overrideUserInterfaceStyle = dockStyle;
         }
         if (lens.clipsToBounds) lens.clipsToBounds = NO;
-        BOOL videoSel = FQXVideoSelectionEnabled();
-        FQXSyncVideoSelectedPillOverlayInView(lens, videoSel);
+        NSInteger effSel = FQXEffectiveDockSelectionTintStyle();
+        FQXSyncVideoSelectedPillOverlayInView(lens, effSel);
         if (!lens.effect) {
-            UIColor *airyFill = videoSel ? UIColor.clearColor : FQXDockSelectionColorForMode(mode, darkDock);
+            UIColor *airyFill = (effSel != FQXSelectionTintStyleDefault)
+                ? UIColor.clearColor
+                : FQXDockSelectionColorForMode(mode, darkDock);
             if (![lens.contentView.backgroundColor isEqual:airyFill]) {
                 lens.contentView.backgroundColor = airyFill;
             }
@@ -2294,12 +2385,14 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     id appliedEffect = objc_getAssociatedObject(platter, FQXPlatterAppliedEffectKey);
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL isVideoBase = (mode == FQXDockMaterialVideoBase);
+    BOOL isRoseMistGlass = (mode == FQXDockMaterialRoseMistGlass);
+    NSInteger surfaceStyle = isVideoBase ? 1 : (isRoseMistGlass ? 2 : 0);
     if ([platter isKindOfClass:UIVisualEffectView.class]) {
         UIVisualEffectView *surface = (UIVisualEffectView *)platter;
         UIVisualEffect *current = surface.effect;
         id original = objc_getAssociatedObject(surface, FQXPlatterOriginalGlassKey);
-        if (reduce && !isVideoBase) {
-            FQXSyncPlatterVideoBaseBacking(surface, NO);
+        if (reduce && !isVideoBase && !isRoseMistGlass) {
+            FQXSyncPlatterSurfaceBacking(surface, 0);
             if (original) surface.effect = original == NSNull.null ? nil : original;
             objc_setAssociatedObject(surface, FQXPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(surface, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2312,9 +2405,9 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             objc_setAssociatedObject(surface, FQXPlatterOriginalGlassKey, current ?: NSNull.null,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        NSInteger desired = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
+        NSInteger desired = (reduce ? 200 : 0) + (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
         if (!applied || applied.integerValue != desired || hostReset) {
-            UIVisualEffect *newEffect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, YES, NO);
+            UIVisualEffect *newEffect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, isDark, YES, reduce);
             surface.effect = newEffect;
             surface.backgroundColor = UIColor.clearColor;
             surface.contentView.backgroundColor = UIColor.clearColor;
@@ -2327,17 +2420,17 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
                     @"isDark": @(isDark),
                     @"darkTint": @(FQXGlassDarkTintEnabled()),
                     @"platterClass": NSStringFromClass(surface.class) ?: @"",
-                    @"hasTint": @((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) ? YES : NO),
+                    @"hasTint": @(((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) || isRoseMistGlass) ? YES : NO),
                     @"interactive": @YES,
                     @"hostReset": @(hostReset),
                 }, NO);
             }
         }
-        FQXSyncPlatterVideoBaseBacking(surface, isVideoBase);
+        FQXSyncPlatterSurfaceBacking(surface, surfaceStyle);
         return;
     }
-    if (reduce && !isVideoBase) {
-        FQXSyncPlatterVideoBaseBacking(platter, NO);
+    if (reduce && !isVideoBase && !isRoseMistGlass) {
+        FQXSyncPlatterSurfaceBacking(platter, 0);
         if (!applied) return;
         id orig = objc_getAssociatedObject(platter, FQXPlatterOriginalGlassKey);
         FQXSetPlatterGlassEffect(platter, orig == NSNull.null ? nil : orig);
@@ -2350,15 +2443,15 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
     BOOL supported = NO;
     id current = FQXGetPlatterGlassEffect(platter, &supported);
     if (!supported) {
-        FQXSyncPlatterVideoBaseBacking(platter, isVideoBase);
+        FQXSyncPlatterSurfaceBacking(platter, surfaceStyle);
         return;
     }
 
-    NSInteger desiredStamp = (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
+    NSInteger desiredStamp = (reduce ? 200 : 0) + (FQXGlassDarkTintEnabled() ? 100 : 0) + (isDark ? 10 : 0) + (NSInteger)mode + 1;
     // Gaussian still uses the private platter's native interactive glass for selection; VideoBase clears glass.
     BOOL hostReset = (applied != nil) && FQXGlassEffectNeedsStyleReapply(current, appliedEffect, isVideoBase);
     if (applied && applied.integerValue == desiredStamp && !hostReset) {
-        FQXSyncPlatterVideoBaseBacking(platter, isVideoBase);
+        FQXSyncPlatterSurfaceBacking(platter, surfaceStyle);
         return;
     }
 
@@ -2369,13 +2462,13 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
 
     if (isVideoBase) {
         FQXSetPlatterGlassEffect(platter, nil);
-        FQXSyncPlatterVideoBaseBacking(platter, YES);
+        FQXSyncPlatterSurfaceBacking(platter, 1);
         objc_setAssociatedObject(platter, FQXPlatterAppliedStyleKey, @(desiredStamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(platter, FQXPlatterAppliedEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [platter setNeedsLayout];
         return;
     }
-    FQXSyncPlatterVideoBaseBacking(platter, NO);
+    FQXSyncPlatterSurfaceBacking(platter, surfaceStyle);
 
     BOOL interactive = YES;
     SEL isInterSel = sel_registerName("isInteractive");
@@ -2385,7 +2478,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             interactive = ((BOOL (*)(id, SEL))objc_msgSend)(current, isInterSel);
         }
     }
-    UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, isDark, interactive, NO);
+    UIVisualEffect *effect = FQXMakeDockEffectForMode(mode, isDark, interactive, reduce);
     if (!effect) return;
     if (!FQXSetPlatterGlassEffect(platter, effect)) return;
     id persisted = FQXGetPlatterGlassEffect(platter, NULL) ?: effect;
@@ -2398,7 +2491,7 @@ static void FQXApplyDockPlatterGlass(UIView *platter, BOOL isDark, FQXDockMateri
             @"isDark": @(isDark),
             @"darkTint": @(FQXGlassDarkTintEnabled()),
             @"platterClass": NSStringFromClass(platter.class) ?: @"",
-            @"hasTint": @((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) ? YES : NO),
+            @"hasTint": @(((mode == FQXDockMaterialNewGlass && isDark && FQXGlassDarkTintEnabled()) || isRoseMistGlass) ? YES : NO),
             @"interactive": @(interactive),
             @"hostReset": @(hostReset),
         }, NO);
@@ -2415,9 +2508,9 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
     }
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
-    BOOL videoSel = FQXVideoSelectionEnabled();
+    NSInteger effSel = FQXEffectiveDockSelectionTintStyle();
     static char originalAppearanceKey, selectionStyleKey;
-    NSInteger desiredSelectionStamp = (videoSel ? 100 : 0) + ((mode == FQXDockMaterialNewGlass || reduce) ? 0 : (NSInteger)mode);
+    NSInteger desiredSelectionStamp = (effSel * 100) + ((mode == FQXDockMaterialNewGlass || reduce) ? 0 : (NSInteger)mode);
     NSNumber *appliedSelection = objc_getAssociatedObject(tabBar, &selectionStyleKey);
     if (!appliedSelection && desiredSelectionStamp == 0) {
         // Leave factory floating UITabBar standardAppearance untouched in NewGlass mode
@@ -2449,6 +2542,7 @@ static void FQXApplyNativeDockMaterial(UITabBar *tabBar, UIView *platter, BOOL d
         platter.backgroundColor = UIColor.clearColor;
     }
     FQXApplyDockPlatterGlass(platter, dark, mode);
+    FQXSyncNativeTabSelectionVideoPill(tabBar, effSel, 0);
     static Class platterCls = Nil;
     static Class itemPlatterCls = Nil;
     static dispatch_once_t pOnce;
@@ -3633,14 +3727,14 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     }
 
     BOOL isDark = [self isDarkDock];
-    BOOL videoBase = (FQXCurrentDockMaterialMode() == FQXDockMaterialVideoBase);
-    BOOL videoSel = FQXVideoSelectionEnabled();
+    BOOL lightBase = (FQXDockMaterialUsesVideoLightBase((int)FQXCurrentDockMaterialMode()) != 0);
+    BOOL roseSel = (FQXEffectiveDockSelectionTintStyle() != FQXSelectionTintStyleDefault);
     CGFloat white = isDark ? 1.0 : 0.0;
-    UIColor *selectedInk = (videoBase || videoSel)
+    UIColor *selectedInk = (lightBase || roseSel)
         ? FQXVideoInkUIColor(1.0)
         : [UIColor colorWithWhite:white alpha:1.0];
-    UIColor *normalInk = videoBase
-        ? FQXVideoInkUIColor(0.76)
+    UIColor *normalInk = lightBase
+        ? FQXVideoInkUIColor(0.80)
         : [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
     NSInteger displayMode = [self dockDisplayMode];
     CGFloat ptSize = [self dockIconPointSize];
@@ -4232,7 +4326,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 }
 
 - (UIUserInterfaceStyle)desiredDockGlassStyle {
-    if (FQXCurrentDockMaterialMode() == FQXDockMaterialVideoBase) {
+    if (FQXDockMaterialUsesVideoLightBase((int)FQXCurrentDockMaterialMode())) {
         return UIUserInterfaceStyleLight;
     }
     // Match the page's optical backdrop polarity (Dark on full-screen video/night, Light on
@@ -4557,15 +4651,17 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
 - (void)applyDockItemImagesToItems:(NSArray<UITabBarItem *> *)items {
     if (items.count == 0) return;
     BOOL isDark = [self isDarkDock];
-    BOOL videoBase = (FQXCurrentDockMaterialMode() == FQXDockMaterialVideoBase);
-    BOOL videoSel = FQXVideoSelectionEnabled();
-    self->_dockAppliedInkState = (isDark ? 1 : 0) | (videoBase ? 2 : 0) | (videoSel ? 4 : 0);
+    FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
+    BOOL lightBase = (FQXDockMaterialUsesVideoLightBase((int)mode) != 0);
+    NSInteger effSel = FQXEffectiveDockSelectionTintStyle();
+    BOOL roseSel = (effSel != FQXSelectionTintStyleDefault);
+    self->_dockAppliedInkState = (isDark ? 1 : 0) | ((NSInteger)mode << 1) | (effSel << 5);
     CGFloat white = isDark ? 1.0 : 0.0;
-    UIColor *selectedInk = (videoBase || videoSel)
+    UIColor *selectedInk = (lightBase || roseSel)
         ? FQXVideoInkUIColor(1.0)
         : [UIColor colorWithWhite:white alpha:1.0];
-    UIColor *normalInk = videoBase
-        ? FQXVideoInkUIColor(0.76)
+    UIColor *normalInk = lightBase
+        ? FQXVideoInkUIColor(0.80)
         : [UIColor colorWithWhite:white alpha:(isDark ? 0.68 : 0.86)];
     NSInteger displayMode = [self dockDisplayMode];
     BOOL textOnly = displayMode == 2;
@@ -4631,16 +4727,19 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
     FQXDockMaterialMode mode = FQXCurrentDockMaterialMode();
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL isVideoBase = (mode == FQXDockMaterialVideoBase);
-    BOOL isVideoSel = FQXVideoSelectionEnabled();
+    BOOL isRoseMistGlass = (mode == FQXDockMaterialRoseMistGlass);
+    BOOL lightBase = isVideoBase || isRoseMistGlass;
+    NSInteger surfaceStyle = isVideoBase ? 1 : (isRoseMistGlass ? 2 : 0);
+    NSInteger effSel = FQXEffectiveDockSelectionTintStyle();
     BOOL wantsClear = (mode == FQXDockMaterialIOS18Gaussian || isVideoBase) && !reduce;
     UIVisualEffect *effect = wantsClear ? nil : FQXMakeDockEffectForMode(mode, glassDark, YES, reduce);
-    NSInteger stamp = reduce ? 999 : ((isVideoSel ? 2000 : 0) + (FQXGlassDarkTintEnabled() ? 1000 : 0) + (glassDark ? 100 : 0) + (NSInteger)mode + 1);
+    NSInteger stamp = (reduce ? 8000 : 0) + (effSel * 2000) + (FQXGlassDarkTintEnabled() ? 1000 : 0) + (glassDark ? 100 : 0) + (NSInteger)mode + 1;
     UIColor *selColor = FQXDockSelectionColorForMode(mode, [self isDarkDock]);
-    [self->_detachedButton applyVideoSurfaceBase:isVideoBase videoSelectedPill:isVideoSel];
+    [self->_detachedButton applySurfaceStyle:surfaceStyle selectionTintStyle:effSel];
     [self->_detachedButton applyGlassEffect:effect
-                           interfaceStyle:isVideoBase ? UIUserInterfaceStyleLight : self->_dockAppliedStyle
+                           interfaceStyle:lightBase ? UIUserInterfaceStyleLight : self->_dockAppliedStyle
                            selectionColor:selColor
-                       reduceTransparency:(reduce && !isVideoBase)
+                       reduceTransparency:(reduce && !isVideoBase && !isRoseMistGlass)
                                styleStamp:stamp];
     FQXApplyDockBackdropBlur(self->_detachedButton.glassView,
                              self->_detachedButton.glassView.contentView,
@@ -4708,7 +4807,7 @@ static void FQXSetViewTransformAndCenter(UIView *view, CGAffineTransform transfo
         }
     }
     FQXSetNativeTabSelectionLensVisible(tabBar, YES, 0);
-    FQXSyncNativeTabSelectionVideoPill(tabBar, FQXVideoSelectionEnabled(), 0);
+    FQXSyncNativeTabSelectionVideoPill(tabBar, FQXEffectiveDockSelectionTintStyle(), 0);
 }
 
 - (BOOL)syncDockItems {
@@ -5858,15 +5957,15 @@ static const char FQXK_DramaTabSavedSelectedColorKey = 0;
 
 static void FQXApplyDramaTabVideoInk(UIView *tabs) {
     if (!tabs) return;
-    BOOL videoBase = FQXDramaButtonUsesVideoBase();
-    BOOL videoSel = FQXVideoSelectionEnabled();
-    UIColor *darkNormal = FQXVideoInkUIColor(0.76);
+    BOOL lightBase = (FQXDramaButtonSurfaceStyleMode() != FQXDramaButtonSurfaceDefaultGlass);
+    BOOL roseSel = (FQXEffectiveDramaSelectionTintStyle() != FQXSelectionTintStyleDefault);
+    UIColor *darkNormal = FQXVideoInkUIColor(0.80);
     UIColor *darkSelected = FQXVideoInkUIColor(1.0);
 
     // Save/update tab-level colors
     UIColor *savedNorm = objc_getAssociatedObject(tabs, DramaTabSavedNormalColorKey);
     UIColor *savedSel = objc_getAssociatedObject(tabs, DramaTabSavedSelectedColorKey);
-    if (videoBase || videoSel) {
+    if (lightBase || roseSel) {
         if (!savedNorm) {
             UIColor *curN = FQXObjGet(tabs, "titleColor");
             if ([curN isKindOfClass:UIColor.class]) {
@@ -5881,7 +5980,7 @@ static void FQXApplyDramaTabVideoInk(UIView *tabs) {
                 savedSel = curS;
             }
         }
-        if (videoBase) {
+        if (lightBase) {
             FQXSafeSetObjProp(tabs, "titleColor", "setTitleColor:", darkNormal);
         } else if (savedNorm) {
             FQXSafeSetObjProp(tabs, "titleColor", "setTitleColor:", savedNorm);
@@ -5905,7 +6004,7 @@ static void FQXApplyDramaTabVideoInk(UIView *tabs) {
             BOOL isSel = FQXBoolGet(model, "isSelected", NO);
             UIColor *mSavedNorm = objc_getAssociatedObject(model, DramaTabSavedNormalColorKey);
             UIColor *mSavedSel = objc_getAssociatedObject(model, DramaTabSavedSelectedColorKey);
-            if (videoBase || videoSel) {
+            if (lightBase || roseSel) {
                 if (!mSavedNorm) {
                     UIColor *cn = FQXObjGet(model, "titleNormalColor");
                     if ([cn isKindOfClass:UIColor.class]) {
@@ -5920,7 +6019,7 @@ static void FQXApplyDramaTabVideoInk(UIView *tabs) {
                         mSavedSel = cs;
                     }
                 }
-                UIColor *effNorm = videoBase ? darkNormal : (mSavedNorm ?: FQXObjGet(model, "titleNormalColor"));
+                UIColor *effNorm = lightBase ? darkNormal : (mSavedNorm ?: FQXObjGet(model, "titleNormalColor"));
                 UIColor *effSel = darkSelected;
                 if (effNorm) FQXSafeSetObjProp(model, "titleNormalColor", "setTitleNormalColor:", effNorm);
                 FQXSafeSetObjProp(model, "titleSelectedColor", "setTitleSelectedColor:", effSel);
@@ -5954,7 +6053,7 @@ static void FQXApplyDramaTabVideoInk(UIView *tabs) {
             for (UILabel *l in @[lbl ?: NSNull.null, maskLbl ?: NSNull.null]) {
                 if (![l isKindOfClass:UILabel.class]) continue;
                 UIColor *lSaved = objc_getAssociatedObject(l, DramaTabSavedNormalColorKey);
-                if (videoBase || (videoSel && isSel)) {
+                if (lightBase || (roseSel && isSel)) {
                     if (!lSaved && l.textColor) {
                         objc_setAssociatedObject(l, DramaTabSavedNormalColorKey, l.textColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     }
@@ -6499,8 +6598,13 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
 
 - (void)applyMaterialToOuter:(UIVisualEffectView *)outer isDark:(BOOL)isDark {
     if (!outer || !self->_pillGlass) return;
-    BOOL videoBase = FQXDramaButtonUsesVideoBase();
-    BOOL videoSel = FQXVideoSelectionEnabled();
+    NSInteger surfMode = FQXDramaButtonSurfaceStyleMode();
+    BOOL videoBase = (surfMode == FQXDramaButtonSurfaceVideoBase);
+    BOOL roseMistGlass = (surfMode == FQXDramaButtonSurfaceRoseMistGlass);
+    BOOL lightBase = videoBase || roseMistGlass;
+    NSInteger effSel = FQXEffectiveDramaSelectionTintStyle();
+    BOOL softRoseSel = (effSel == FQXSelectionTintStyleSoftRoseMist);
+    BOOL glassRoseSel = (effSel == FQXSelectionTintStyleRoseMistGlass);
     BOOL darkTint = FQXGlassDarkTintEnabled();
     BOOL blurDark = darkTint ? isDark : FQXAppIsInNightMode();
     if (videoBase) {
@@ -6509,7 +6613,7 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
         FQXApplyBackdropBlur(outer, outer.contentView, nil, outer.bounds, -1, blurDark, DramaHeaderBlurPrefKey);
     }
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
-    UIUserInterfaceStyle uiStyle = videoBase ? UIUserInterfaceStyleLight : (isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
+    UIUserInterfaceStyle uiStyle = lightBase ? UIUserInterfaceStyleLight : (isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
     if (outer.overrideUserInterfaceStyle != uiStyle) {
         outer.overrideUserInterfaceStyle = uiStyle;
     }
@@ -6523,18 +6627,19 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
         outer.contentView.backgroundColor = UIColor.clearColor;
     }
 
-    BOOL pillInteractiveLens = !videoSel && (darkTint || reduce || self->_paging || (self->_mode != FQXTopCapsuleTouchIdle));
+    BOOL pillInteractiveLens = glassRoseSel || (!softRoseSel && (darkTint || reduce || self->_paging || (self->_mode != FQXTopCapsuleTouchIdle)));
     NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
     NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) |
-                      (pillInteractiveLens ? 16 : 0) | (videoBase ? (1 << 13) : 0) |
-                      (videoSel ? (1 << 14) : 0) | (scalePct << 5);
+                      (pillInteractiveLens ? 16 : 0) | ((surfMode & 3) << 13) |
+                      ((effSel & 3) << 15) | (scalePct << 5);
     NSNumber *applied = objc_getAssociatedObject(outer, FQXDramaTopGlassStampKey);
     BOOL outerLost = videoBase
         ? (outer.effect != nil)
         : (!outer.effect || [outer.effect isKindOfClass:UIBlurEffect.class]);
-    if (applied && applied.integerValue == stamp && !outerLost) {
-        FQXSyncPlatterVideoBaseBacking(outer, videoBase);
-        FQXSyncVideoSelectedPillOverlayInView(self->_pillGlass, videoSel);
+    BOOL pillLost = glassRoseSel && (!self->_pillGlass.effect || [self->_pillGlass.effect isKindOfClass:UIBlurEffect.class]);
+    if (applied && applied.integerValue == stamp && !outerLost && !pillLost) {
+        FQXSyncPlatterSurfaceBacking(outer, surfMode);
+        FQXSyncVideoSelectedPillOverlayInView(self->_pillGlass, effSel);
         if (!pillInteractiveLens) [self syncRestingPillCorners];
         FQXApplyDramaTabVideoInk(self->_tabsView);
         return;
@@ -6542,12 +6647,18 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
     objc_setAssociatedObject(outer, FQXDramaTopGlassStampKey, @(stamp), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     NSInteger glassStyle = reduce ? 0 : 1;
-    UIColor *outerTint = (!reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIColor *outerTint = roseMistGlass
+        ? FQXRoseMistGlassBaseTintUIColor()
+        : ((!reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil);
     UIVisualEffect *outerEffect = videoBase ? nil : FQXMakeGlassEffect(glassStyle, NO, outerTint);
     UIVisualEffect *pillEffect = nil;
     UIColor *pillContentFill = UIColor.clearColor;
-    if (videoSel) {
+    if (softRoseSel) {
         pillEffect = nil;
+        pillContentFill = UIColor.clearColor;
+    } else if (glassRoseSel) {
+        // Real interactive iOS 26 Liquid Glass lens underneath our translucent 5-stop rose-mist gradient.
+        pillEffect = FQXMakeGlassEffect(glassStyle, YES, nil);
         pillContentFill = UIColor.clearColor;
     } else if (pillInteractiveLens) {
         UIColor *pillTint = nil;
@@ -6568,12 +6679,12 @@ static void FQXSelectDramaTabIndex(id feedVC, NSInteger targetIndex);
     void (^changes)(void) = ^{
         outer.overrideUserInterfaceStyle = uiStyle;
         outer.effect = outerEffect;
-        FQXSyncPlatterVideoBaseBacking(outer, videoBase);
+        FQXSyncPlatterSurfaceBacking(outer, surfMode);
         self->_pillGlass.overrideUserInterfaceStyle = uiStyle;
         self->_pillGlass.effect = pillEffect;
         self->_pillGlass.backgroundColor = UIColor.clearColor;
         self->_pillGlass.contentView.backgroundColor = pillContentFill;
-        FQXSyncVideoSelectedPillOverlayInView(self->_pillGlass, videoSel);
+        FQXSyncVideoSelectedPillOverlayInView(self->_pillGlass, effSel);
         if (!pillInteractiveLens) {
             [self syncRestingPillCorners];
         }
@@ -7307,10 +7418,13 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
                                           NSString *darkSource,
                                           CGRect outerFrameInHeader) {
     if (!searchBtn) return;
-    BOOL videoBase = FQXDramaButtonUsesVideoBase();
+    NSInteger surfMode = FQXDramaButtonSurfaceStyleMode();
+    BOOL videoBase = (surfMode == FQXDramaButtonSurfaceVideoBase);
+    BOOL roseMistGlass = (surfMode == FQXDramaButtonSurfaceRoseMistGlass);
+    BOOL lightBase = videoBase || roseMistGlass;
     BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL darkTint = FQXGlassDarkTintEnabled();
-    UIUserInterfaceStyle uiStyle = videoBase ? UIUserInterfaceStyleLight : (isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
+    UIUserInterfaceStyle uiStyle = lightBase ? UIUserInterfaceStyleLight : (isDark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight);
     if (searchBtn.overrideUserInterfaceStyle != uiStyle) {
         searchBtn.overrideUserInterfaceStyle = uiStyle;
     }
@@ -7329,14 +7443,14 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
     }
 
     NSInteger scalePct = FQXDramaHeaderButtonScalePercent();
-    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | (videoBase ? 16 : 0) | (scalePct << 5);
+    NSInteger stamp = (isDark ? 2 : 1) | (reduce ? 4 : 0) | (darkTint ? 8 : 0) | ((surfMode & 3) << 12) | (scalePct << 5);
     NSNumber *applied = objc_getAssociatedObject(searchBtn, FQXSearchBtnGlassStampKey);
     BOOL effectMissing = videoBase
         ? (circle.effect != nil)
         : (!circle.effect || [circle.effect isKindOfClass:UIBlurEffect.class]);
     BOOL configHasBgGlass = (cur && cur.background.visualEffect != nil);
     if (applied && applied.integerValue == stamp && !effectMissing && !configHasBgGlass) {
-        FQXSyncPlatterVideoBaseBacking(circle, videoBase);
+        FQXSyncPlatterSurfaceBacking(circle, surfMode);
         if (videoBase) FQXClearDockBackdropBlur(searchBtn);
         return;
     }
@@ -7348,7 +7462,7 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
             objc_setAssociatedObject(searchBtn, FQXSearchBtnOrigImageKey, origImg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         UIImage *iconImg = origImg ?: cur.image;
-        if (scalePct != 100 || videoBase) {
+        if (scalePct != 100 || lightBase) {
             CGFloat scale = (CGFloat)scalePct / 100.0;
             CGFloat symPt = round(MAX(14.0, MIN(29.0, 23.0 * scale)) * 2.0) / 2.0;
             UIImageSymbolConfiguration *symCfg =
@@ -7357,7 +7471,7 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
                                                                  scale:UIImageSymbolScaleMedium];
             UIImage *sym = [UIImage systemImageNamed:@"magnifyingglass" withConfiguration:symCfg];
             if (sym) {
-                UIColor *iconTint = videoBase
+                UIColor *iconTint = lightBase
                     ? FQXVideoInkUIColor(1.0)
                     : (isDark ? UIColor.whiteColor : [UIColor colorWithWhite:0.12 alpha:0.92]);
                 iconImg = [sym imageWithTintColor:iconTint renderingMode:UIImageRenderingModeAlwaysOriginal];
@@ -7371,13 +7485,15 @@ static void FQXSyncDramaSearchButtonGlass(UIButton *searchBtn,
         cfg.baseBackgroundColor = UIColor.clearColor;
         searchBtn.configuration = cfg;
     }
-    UIColor *tint = (!videoBase && !reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil;
+    UIColor *tint = roseMistGlass
+        ? FQXRoseMistGlassBaseTintUIColor()
+        : ((!videoBase && !reduce && darkTint && isDark) ? [UIColor colorWithWhite:0.0 alpha:0.30] : nil);
     UIVisualEffect *glassEffect = videoBase ? nil : FQXMakeGlassEffect(reduce ? 0 : 1, YES, tint);
     circle.effect = glassEffect;
     circle.backgroundColor = UIColor.clearColor;
     circle.contentView.backgroundColor = UIColor.clearColor;
     FQXApplyCornerConfiguration(circle, 0.0, NO);
-    FQXSyncPlatterVideoBaseBacking(circle, videoBase);
+    FQXSyncPlatterSurfaceBacking(circle, surfMode);
     if (videoBase) FQXClearDockBackdropBlur(searchBtn);
     if (circle.superview != searchBtn) {
         [searchBtn insertSubview:circle atIndex:0];
@@ -8537,6 +8653,7 @@ static void FQXReleaseTrackingLayers(FQXDockTracking *track, BOOL settling);
 + (void)refreshShareGlass;
 + (void)refreshAudioSheets;
 + (UIImage *)videoSelectedPillImageForSize:(CGSize)size;
++ (UIImage *)videoSelectedPillImageForSize:(CGSize)size translucentGlass:(BOOL)translucentGlass;
 + (void)refreshDramaPlaybackOptions;
 + (void)refreshDockAppearance;
 + (void)refreshDockMaterial;
@@ -9695,14 +9812,27 @@ static void FQXApplyDramaButtonVideoInkTree(UIView *view, UIView *glass, BOOL ac
     }
 }
 
+static const char FQXK_DramaSurfaceRoseGlassViewKey = 0;
+#define DramaSurfaceRoseGlassViewKey ((const void *)&FQXK_DramaSurfaceRoseGlassViewKey)
+static const char FQXK_DramaActionRoseGlassViewKey = 0;
+#define DramaActionRoseGlassViewKey ((const void *)&FQXK_DramaActionRoseGlassViewKey)
+
 static void FQXApplyDramaGlassButtonSurface(UIView *glass, UIView *owner) {
     if (![glass isKindOfClass:UIButton.class] || ![owner isKindOfClass:UIView.class]) return;
     UIButton *btn = (UIButton *)glass;
-    BOOL videoBase = FQXDramaButtonUsesVideoBase();
+    NSInteger surfMode = FQXDramaButtonSurfaceStyleMode();
+    BOOL lightBase = (surfMode != FQXDramaButtonSurfaceDefaultGlass);
     NSNumber *applied = objc_getAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey);
-    BOOL wasVideo = applied && applied.boolValue;
-    if (videoBase) {
-        if (!applied || !wasVideo) {
+    NSInteger prevMode = applied ? applied.integerValue : 0;
+    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+    UIVisualEffectView *roseGlass = objc_getAssociatedObject(btn, DramaSurfaceRoseGlassViewKey);
+
+    if (surfMode == FQXDramaButtonSurfaceVideoBase) {
+        if (roseGlass) {
+            [roseGlass removeFromSuperview];
+            objc_setAssociatedObject(btn, DramaSurfaceRoseGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!applied || prevMode != FQXDramaButtonSurfaceVideoBase) {
             btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
             btn.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
             btn.backgroundColor = FQXVideoBaseFillUIColor();
@@ -9710,11 +9840,58 @@ static void FQXApplyDramaGlassButtonSurface(UIView *glass, UIView *owner) {
             btn.layer.cornerCurve = kCACornerCurveContinuous;
             btn.layer.borderWidth = 0.5;
             btn.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
-            objc_setAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey, @(FQXDramaButtonSurfaceVideoBase), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGFloat r = MIN(CGRectGetWidth(btn.bounds), CGRectGetHeight(btn.bounds)) * 0.5;
         if (r > 0.5 && fabs(btn.layer.cornerRadius - r) > 0.25) btn.layer.cornerRadius = r;
-    } else if (wasVideo) {
+    } else if (surfMode == FQXDramaButtonSurfaceRoseMistGlass) {
+        if (!applied || prevMode != FQXDramaButtonSurfaceRoseMistGlass) {
+            btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
+            btn.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+            btn.backgroundColor = UIColor.clearColor;
+            btn.clipsToBounds = NO;
+            btn.layer.borderWidth = 0.0;
+            btn.layer.borderColor = NULL;
+            btn.layer.cornerRadius = 0.0;
+            objc_setAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey, @(FQXDramaButtonSurfaceRoseMistGlass), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!roseGlass) {
+            roseGlass = [[UIVisualEffectView alloc] initWithEffect:nil];
+            roseGlass.userInteractionEnabled = NO;
+            roseGlass.isAccessibilityElement = NO;
+            roseGlass.accessibilityElementsHidden = YES;
+            roseGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            roseGlass.backgroundColor = UIColor.clearColor;
+            roseGlass.contentView.backgroundColor = UIColor.clearColor;
+            roseGlass.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+            roseGlass.contentView.layer.borderWidth = 0.5;
+            roseGlass.contentView.layer.borderColor = FQXRoseMistGlassBaseBorderUIColor().CGColor;
+            roseGlass.contentView.clipsToBounds = YES;
+            objc_setAssociatedObject(roseGlass, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(btn, DramaSurfaceRoseGlassViewKey, roseGlass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (roseGlass.overrideUserInterfaceStyle != UIUserInterfaceStyleLight) {
+            roseGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+        }
+        if (!roseGlass.effect || [roseGlass.effect isKindOfClass:UIBlurEffect.class]) {
+            roseGlass.effect = FQXMakeGlassEffect(reduce ? 0 : 1, YES, FQXRoseMistGlassBaseTintUIColor());
+        }
+        if (roseGlass.superview != btn) {
+            [btn insertSubview:roseGlass atIndex:0];
+        }
+        if (!CGRectEqualToRect(roseGlass.frame, btn.bounds)) {
+            roseGlass.frame = btn.bounds;
+        }
+        FQXApplyCornerConfiguration(roseGlass, 0.0, NO);
+        CGFloat r = MIN(CGRectGetWidth(btn.bounds), CGRectGetHeight(btn.bounds)) * 0.5;
+        if (r > 0.5 && fabs(roseGlass.contentView.layer.cornerRadius - r) > 0.25) {
+            roseGlass.contentView.layer.cornerRadius = r;
+        }
+    } else if (prevMode != FQXDramaButtonSurfaceDefaultGlass) {
+        if (roseGlass) {
+            [roseGlass removeFromSuperview];
+            objc_setAssociatedObject(btn, DramaSurfaceRoseGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         SEL glassCfgSel = sel_registerName("glassButtonConfiguration");
         if ([UIButtonConfiguration respondsToSelector:glassCfgSel]) {
             btn.configuration = ((id (*)(Class, SEL))objc_msgSend)(UIButtonConfiguration.class, glassCfgSel);
@@ -9726,46 +9903,87 @@ static void FQXApplyDramaGlassButtonSurface(UIView *glass, UIView *owner) {
         btn.layer.borderWidth = 0.0;
         btn.layer.borderColor = NULL;
         btn.layer.cornerRadius = 0.0;
-        objc_setAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey, @(FQXDramaButtonSurfaceDefaultGlass), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    FQXApplyDramaButtonVideoInkTree(owner, glass, videoBase, 0);
+    FQXApplyDramaButtonVideoInkTree(owner, glass, lightBase, 0);
 }
 
 static void FQXApplyDramaActionSurface(UIView *owner, UIImageView *glyph, UIImageView *outline, NSInteger role) {
     if (![owner isKindOfClass:UIView.class]) return;
-    BOOL videoBase = FQXDramaButtonUsesVideoBase();
+    NSInteger surfMode = FQXDramaButtonSurfaceStyleMode();
+    BOOL lightBase = (surfMode != FQXDramaButtonSurfaceDefaultGlass);
     UIView *disk = objc_getAssociatedObject(owner, DramaActionMatteDiskViewKey);
+    UIVisualEffectView *roseGlass = objc_getAssociatedObject(owner, DramaActionRoseGlassViewKey);
     UIView *parent = [glyph isKindOfClass:UIView.class] ? glyph.superview : nil;
     CGRect gf = glyph ? glyph.frame : CGRectZero;
-    BOOL showDisk = videoBase && parent != nil && CGRectGetWidth(gf) > 4.0 && CGRectGetHeight(gf) > 4.0 &&
-                    !owner.hidden && !glyph.hidden;
-    if (!showDisk) {
-        if (disk) {
-            [disk removeFromSuperview];
-            objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    } else {
+    BOOL validGeom = (parent != nil && CGRectGetWidth(gf) > 4.0 && CGRectGetHeight(gf) > 4.0 &&
+                      !owner.hidden && !glyph.hidden);
+    BOOL showMatte = (surfMode == FQXDramaButtonSurfaceVideoBase) && validGeom;
+    BOOL showRoseGlass = (surfMode == FQXDramaButtonSurfaceRoseMistGlass) && validGeom;
+
+    if (!showMatte && disk) {
+        [disk removeFromSuperview];
+        objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        disk = nil;
+    }
+    if (!showRoseGlass && roseGlass) {
+        [roseGlass removeFromSuperview];
+        objc_setAssociatedObject(owner, DramaActionRoseGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        roseGlass = nil;
+    }
+    if (showMatte || showRoseGlass) {
         id storedDia = [NSUserDefaults.standardUserDefaults objectForKey:@"FanqieX.DramaActionDiameter.1"];
         CGFloat prefDia = [storedDia respondsToSelector:@selector(doubleValue)] ? (CGFloat)[storedDia doubleValue] : 50.0;
         CGFloat d = MAX(40.0, MIN(48.0, isfinite(prefDia) ? prefDia : 44.0));
         CGRect target = CGRectMake(round(CGRectGetMidX(gf) - d * 0.5), round(CGRectGetMidY(gf) - d * 0.5), d, d);
-        if (!disk) {
-            disk = [[UIView alloc] initWithFrame:target];
-            disk.userInteractionEnabled = NO;
-            disk.isAccessibilityElement = NO;
-            disk.accessibilityElementsHidden = YES;
-            disk.backgroundColor = FQXVideoBaseFillUIColor();
-            disk.layer.cornerCurve = kCACornerCurveContinuous;
-            disk.layer.borderWidth = 0.5;
-            disk.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
-            objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, disk, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (showMatte) {
+            if (!disk) {
+                disk = [[UIView alloc] initWithFrame:target];
+                disk.userInteractionEnabled = NO;
+                disk.isAccessibilityElement = NO;
+                disk.accessibilityElementsHidden = YES;
+                disk.backgroundColor = FQXVideoBaseFillUIColor();
+                disk.layer.cornerCurve = kCACornerCurveContinuous;
+                disk.layer.borderWidth = 0.5;
+                disk.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
+                objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, disk, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            disk.layer.cornerRadius = d * 0.5;
+            if (!CGRectEqualToRect(disk.frame, target)) disk.frame = target;
+            if (disk.superview != parent) {
+                [parent insertSubview:disk belowSubview:glyph];
+            }
+            disk.hidden = NO;
+        } else if (showRoseGlass) {
+            BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+            if (!roseGlass) {
+                roseGlass = [[UIVisualEffectView alloc] initWithEffect:nil];
+                roseGlass.userInteractionEnabled = NO;
+                roseGlass.isAccessibilityElement = NO;
+                roseGlass.accessibilityElementsHidden = YES;
+                roseGlass.backgroundColor = UIColor.clearColor;
+                roseGlass.contentView.backgroundColor = UIColor.clearColor;
+                roseGlass.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+                roseGlass.contentView.layer.borderWidth = 0.5;
+                roseGlass.contentView.layer.borderColor = FQXRoseMistGlassBaseBorderUIColor().CGColor;
+                roseGlass.contentView.clipsToBounds = YES;
+                objc_setAssociatedObject(roseGlass, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(owner, DramaActionRoseGlassViewKey, roseGlass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            if (roseGlass.overrideUserInterfaceStyle != UIUserInterfaceStyleLight) {
+                roseGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+            }
+            if (!roseGlass.effect || [roseGlass.effect isKindOfClass:UIBlurEffect.class]) {
+                roseGlass.effect = FQXMakeGlassEffect(reduce ? 0 : 1, YES, FQXRoseMistGlassBaseTintUIColor());
+            }
+            if (!CGRectEqualToRect(roseGlass.frame, target)) roseGlass.frame = target;
+            FQXApplyCornerConfiguration(roseGlass, 0.0, NO);
+            roseGlass.contentView.layer.cornerRadius = d * 0.5;
+            if (roseGlass.superview != parent) {
+                [parent insertSubview:roseGlass belowSubview:glyph];
+            }
+            roseGlass.hidden = NO;
         }
-        disk.layer.cornerRadius = d * 0.5;
-        if (!CGRectEqualToRect(disk.frame, target)) disk.frame = target;
-        if (disk.superview != parent) {
-            [parent insertSubview:disk belowSubview:glyph];
-        }
-        disk.hidden = NO;
     }
 
     // Preserve colored liked heart (role == 2) & collected star (role == 0); darken white unselected icons.
@@ -9773,15 +9991,15 @@ static void FQXApplyDramaActionSurface(UIView *owner, UIImageView *glyph, UIImag
     BOOL isSelectedColored = (role == 0 && FQXBoolGet(model, "isCollected", FQXBoolGet(owner, "isCollected", NO))) ||
                              (role == 2 && FQXBoolGet(model, "isLiked", NO));
     if ([outline isKindOfClass:UIImageView.class] && outline.superview) {
-        if (videoBase && !isSelectedColored) {
+        if (lightBase && !isSelectedColored) {
             outline.tintColor = FQXVideoInkUIColor(1.0);
-        } else if (!videoBase && !isSelectedColored) {
+        } else if (!lightBase && !isSelectedColored) {
             outline.tintColor = UIColor.whiteColor;
         }
     }
     if ([glyph isKindOfClass:UIImageView.class] && glyph.image) {
         BOOL hadMode = [objc_getAssociatedObject(glyph, DramaActionSavedGlyphModeKey) boolValue];
-        if (videoBase && !isSelectedColored) {
+        if (lightBase && !isSelectedColored) {
             if (!hadMode) {
                 objc_setAssociatedObject(glyph, DramaActionSavedGlyphModeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
@@ -10156,7 +10374,11 @@ static void FQXRefreshAllAudioPlaySheets(void);
 }
 
 + (UIImage *)videoSelectedPillImageForSize:(CGSize)size {
-    return FQXVideoSelectedPillImageForSize(size);
+    return FQXVideoSelectedPillImageForSize(size, NO);
+}
+
++ (UIImage *)videoSelectedPillImageForSize:(CGSize)size translucentGlass:(BOOL)translucentGlass {
+    return FQXVideoSelectedPillImageForSize(size, translucentGlass);
 }
 
 + (void)refreshDramaPlaybackOptions {
@@ -11873,15 +12095,29 @@ static void HookFeedTableViewDidMoveWindow(UITableView *scroll, SEL cmd) {
     }
 }
 
+static void FQXScheduleAudioSheetScanInWindow(UIWindow *window);
+
 static void (*OrigWindowSendEventForFeedMotion)(id, SEL, id);
 static void HookWindowSendEventForFeedMotion(UIWindow *win, SEL cmd, UIEvent *event) {
-    if (event.type == UIEventTypeTouches &&
-        FQXFeedMotionSupported() &&
-        FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode())) {
+    if (event.type == UIEventTypeTouches) {
+        BOOL wantFeed = FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode());
+        BOOL sawEnded = NO;
         NSSet<UITouch *> *touches = [event touchesForWindow:win];
         for (UITouch *touch in touches) {
-            if (touch.phase == UITouchPhaseBegan) {
+            if (wantFeed && touch.phase == UITouchPhaseBegan) {
                 [[FQXFeedDockPanController shared] prepareForTouchOnView:touch.view];
+            } else if (touch.phase == UITouchPhaseEnded) {
+                sawEnded = YES;
+            }
+        }
+        if (sawEnded && !FQXHotPrefsSnapshot().glassDisabled &&
+            FQXCurrentAudioSheetMaterialStyle() != FQXShareMaterialNative &&
+            FQXFindVisibleAudioPlayVCInWindow(win) != nil) {
+            static CFTimeInterval lastAudioTapScan = 0.0;
+            CFTimeInterval now = CACurrentMediaTime();
+            if (now - lastAudioTapScan >= 0.08) {
+                lastAudioTapScan = now;
+                FQXScheduleAudioSheetScanInWindow(win);
             }
         }
     }
@@ -26634,10 +26870,17 @@ static void FQXRemoveAudioPlaySheetStyling(UIView *sheet) {
     FQXApplyAudioSheetSubtreeCleanup(sheet, sheet, NO, NO, 0);
 }
 
+static BOOL FQXViewIsInsideOrContainsMainAudioPlayer(UIView *view, UIView *audioRootView);
+
 static BOOL FQXStyleAudioPlaySheet(UIView *sheet, UIView *root) {
     if (![sheet isKindOfClass:UIView.class]) return NO;
     CGRect sb = sheet.bounds;
     if (CGRectGetWidth(sb) < 120.0 || CGRectGetHeight(sb) < 100.0) return NO;
+    UIViewController *audioVC = sheet.window ? FQXFindVisibleAudioPlayVCInWindow(sheet.window) : nil;
+    UIView *audioRootView = (audioVC && audioVC.isViewLoaded) ? audioVC.view : nil;
+    if (FQXViewIsInsideOrContainsMainAudioPlayer(sheet, audioRootView)) {
+        return NO;
+    }
     if (objc_getAssociatedObject(sheet, FQXShareMarkedSheetKey) ||
         objc_getAssociatedObject(sheet, SheetGlassKey)) {
         return NO;
@@ -26773,9 +27016,10 @@ static void FQXRefreshAllAudioPlaySheets(void) {
 
 static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
                                             NSMutableSet<NSString *> *secondaryHits,
+                                            BOOL *vetoed,
                                             NSInteger *budget,
                                             NSInteger depth) {
-    if (!root || root.hidden || root.alpha <= 0.01 || depth > 16 || *budget <= 0) return NO;
+    if (!root || root.hidden || root.alpha <= 0.01 || depth > 16 || *budget <= 0 || (vetoed && *vetoed)) return NO;
     (*budget)--;
     NSString *text = nil;
     if ([root isKindOfClass:UILabel.class]) {
@@ -26790,8 +27034,15 @@ static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
     }
     if (text.length > 0 && text.length <= 36) {
         NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        // Strong single-hit markers unique to the 7 audiobook half-sheets:
+        // Hard veto: "边听边读" belongs exclusively to the main audiobook player body, never to secondary sheets.
+        if ([trimmed isEqualToString:@"边听边读"]) {
+            if (vetoed) *vetoed = YES;
+            return NO;
+        }
+        // Strong single-hit markers unique to the 7 audiobook secondary half-sheets:
         // 1. 章评  2. 选择章节  3. 已加书架  4. 语速  5. 定时关闭  6. 简介/播放目录  7. 音色设置
+        // Note: "音色设置" and "真人讲书" also appear on the main player screen, so they are intentionally
+        // excluded from single-hit markers and require unique sheet markers or 2+ secondary hits.
         if ([trimmed isEqualToString:@"全部章评"] ||
             [trimmed hasPrefix:@"发表本章看法"] ||
             [trimmed isEqualToString:@"期待你的第一条评论"] ||
@@ -26803,6 +27054,7 @@ static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
             [trimmed isEqualToString:@"移出书架"] ||
             [trimmed isEqualToString:@"仅对本书生效"] ||
             [trimmed hasPrefix:@"语速·"] ||
+            [trimmed hasPrefix:@"语速 ·"] ||
             [trimmed isEqualToString:@"定时关闭"] ||
             [trimmed isEqualToString:@"播完本章"] ||
             [trimmed isEqualToString:@"播完3章"] ||
@@ -26810,9 +27062,15 @@ static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
             [trimmed hasPrefix:@"自定义时长"] ||
             [trimmed isEqualToString:@"播放目录"] ||
             [trimmed isEqualToString:@"顺序播放"] ||
-            [trimmed isEqualToString:@"音色设置"] ||
-            [trimmed isEqualToString:@"真人讲书"] ||
-            [trimmed isEqualToString:@"离线朗读"]) {
+            [trimmed isEqualToString:@"离线朗读"] ||
+            [trimmed isEqualToString:@"甜美少女音"] ||
+            [trimmed isEqualToString:@"开朗青年音"] ||
+            [trimmed isEqualToString:@"清亮青叔音"] ||
+            [trimmed isEqualToString:@"温柔淑女音"] ||
+            [trimmed isEqualToString:@"成熟大叔离线版"] ||
+            [trimmed isEqualToString:@"甜美少女离线版"] ||
+            [trimmed hasPrefix:@"主播："] ||
+            [trimmed hasPrefix:@"主播:"]) {
             return YES;
         }
         static NSSet<NSString *> *secMarkers = nil;
@@ -26821,7 +27079,8 @@ static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
             secMarkers = [NSSet setWithArray:@[
                 @"章评", @"最热", @"最新", @"全选", @"语速", @"重置",
                 @"按章节", @"按时间", @"10分钟", @"30分钟", @"60分钟", @"90分钟",
-                @"播完整章", @"简介", @"倒序", @"智能朗读", @"取消"
+                @"播完整章", @"简介", @"倒序", @"取消",
+                @"音色设置", @"真人讲书", @"智能朗读", @"超自然", @"自然流畅"
             ]];
         });
         if ([secMarkers containsObject:trimmed]) {
@@ -26830,7 +27089,10 @@ static BOOL FQXViewMatchesAudioSheetMarkers(UIView *root,
         }
     }
     for (UIView *sub in root.subviews) {
-        if (FQXViewMatchesAudioSheetMarkers(sub, secondaryHits, budget, depth + 1)) return YES;
+        if (FQXViewMatchesAudioSheetMarkers(sub, secondaryHits, vetoed, budget, depth + 1)) {
+            return (vetoed && *vetoed) ? NO : YES;
+        }
+        if (vetoed && *vetoed) return NO;
     }
     return NO;
 }
@@ -26840,11 +27102,89 @@ static BOOL FQXIsCoreAudioPlayerOwnView(UIView *view, UIView *audioRootView) {
     if (audioRootView && (view == audioRootView || [audioRootView isDescendantOfView:view])) return YES;
     NSString *cls = NSStringFromClass(view.class) ?: @"";
     return [cls hasPrefix:@"SSNewAudioPlay"] ||
+           [cls hasPrefix:@"SSAudioPlayTTS"] ||
            [cls hasPrefix:@"SSAudioPlayTone"] ||
            [cls hasPrefix:@"SSAudioReadingGuide"] ||
            [cls hasPrefix:@"SSAudioV4ReadingGuide"] ||
+           [cls isEqualToString:@"FQRJXCategoryListContainerView"] ||
+           [cls hasPrefix:@"JXCategory"] ||
+           [cls isEqualToString:@"SSNestedContainerScrollView"] ||
            [cls isEqualToString:@"SSAudioPageBackView"] ||
            [cls isEqualToString:@"SSReadingSharePanel"];
+}
+
+static BOOL FQXIsAudioSheetDisallowedCardClass(UIView *view) {
+    if (!view) return YES;
+    if ([view isKindOfClass:UIScrollView.class]) return YES;
+    NSString *cls = NSStringFromClass(view.class) ?: @"";
+    return [cls isEqualToString:@"FQRJXCategoryListContainerView"] ||
+           [cls hasPrefix:@"JXCategory"] ||
+           [cls isEqualToString:@"SSNestedContainerScrollView"] ||
+           [cls isEqualToString:@"UILayoutContainerView"] ||
+           [cls isEqualToString:@"UINavigationTransitionView"] ||
+           [cls isEqualToString:@"UIViewControllerWrapperView"] ||
+           [cls isEqualToString:@"UITransitionView"] ||
+           [cls isEqualToString:@"UIDropShadowView"] ||
+           [cls isEqualToString:@"UINavigationBar"];
+}
+
+static BOOL FQXSubtreeContainsMainAudioPlayer(UIView *view, UIView *audioRootView, NSInteger *budget, NSInteger depth) {
+    if (!view || depth > 10 || *budget <= 0) return NO;
+    (*budget)--;
+    if (audioRootView && view == audioRootView) return YES;
+    NSString *cls = NSStringFromClass(view.class) ?: @"";
+    if ([cls isEqualToString:@"FQRJXCategoryListContainerView"] ||
+        [cls isEqualToString:@"SSNestedContainerScrollView"] ||
+        [cls hasPrefix:@"SSNewAudioPlay"] ||
+        [cls hasPrefix:@"SSAudioPlayTTS"] ||
+        [cls hasPrefix:@"SSAudioPlayTone"] ||
+        [cls hasPrefix:@"SSAudioReadingGuide"] ||
+        [cls hasPrefix:@"SSAudioV4ReadingGuide"]) {
+        return YES;
+    }
+    if ([view isKindOfClass:UILabel.class] && !view.hidden && view.alpha > 0.01) {
+        UILabel *lbl = (UILabel *)view;
+        NSString *t = lbl.text.length ? lbl.text : lbl.attributedText.string;
+        if (t.length > 0 && t.length <= 16) {
+            NSString *trimmed = [t stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if ([trimmed isEqualToString:@"边听边读"]) return YES;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        if (FQXSubtreeContainsMainAudioPlayer(sub, audioRootView, budget, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static BOOL FQXViewIsInsideOrContainsMainAudioPlayer(UIView *view, UIView *audioRootView) {
+    if (!view) return YES;
+    int isScroll = [view isKindOfClass:UIScrollView.class] ? 1 : 0;
+    NSString *cls = NSStringFromClass(view.class) ?: @"";
+    int isCat = ([cls isEqualToString:@"FQRJXCategoryListContainerView"] ||
+                 [cls hasPrefix:@"JXCategory"] ||
+                 [cls isEqualToString:@"SSNestedContainerScrollView"]) ? 1 : 0;
+    if (FQXAudioSheetCandidateIsMainPlayer(isScroll, isCat, 0)) return YES;
+    if (audioRootView && (view == audioRootView || [audioRootView isDescendantOfView:view])) return YES;
+
+    // Walk up ancestors: reject anything inside the main player's category/scroll/TTS hierarchy.
+    // Note: an overlay sheet directly added as a sibling subview on audioRootView is allowed.
+    for (UIView *anc = view.superview; anc && anc != audioRootView; anc = anc.superview) {
+        NSString *acls = NSStringFromClass(anc.class) ?: @"";
+        if ([acls isEqualToString:@"FQRJXCategoryListContainerView"] ||
+            [acls isEqualToString:@"SSNestedContainerScrollView"] ||
+            [acls hasPrefix:@"SSNewAudioPlay"] ||
+            [acls hasPrefix:@"SSAudioPlayTTS"] ||
+            [acls hasPrefix:@"SSAudioPlayTone"] ||
+            [acls hasPrefix:@"SSAudioReadingGuide"] ||
+            [acls hasPrefix:@"SSAudioV4ReadingGuide"]) {
+            return YES;
+        }
+    }
+
+    // Walk down descendants: reject any container wrapping the main player body or "边听边读".
+    NSInteger budget = 240;
+    int containsMain = FQXSubtreeContainsMainAudioPlayer(view, audioRootView, &budget, 0) ? 1 : 0;
+    return FQXAudioSheetCandidateIsMainPlayer(0, 0, containsMain) != 0;
 }
 
 static UIView *FQXFindAudioSheetCardInRoot(UIView *root, UIWindow *window, UIView *audioRootView) {
@@ -26855,11 +27195,11 @@ static UIView *FQXFindAudioSheetCardInRoot(UIView *root, UIWindow *window, UIVie
 
     NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:root];
     NSInteger inspected = 0;
-    while (queue.count > 0 && inspected < 180) {
+    while (queue.count > 0 && inspected < 360) {
         UIView *cur = queue.firstObject;
         [queue removeObjectAtIndex:0];
         if (!cur || cur.hidden || cur.alpha <= 0.01) continue;
-        if ([cur isKindOfClass:UICollectionView.class] || [cur isKindOfClass:UITableView.class]) continue;
+        if ([cur isKindOfClass:UIScrollView.class]) continue;
         if (FQXIsCoreAudioPlayerOwnView(cur, audioRootView)) {
             if (cur == audioRootView) {
                 for (UIView *sub in cur.subviews) {
@@ -26871,14 +27211,18 @@ static UIView *FQXFindAudioSheetCardInRoot(UIView *root, UIWindow *window, UIVie
             continue;
         }
         inspected++;
-        CGRect inWin = [cur convertRect:cur.bounds toView:window];
-        if (FQXAudioSheetCardGeometryValid(CGRectGetMinY(inWin), CGRectGetMaxY(inWin),
-                                           CGRectGetWidth(inWin), CGRectGetHeight(inWin),
-                                           winW, winH)) {
-            NSMutableSet<NSString *> *sec = [NSMutableSet set];
-            NSInteger budget = 340;
-            if (FQXViewMatchesAudioSheetMarkers(cur, sec, &budget, 0)) {
-                return cur;
+        if (!FQXIsAudioSheetDisallowedCardClass(cur)) {
+            CGRect inWin = [cur convertRect:cur.bounds toView:window];
+            if (FQXAudioSheetCardGeometryValid(CGRectGetMinY(inWin), CGRectGetMaxY(inWin),
+                                               CGRectGetWidth(inWin), CGRectGetHeight(inWin),
+                                               winW, winH) &&
+                !FQXViewIsInsideOrContainsMainAudioPlayer(cur, audioRootView)) {
+                NSMutableSet<NSString *> *sec = [NSMutableSet set];
+                BOOL vetoed = NO;
+                NSInteger budget = 360;
+                if (FQXViewMatchesAudioSheetMarkers(cur, sec, &vetoed, &budget, 0) && !vetoed) {
+                    return cur;
+                }
             }
         }
         for (UIView *sub in cur.subviews) {
@@ -26899,15 +27243,20 @@ static void FQXInspectCandidateAudioSheetContainer(UIView *root) {
         objc_getAssociatedObject(root, SheetGlassKey)) return;
 
     UIView *audioRootView = audioVC.isViewLoaded ? audioVC.view : nil;
+    if (FQXIsCoreAudioPlayerOwnView(root, audioRootView) && root != audioRootView) return;
     UIView *card = FQXFindAudioSheetCardInRoot(root, win, audioRootView);
     if (!card) return;
+    if (FQXViewIsInsideOrContainsMainAudioPlayer(card, audioRootView)) return;
     if (objc_getAssociatedObject(card, FQXShareMarkedSheetKey) ||
         objc_getAssociatedObject(card, SheetGlassKey)) return;
 
     FQXEnsureAudioSheetClassHooked(card, card);
-    if (root != card && root != audioRootView) FQXEnsureAudioSheetClassHooked(root, card);
+    if (root != card && root != audioRootView && !FQXIsAudioSheetDisallowedCardClass(root)) {
+        FQXEnsureAudioSheetClassHooked(root, card);
+    }
     UIView *innerCustom = FQXFindFirstCustomViewInside(card, 0);
-    if (innerCustom && innerCustom != card && innerCustom != root && innerCustom != audioRootView) {
+    if (innerCustom && innerCustom != card && innerCustom != root && innerCustom != audioRootView &&
+        !FQXIsAudioSheetDisallowedCardClass(innerCustom)) {
         FQXEnsureAudioSheetClassHooked(innerCustom, card);
     }
     FQXStyleAudioPlaySheet(card, root);
@@ -26915,33 +27264,66 @@ static void FQXInspectCandidateAudioSheetContainer(UIView *root) {
 
 static UIView *FQXEnclosingModalSheetRootForView(UIView *view);
 
+static void FQXInspectPresentedChainForAudioSheets(UIViewController *start) {
+    NSInteger guard = 0;
+    for (UIViewController *cur = start; cur && guard < 8; cur = cur.presentedViewController, ++guard) {
+        if (cur.isViewLoaded && cur.view.window) {
+            UIView *modalRoot = FQXEnclosingModalSheetRootForView(cur.view);
+            FQXInspectCandidateAudioSheetContainer(modalRoot ?: cur.view);
+        }
+    }
+}
+
 static void FQXScanWindowForAudioPlaySheets(UIWindow *window) {
     if (!window) return;
     UIViewController *audioVC = FQXFindVisibleAudioPlayVCInWindow(window);
     if (!audioVC) return;
-    for (UIView *sub in window.subviews.reverseObjectEnumerator) {
-        if (sub.hidden || sub.alpha <= 0.01) continue;
-        FQXInspectCandidateAudioSheetContainer(sub);
+    UIView *audioRootView = audioVC.isViewLoaded ? audioVC.view : nil;
+
+    // 1. Scan all visible windows in connected scenes (covers both key window & dedicated overlay windows).
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
+            if (win.hidden || win.alpha <= 0.01) continue;
+            NSString *wcls = NSStringFromClass(win.class) ?: @"";
+            if ([wcls containsString:@"Keyboard"] || [wcls containsString:@"Effects"]) continue;
+            for (UIView *sub in win.subviews.reverseObjectEnumerator) {
+                if (sub.hidden || sub.alpha <= 0.01) continue;
+                FQXInspectCandidateAudioSheetContainer(sub);
+            }
+            if (win.rootViewController.presentedViewController) {
+                FQXInspectPresentedChainForAudioSheets(win.rootViewController.presentedViewController);
+            }
+        }
     }
+
+    // 2. Scan navigation controller overlay subviews (skipping main transition container & nav bar).
     if (audioVC.navigationController.isViewLoaded && audioVC.navigationController.view) {
         for (UIView *sub in audioVC.navigationController.view.subviews.reverseObjectEnumerator) {
             if (sub.hidden || sub.alpha <= 0.01) continue;
+            NSString *sc = NSStringFromClass(sub.class) ?: @"";
+            if ([sc isEqualToString:@"UINavigationTransitionView"] ||
+                [sc isEqualToString:@"UINavigationBar"]) continue;
             FQXInspectCandidateAudioSheetContainer(sub);
         }
     }
-    if (audioVC.isViewLoaded && audioVC.view) {
-        for (UIView *sub in audioVC.view.subviews.reverseObjectEnumerator) {
+
+    // 3. Scan sibling overlay subviews & child VCs on audioVC (strictly skipping main player body).
+    if (audioRootView) {
+        for (UIView *sub in audioRootView.subviews.reverseObjectEnumerator) {
             if (sub.hidden || sub.alpha <= 0.01) continue;
-            if (FQXIsCoreAudioPlayerOwnView(sub, audioVC.view)) continue;
+            if (FQXIsCoreAudioPlayerOwnView(sub, audioRootView)) continue;
             FQXInspectCandidateAudioSheetContainer(sub);
         }
     }
-    UIViewController *presented = audioVC.presentedViewController ?:
-        (audioVC.navigationController.presentedViewController ?: window.rootViewController.presentedViewController);
-    if (presented && presented.isViewLoaded && presented.view.window) {
-        UIView *modalRoot = FQXEnclosingModalSheetRootForView(presented.view);
-        FQXInspectCandidateAudioSheetContainer(modalRoot ?: presented.view);
+    for (UIViewController *child in audioVC.childViewControllers) {
+        if (child.isViewLoaded && child.view.window &&
+            !FQXViewIsInsideOrContainsMainAudioPlayer(child.view, audioRootView)) {
+            FQXInspectCandidateAudioSheetContainer(child.view);
+        }
     }
+    FQXInspectPresentedChainForAudioSheets(audioVC.presentedViewController);
+    FQXInspectPresentedChainForAudioSheets(audioVC.navigationController.presentedViewController);
 }
 
 static void FQXScheduleAudioSheetScanInWindow(UIWindow *window) {
@@ -26979,6 +27361,9 @@ static void FQXScheduleAudioSheetScanInWindow(UIWindow *window) {
 }
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     [super touchesCancelled:touches withEvent:event];
+    if (self.view.window) {
+        FQXScheduleAudioSheetScanInWindow(self.view.window);
+    }
     self.state = UIGestureRecognizerStateFailed;
 }
 - (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)preventedGestureRecognizer {
@@ -27106,14 +27491,16 @@ static void HookVCViewDidAppearForShare(UIViewController *self, SEL cmd, BOOL an
     if ([vcName hasPrefix:@"FQX"] || [vcName hasPrefix:@"FanqieX"] ||
         [vcName hasPrefix:@"BDReader"] || [vcName hasPrefix:@"SSBookShelf"] ||
         [vcName hasPrefix:@"SSBookStore"] || [vcName hasPrefix:@"SSVideoSeriesFeed"] ||
-        [vcName hasPrefix:@"FQVShortVideoList"]) {
+        [vcName hasPrefix:@"FQVShortVideoList"] || [vcName hasPrefix:@"SSNewAudioPlay"]) {
         return;
     }
     UIWindow *win = self.view.window;
     CGFloat winH = CGRectGetHeight(win.bounds);
+    BOOL inAudioPlayer = (FQXFindVisibleAudioPlayVCInWindow(win) != nil);
     BOOL isModalOrSheet = (self.presentingViewController != nil) ||
                           (self.navigationController.presentingViewController != nil) ||
-                          (winH > 300.0 && CGRectGetHeight(self.view.bounds) <= winH * 0.82) ||
+                          (winH > 300.0 && CGRectGetHeight(self.view.bounds) <= winH * 0.94) ||
+                          inAudioPlayer ||
                           [vcName containsString:@"Share"] ||
                           [vcName containsString:@"Sheet"];
     if (!isModalOrSheet) return;
@@ -27400,7 +27787,9 @@ static void FQXStyleDramaPlaybackOptions(UIViewController *controller) {
         BOOL followDock = material != FQXCommentMaterialClearGlass && material != FQXCommentMaterialRegularGlass &&
                           material != FQXCommentMaterialGaussianBlur;
         FQXDockMaterialMode dockMode = FQXCurrentDockMaterialMode();
-        if (dockMode == FQXDockMaterialVideoBase) dockMode = FQXDockMaterialNewGlass;
+        if (dockMode == FQXDockMaterialVideoBase || dockMode == FQXDockMaterialRoseMistGlass) {
+            dockMode = FQXDockMaterialNewGlass;
+        }
         BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
         BOOL gaussian = !reduce && (!FQXGlassEnabled() || (followDock && dockMode == FQXDockMaterialIOS18Gaussian) ||
                                      material == FQXCommentMaterialGaussianBlur);
