@@ -439,7 +439,10 @@ static void test_audiobook_sheets_and_video_palette_policy(void) {
     assert(FQXEffectiveSelectionTintStyle(0, 1) == FQXSelectionTintStyleRoseMistGlass);
     assert(FQXEffectiveSelectionTintStyle(1, 1) == FQXSelectionTintStyleSoftRoseMist);
     assert(FQXEffectiveSelectionTintStyle(2, 0) == FQXSelectionTintStyleRoseMistGlass);
-    assert(FQXShouldApplyDramaActionSurfaceOverlay() == 0); /* Never add circular glass/matte mask on right-rail icons */
+    assert(FQXShouldApplyDramaActionSurfaceOverlay(1, 0, 0) == 1); /* Original/stock right-rail icons get Liquid Glass / configured surface */
+    assert(FQXShouldApplyDramaActionSurfaceOverlay(1, 1, 0) == 0); /* Naloia custom icons stay clean borderless without glass mask */
+    assert(FQXShouldApplyDramaActionSurfaceOverlay(1, 0, 1) == 0); /* Hollow outline mode stays clean borderless */
+    assert(FQXShouldApplyDramaActionSurfaceOverlay(0, 0, 0) == 0); /* Glass disabled */
     assert(FQXNormalizeDramaButtonSurfaceStyle(1) == FQXDramaButtonSurfaceVideoBase);
     assert(FQXNormalizeDramaButtonSurfaceStyle(2) == FQXDramaButtonSurfaceRoseMistGlass);
     assert(FQXNormalizeDramaButtonSurfaceStyle(-1) == FQXDramaButtonSurfaceDefaultGlass);

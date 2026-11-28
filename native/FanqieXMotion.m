@@ -194,6 +194,9 @@ typedef struct {
     NSInteger dockDisplayMode;
     CGFloat dockIconPointSize;
     NSInteger dockBlurPercent;
+    CGFloat dramaActionDiameter;
+    uint8_t dramaNaloiaMask;
+    BOOL dramaOutlineActions;
     BOOL dockSiriaiHideLine;
     BOOL dockLegacyScrollZoom;
     BOOL hasStoredComposerStyle;
@@ -372,6 +375,18 @@ static FQXHotPrefsCache FQXHotPrefsSnapshot(void) {
     }
     fresh.dockIconPointSize = iconPt;
     fresh.dockBlurPercent = FQXBlurPercent([ud doubleForKey:DockBlurPrefKey]);
+
+    id diaObj = [ud objectForKey:@"FanqieX.DramaActionDiameter.1"];
+    CGFloat diaVal = [diaObj respondsToSelector:@selector(doubleValue)] ? (CGFloat)[diaObj doubleValue] : 50.0;
+    if (!isfinite(diaVal)) diaVal = 50.0;
+    fresh.dramaActionDiameter = MAX(36.0, MIN(54.0, diaVal));
+    uint8_t naloiaMask = 0;
+    if ([ud integerForKey:@"FanqieX.DramaNaloiaFavorite.1"] == 1) naloiaMask |= (1u << 0);
+    if ([ud integerForKey:@"FanqieX.DramaNaloiaComment.1"] == 1)  naloiaMask |= (1u << 1);
+    if ([ud integerForKey:@"FanqieX.DramaNaloiaLike.1"] == 1)     naloiaMask |= (1u << 2);
+    if ([ud integerForKey:@"FanqieX.DramaNaloiaShare.1"] == 1)    naloiaMask |= (1u << 3);
+    fresh.dramaNaloiaMask = naloiaMask;
+    fresh.dramaOutlineActions = [ud boolForKey:@"FanqieX.DramaOutlineActions.1"];
 
     uint32_t fastFlags = (!fresh.glassDisabled ? 1u : 0u) |
                          (((uint32_t)fresh.dockCollapseMode & 0x7u) << 1) |
@@ -10240,6 +10255,8 @@ static const char FQXK_DramaSurfaceRoseGlassViewKey = 0;
 #define DramaSurfaceRoseGlassViewKey ((const void *)&FQXK_DramaSurfaceRoseGlassViewKey)
 static const char FQXK_DramaActionRoseGlassViewKey = 0;
 #define DramaActionRoseGlassViewKey ((const void *)&FQXK_DramaActionRoseGlassViewKey)
+static const char FQXK_DramaActionDefaultGlassViewKey = 0;
+#define DramaActionDefaultGlassViewKey ((const void *)&FQXK_DramaActionDefaultGlassViewKey)
 
 static void FQXApplyDramaGlassButtonSurface(UIView *glass, UIView *owner) {
     if (![glass isKindOfClass:UIButton.class] || ![owner isKindOfClass:UIView.class]) return;
@@ -10332,30 +10349,169 @@ static void FQXApplyDramaGlassButtonSurface(UIView *glass, UIView *owner) {
     FQXApplyDramaButtonVideoInkTree(owner, glass, lightBase, 0);
 }
 
+static BOOL FQXGlyphHasNaloiaVectorLayer(UIImageView *glyph) {
+    if (![glyph isKindOfClass:UIImageView.class]) return NO;
+    for (CALayer *sub in glyph.layer.sublayers) {
+        if ([sub.name isEqualToString:@"FanqieX.Naloia.vector"]) return YES;
+    }
+    return NO;
+}
+
 static void FQXApplyDramaActionSurface(UIView *owner, UIImageView *glyph, UIImageView *outline, NSInteger role) {
-    (void)role;
     if (![owner isKindOfClass:UIView.class]) return;
-    // Right-rail Like/Collect/Comment/Share buttons stay pure borderless icons (no glass/matte circle masks).
+    FQXHotPrefsCache prefs = FQXHotPrefsSnapshot();
+    BOOL naloiaActive = ((role >= 0 && role < 4) && ((prefs.dramaNaloiaMask & (uint8_t)(1u << role)) != 0)) ||
+                        FQXGlyphHasNaloiaVectorLayer(glyph);
+    BOOL outlineActive = prefs.dramaOutlineActions || ([outline isKindOfClass:UIImageView.class] && outline.superview != nil && !outline.hidden);
+    BOOL allowSurface = FQXShouldApplyDramaActionSurfaceOverlay(!prefs.glassDisabled ? 1 : 0,
+                                                                naloiaActive ? 1 : 0,
+                                                                outlineActive ? 1 : 0) != 0;
+
+    NSInteger surfMode = FQXDramaButtonSurfaceStyleMode();
+    BOOL lightBase = allowSurface && (surfMode != FQXDramaButtonSurfaceDefaultGlass);
+    UIView *defaultGlass = objc_getAssociatedObject(owner, DramaActionDefaultGlassViewKey);
     UIView *disk = objc_getAssociatedObject(owner, DramaActionMatteDiskViewKey);
-    if (disk) {
+    UIVisualEffectView *roseGlass = objc_getAssociatedObject(owner, DramaActionRoseGlassViewKey);
+    UIView *parent = [glyph isKindOfClass:UIView.class] ? glyph.superview : nil;
+    CGRect gf = glyph ? glyph.frame : CGRectZero;
+    BOOL validGeom = (parent != nil && CGRectGetWidth(gf) > 4.0 && CGRectGetHeight(gf) > 4.0 && !owner.hidden);
+    BOOL showDefaultGlass = allowSurface && (surfMode == FQXDramaButtonSurfaceDefaultGlass) && validGeom;
+    BOOL showMatte = allowSurface && (surfMode == FQXDramaButtonSurfaceVideoBase) && validGeom;
+    BOOL showRoseGlass = allowSurface && (surfMode == FQXDramaButtonSurfaceRoseMistGlass) && validGeom;
+
+    if (!showDefaultGlass && defaultGlass) {
+        [defaultGlass removeFromSuperview];
+        objc_setAssociatedObject(owner, DramaActionDefaultGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        defaultGlass = nil;
+    }
+    if (!showMatte && disk) {
         [disk removeFromSuperview];
         objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        disk = nil;
     }
-    UIVisualEffectView *roseGlass = objc_getAssociatedObject(owner, DramaActionRoseGlassViewKey);
-    if (roseGlass) {
+    if (!showRoseGlass && roseGlass) {
         [roseGlass removeFromSuperview];
         objc_setAssociatedObject(owner, DramaActionRoseGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        roseGlass = nil;
     }
-    if (!FQXShouldApplyDramaActionSurfaceOverlay()) {
-        if ([glyph isKindOfClass:UIImageView.class] &&
-            [objc_getAssociatedObject(glyph, DramaActionSavedGlyphModeKey) boolValue]) {
-            if (glyph.image && glyph.image.renderingMode == UIImageRenderingModeAlwaysTemplate) {
+
+    if (showDefaultGlass || showMatte || showRoseGlass) {
+        CGFloat d = prefs.dramaActionDiameter;
+        if (d < 36.0 || d > 54.0) d = 50.0;
+        CGRect target = CGRectMake(round(CGRectGetMidX(gf) - d * 0.5),
+                                   round(CGRectGetMidY(gf) - d * 0.5),
+                                   d, d);
+        BOOL glyphHidden = glyph.hidden;
+        if (showDefaultGlass) {
+            if (!defaultGlass) {
+                SEL glassCfgSel = sel_registerName("glassButtonConfiguration");
+                if ([UIButtonConfiguration respondsToSelector:glassCfgSel]) {
+                    UIButton *gbtn = [[UIButton alloc] initWithFrame:target];
+                    gbtn.configuration = ((id (*)(Class, SEL))objc_msgSend)(UIButtonConfiguration.class, glassCfgSel);
+                    FQXApplyCornerConfiguration(gbtn, 0.0, NO);
+                    gbtn.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+                    gbtn.userInteractionEnabled = NO;
+                    gbtn.accessibilityElementsHidden = YES;
+                    gbtn.isAccessibilityElement = NO;
+                    objc_setAssociatedObject(gbtn, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    defaultGlass = gbtn;
+                } else {
+                    BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+                    UIVisualEffectView *gv = [[UIVisualEffectView alloc] initWithEffect:FQXMakeGlassEffect(reduce ? 0 : 1, YES, nil)];
+                    gv.frame = target;
+                    gv.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+                    gv.userInteractionEnabled = NO;
+                    gv.accessibilityElementsHidden = YES;
+                    gv.isAccessibilityElement = NO;
+                    FQXApplyCornerConfiguration(gv, 0.0, NO);
+                    objc_setAssociatedObject(gv, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    defaultGlass = gv;
+                }
+                objc_setAssociatedObject(owner, DramaActionDefaultGlassViewKey, defaultGlass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            BOOL needsMove = !CGRectEqualToRect(defaultGlass.frame, target);
+            BOOL needsAttach = (defaultGlass.superview != parent);
+            if (needsMove || needsAttach) {
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                if (needsMove) defaultGlass.frame = target;
+                if (needsAttach) [parent insertSubview:defaultGlass belowSubview:glyph];
+                [CATransaction commit];
+            }
+            if (defaultGlass.hidden != glyphHidden) defaultGlass.hidden = glyphHidden;
+        } else if (showMatte) {
+            if (!disk) {
+                disk = [[UIView alloc] initWithFrame:target];
+                disk.userInteractionEnabled = NO;
+                disk.isAccessibilityElement = NO;
+                disk.accessibilityElementsHidden = YES;
+                disk.backgroundColor = FQXVideoBaseFillUIColor();
+                disk.layer.cornerCurve = kCACornerCurveContinuous;
+                disk.layer.borderWidth = 0.5;
+                disk.layer.borderColor = FQXVideoBaseBorderUIColor().CGColor;
+                objc_setAssociatedObject(disk, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(owner, DramaActionMatteDiskViewKey, disk, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            if (fabs(disk.layer.cornerRadius - d * 0.5) > 0.25) disk.layer.cornerRadius = d * 0.5;
+            if (!CGRectEqualToRect(disk.frame, target)) disk.frame = target;
+            if (disk.superview != parent) {
+                [parent insertSubview:disk belowSubview:glyph];
+            }
+            if (disk.hidden != glyphHidden) disk.hidden = glyphHidden;
+        } else if (showRoseGlass) {
+            BOOL reduce = UIAccessibilityIsReduceTransparencyEnabled();
+            if (!roseGlass) {
+                roseGlass = [[UIVisualEffectView alloc] initWithEffect:nil];
+                roseGlass.userInteractionEnabled = NO;
+                roseGlass.isAccessibilityElement = NO;
+                roseGlass.accessibilityElementsHidden = YES;
+                roseGlass.backgroundColor = UIColor.clearColor;
+                roseGlass.contentView.backgroundColor = UIColor.clearColor;
+                roseGlass.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+                roseGlass.contentView.layer.borderWidth = 0.5;
+                roseGlass.contentView.layer.borderColor = FQXRoseMistGlassBaseBorderUIColor().CGColor;
+                roseGlass.contentView.clipsToBounds = YES;
+                objc_setAssociatedObject(roseGlass, FQXOwnedGlassElementKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(owner, DramaActionRoseGlassViewKey, roseGlass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            if (roseGlass.overrideUserInterfaceStyle != UIUserInterfaceStyleLight) {
+                roseGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+            }
+            if (!roseGlass.effect || [roseGlass.effect isKindOfClass:UIBlurEffect.class]) {
+                roseGlass.effect = FQXMakeGlassEffect(reduce ? 0 : 1, YES, FQXRoseMistGlassBaseTintUIColor());
+            }
+            if (!CGRectEqualToRect(roseGlass.frame, target)) roseGlass.frame = target;
+            FQXApplyCornerConfiguration(roseGlass, 0.0, NO);
+            if (fabs(roseGlass.contentView.layer.cornerRadius - d * 0.5) > 0.25) {
+                roseGlass.contentView.layer.cornerRadius = d * 0.5;
+            }
+            if (roseGlass.superview != parent) {
+                [parent insertSubview:roseGlass belowSubview:glyph];
+            }
+            if (roseGlass.hidden != glyphHidden) roseGlass.hidden = glyphHidden;
+        }
+    }
+
+    // Preserve colored liked heart (role == 2) & collected star (role == 0); darken white unselected icons only on light surfaces.
+    id model = FQXObjGet(owner, "model");
+    BOOL isSelectedColored = (role == 0 && FQXBoolGet(model, "isCollected", FQXBoolGet(owner, "isCollected", NO))) ||
+                             (role == 2 && FQXBoolGet(model, "isLiked", NO));
+    if ([glyph isKindOfClass:UIImageView.class] && glyph.image) {
+        BOOL hadMode = [objc_getAssociatedObject(glyph, DramaActionSavedGlyphModeKey) boolValue];
+        if (lightBase && !isSelectedColored) {
+            if (!hadMode) {
+                objc_setAssociatedObject(glyph, DramaActionSavedGlyphModeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            if (glyph.image.renderingMode != UIImageRenderingModeAlwaysTemplate) {
+                glyph.image = [glyph.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            }
+            glyph.tintColor = FQXVideoInkUIColor(1.0);
+        } else if (hadMode) {
+            if (glyph.image.renderingMode == UIImageRenderingModeAlwaysTemplate) {
                 glyph.image = [glyph.image imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
             }
             objc_setAssociatedObject(glyph, DramaActionSavedGlyphModeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        (void)outline;
-        return;
     }
 }
 
@@ -10364,6 +10520,7 @@ static UIView *FQXGetWeakAssocView(id owner, const void *key);
 
 static BOOL FQXIsAlignedDramaGlassButton(UIButton *btn) {
     if (![btn isKindOfClass:UIButton.class]) return NO;
+    if ([objc_getAssociatedObject(btn, FQXOwnedGlassElementKey) boolValue]) return NO;
     if (btn.userInteractionEnabled || btn.isAccessibilityElement || !btn.accessibilityElementsHidden) return NO;
     if (objc_getAssociatedObject(btn, DramaSurfaceAppliedVideoBaseKey) != nil) return YES;
     if (!btn.configuration) return NO;
@@ -10634,6 +10791,7 @@ static void FQXInstallDramaButtonSurfaceHooks(void) {
         SEL s1 = sel_registerName("refresh");
         __block IMP o1 = NULL;
         IMP h1 = imp_implementationWithBlock(^(id self) {
+            FQXInvalidateHotPrefsCache();
             if (o1) ((void (*)(id, SEL))o1)(self, s1);
             FQXRefreshAllDramaButtonSurfaces();
         });

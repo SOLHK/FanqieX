@@ -751,9 +751,16 @@ static inline int FQXEffectiveSelectionTintStyle(int storedSelectionStyle,
     return surfaceIsRoseMistGlass ? FQXSelectionTintStyleRoseMistGlass : FQXSelectionTintStyleDefault;
 }
 
-/* Right-rail Like/Collect/Comment/Share buttons stay pure borderless icons without glass/matte circle overlays. */
-static inline int FQXShouldApplyDramaActionSurfaceOverlay(void) {
-    return 0;
+/* Naloia custom icons (and hollow outline mode) stay pure borderless glyphs;
+   original/stock right-rail Like/Collect/Comment/Share buttons receive Liquid Glass
+   (or the configured Drama button surface) when glass is enabled. */
+static inline int FQXShouldApplyDramaActionSurfaceOverlay(int glassEnabled,
+                                                          int naloiaEnabled,
+                                                          int outlineEnabled) {
+    if (!glassEnabled) return 0;
+    if (naloiaEnabled) return 0;
+    if (outlineEnabled) return 0;
+    return 1;
 }
 
 static inline int FQXShouldUseDarkInkForSurface(int isVideoBaseSurface,
