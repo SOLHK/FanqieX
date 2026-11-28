@@ -134,6 +134,7 @@ static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurKey = @"FanqieX.CommentBlur.1";
 static NSString *const AudioButtonBlurKey = @"FanqieX.AudioButtonBlur.1";
+static NSString *const AudioMoreBlurKey = @"FanqieX.AudioMoreBlur.1";
 static NSString *const DramaHeaderBlurKey = @"FanqieX.DramaHeaderBlur.1";
 static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
 static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
@@ -2172,7 +2173,8 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         SEL refresh = sel_registerName("refreshDramaHeaderBlur");
         if ([motion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(motion, refresh);
     } else if ([key isEqualToString:ShareMaterialStyleKey] ||
-               [key isEqualToString:ShareBlurKey]) {
+               [key isEqualToString:ShareBlurKey] ||
+               [key isEqualToString:AudioMoreBlurKey]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refreshShareSel = sel_registerName("refreshShareGlass");
         if ([dockMotion respondsToSelector:refreshShareSel]) {

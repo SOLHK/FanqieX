@@ -1,4 +1,5 @@
 #include "../native/FQXSiriaiDockMotion.h"
+#include "../native/FQXLayoutAndSheetPolicy.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -517,6 +518,138 @@ static void check_fanqiex_modes_and_motion(void) {
     // Page switch / comment sheet / landscape immediate reset (`animated == 0`)
     DKFeedSpringSetCompact(&s, 0, 0, 1.10, 0, 1, &progress, &finished, &startLink, &scheduleFade);
     assert(finished && s.compact == 0 && s.progress == 0.0 && s.overtravel == 0.0);
+
+    // 3rd-order C2-peak-matched fluid spring regression across slight lift / slight pull / cancel / reversal / brisk flick
+    const double dt120 = 1.0 / 120.0;
+    struct {
+        double from;
+        double goal;
+        double vel;
+        int siriai;
+        double minOver;
+        double maxOver;
+        double maxFirstStepJump;
+        double minSettleSec;
+        double maxSettleSec;
+    } fluidCases[] = {
+        {0.08, 1.0,  0.0, 0, 0.025, 0.050, 0.35, 0.35, 0.65}, // TikTok slight lift paused
+        {0.08, 1.0,  0.8, 0, 0.028, 0.055, 0.35, 0.35, 0.65}, // TikTok slight lift gentle
+        {0.08, 1.0,  4.5, 0, 0.042, 0.068, 0.35, 0.30, 0.58}, // TikTok slight lift brisk
+        {0.94, 1.0, -0.8, 0, 0.000, 0.006, 0.20, 0.24, 0.52}, // TikTok slight pull cancel moving
+        {0.94, 1.0,  0.0, 0, 0.000, 0.004, 0.10, 0.22, 0.48}, // TikTok slight pull cancel paused
+        {0.91, 0.0, -0.5, 0, 0.026, 0.055, 0.35, 0.35, 0.65}, // TikTok slight pull expand gentle
+        {0.45, 0.0,  2.5, 0, 0.012, 0.045, 0.45, 0.36, 0.68}, // TikTok mid-drag reversal
+        {0.08, 1.0,  0.0, 1, 0.020, 0.048, 0.30, 0.40, 0.72}, // Siri AI slight lift paused
+        {0.08, 1.0,  0.8, 1, 0.022, 0.052, 0.30, 0.40, 0.72}, // Siri AI slight lift gentle
+        {0.91, 0.0, -0.5, 1, 0.020, 0.052, 0.30, 0.40, 0.72}, // Siri AI slight pull expand gentle
+        {0.94, 1.0, -0.8, 1, 0.000, 0.006, 0.20, 0.25, 0.58}, // Siri AI slight pull cancel moving
+    };
+    double recordedOvershoots[11] = {0};
+    for (size_t ci = 0; ci < sizeof(fluidCases) / sizeof(fluidCases[0]); ci++) {
+        DKFeedFluidRelease fr = DKFeedFluidReleaseMake(fluidCases[ci].from,
+                                                       fluidCases[ci].goal,
+                                                       fluidCases[ci].vel,
+                                                       fluidCases[ci].siriai,
+                                                       0);
+        assert(fr.active == 1);
+        double dir = (fluidCases[ci].goal - fluidCases[ci].from) >= 0.0 ? 1.0 : -1.0;
+        double pos = fluidCases[ci].from;
+        double vel = fluidCases[ci].vel;
+        double maxOver = 0.0;
+        double maxSecondRing = 0.0;
+        int passedPeak = 0;
+        int frames = 0;
+        while (frames < 160) {
+            int running = DKFeedFluidReleaseSample(&fr, dt120, &pos, &vel);
+            frames++;
+            if (frames == 1) {
+                // First 8.3ms frame must never exhibit robotic 0->6.0/s velocity jump
+                assert(fabs(vel - fluidCases[ci].vel) <= fluidCases[ci].maxFirstStepJump);
+            }
+            double over = (pos - fluidCases[ci].goal) * dir;
+            if (over > maxOver) maxOver = over;
+            if (fr.hasPeak) passedPeak = 1;
+            if (passedPeak && over < -1e-9) {
+                maxSecondRing = fmax(maxSecondRing, -over);
+            }
+            if (!running) break;
+        }
+        double settleSec = frames * dt120;
+        assert(!fr.active && fabs(pos - fluidCases[ci].goal) < 1e-12 && vel == 0.0);
+        assert(maxOver >= fluidCases[ci].minOver && maxOver <= fluidCases[ci].maxOver);
+        assert(maxSecondRing < 1e-9);
+        assert(settleSec >= fluidCases[ci].minSettleSec && settleSec <= fluidCases[ci].maxSettleSec);
+        recordedOvershoots[ci] = maxOver;
+    }
+    // Energy monotonicity: brisk flick > gentle lift > paused lift
+    assert(recordedOvershoots[2] > recordedOvershoots[1] && recordedOvershoots[1] > recordedOvershoots[0]);
+    // Reduce Motion: zero overshoot
+    DKFeedFluidRelease rm = DKFeedFluidReleaseMake(0.08, 1.0, 0.8, 0, 1);
+    double rmPos = 0.08, rmVel = 0.8;
+    for (int f = 0; f < 160; f++) {
+        int running = DKFeedFluidReleaseSample(&rm, dt120, &rmPos, &rmVel);
+        assert(rmPos <= 1.002);
+        if (!running) break;
+    }
+    assert(!rm.active && fabs(rmPos - 1.0) < 1e-12);
+
+    // Slight lift paused through full DKFeedSpringEndDrag -> DKFeedSpringAdvance uses fluid spring (no 6.0/s linear elevator!)
+    DKFeedSpringState gentleState;
+    DKFeedSpringInit(&gentleState);
+    DKFeedSpringBeginDrag(&gentleState, 0);
+    DKFeedSpringMoveDrag(&gentleState, 0.08, 5.00, dt120, 1);
+    double gClk = 5.00;
+    for (int f = 0; f < 12; f++) {
+        DKFeedSpringAdvance(&gentleState, gClk, gClk + dt120, 0, &progress, &apply, &scheduleFade);
+        gClk += dt120;
+    }
+    // Pause >= 80ms before releasing (real slight-lift-and-release case!)
+    DKFeedSpringEndDrag(&gentleState, 1, 0.0, gClk + 0.12, dt120, 1, 1, &progress, &finished, &startLink, &scheduleFade);
+    assert(!finished && startLink && gentleState.fluidRelease.active);
+    DKFeedSpringAdvance(&gentleState, gClk + 0.12, gClk + 0.12 + dt120, 0, &progress, &apply, &scheduleFade);
+    assert(fabs(gentleState.dragVelocity) < 0.5);
+    int gSteps = 0;
+    double gPeakOver = 0.0;
+    double gPrev = progress;
+    while (gSteps++ < 140) {
+        DKFeedAdvanceResult res = DKFeedSpringAdvance(&gentleState, gClk + 0.12 + gSteps * dt120,
+                                                      gClk + 0.12 + (gSteps + 1) * dt120,
+                                                      0, &progress, &apply, &scheduleFade);
+        gPeakOver = fmax(gPeakOver, gentleState.overtravel);
+        gPrev = progress;
+        if (res == DKFeedAdvanceFinished) break;
+    }
+    assert(fabs(gPrev - 1.0) < 1e-9 && gPeakOver > 0.025 && gPeakOver < 0.055 && gSteps >= 40 && gSteps <= 95);
+
+    // Multi-tab scroll geometry eligibility (Drama, Bookstore, Bookshelf, Mine vs Horizontal Pagers / Carousels / Pushed Pages)
+    // 1) Drama full-screen FQVCollectionView
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 956, 440, 956, 440, 3824, 0, 0, 1, 0, 440) == 1);
+    // 2) Bookstore vertical category UICollectionView below header (y=120, h=750)
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 750, 440, 750, 440, 2400, 0, 88, 1, 0, 440) == 1);
+    // 3) Bookshelf UITableView / UICollectionView
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 780, 440, 780, 440, 1200, 0, 88, 1, 0, 440) == 1);
+    // 4) Mine short vertical page with alwaysBounceVertical=1
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 820, 440, 820, 440, 700, 0, 88, 1, 0, 440) == 1);
+    // Reject horizontal category pager (contentW = 1320, contentH = 750)
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 750, 440, 750, 1320, 750, 0, 0, 0, 0, 440) == 0);
+    // Reject horizontal banner carousel (height = 160 < 38% of 956)
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 160, 440, 160, 1200, 160, 0, 0, 0, 0, 440) == 0);
+    // Reject off-screen neighbor page inside horizontal pager (scrollMinX = 440)
+    assert(DKFeedScrollGeometryEligible(440, 956, 440, 440, 750, 440, 750, 440, 2400, 0, 0, 1, 0, 440) == 0);
+    // Reject pushed second-level page where SSTabBar has slid off-screen (barMinX = -352)
+    assert(DKFeedScrollGeometryEligible(440, 956, 0, 440, 956, 440, 956, 440, 2400, 0, 0, 1, -352, 440) == 0);
+    // Reject landscape
+    assert(DKFeedScrollGeometryEligible(956, 440, 0, 956, 440, 956, 440, 956, 2000, 0, 0, 1, 0, 956) == 0);
+
+    // Audio More Sheet independent blur resolution & material promotion policy
+    assert(FQXResolveAudioMoreSheetBlur(0, 1, 75, 20) == 20);  // non-audio share sheet uses ShareBlur
+    assert(FQXResolveAudioMoreSheetBlur(1, 0, 0, 20) == 20);   // audio sheet falls back to ShareBlur if unset
+    assert(FQXResolveAudioMoreSheetBlur(1, 1, 65, 0) == 65);   // audio sheet uses AudioMoreBlur independently
+    assert(FQXResolveAudioMoreSheetBlur(1, 1, 0, 50) == 0);    // explicit 0% audio blur overrides ShareBlur
+    assert(FQXShouldPromoteAudioMoreSheetMaterial(0, 0, 60) == 0);
+    assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 0, 0) == 0);
+    assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 0, 45) == 1);
+    assert(FQXShouldPromoteAudioMoreSheetMaterial(1, 1, 45) == 0);
 }
 
 int main(void) {

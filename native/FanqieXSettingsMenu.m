@@ -74,6 +74,7 @@ static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
 static NSString *const ShareBlurKey = @"FanqieX.ShareBlur.1";
+static NSString *const AudioMoreBlurKey = @"FanqieX.AudioMoreBlur.1";
 static NSString *const DramaPlaybackOptionsMaterialKey = @"FanqieX.DramaPlaybackOptionsMaterial.1";
 static NSString *const DramaPlaybackOptionsBlurKey = @"FanqieX.DramaPlaybackOptionsBlur.1";
 static NSString *const DramaHeaderButtonScaleKey = @"FanqieX.DramaHeaderButtonScale.1";
@@ -455,7 +456,7 @@ static void AddDockCollapseModeRows(FQXSettingsMenu *menu, NSString *route, BOOL
     modeRow.title = @"动态收缩底栏";
     modeRow.path = route;
     modeRow.hiddenFromSearch = hiddenFromSearch;
-    modeRow.keywords = @"动态收缩底栏 底栏收缩 短剧 底栏 Dock 原有收缩模式 TikTok 交互 Siri AI 交互 缩小 放大 收起 短线 上滑 下滑";
+    modeRow.keywords = @"动态收缩底栏 底栏收缩 短剧 书城 书架 我的 首页 底栏 Dock 原有收缩模式 TikTok 交互 Siri AI 交互 缩小 放大 收起 短线 上滑 下滑";
     modeRow.popoverKey = DockCollapseModeKey;
     modeRow.popoverOptions = @[@"关闭", @"原有收缩模式", @"TikTok 交互", @"Siri AI 交互"];
     modeRow.popoverValues = @[@0, @1, @2, @3];
@@ -811,11 +812,23 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     AddCommentStyleRows(menu, @"外观/玻璃效果", YES);
     AddBlurRowEx(menu, @"外观/玻璃效果", @"评论区模糊程度", @"FanqieX.CommentBlur.1", YES, nil);
     AddShareStyleRows(menu, @"外观/玻璃效果", NO, YES);
+    AddBlurRowEx(menu,
+                 @"外观/玻璃效果",
+                 @"听书更多面板模糊程度",
+                 AudioMoreBlurKey,
+                 YES,
+                 @"听书 更多 分享 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 高斯模糊 智能朗读 真人讲书 右上角 三个点");
     AddPlaybackOptionsStyleRows(menu, @"外观/玻璃效果", YES);
     AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
     AddPlaybackOptionsStyleRows(menu, @"短剧/播放设置", NO);
     AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
+    AddBlurRowEx(menu,
+                 @"阅读/智能朗读",
+                 @"听书更多面板模糊程度",
+                 AudioMoreBlurKey,
+                 NO,
+                 @"听书 更多 分享 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 高斯模糊 智能朗读 真人讲书 右上角 三个点");
     AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
     NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
     AddScaleSliderRow(menu, @"短剧/顶部分类", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, NO, topSizeKeywords);
@@ -1307,7 +1320,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
     if ([self.path isEqualToString:@"评论区净化"]) return @"评论区材质与发评论输入框样式可独立搭配选择。";
-    if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书按钮模糊程度在听书界面液态玻璃开启时生效。";
+    if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书按钮模糊程度在听书界面液态玻璃开启时生效；听书更多面板模糊程度可独立调节右上角与“更多”按钮弹出的半屏弹窗模糊度。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
     if ([self.path hasPrefix:@"广告与福利"]) return @"开关开启表示拦截。重启 App 后完整生效。";
     return nil;

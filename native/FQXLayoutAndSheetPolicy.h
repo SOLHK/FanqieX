@@ -97,6 +97,22 @@ static inline int FQXResolvePlaybackOptionsUserBlur(int followDock,
     return opt > dock ? opt : dock;
 }
 
+static inline int FQXResolveAudioMoreSheetBlur(int isAudioMoreSheet,
+                                               int hasAudioMorePref,
+                                               int audioMoreBlurPercent,
+                                               int shareBlurPercent) {
+    int share = FQXBlurPercent(shareBlurPercent);
+    if (!isAudioMoreSheet) return share;
+    if (hasAudioMorePref) return FQXBlurPercent(audioMoreBlurPercent);
+    return share;
+}
+
+static inline int FQXShouldPromoteAudioMoreSheetMaterial(int isAudioMoreSheet,
+                                                         int currentShareStyle,
+                                                         int audioMoreBlurPercent) {
+    return (isAudioMoreSheet && currentShareStyle == 0 && FQXBlurPercent(audioMoreBlurPercent) > 0) ? 1 : 0;
+}
+
 static inline int FQXSheetUsesHardwareBackdropFilter(int backdropFilterAvailable,
                                                      int reduceTransparency) {
     return (backdropFilterAvailable && !reduceTransparency) ? 1 : 0;

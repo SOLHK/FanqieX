@@ -40,6 +40,7 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         @"FanqieX.DockBlur.1": @0,
         @"FanqieX.CommentBlur.1": @0,
         @"FanqieX.AudioButtonBlur.1": @0,
+        @"FanqieX.AudioMoreBlur.1": @0,
         @"FanqieX.DramaHeaderBlur.1": @0,
         @"FanqieX.DramaHeaderButtonScale.1": @100,
         @"FanqieX.DramaPlaybackOptionsMaterial.1": @0,
@@ -186,6 +187,7 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||
         [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
         [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] ||
+        [key isEqualToString:@"FanqieX.AudioMoreBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
         [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
         [key isEqualToString:@"FanqieX.ShareMaterialStyle.1"] ||
@@ -208,7 +210,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
         }
         if ([key isEqualToString:@"FanqieX.DiagCategoryFilter.1"]) maximum = 6;
         if ([key isEqualToString:@"FanqieX.DockBlur.1"] || [key isEqualToString:@"FanqieX.CommentBlur.1"] ||
-            [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
+            [key isEqualToString:@"FanqieX.AudioButtonBlur.1"] || [key isEqualToString:@"FanqieX.AudioMoreBlur.1"] ||
+            [key isEqualToString:@"FanqieX.DramaHeaderBlur.1"] ||
             [key isEqualToString:@"FanqieX.DramaPlaybackOptionsBlur.1"] ||
             [key isEqualToString:@"FanqieX.ShareBlur.1"]) maximum = 100;
         return number >= 0 && number <= maximum && number == trunc(number) ? @((NSInteger)number) : nil;

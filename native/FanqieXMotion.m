@@ -116,6 +116,7 @@ static NSString *const GlassDarkTintPrefKey = @"FanqieX.GlassDarkTint.1";
 static NSString *const DockBlurPrefKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurPrefKey = @"FanqieX.CommentBlur.1";
 static NSString *const AudioButtonBlurPrefKey = @"FanqieX.AudioButtonBlur.1";
+static NSString *const AudioMoreBlurPrefKey = @"FanqieX.AudioMoreBlur.1";
 static NSString *const DramaHeaderBlurPrefKey = @"FanqieX.DramaHeaderBlur.1";
 static NSString *const DramaHeaderButtonScalePrefKey = @"FanqieX.DramaHeaderButtonScale.1";
 static NSString *const ShareMaterialStylePrefKey = @"FanqieX.ShareMaterialStyle.1";
@@ -2682,7 +2683,7 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
 }
 
 - (void)syncCollectionView:(UIScrollView *)scroll {
-    if (![scroll isKindOfClass:UIScrollView.class]) return;
+    if (![scroll isKindOfClass:UIScrollView.class] || [scroll isKindOfClass:UITextView.class]) return;
     UIPanGestureRecognizer *pan = scroll.panGestureRecognizer;
     if (!pan) return;
     [pan removeTarget:self action:@selector(handleFeedPan:)];
@@ -2694,30 +2695,45 @@ static BOOL FQXHasVisibleOverlaySheetInWindow(UIWindow *window) {
     }
 }
 
-static void FQXCollectMountedFQVCollections(UIView *root, Class feedCls, NSMutableArray<UIScrollView *> *out, NSInteger depth) {
-    if (!root || depth > 14) return;
-    if (feedCls && [root isKindOfClass:feedCls] && [root isKindOfClass:UIScrollView.class]) {
+static void FQXCollectMountedFeedScrollViews(UIView *root, NSMutableArray<UIScrollView *> *out, NSInteger depth) {
+    if (!root || depth > 18) return;
+    if ([root isKindOfClass:UIScrollView.class] && ![root isKindOfClass:UITextView.class]) {
         [out addObject:(UIScrollView *)root];
-        return;
     }
     for (UIView *sub in root.subviews) {
-        FQXCollectMountedFQVCollections(sub, feedCls, out, depth + 1);
+        FQXCollectMountedFeedScrollViews(sub, out, depth + 1);
     }
 }
 
 - (void)scanWindowsForMountedCollections {
-    Class feedCls = objc_lookUpClass("FQVCollectionView");
-    if (!feedCls) return;
     NSMutableArray<UIScrollView *> *found = [NSMutableArray array];
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *win in ((UIWindowScene *)scene).windows) {
-            FQXCollectMountedFQVCollections(win, feedCls, found, 0);
+            if (win.hidden || win.alpha <= 0.01) continue;
+            FQXCollectMountedFeedScrollViews(win, found, 0);
         }
     }
     for (UIScrollView *scroll in found) {
         [self syncCollectionView:scroll];
     }
+}
+
+static BOOL FQXControllerNameBlocksFeedDockMotion(NSString *name) {
+    if (!name.length) return NO;
+    return [name containsString:@"SideBar"] ||
+           [name containsString:@"Comment"] ||
+           [name containsString:@"Episode"] ||
+           [name containsString:@"Share"] ||
+           [name containsString:@"Search"] ||
+           [name containsString:@"Detail"] ||
+           [name containsString:@"Reader"] ||
+           [name containsString:@"AudioPlay"] ||
+           [name containsString:@"Setting"] ||
+           [name containsString:@"Alert"] ||
+           [name containsString:@"Popover"] ||
+           [name hasPrefix:@"FQX"] ||
+           [name hasPrefix:@"FanqieX"];
 }
 
 - (BOOL)canTrackFeed:(UIScrollView *)feed
@@ -2727,25 +2743,25 @@ static void FQXCollectMountedFQVCollections(UIView *root, Class feedCls, NSMutab
     if (waitingForMount) *waitingForMount = NO;
     if (outInteraction) *outInteraction = nil;
     if (!FQXFeedMotionSupported() || !FQXDockCollapseModeUsesFeedMotion(mode)) return NO;
+    if (!feed || [feed isKindOfClass:UITextView.class] || feed.hidden || feed.alpha <= 0.01) return NO;
     UIWindow *win = feed.window;
     if (!win || !feed.isScrollEnabled) return NO;
     CGRect winBounds = win.bounds;
     if (CGRectGetWidth(winBounds) >= CGRectGetHeight(winBounds)) return NO;
     CGRect feedInWin = [feed convertRect:feed.bounds toView:win];
-    if (CGRectGetWidth(feedInWin) < CGRectGetWidth(winBounds) * 0.85 ||
-        CGRectGetHeight(feedInWin) < CGRectGetHeight(winBounds) * 0.55 ||
-        fabs(CGRectGetMinX(feedInWin) - CGRectGetMinX(winBounds)) > 8.0) {
-        return NO;
-    }
 
     Class listCls = objc_lookUpClass("FQVShortVideoListViewController");
     Class seriesFeedCls = objc_lookUpClass("SSVideoSeriesFeedViewController");
     Class tbcCls = objc_lookUpClass("SSTabBarController");
     Class tabBarCls = objc_lookUpClass("SSTabBar");
+    UIViewController *nearestVC = nil;
     UIViewController *listOwner = nil;
     UIViewController *pinchOwner = nil;
     UIViewController *tbc = nil;
     for (UIResponder *resp = feed.nextResponder; resp; resp = resp.nextResponder) {
+        if (!nearestVC && [resp isKindOfClass:UIViewController.class]) {
+            nearestVC = (UIViewController *)resp;
+        }
         if (!listOwner && listCls && [resp isKindOfClass:listCls]) {
             listOwner = (UIViewController *)resp;
         }
@@ -2757,16 +2773,21 @@ static void FQXCollectMountedFQVCollections(UIView *root, Class feedCls, NSMutab
             break;
         }
     }
-    if (!listOwner || !tbc || FQXVideoBackdropSingleList(listOwner) || FQXVideoBackdropHasTransition(listOwner)) {
-        return NO;
-    }
-    id effPinchOwner = pinchOwner ?: listOwner;
-    if (effPinchOwner && [objc_getAssociatedObject(effPinchOwner, FQXPinchPureCleanActiveKey) boolValue]) {
-        return NO;
+    if (!nearestVC || !tbc) return NO;
+    if (listOwner) {
+        if (FQXVideoBackdropSingleList(listOwner) || FQXVideoBackdropHasTransition(listOwner)) {
+            return NO;
+        }
+        id effPinchOwner = pinchOwner ?: listOwner;
+        if (effPinchOwner && [objc_getAssociatedObject(effPinchOwner, FQXPinchPureCleanActiveKey) boolValue]) {
+            return NO;
+        }
     }
     BOOL selectedRoot = NO;
-    for (UIViewController *cur = listOwner; cur; cur = cur.parentViewController) {
+    for (UIViewController *cur = listOwner ?: nearestVC; cur; cur = cur.parentViewController) {
         if (cur.presentedViewController != nil) return NO;
+        NSString *curName = NSStringFromClass(cur.class) ?: @"";
+        if (cur != tbc && FQXControllerNameBlocksFeedDockMotion(curName)) return NO;
         UIViewController *parent = cur.parentViewController;
         if ([parent isKindOfClass:UINavigationController.class] &&
             ((UINavigationController *)parent).viewControllers.firstObject != cur) {
@@ -2791,6 +2812,24 @@ static void FQXCollectMountedFQVCollections(UIView *root, Class feedCls, NSMutab
     }
     for (UIView *v = bar; v; v = v.superview) {
         if (v.hidden || v.alpha <= 0.01) return NO;
+    }
+    CGRect barInWin = [bar convertRect:bar.bounds toView:win];
+    UIEdgeInsets insets = feed.adjustedContentInset;
+    if (!DKFeedScrollGeometryEligible(CGRectGetWidth(winBounds),
+                                      CGRectGetHeight(winBounds),
+                                      CGRectGetMinX(feedInWin),
+                                      CGRectGetWidth(feedInWin),
+                                      CGRectGetHeight(feedInWin),
+                                      CGRectGetWidth(feed.bounds),
+                                      CGRectGetHeight(feed.bounds),
+                                      feed.contentSize.width,
+                                      feed.contentSize.height,
+                                      insets.top,
+                                      insets.bottom,
+                                      feed.alwaysBounceVertical ? 1 : 0,
+                                      CGRectGetMinX(barInWin),
+                                      CGRectGetWidth(barInWin))) {
+        return NO;
     }
     FQXTabBarInteraction *inter = FQXActiveDockInteractionForBar(bar);
     if (!inter || !inter->_nativeDockBar || !inter->_nativeDockBar.window) {
@@ -4968,7 +5007,16 @@ static const char FQXDockTouchBeganKey = 0;
     if (self->_feedLastSelectedIndex != curSelIdx) {
         if (self->_feedLastSelectedIndex != NSNotFound && [self usesFeedMotion]) {
             [[FQXFeedDockPanController shared] resetFeedGesture];
-            [self setFeedCompact:NO animated:NO];
+            if (self->_feedSpring.compact || self->_feedSpring.progress > 0.005 || self->_feedSpring.overtravel != 0.0) {
+                [self setFeedCompact:NO animated:YES];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+            });
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
+            });
         }
         self->_feedLastSelectedIndex = curSelIdx;
     }
@@ -10690,6 +10738,15 @@ static void (*OrigFQVCollectionLayout)(id, SEL);
 static void HookFQVCollectionLayout(UIScrollView *feed, SEL cmd) {
     if (OrigFQVCollectionLayout) OrigFQVCollectionLayout(feed, cmd);
     if (feed.window) FQXRefreshVideoBackdropForFeed(feed);
+}
+
+static void (*OrigFeedScrollViewDidMoveWindow)(id, SEL);
+static void HookFeedScrollViewDidMoveWindow(UIScrollView *scroll, SEL cmd) {
+    if (OrigFeedScrollViewDidMoveWindow) OrigFeedScrollViewDidMoveWindow(scroll, cmd);
+    if (![scroll isKindOfClass:UIScrollView.class] || [scroll isKindOfClass:UITextView.class]) return;
+    if (!scroll.window || (FQXFeedMotionSupported() && FQXDockCollapseModeUsesFeedMotion(FQXCurrentDockCollapseMode()))) {
+        [[FQXFeedDockPanController shared] syncCollectionView:scroll];
+    }
 }
 
 static void (*OrigFQVCollectionDidMoveWindow)(id, SEL);
@@ -23851,6 +23908,50 @@ static UIViewController *FQXFindVisibleReaderVCInWindow(UIWindow *window) {
     return nil;
 }
 
+static UIViewController *FQXFindVisibleAudioPlayVCInWindow(UIWindow *window) {
+    Class audioCls = objc_lookUpClass("SSNewAudioPlayViewController");
+    if (!audioCls) return nil;
+    UIViewController *found = window.rootViewController
+        ? FQXFindVisibleVCKindInHierarchy(window.rootViewController, audioCls, 0) : nil;
+    if (found) return found;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *win in ((UIWindowScene *)scene).windows) {
+            if (win == window || win.hidden || win.alpha <= 0.01) continue;
+            found = FQXFindVisibleVCKindInHierarchy(win.rootViewController, audioCls, 0);
+            if (found) return found;
+        }
+    }
+    return nil;
+}
+
+static BOOL FQXViewSubtreeHasAudioMoreMarker(UIView *view, NSInteger *budget, NSInteger depth) {
+    if (!view || view.hidden || view.alpha <= 0.01 || depth > 14 || *budget <= 0) return NO;
+    (*budget)--;
+    NSString *text = nil;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *lbl = (UILabel *)view;
+        text = lbl.text.length ? lbl.text : lbl.attributedText.string;
+    } else if ([view isKindOfClass:UIButton.class]) {
+        UIButton *btn = (UIButton *)view;
+        text = btn.currentTitle.length ? btn.currentTitle : btn.currentAttributedTitle.string;
+    }
+    if (text.length > 0 && text.length <= 24) {
+        if ([text isEqualToString:@"有声详情"] ||
+            [text isEqualToString:@"听书记录"] ||
+            [text isEqualToString:@"播放器样式"] ||
+            [text isEqualToString:@"真人讲书支持边听边读"] ||
+            [text isEqualToString:@"听书进度自动跟随左右翻页"] ||
+            [text isEqualToString:@"书末自动推荐下一本"]) {
+            return YES;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        if (FQXViewSubtreeHasAudioMoreMarker(sub, budget, depth + 1)) return YES;
+    }
+    return NO;
+}
+
 static UIColor *FQXSampleCenterPixelColor(UIImage *image) {
     CGImageRef cg = image.CGImage;
     if (!cg) return nil;
@@ -24698,7 +24799,22 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
         return NO;
     }
 
+    BOOL isAudioMoreSheet = (FQXFindVisibleAudioPlayVCInWindow(sheet.window) != nil);
+    if (!isAudioMoreSheet) {
+        NSInteger markerBudget = 220;
+        isAudioMoreSheet = FQXViewSubtreeHasAudioMoreMarker(sheet, &markerBudget, 0);
+    }
+
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id audioMoreBlurObj = [ud objectForKey:AudioMoreBlurPrefKey];
+    BOOL hasAudioMoreBlurPref = (audioMoreBlurObj && [audioMoreBlurObj respondsToSelector:@selector(doubleValue)]);
+    NSInteger rawAudioMoreBlur = hasAudioMoreBlurPref ? FQXBlurPercent([audioMoreBlurObj doubleValue]) : 0;
+    NSInteger rawShareBlur = FQXBlurPercent([ud doubleForKey:ShareBlurPrefKey]);
+
     FQXShareMaterialStyle style = FQXCurrentShareMaterialStyle();
+    if (FQXShouldPromoteAudioMoreSheetMaterial(isAudioMoreSheet ? 1 : 0, (int)style, (int)rawAudioMoreBlur)) {
+        style = FQXShareMaterialClearGlass;
+    }
     if (style == FQXShareMaterialNative) {
         FQXRemoveShareSheetStyling(sheet);
         return NO;
@@ -24724,7 +24840,10 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     CGFloat cornerR = (hostCornerR >= 10.0 && hostCornerR <= 22.0) ? hostCornerR : 18.0;
     BOOL reduceTrans = UIAccessibilityIsReduceTransparencyEnabled();
     BOOL darkTint = FQXGlassDarkTintEnabled();
-    NSInteger blurPct = reduceTrans ? 0 : FQXBlurPercent([NSUserDefaults.standardUserDefaults doubleForKey:ShareBlurPrefKey]);
+    NSInteger blurPct = reduceTrans ? 0 : FQXResolveAudioMoreSheetBlur(isAudioMoreSheet ? 1 : 0,
+                                                                       hasAudioMoreBlurPref ? 1 : 0,
+                                                                       (int)rawAudioMoreBlur,
+                                                                       (int)rawShareBlur);
     BOOL hadMask = (sheet.layer.mask != nil || objc_getAssociatedObject(sheet, FQXShareSavedMaskKey) != nil);
     BOOL hadClips = (sheet.clipsToBounds || [objc_getAssociatedObject(sheet, FQXShareSavedClipsKey) boolValue]);
     FQXShareCleanupStats stats = {0, 0};
@@ -24741,7 +24860,7 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     NSInteger effectiveBlur = reduceTrans ? (wantsGaussian ? 100 : 0) : FQXSheetBlurPercent(blurPct, (int)minimumBlur);
     CGFloat maxGlassTint = (effStyle == FQXShareMaterialRegularGlass)
         ? (isDark ? 0.34 : 0.30)
-        : (isDark ? 0.22 : 0.18);
+        : (isAudioMoreSheet ? (isDark ? 0.36 : 0.34) : (isDark ? 0.22 : 0.18));
     UIVisualEffectView *surface = objc_getAssociatedObject(sheet, FQXShareGlassSurfaceKey);
     BOOL isBlurView = [surface isKindOfClass:FQXBackdropBlurView.class];
     BOOL isGlassView = [surface isKindOfClass:FQXCommentGlassSurfaceView.class];
@@ -24807,8 +24926,9 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
     }
 
     if (FQXDiagnosticsHubIsEnabled()) {
-        NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%.0f|%ld|%ld|%ld",
+        NSString *diagSig = [NSString stringWithFormat:@"%ld|%d|%ld|%d|%d|%.0f|%ld|%ld|%ld",
                              (long)effStyle, isDark ? 1 : 0, (long)blurPct, darkTint ? 1 : 0,
+                             isAudioMoreSheet ? 1 : 0,
                              CGRectGetHeight(sb), (long)stats.monochromeIcons, (long)stats.neutralizedEffects, (long)clearedDimmers];
         if (![diagSig isEqualToString:objc_getAssociatedObject(sheet, FQXShareDiagLoggedKey)]) {
             objc_setAssociatedObject(sheet, FQXShareDiagLoggedKey, diagSig, OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -24818,6 +24938,8 @@ static BOOL FQXStyleShareSheet(UIView *sheet, UIView *root, BOOL forceDarkDrama)
                 @"materialStyle": @((NSInteger)effStyle),
                 @"blurPercent": @(blurPct),
                 @"effectiveBlurPercent": @(effectiveBlur),
+                @"isAudioMoreSheet": @(isAudioMoreSheet),
+                @"audioMoreBlurPercent": @(rawAudioMoreBlur),
                 @"fromReader": @(fromReader),
                 @"isDark": @(isDark),
                 @"darkTint": @(darkTint),
@@ -26833,6 +26955,7 @@ void FQXInstallMotionAndAudioHooks(void) {
             HOOK_INST("FQVShortVideoPlayerCellView", "resetToRecycle", "v16@0:8", OrigCellResetToRecycle, HookCellResetToRecycle);
             HOOK_INST("FQVShortVideoVPlayerControlView", "setPlayerViewFrame:", "v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16", OrigControlSetPlayerViewFrame, HookControlSetPlayerViewFrame);
             HOOK_INST("FQVShortVideoVPlayerControlView", "handleOutterFeedClipBounds:", "v20@0:8B16", OrigControlHandleOutterClip, HookControlHandleOutterClip);
+            HOOK_INST("UIScrollView", "didMoveToWindow", "v16@0:8", OrigFeedScrollViewDidMoveWindow, HookFeedScrollViewDidMoveWindow);
             HOOK_INST("FQVCollectionView", "layoutSubviews", "v16@0:8", OrigFQVCollectionLayout, HookFQVCollectionLayout);
             HOOK_INST("FQVCollectionView", "didMoveToWindow", "v16@0:8", OrigFQVCollectionDidMoveWindow, HookFQVCollectionDidMoveWindow);
             [[FQXFeedDockPanController shared] scanWindowsForMountedCollections];
