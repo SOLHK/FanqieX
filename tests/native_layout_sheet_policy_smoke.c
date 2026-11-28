@@ -427,14 +427,19 @@ static void test_audiobook_sheets_and_video_palette_policy(void) {
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeIOS18Gaussian, 0) == 1);
     assert(FQXDockMaterialUsesBlur(FQXDockMaterialModeNewGlass, 25) == 1);
 
-    /* 5. Selection tint (柔性粉雾=1, 粉雾玻璃=2), smart pairing, & drama button base normalization */
+    /* 5. Split Dock vs Drama top-bar selection tint (柔性粉雾=1, 粉雾玻璃=2), smart pairing, & right-rail guard */
     assert(FQXNormalizeSelectionTintStyle(1) == FQXSelectionTintStyleSoftRoseMist);
     assert(FQXNormalizeSelectionTintStyle(2) == FQXSelectionTintStyleRoseMistGlass);
     assert(FQXNormalizeSelectionTintStyle(3) == FQXSelectionTintStyleDefault);
+    assert(FQXResolveSplitSelectionTintStyle(1, 2, 1, 1) == FQXSelectionTintStyleRoseMistGlass); /* Specific wins */
+    assert(FQXResolveSplitSelectionTintStyle(1, 0, 1, 2) == FQXSelectionTintStyleDefault);       /* Explicit default overrides legacy */
+    assert(FQXResolveSplitSelectionTintStyle(0, 0, 1, 1) == FQXSelectionTintStyleSoftRoseMist);  /* Legacy migration fallback */
+    assert(FQXResolveSplitSelectionTintStyle(0, 0, 0, 0) == FQXSelectionTintStyleDefault);
     assert(FQXEffectiveSelectionTintStyle(0, 0) == FQXSelectionTintStyleDefault);
     assert(FQXEffectiveSelectionTintStyle(0, 1) == FQXSelectionTintStyleRoseMistGlass);
     assert(FQXEffectiveSelectionTintStyle(1, 1) == FQXSelectionTintStyleSoftRoseMist);
     assert(FQXEffectiveSelectionTintStyle(2, 0) == FQXSelectionTintStyleRoseMistGlass);
+    assert(FQXShouldApplyDramaActionSurfaceOverlay() == 0); /* Never add circular glass/matte mask on right-rail icons */
     assert(FQXNormalizeDramaButtonSurfaceStyle(1) == FQXDramaButtonSurfaceVideoBase);
     assert(FQXNormalizeDramaButtonSurfaceStyle(2) == FQXDramaButtonSurfaceRoseMistGlass);
     assert(FQXNormalizeDramaButtonSurfaceStyle(-1) == FQXDramaButtonSurfaceDefaultGlass);

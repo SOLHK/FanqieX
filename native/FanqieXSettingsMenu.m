@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "FQXBlurControl.h"
+#import "FQXLayoutAndSheetPolicy.h"
 #import "FQXSiriaiDockMotion.h"
 #import "FanqieXDetachedDock.h"
 #import "FanqieXDiagnosticsHub.h"
@@ -72,6 +73,8 @@ static NSString *const CommentComposerStyleKey = @"FanqieX.CommentComposerStyle.
 static NSString *const BottomDisplayModeKey = @"FanqieX.BottomDisplayMode.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const SelectionTintStyleKey = @"FanqieX.SelectionTintStyle.1";
+static NSString *const DockSelectionTintStyleKey = @"FanqieX.DockSelectionTintStyle.1";
+static NSString *const DramaTopSelectionTintStyleKey = @"FanqieX.DramaTopSelectionTintStyle.1";
 static NSString *const DramaButtonSurfaceStyleKey = @"FanqieX.DramaButtonSurfaceStyle.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const ShareMaterialStyleKey = @"FanqieX.ShareMaterialStyle.1";
@@ -334,6 +337,19 @@ static NSInteger CurrentSavedShareMaterialStyle(void) {
     return (val >= 0 && val <= 4) ? val : 1;
 }
 
+static NSInteger CurrentSavedSplitSelectionStyle(NSString *specificKey) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    id specObj = specificKey.length ? [ud objectForKey:specificKey] : nil;
+    id legObj = [ud objectForKey:SelectionTintStyleKey];
+    int hasSpec = (specObj && [specObj respondsToSelector:@selector(integerValue)]) ? 1 : 0;
+    int hasLeg = (legObj && [legObj respondsToSelector:@selector(integerValue)]) ? 1 : 0;
+    return (NSInteger)FQXResolveSplitSelectionTintStyle(
+        hasSpec,
+        hasSpec ? (int)[specObj integerValue] : 0,
+        hasLeg,
+        hasLeg ? (int)[legObj integerValue] : 0);
+}
+
 static NSInteger CurrentSavedAudioSheetMaterialStyle(void) {
     id stored = [NSUserDefaults.standardUserDefaults objectForKey:AudioSheetMaterialKey];
     if (!stored) return 1;
@@ -449,6 +465,10 @@ static NSInteger PopoverOptionsAndCurrentIndex(FQXSettingRow *row,
         NSInteger saved = CurrentSavedAudioSheetMaterialStyle();
         NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
         idx = (found != NSNotFound) ? (NSInteger)found : 1;
+    } else if (row.popoverKind == 13) {
+        NSInteger saved = CurrentSavedSplitSelectionStyle(row.popoverKey);
+        NSUInteger found = values.count == options.count ? [values indexOfObject:@(saved)] : NSNotFound;
+        idx = (found != NSNotFound) ? (NSInteger)found : 0;
     } else if (values.count == options.count && options.count > 0) {
         NSInteger saved = [NSUserDefaults.standardUserDefaults integerForKey:row.popoverKey];
         NSUInteger found = [values indexOfObject:@(saved)];
@@ -643,35 +663,43 @@ static void AddAudioSheetStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL 
                  @"听书弹窗模糊程度 听书 更多 分享 章评 选择章节 下载 已加书架 语速 定时关闭 播放目录 音色设置 弹窗 面板 模糊程度 模糊强度 模糊度 自定义 液态玻璃 模糊玻璃 高斯模糊 智能朗读 真人讲书");
 }
 
-static void AddSelectionAndSurfaceStyleRows(FQXSettingsMenu *menu,
-                                            NSString *route,
-                                            BOOL hiddenFromSearch,
-                                            BOOL includeSelectionTint,
-                                            BOOL includeDramaBase) {
-    if (includeSelectionTint) {
-        FQXSettingRow *selRow = [FQXSettingRow new];
-        selRow.title = @"顶部按钮与 Dock 选中色";
-        selRow.path = route;
-        selRow.hiddenFromSearch = hiddenFromSearch;
-        selRow.keywords = @"顶部按钮 Dock 底栏 选中色 选中 胶囊 柔性粉雾 粉雾玻璃 粉雾 粉色 液态玻璃 透明 渐变 颜色 顶部分类 短剧 视频同款";
-        selRow.popoverKey = SelectionTintStyleKey;
-        selRow.popoverOptions = @[@"默认", @"柔性粉雾", @"粉雾玻璃"];
-        selRow.popoverValues = @[@0, @1, @2];
-        selRow.height = 52;
-        [menu.catalog addObject:selRow];
-    }
-    if (includeDramaBase) {
-        FQXSettingRow *baseRow = [FQXSettingRow new];
-        baseRow.title = @"顶部与短剧按钮底色";
-        baseRow.path = route;
-        baseRow.hiddenFromSearch = hiddenFromSearch;
-        baseRow.keywords = @"顶部与短剧按钮底色 顶部按钮 短剧按钮底色 短剧 按钮 底色 粉雾玻璃 柔性粉雾 液态玻璃 透明 粉色 视频同款 非玻璃 哑光 灰白 搜索 互动按钮 查看全集 全屏 弹幕 横屏";
-        baseRow.popoverKey = DramaButtonSurfaceStyleKey;
-        baseRow.popoverOptions = @[@"默认液态玻璃", @"视频同款底色（非玻璃）", @"粉雾玻璃"];
-        baseRow.popoverValues = @[@0, @1, @2];
-        baseRow.height = 52;
-        [menu.catalog addObject:baseRow];
-    }
+static void AddDockSelectionTintRow(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *selRow = [FQXSettingRow new];
+    selRow.title = @"Dock 选中色";
+    selRow.path = route;
+    selRow.hiddenFromSearch = hiddenFromSearch;
+    selRow.keywords = @"Dock 选中色 底栏 选中色 选中 胶囊 柔性粉雾 粉雾玻璃 粉雾 粉色 液态玻璃 透明 渐变 颜色 视频同款";
+    selRow.popoverKey = DockSelectionTintStyleKey;
+    selRow.popoverOptions = @[@"默认", @"柔性粉雾", @"粉雾玻璃"];
+    selRow.popoverValues = @[@0, @1, @2];
+    selRow.popoverKind = 13;
+    selRow.height = 52;
+    [menu.catalog addObject:selRow];
+}
+
+static void AddDramaTopStyleRows(FQXSettingsMenu *menu, NSString *route, BOOL hiddenFromSearch) {
+    FQXSettingRow *baseRow = [FQXSettingRow new];
+    baseRow.title = @"短剧顶部与按钮底色";
+    baseRow.path = route;
+    baseRow.hiddenFromSearch = hiddenFromSearch;
+    baseRow.keywords = @"短剧顶部与按钮底色 短剧 顶部按钮 按钮 底色 粉雾玻璃 柔性粉雾 液态玻璃 透明 粉色 视频同款 非玻璃 哑光 灰白 搜索 查看全集 全屏 弹幕 横屏";
+    baseRow.popoverKey = DramaButtonSurfaceStyleKey;
+    baseRow.popoverOptions = @[@"默认液态玻璃", @"视频同款底色（非玻璃）", @"粉雾玻璃"];
+    baseRow.popoverValues = @[@0, @1, @2];
+    baseRow.height = 52;
+    [menu.catalog addObject:baseRow];
+
+    FQXSettingRow *topSelRow = [FQXSettingRow new];
+    topSelRow.title = @"短剧顶部按钮选中色";
+    topSelRow.path = route;
+    topSelRow.hiddenFromSearch = hiddenFromSearch;
+    topSelRow.keywords = @"短剧顶部按钮选中色 顶部按钮 选中色 顶部分类 选中 胶囊 柔性粉雾 粉雾玻璃 粉雾 粉色 液态玻璃 透明 渐变 颜色 短剧 视频同款";
+    topSelRow.popoverKey = DramaTopSelectionTintStyleKey;
+    topSelRow.popoverOptions = @[@"默认", @"柔性粉雾", @"粉雾玻璃"];
+    topSelRow.popoverValues = @[@0, @1, @2];
+    topSelRow.popoverKind = 13;
+    topSelRow.height = 52;
+    [menu.catalog addObject:topSelRow];
 }
 
 static void AddDockMaterialRows(FQXSettingsMenu *menu) {
@@ -687,8 +715,7 @@ static void AddDockMaterialRows(FQXSettingsMenu *menu) {
     material.height = 52;
     [menu.catalog addObject:material];
 
-    AddSelectionAndSurfaceStyleRows(menu, route, NO, YES, NO);
-    AddSelectionAndSurfaceStyleRows(menu, route, YES, NO, YES);
+    AddDockSelectionTintRow(menu, route, NO);
     AddBlurRow(menu, route, @"Dock 模糊程度", DockBlurKey);
 }
 
@@ -870,7 +897,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     // Add Dock 3-way display style popover picker (Icons+Text / Icons Only / Text Only)
     AddDockDisplayStyleRow(menu, @"外观/玻璃与尺寸", NO);
     AddDockDisplayStyleRow(menu, @"页面与导航/底栏入口", YES);
-    AddSelectionAndSurfaceStyleRows(menu, @"页面与导航/底栏入口", YES, YES, NO);
+    AddDockSelectionTintRow(menu, @"页面与导航/底栏入口", YES);
     AddDockMaterialRows(menu);
 
     // Add Comment Material toggles (Liquid Glass / Gaussian Blur, mutually exclusive, both off = native),
@@ -887,17 +914,15 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     AddAudioSheetStyleRows(menu, @"外观/玻璃效果", YES);
     AddPlaybackOptionsStyleRows(menu, @"外观/玻璃效果", YES);
     AddShareStyleRows(menu, @"阅读/阅读设置", YES, NO);
-    AddPlaybackOptionsStyleRows(menu, @"短剧/播放设置", NO);
+    // Keep Short Drama top-bar & button appearance controls directly on the top-level "短剧" page for instant access.
+    AddDramaTopStyleRows(menu, @"短剧", NO);
+    NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
+    AddScaleSliderRow(menu, @"短剧", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, NO, topSizeKeywords);
+    AddBlurRow(menu, @"短剧", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
+    AddPlaybackOptionsStyleRows(menu, @"短剧", NO);
     AddShareStyleRows(menu, @"短剧/播放设置", YES, YES);
-    AddSelectionAndSurfaceStyleRows(menu, @"短剧/播放设置", NO, NO, YES);
-    AddSelectionAndSurfaceStyleRows(menu, @"短剧/顶部分类", YES, YES, YES);
     AddBlurRow(menu, @"阅读/智能朗读", @"听书按钮模糊程度", @"FanqieX.AudioButtonBlur.1");
     AddAudioSheetStyleRows(menu, @"阅读/智能朗读", NO);
-    AddBlurRow(menu, @"短剧/播放设置", @"短剧顶部按钮模糊程度", @"FanqieX.DramaHeaderBlur.1");
-    NSString *topSizeKeywords = @"顶部按钮大小 顶部按钮自定义大小 顶部按钮 顶部分类 顶部胶囊 顶栏 大小 尺寸 缩放 比例 搜索按钮 短剧 推荐 看剧 漫剧 自定义";
-    AddScaleSliderRow(menu, @"短剧/顶部分类", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, NO, topSizeKeywords);
-    AddScaleSliderRow(menu, @"外观/玻璃与尺寸", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, YES, topSizeKeywords);
-    AddScaleSliderRow(menu, @"短剧/播放设置", @"顶部按钮大小", DramaHeaderButtonScaleKey, 70, 130, 100, YES, topSizeKeywords);
     FQXSettingRow *albumTitle = [FQXSettingRow new];
     albumTitle.title = @"合集标题显示";
     albumTitle.path = @"短剧/播放设置";
@@ -1056,7 +1081,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
         // Reuse the original switch for shared keys so its refresh action runs.
         if (!existing) [menu.catalog addObject:row];
         if ([option[@"key"] isEqualToString:@"FanqieX.GlassDarkTint.1"]) {
-            for (NSString *mirrorPath in @[@"短剧/顶部分类", @"短剧/播放设置"]) {
+            for (NSString *mirrorPath in @[@"短剧"]) {
                 FQXSettingRow *mirror = [FQXSettingRow new];
                 mirror.title = row.title;
                 mirror.path = mirrorPath;
@@ -1383,6 +1408,7 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
     if ([self.path hasPrefix:@"阅读/阅读页面净化"]) return @"开启“隐藏”才会移除对应入口，各项独立控制。章末内容在重新进入书籍后应用。";
     if ([self.path hasPrefix:@"阅读/听书页面净化"]) return @"开启“隐藏”后移除智能朗读/听书页面底部的推荐内容，即时生效。";
     if ([self.path hasPrefix:@"书架净化/"] || [self.path hasPrefix:@"我的页面净化/"]) return @"开启“隐藏”才会移除对应内容，各项独立控制。";
+    if ([self.path isEqualToString:@"短剧"]) return @"短剧顶栏与按钮底色、顶部选中色、按钮大小、模糊度与播放选项材质均集中在此设置，与底栏 Dock 选中色相互独立。";
     if ([self.path isEqualToString:@"评论区净化"]) return @"评论区材质与发评论输入框样式可独立搭配选择。";
     if ([self.path isEqualToString:@"阅读/智能朗读"]) return @"听书弹窗材质与模糊程度作用于章评、选择章节、已加书架、语速、定时关闭、简介/播放目录、音色设置与更多弹窗；听书按钮模糊程度在听书界面液态玻璃开启时生效。";
     if ([self.path isEqualToString:@"通知管理"]) return @"控制 App 运行期间的提醒和角标。后台系统推送由 iOS 通知设置管理。";
@@ -1919,6 +1945,16 @@ static UIBarButtonItem *SettingsHeaderItem(NSString *title, UIImage *image, id t
                 [picker addAction:[UIAlertAction actionWithTitle:optTitle style:UIAlertActionStyleDefault
                     handler:^(__unused UIAlertAction *action) {
                         NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+                        if (kind == 13 && [ud objectForKey:SelectionTintStyleKey] != nil) {
+                            NSInteger legacyVal = [ud integerForKey:SelectionTintStyleKey];
+                            NSString *siblingKey = [prefKey isEqualToString:DockSelectionTintStyleKey]
+                                ? DramaTopSelectionTintStyleKey
+                                : DockSelectionTintStyleKey;
+                            if ([ud objectForKey:siblingKey] == nil) {
+                                [ud setInteger:legacyVal forKey:siblingKey];
+                            }
+                            [ud removeObjectForKey:SelectionTintStyleKey];
+                        }
                         [ud setInteger:savedVal forKey:prefKey];
                         if (kind == 11) {
                             FQXSettingsMenu *strongMenu = weakMenu;

@@ -34,6 +34,8 @@ static NSDictionary<NSString *, id> *BuiltInSettings(void) {
         BottomDisplayMode: @0,
         @"FanqieX.DockMaterial.1": @0,
         @"FanqieX.SelectionTintStyle.1": @0,
+        @"FanqieX.DockSelectionTintStyle.1": @0,
+        @"FanqieX.DramaTopSelectionTintStyle.1": @0,
         @"FanqieX.DramaButtonSurfaceStyle.1": @0,
         @"FanqieX.GlassDarkTint.1": @NO,
         @"FanqieX.DockDetachedEnabled.1": @NO,
@@ -188,6 +190,8 @@ static id ValidSetting(NSString *key, id value, NSDictionary<NSString *, id> *de
     if ([key isEqualToString:@"FanqieX.StartupTab.1"] ||
         [key isEqualToString:@"FanqieX.DockMaterial.1"] ||
         [key isEqualToString:@"FanqieX.SelectionTintStyle.1"] ||
+        [key isEqualToString:@"FanqieX.DockSelectionTintStyle.1"] ||
+        [key isEqualToString:@"FanqieX.DramaTopSelectionTintStyle.1"] ||
         [key isEqualToString:@"FanqieX.DramaButtonSurfaceStyle.1"] ||
         [key isEqualToString:DockCollapseMode] ||
         [key isEqualToString:@"FanqieX.DockBlur.1"] ||

@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the test release identity
-        run: test "$(cat VERSION)" = '2.0.1beta12'
+        run: test "$(cat VERSION)" = '2.0.1'
       - name: Preserve the exact source checkout for reproducible diagnosis
         shell: bash
         run: |
@@ -71,9 +71,9 @@ jobs:
           Path("native/AlignedGlass.s").write_text(text, encoding="utf-8")
           PY
       - name: Build actual plugin twice and type-check native APIs
-        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 2.0.1beta12
+        run: python3 scripts/build_xcode27.py --repair-dir repair162 --version 2.0.1
       - name: Build FanqieX with integrated export and settings modules
-        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-2.0.1beta12.dylib --output build/xcode27/integrated
+        run: python3 scripts/build_book_export.py --core build/xcode27/FanqieX-2.0.1.dylib --output build/xcode27/integrated
       - name: Verify Naloia vector parity and heartbeat motion
         shell: bash
         run: |

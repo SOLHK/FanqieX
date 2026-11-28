@@ -735,11 +735,25 @@ static inline int FQXNormalizeDramaButtonSurfaceStyle(int rawStyle) {
     return FQXDramaButtonSurfaceDefaultGlass;
 }
 
+static inline int FQXResolveSplitSelectionTintStyle(int hasSpecificPref,
+                                                    int rawSpecificStyle,
+                                                    int hasLegacyPref,
+                                                    int rawLegacyStyle) {
+    if (hasSpecificPref) return FQXNormalizeSelectionTintStyle(rawSpecificStyle);
+    if (hasLegacyPref) return FQXNormalizeSelectionTintStyle(rawLegacyStyle);
+    return FQXSelectionTintStyleDefault;
+}
+
 static inline int FQXEffectiveSelectionTintStyle(int storedSelectionStyle,
                                                  int surfaceIsRoseMistGlass) {
     int sel = FQXNormalizeSelectionTintStyle(storedSelectionStyle);
     if (sel != FQXSelectionTintStyleDefault) return sel;
     return surfaceIsRoseMistGlass ? FQXSelectionTintStyleRoseMistGlass : FQXSelectionTintStyleDefault;
+}
+
+/* Right-rail Like/Collect/Comment/Share buttons stay pure borderless icons without glass/matte circle overlays. */
+static inline int FQXShouldApplyDramaActionSurfaceOverlay(void) {
+    return 0;
 }
 
 static inline int FQXShouldUseDarkInkForSurface(int isVideoBaseSurface,

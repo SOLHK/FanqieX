@@ -132,6 +132,8 @@ static NSString *const DockCollapseModeKey = @"FanqieX.DockCollapseMode.1";
 static NSString *const DockSiriaiHideLineKey = @"FanqieX.DockSiriaiHideLine.1";
 static NSString *const DockMaterialKey = @"FanqieX.DockMaterial.1";
 static NSString *const SelectionTintStyleKey = @"FanqieX.SelectionTintStyle.1";
+static NSString *const DockSelectionTintStyleKey = @"FanqieX.DockSelectionTintStyle.1";
+static NSString *const DramaTopSelectionTintStyleKey = @"FanqieX.DramaTopSelectionTintStyle.1";
 static NSString *const DramaButtonSurfaceStyleKey = @"FanqieX.DramaButtonSurfaceStyle.1";
 static NSString *const DockBlurKey = @"FanqieX.DockBlur.1";
 static NSString *const CommentBlurKey = @"FanqieX.CommentBlur.1";
@@ -2240,11 +2242,20 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshDockSel]) {
             ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         }
-    } else if ([key isEqualToString:DockMaterialKey] || [key isEqualToString:DockBlurKey]) {
+    } else if ([key isEqualToString:DockMaterialKey] ||
+               [key isEqualToString:DockBlurKey] ||
+               [key isEqualToString:DockSelectionTintStyleKey]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refresh = sel_registerName("refreshDockMaterial");
         if ([dockMotion respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refresh);
-    } else if ([key isEqualToString:SelectionTintStyleKey] || [key isEqualToString:DramaButtonSurfaceStyleKey]) {
+    } else if ([key isEqualToString:DramaTopSelectionTintStyleKey] ||
+               [key isEqualToString:DramaButtonSurfaceStyleKey]) {
+        Class dockMotion = objc_lookUpClass("FQXDockMotion");
+        SEL refreshTopSel = sel_registerName("refreshDramaHeaderBlur");
+        SEL refreshDramaSel = sel_registerName("refreshDramaControls");
+        if ([dockMotion respondsToSelector:refreshTopSel]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshTopSel);
+        if ([dockMotion respondsToSelector:refreshDramaSel]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDramaSel);
+    } else if ([key isEqualToString:SelectionTintStyleKey]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refreshDockSel = sel_registerName("refreshDockMaterial");
         SEL refreshTopSel = sel_registerName("refreshDramaHeaderBlur");
@@ -2252,9 +2263,6 @@ static NSDictionary *FQXPurgeHistoricalResidueImpl(BOOL aggressiveLogs) {
         if ([dockMotion respondsToSelector:refreshDockSel]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDockSel);
         if ([dockMotion respondsToSelector:refreshTopSel]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshTopSel);
         if ([dockMotion respondsToSelector:refreshDramaSel]) ((void (*)(id, SEL))objc_msgSend)(dockMotion, refreshDramaSel);
-        Class style = objc_lookUpClass("FQXDramaActionStyle");
-        SEL refreshActions = sel_registerName("refresh");
-        if ([style respondsToSelector:refreshActions]) ((void (*)(id, SEL))objc_msgSend)(style, refreshActions);
     } else if ([key isEqualToString:ReaderHotCommentBadgeKey]) {
         Class dockMotion = objc_lookUpClass("FQXDockMotion");
         SEL refresh = sel_registerName("refreshReaderHotCommentBadge");
